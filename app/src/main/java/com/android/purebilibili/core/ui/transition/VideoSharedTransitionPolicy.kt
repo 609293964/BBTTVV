@@ -5,9 +5,11 @@ internal enum class VideoSharedTransitionProfile {
     COVER_AND_METADATA
 }
 
+internal const val VIDEO_SHARED_COVER_ASPECT_RATIO = 16f / 10f
+
 internal fun resolveVideoSharedTransitionProfile(): VideoSharedTransitionProfile {
-    // Phase A: stability first. Keep only cover shared-element transitions.
-    return VideoSharedTransitionProfile.COVER_ONLY
+    // Prefer a unified return choreography: cover + key metadata move back together.
+    return VideoSharedTransitionProfile.COVER_AND_METADATA
 }
 
 internal fun shouldEnableVideoCoverSharedTransition(
@@ -26,6 +28,7 @@ internal fun shouldEnableVideoMetadataSharedTransition(
     profile: VideoSharedTransitionProfile = resolveVideoSharedTransitionProfile()
 ): Boolean {
     if (!coverSharedEnabled) return false
-    if (isQuickReturnLimited) return false
+    // Keep metadata linked during quick return to avoid cover-only snapback.
+    if (isQuickReturnLimited && profile == VideoSharedTransitionProfile.COVER_ONLY) return false
     return profile == VideoSharedTransitionProfile.COVER_AND_METADATA
 }

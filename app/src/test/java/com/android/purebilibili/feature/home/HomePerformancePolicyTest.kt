@@ -46,7 +46,7 @@ class HomePerformancePolicyTest {
     }
 
     @Test
-    fun smartGuard_keepsDataSaverOff_butDisablesLiquidGlassAndLimitsPreload() {
+    fun smartGuardFlag_noLongerAffectsHomePerformanceConfig() {
         val config = resolveHomePerformanceConfig(
             headerBlurEnabled = true,
             bottomBarBlurEnabled = true,
@@ -59,7 +59,7 @@ class HomePerformancePolicyTest {
         )
 
         assertFalse(config.isDataSaverActive)
-        assertFalse(config.liquidGlassEnabled)
-        assertTrue(config.preloadAheadCount == 2)
+        assertTrue(config.liquidGlassEnabled)
+        assertTrue(config.preloadAheadCount == 5)
     }
 }

@@ -23,6 +23,19 @@ class BlurBudgetPolicyTest {
     }
 
     @Test
+    fun header_scrolling_keepsVisualBudgetStable_toAvoidBrightnessPulsing() {
+        val budget = resolveBlurBudget(
+            surfaceType = BlurSurfaceType.HEADER,
+            motionTier = MotionTier.Normal,
+            isScrolling = true,
+            isTransitionRunning = false
+        )
+
+        assertEquals(2, budget.maxBlurLevel)
+        assertEquals(1.0f, budget.backgroundAlphaMultiplier)
+    }
+
+    @Test
     fun bottomBar_duringTransition_shouldLowerBudgetAndDisableRealtime() {
         val budget = resolveBlurBudget(
             surfaceType = BlurSurfaceType.BOTTOM_BAR,

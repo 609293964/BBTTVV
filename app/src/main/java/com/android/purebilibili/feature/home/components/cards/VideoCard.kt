@@ -54,6 +54,7 @@ import androidx.compose.ui.semantics.contentDescription
 import com.android.purebilibili.core.ui.adaptive.MotionTier
 import com.android.purebilibili.core.ui.components.UpBadgeName
 import com.android.purebilibili.core.ui.components.resolveUpStatsText
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedTransition
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
@@ -247,7 +248,7 @@ fun ElegantVideoCard(
         Box(
             modifier = coverModifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 10f)
+                .aspectRatio(VIDEO_SHARED_COVER_ASPECT_RATIO)
                 // [性能优化] 使用 shadow(clip = true) 合并裁剪和阴影层，避免创建额外的 GraphicsLayer
                 .shadow(
                     elevation = scrollLitePolicy.coverShadowElevationDp.dp,
@@ -367,7 +368,20 @@ fun ElegantVideoCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    var viewsOnCoverModifier = Modifier.wrapContentSize()
+                    if (metadataSharedEnabled) {
+                        with(requireNotNull(sharedTransitionScope)) {
+                            viewsOnCoverModifier = viewsOnCoverModifier.sharedBounds(
+                                sharedContentState = rememberSharedContentState(key = "video_views_${video.bvid}"),
+                                animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
+                                boundsTransform = { _, _ ->
+                                    com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
+                                }
+                            )
+                        }
+                    }
                     Row(
+                        modifier = viewsOnCoverModifier,
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
@@ -600,6 +614,18 @@ fun ElegantVideoCard(
                     )
                 }
             }
+            var followBadgeModifier = Modifier.wrapContentSize()
+            if (metadataSharedEnabled) {
+                with(requireNotNull(sharedTransitionScope)) {
+                    followBadgeModifier = followBadgeModifier.sharedBounds(
+                        sharedContentState = rememberSharedContentState(key = "video_up_action_${video.bvid}"),
+                        animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
+                        boundsTransform = { _, _ ->
+                            com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
+                        }
+                    )
+                }
+            }
 
             UpBadgeName(
                 name = video.owner.name,
@@ -613,7 +639,8 @@ fun ElegantVideoCard(
                             text = "已关注",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = followBadgeModifier
                         )
                     }
                 } else null,
@@ -677,7 +704,20 @@ fun ElegantVideoCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                var viewsRowModifier = Modifier.wrapContentSize()
+                if (metadataSharedEnabled) {
+                    with(requireNotNull(sharedTransitionScope)) {
+                        viewsRowModifier = viewsRowModifier.sharedBounds(
+                            sharedContentState = rememberSharedContentState(key = "video_views_${video.bvid}"),
+                            animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
+                            boundsTransform = { _, _ ->
+                                com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
+                            }
+                        )
+                    }
+                }
                 Row(
+                    modifier = viewsRowModifier,
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {

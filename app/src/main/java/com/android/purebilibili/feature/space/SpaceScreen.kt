@@ -54,6 +54,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.spring
 import com.android.purebilibili.feature.dynamic.components.ImagePreviewDialog
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -1347,12 +1348,14 @@ private fun SpaceVideoListItem(
             .iOSTapEffect(scale = 0.98f) { onClick() }
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // 封面 - 16:9 比例
+        val coverWidth = 140.dp
+        val coverHeight = coverWidth / VIDEO_SHARED_COVER_ASPECT_RATIO
+        // 封面 - 16:10 统一共享比例
         Box(
             modifier = Modifier
-                .width(140.dp)
-                .height(80.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .width(coverWidth)
+                .height(coverHeight)
+                .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             val coverModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -1360,7 +1363,8 @@ private fun SpaceVideoListItem(
                     Modifier.sharedBounds(
                         rememberSharedContentState(key = "video_cover_${video.bvid}"),
                         animatedVisibilityScope = animatedVisibilityScope,
-                        clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(8.dp))
+                        boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
+                        clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(12.dp))
                     )
                 }
             } else Modifier
@@ -1400,7 +1404,7 @@ private fun SpaceVideoListItem(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .height(80.dp),
+                .height(coverHeight),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // 标题

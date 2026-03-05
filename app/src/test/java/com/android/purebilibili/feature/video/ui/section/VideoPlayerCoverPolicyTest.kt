@@ -51,6 +51,38 @@ class VideoPlayerCoverPolicyTest {
     }
 
     @Test
+    fun `forced return cover should hide live player surface`() {
+        assertTrue(shouldHidePlayerSurfaceDuringForcedReturn(forceCoverDuringReturnAnimation = true))
+        assertFalse(shouldHidePlayerSurfaceDuringForcedReturn(forceCoverDuringReturnAnimation = false))
+    }
+
+    @Test
+    fun `forced return cover should disable image crossfade`() {
+        assertFalse(shouldEnableCoverImageCrossfade(forceCoverDuringReturnAnimation = true))
+        assertTrue(shouldEnableCoverImageCrossfade(forceCoverDuringReturnAnimation = false))
+    }
+
+    @Test
+    fun `forced return cover shared bounds requires transition and scopes`() {
+        assertTrue(
+            shouldEnableForcedReturnCoverSharedBounds(
+                forceCoverDuringReturnAnimation = true,
+                transitionEnabled = true,
+                hasSharedTransitionScope = true,
+                hasAnimatedVisibilityScope = true
+            )
+        )
+        assertFalse(
+            shouldEnableForcedReturnCoverSharedBounds(
+                forceCoverDuringReturnAnimation = true,
+                transitionEnabled = false,
+                hasSharedTransitionScope = true,
+                hasAnimatedVisibilityScope = true
+            )
+        )
+    }
+
+    @Test
     fun `playback fallback promotes first frame when ready and progressing`() {
         assertTrue(
             shouldPromoteFirstFrameByPlaybackFallback(

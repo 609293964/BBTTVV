@@ -57,17 +57,18 @@ internal fun resolveBlurBudget(
     }
 
     if (isScrolling) {
-        maxBlurLevel = minOf(maxBlurLevel, 0)
-        backgroundAlphaMultiplier *= 0.92f
+        if (surfaceType != BlurSurfaceType.HEADER) {
+            maxBlurLevel = minOf(maxBlurLevel, 0)
+            backgroundAlphaMultiplier *= 0.92f
+        }
         allowRealtime = false
     }
 
     if (isTransitionRunning) {
-        maxBlurLevel = minOf(
-            maxBlurLevel,
-            if (surfaceType == BlurSurfaceType.HEADER) 1 else 0
-        )
-        backgroundAlphaMultiplier *= 0.92f
+        if (surfaceType != BlurSurfaceType.HEADER) {
+            maxBlurLevel = minOf(maxBlurLevel, 0)
+            backgroundAlphaMultiplier *= 0.92f
+        }
         allowRealtime = false
     }
 

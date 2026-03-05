@@ -481,12 +481,26 @@ fun UpInfoSection(
             }
         }
         
+        var followActionModifier = Modifier.height(32.dp)
+        if (metadataSharedEnabled) {
+            with(requireNotNull(sharedTransitionScope)) {
+                followActionModifier = followActionModifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "video_up_action_${info.bvid}"),
+                    animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
+                    boundsTransform = { _, _ ->
+                        androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 200f)
+                    },
+                    clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(16.dp))
+                )
+            }
+        }
+
         // Follow button
         Surface(
             onClick = onFollowClick,
             color = if (isFollowing) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.height(32.dp)
+            modifier = followActionModifier
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

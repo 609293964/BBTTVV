@@ -465,7 +465,7 @@ fun HomeScreen(
             cardAnimationEnabled = baseCardAnimationEnabled,
             cardTransitionEnabled = baseCardTransitionEnabled,
             isDataSaverActive = baseIsDataSaverActive,
-            smartVisualGuardEnabled = homeSettings.smartVisualGuardEnabled
+            smartVisualGuardEnabled = false
         )
     }
     val isHeaderBlurEnabled = homePerformanceConfig.headerBlurEnabled
@@ -1110,7 +1110,7 @@ fun HomeScreen(
                                      cardAnimationEnabled = cardAnimationEnabled,
                                      cardMotionTier = cardMotionTier,
                                      cardTransitionEnabled = cardTransitionEnabled,
-                                     smartVisualGuardEnabled = homeSettings.smartVisualGuardEnabled,
+                                     smartVisualGuardEnabled = false,
                                      isDataSaverActive = isDataSaverActive,
                                      compactStatsOnCover = homeSettings.compactVideoStatsOnCover,
                                      oldContentAnchorBvid = if (category == HomeCategory.RECOMMEND &&
@@ -1173,8 +1173,7 @@ fun HomeScreen(
             stateName = "home:header_transition",
             isActive = isHeaderTransitionRunning
         )
-        val forceLowBlurBudget = homeSettings.smartVisualGuardEnabled &&
-            (isFeedScrollInProgress || isHeaderTransitionRunning || isVideoNavigating || isDrawerOpenOrOpening)
+        val forceLowBlurBudget = false
         
         // Calculate parameters based on scroll
         // 1. Search Bar Collapse (First phase)

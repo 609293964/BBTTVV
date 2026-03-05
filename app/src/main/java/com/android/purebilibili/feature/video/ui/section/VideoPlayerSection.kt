@@ -65,6 +65,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -94,6 +95,7 @@ import com.android.purebilibili.core.store.FullscreenAspectRatio
 import com.android.purebilibili.core.ui.performance.TrackJankStateFlag
 import com.android.purebilibili.core.ui.performance.TrackJankStateValue
 import com.android.purebilibili.core.ui.blur.unifiedBlur
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.util.FormatUtils
 import com.android.purebilibili.feature.video.subtitle.SubtitleDisplayMode
 import com.android.purebilibili.feature.video.subtitle.SubtitleAutoPreference
@@ -343,6 +345,30 @@ internal fun shouldDisableCoverFadeAnimation(
     forceCoverDuringReturnAnimation: Boolean
 ): Boolean {
     return forceCoverDuringReturnAnimation
+}
+
+internal fun shouldHidePlayerSurfaceDuringForcedReturn(
+    forceCoverDuringReturnAnimation: Boolean
+): Boolean {
+    return forceCoverDuringReturnAnimation
+}
+
+internal fun shouldEnableCoverImageCrossfade(
+    forceCoverDuringReturnAnimation: Boolean
+): Boolean {
+    return !forceCoverDuringReturnAnimation
+}
+
+internal fun shouldEnableForcedReturnCoverSharedBounds(
+    forceCoverDuringReturnAnimation: Boolean,
+    transitionEnabled: Boolean,
+    hasSharedTransitionScope: Boolean,
+    hasAnimatedVisibilityScope: Boolean
+): Boolean {
+    return forceCoverDuringReturnAnimation &&
+        transitionEnabled &&
+        hasSharedTransitionScope &&
+        hasAnimatedVisibilityScope
 }
 
 internal fun shouldPromoteFirstFrameByPlaybackFallback(
@@ -788,6 +814,9 @@ fun VideoPlayerSection(
     //  共享弹幕管理器（用于所有 seek 路径的一致同步）
     val danmakuManager = rememberDanmakuManager()
     val overlayDrawerHazeState = remember { HazeState() }
+    val forceCoverDuringReturnAnimation = shouldForceCoverDuringReturnAnimation(
+        forceCoverOnly = forceCoverOnly
+    )
 
     var rootModifier = Modifier
         .fillMaxSize()
@@ -1466,6 +1495,9 @@ fun VideoPlayerSection(
                 },
                 modifier = Modifier
                     .fillMaxSize()
+                    .alpha(
+                        if (shouldHidePlayerSurfaceDuringForcedReturn(forceCoverDuringReturnAnimation)) 0f else 1f
+                    )
                     .graphicsLayer {
                         //  [新增] 应用缩放和平移
                         scaleX = if (isFlippedHorizontal) -scale else scale
@@ -1528,9 +1560,6 @@ fun VideoPlayerSection(
     // [Fix] 使用 FormatUtils 统一处理 URL (支持无协议头 URL)
     val currentCoverUrl = FormatUtils.fixImageUrl(rawCoverUrl)
     
-    val forceCoverDuringReturnAnimation = shouldForceCoverDuringReturnAnimation(
-        forceCoverOnly = forceCoverOnly
-    )
     LaunchedEffect(playerState.player, bvid, forceCoverDuringReturnAnimation) {
         if (forceCoverDuringReturnAnimation || isFirstFrameRendered) return@LaunchedEffect
         while (isActive && !isFirstFrameRendered) {
@@ -1560,6 +1589,12 @@ fun VideoPlayerSection(
         forceCoverDuringReturnAnimation = forceCoverDuringReturnAnimation
     )
     val disableCoverFadeAnimation = shouldDisableCoverFadeAnimation(forceCoverDuringReturnAnimation)
+    val forceReturnCoverSharedBoundsEnabled = shouldEnableForcedReturnCoverSharedBounds(
+        forceCoverDuringReturnAnimation = forceCoverDuringReturnAnimation,
+        transitionEnabled = transitionEnabled,
+        hasSharedTransitionScope = sharedTransitionScope != null,
+        hasAnimatedVisibilityScope = animatedVisibilityScope != null
+    )
     
     // [Debug] Logging
     LaunchedEffect(showCover, currentCoverUrl, isFirstFrameRendered, uiState) {
@@ -1572,29 +1607,52 @@ fun VideoPlayerSection(
         exit = if (disableCoverFadeAnimation) ExitTransition.None else fadeOut(animationSpec = tween(300)),
         modifier = Modifier.zIndex(100f) // 返回中强制封面时，确保封面压住所有播放器层
     ) {
-        AsyncImage(
-            model = coil.request.ImageRequest.Builder(LocalContext.current)
-                .data(currentCoverUrl)
-                // [关键] 尝试使用首页卡片的缓存 Key 作为占位，实现无缝过渡
-                // 假设首页卡片使用的是普通模式 ("n")
-                .placeholderMemoryCacheKey("cover_${bvid}_n")
-                .listener(
-                    onStart = { android.util.Log.d("VideoPlayerCover", "🖼️ Image loading started: $currentCoverUrl") },
-                    onSuccess = { _, _ -> android.util.Log.d("VideoPlayerCover", "🖼️ Image loaded successfully") },
-                    onError = { _, result -> android.util.Log.e("VideoPlayerCover", "❌ Image load failed: ${result.throwable.message}", result.throwable) }
+        val coverCardShape = RoundedCornerShape(12.dp)
+        val forcedReturnCoverModifier = if (forceReturnCoverSharedBoundsEnabled) {
+            with(requireNotNull(sharedTransitionScope)) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "video_cover_$bvid"),
+                    animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
+                    boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
+                    clipInOverlayDuringTransition = OverlayClip(coverCardShape)
                 )
-                .crossfade(true)
-                .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop, // [修改] 使用 Crop 填满屏幕
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        )
+            }
+        } else {
+            Modifier
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = forcedReturnCoverModifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .aspectRatio(VIDEO_SHARED_COVER_ASPECT_RATIO)
+                    .clip(coverCardShape)
+                    .background(Color.Black)
+            ) {
+                AsyncImage(
+                    model = coil.request.ImageRequest.Builder(LocalContext.current)
+                        .data(currentCoverUrl)
+                        // [关键] 尝试使用首页卡片的缓存 Key 作为占位，实现无缝过渡
+                        // 假设首页卡片使用的是普通模式 ("n")
+                        .placeholderMemoryCacheKey("cover_${bvid}_n")
+                        .listener(
+                            onStart = { android.util.Log.d("VideoPlayerCover", "🖼️ Image loading started: $currentCoverUrl") },
+                            onSuccess = { _, _ -> android.util.Log.d("VideoPlayerCover", "🖼️ Image loaded successfully") },
+                            onError = { _, result -> android.util.Log.e("VideoPlayerCover", "❌ Image load failed: ${result.throwable.message}", result.throwable) }
+                        )
+                        .crossfade(shouldEnableCoverImageCrossfade(forceCoverDuringReturnAnimation))
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
     }
 
     // 2. DanmakuView (使用 ByteDance DanmakuRenderEngine - 覆盖在 PlayerView 上方)
-    val shouldShowDanmakuLayer = shouldShowDanmakuLayers(
+    val shouldShowDanmakuLayer = !forceCoverDuringReturnAnimation && shouldShowDanmakuLayers(
         isInPipMode = isInPipMode,
         danmakuEnabled = danmakuEnabled,
         isPortraitFullscreen = isPortraitFullscreen,

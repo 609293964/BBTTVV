@@ -45,6 +45,7 @@ import com.android.purebilibili.core.theme.iOSCornerRadius
 import com.android.purebilibili.core.ui.adaptive.MotionTier
 import com.android.purebilibili.core.ui.components.UpBadgeName
 import com.android.purebilibili.core.ui.components.resolveUpStatsText
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedTransition
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
@@ -55,7 +56,7 @@ import io.github.alexzhirkevich.cupertino.icons.outlined.*
  *  故事卡片 - 影院海报风格
  * 
  * 特点：
- * - 2:1 电影宽屏比例
+ * - 16:10 宽屏比例
  * - 大圆角 (24dp)
  * - 标题叠加在封面底部
  * - 沉浸电影感
@@ -134,12 +135,7 @@ fun StoryVideoCard(
                 .sharedBounds(
                     sharedContentState = rememberSharedContentState(key = "video_cover_${video.bvid}"),
                     animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
-                    boundsTransform = { _, _ ->
-                        spring(
-                            dampingRatio = 0.8f,
-                            stiffness = 300f
-                        )
-                    },
+                    boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                     clipInOverlayDuringTransition = OverlayClip(
                         RoundedCornerShape(cardCornerRadius)
                     )
@@ -215,7 +211,7 @@ fun StoryVideoCard(
                 )
                 .background(MaterialTheme.colorScheme.surfaceVariant) // 封面占位色
         ) {
-            //  封面 - 2:1 电影宽屏
+            //  封面 - 16:10 统一共享比例
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(coverUrl)
@@ -226,7 +222,7 @@ fun StoryVideoCard(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2f / 1f)
+                    .aspectRatio(VIDEO_SHARED_COVER_ASPECT_RATIO)
                     .clip(RoundedCornerShape(cardCornerRadius)),
                 contentScale = ContentScale.Crop
             )

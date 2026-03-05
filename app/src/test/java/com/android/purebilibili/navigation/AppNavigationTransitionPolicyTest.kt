@@ -21,6 +21,18 @@ class AppNavigationTransitionPolicyTest {
     }
 
     @Test
+    fun tabletBackToHistoryFromVideo_usesSeamlessTransition() {
+        assertTrue(
+            shouldUseTabletSeamlessBackTransition(
+                isTabletLayout = true,
+                cardTransitionEnabled = true,
+                fromRoute = VideoRoute.route,
+                toRoute = ScreenRoutes.History.route
+            )
+        )
+    }
+
+    @Test
     fun phoneBackToHomeFromVideo_keepsDefaultTransition() {
         assertFalse(
             shouldUseTabletSeamlessBackTransition(
@@ -111,13 +123,94 @@ class AppNavigationTransitionPolicyTest {
     }
 
     @Test
-    fun nonSharedReturnToNonHome_singleColumn_slidesDown() {
+    fun nonSharedReturnToNonCardRoute_singleColumn_slidesDown() {
         assertEquals(
             VideoPopExitDirection.DOWN,
             resolveVideoPopExitDirection(
-                targetRoute = ScreenRoutes.Search.route,
+                targetRoute = ScreenRoutes.Settings.route,
                 isSingleColumnCard = true,
                 lastClickedCardCenterX = 0.2f
+            )
+        )
+    }
+
+    @Test
+    fun nonSharedReturnToCardList_singleColumn_keepsHorizontalDirectionLikeHome() {
+        assertEquals(
+            VideoPopExitDirection.LEFT,
+            resolveVideoPopExitDirection(
+                targetRoute = ScreenRoutes.History.route,
+                isSingleColumnCard = true,
+                lastClickedCardCenterX = 0.2f
+            )
+        )
+    }
+
+    @Test
+    fun cardReturnTargetPolicy_matchesExpectedRoutes() {
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Home.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.History.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Favorite.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.WatchLater.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Search.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Dynamic.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Partition.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Space.route))
+        assertTrue(isVideoCardReturnTargetRoute(ScreenRoutes.Category.route))
+        assertFalse(isVideoCardReturnTargetRoute(ScreenRoutes.Settings.route))
+    }
+
+    @Test
+    fun videoToVideoRouteTransition_usesNoOpWhenCardTransitionEnabled() {
+        assertTrue(
+            shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                cardTransitionEnabled = true,
+                fromRoute = VideoRoute.route,
+                toRoute = VideoRoute.route
+            )
+        )
+    }
+
+    @Test
+    fun videoToVideoRouteTransition_disabledWhenCardTransitionDisabledOrRouteMismatch() {
+        assertFalse(
+            shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                cardTransitionEnabled = false,
+                fromRoute = VideoRoute.route,
+                toRoute = VideoRoute.route
+            )
+        )
+        assertFalse(
+            shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                cardTransitionEnabled = true,
+                fromRoute = VideoRoute.route,
+                toRoute = ScreenRoutes.Home.route
+            )
+        )
+    }
+
+    @Test
+    fun quickReturn_nonHomeCardRoute_canUseNoOpToAvoidRouteLayerInterference() {
+        assertTrue(
+            shouldUseNoOpQuickReturnForNonHomeCardRoute(
+                targetRoute = ScreenRoutes.History.route,
+                cardTransitionEnabled = true,
+                isQuickReturnFromDetail = true,
+                sharedTransitionReady = true,
+                profile = VideoSharedTransitionProfile.COVER_ONLY
+            )
+        )
+    }
+
+    @Test
+    fun quickReturn_homeRoute_doesNotForceNoOpViaNonHomePolicy() {
+        assertFalse(
+            shouldUseNoOpQuickReturnForNonHomeCardRoute(
+                targetRoute = ScreenRoutes.Home.route,
+                cardTransitionEnabled = true,
+                isQuickReturnFromDetail = true,
+                sharedTransitionReady = true,
+                profile = VideoSharedTransitionProfile.COVER_ONLY
             )
         )
     }

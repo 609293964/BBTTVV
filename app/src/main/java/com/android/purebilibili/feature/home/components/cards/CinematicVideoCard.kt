@@ -60,6 +60,7 @@ import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.adaptive.MotionTier
 import com.android.purebilibili.core.ui.components.UpBadgeName
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedTransition
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.core.util.CardPositionManager
@@ -212,7 +213,7 @@ fun CinematicVideoCard(
         ) {
             val coverModifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.6f) // 回归标准宽屏比例
+                .aspectRatio(VIDEO_SHARED_COVER_ASPECT_RATIO) // 统一共享比例
             
             // 共享元素: 封面
             val finalCoverModifier = if (coverSharedEnabled) {
@@ -220,7 +221,7 @@ fun CinematicVideoCard(
                     coverModifier.sharedBounds(
                         sharedContentState = rememberSharedContentState(key = "video_cover_${video.bvid}"),
                         animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
-                        boundsTransform = { _, _ -> spring(dampingRatio = 0.8f, stiffness = 200f) },
+                        boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                         clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(cardCornerRadius))
                     )
                 }

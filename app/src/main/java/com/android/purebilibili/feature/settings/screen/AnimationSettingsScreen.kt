@@ -157,15 +157,6 @@ fun AnimationSettingsContent(
                             iconTint = iOSBlue
                         )
                         Divider()
-                        IOSSwitchItem(
-                            icon = CupertinoIcons.Default.WandAndStars,
-                            title = "智能流畅优先",
-                            subtitle = "检测到持续卡顿时临时降低模糊与动效强度",
-                            checked = state.smartVisualGuardEnabled,
-                            onCheckedChange = { viewModel.toggleSmartVisualGuard(it) },
-                            iconTint = iOSTeal
-                        )
-                        Divider()
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()

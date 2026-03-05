@@ -20,7 +20,8 @@ internal fun resolveHomePerformanceConfig(
     smartVisualGuardEnabled: Boolean,
     normalPreloadAheadCount: Int = 5
 ): HomePerformanceConfig {
-    val shouldPrioritizeSmoothness = smartVisualGuardEnabled
+    // Feature retired: keep parameter for compatibility, but never apply runtime smoothness downgrade.
+    val shouldPrioritizeSmoothness = false
     val effectiveDataSaver = isDataSaverActive
     val effectiveLiquidGlass = liquidGlassEnabled && !shouldPrioritizeSmoothness
     val effectivePreloadAheadCount = when {

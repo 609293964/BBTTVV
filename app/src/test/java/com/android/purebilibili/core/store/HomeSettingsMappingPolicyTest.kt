@@ -27,7 +27,7 @@ class HomeSettingsMappingPolicyTest {
         assertFalse(result.cardAnimationEnabled)
         assertTrue(result.cardTransitionEnabled)
         assertTrue(result.predictiveBackAnimationEnabled)
-        assertTrue(result.smartVisualGuardEnabled)
+        assertFalse(result.smartVisualGuardEnabled)
         assertTrue(result.compactVideoStatsOnCover)
         assertFalse(result.crashTrackingConsentShown)
     }

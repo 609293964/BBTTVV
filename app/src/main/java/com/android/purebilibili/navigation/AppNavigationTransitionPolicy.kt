@@ -22,6 +22,33 @@ internal fun shouldUseNoOpRouteTransitionOnQuickReturn(
     }
 }
 
+internal fun shouldUseNoOpRouteTransitionBetweenVideoDetails(
+    cardTransitionEnabled: Boolean,
+    fromRoute: String?,
+    toRoute: String?
+): Boolean {
+    return cardTransitionEnabled &&
+        isVideoDetailRoute(fromRoute) &&
+        isVideoDetailRoute(toRoute)
+}
+
+internal fun shouldUseNoOpQuickReturnForNonHomeCardRoute(
+    targetRoute: String?,
+    cardTransitionEnabled: Boolean,
+    isQuickReturnFromDetail: Boolean,
+    sharedTransitionReady: Boolean,
+    profile: VideoSharedTransitionProfile = resolveVideoSharedTransitionProfile()
+): Boolean {
+    if (targetRoute == ScreenRoutes.Home.route) return false
+    if (!isVideoCardReturnTargetRoute(targetRoute)) return false
+    return shouldUseNoOpRouteTransitionOnQuickReturn(
+        cardTransitionEnabled = cardTransitionEnabled,
+        isQuickReturnFromDetail = isQuickReturnFromDetail,
+        sharedTransitionReady = sharedTransitionReady,
+        profile = profile
+    )
+}
+
 internal fun shouldPreferOneTakeVideoToHomeReturn(
     predictiveBackAnimationEnabled: Boolean,
     cardTransitionEnabled: Boolean,
@@ -75,7 +102,7 @@ internal fun shouldUseTabletSeamlessBackTransition(
     return isTabletLayout &&
         cardTransitionEnabled &&
         isVideoDetailRoute(fromRoute) &&
-        toRoute == ScreenRoutes.Home.route
+        isVideoCardReturnTargetRoute(toRoute)
 }
 
 internal fun shouldStopPlaybackEagerlyOnVideoRouteExit(
@@ -93,11 +120,24 @@ internal fun resolveVideoPopExitDirection(
     lastClickedCardCenterX: Float?
 ): VideoPopExitDirection {
     val isCardOnLeft = (lastClickedCardCenterX ?: 0.5f) < 0.5f
-    if (targetRoute == ScreenRoutes.Home.route) {
+    if (isVideoCardReturnTargetRoute(targetRoute)) {
         return if (isCardOnLeft) VideoPopExitDirection.LEFT else VideoPopExitDirection.RIGHT
     }
     if (isSingleColumnCard) return VideoPopExitDirection.DOWN
     return if (isCardOnLeft) VideoPopExitDirection.LEFT else VideoPopExitDirection.RIGHT
+}
+
+internal fun isVideoCardReturnTargetRoute(route: String?): Boolean {
+    val routeBase = route?.substringBefore("?") ?: return false
+    return routeBase == ScreenRoutes.Home.route ||
+        routeBase == ScreenRoutes.History.route ||
+        routeBase == ScreenRoutes.Favorite.route ||
+        routeBase == ScreenRoutes.WatchLater.route ||
+        routeBase == ScreenRoutes.Search.route ||
+        routeBase == ScreenRoutes.Dynamic.route ||
+        routeBase == ScreenRoutes.Partition.route ||
+        routeBase.startsWith("category/") ||
+        routeBase.startsWith("space/")
 }
 
 private fun isVideoDetailRoute(route: String?): Boolean {

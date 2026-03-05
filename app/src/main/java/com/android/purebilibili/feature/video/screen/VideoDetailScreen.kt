@@ -118,7 +118,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 //  共享元素过渡
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
@@ -179,6 +178,37 @@ internal fun shouldClearStaleReturningStateOnVideoDetailEnter(
     isReturningFromDetail: Boolean
 ): Boolean {
     return isReturningFromDetail
+}
+
+internal data class VideoDetailSystemBarsSnapshot(
+    val statusBarColor: Int,
+    val navigationBarColor: Int,
+    val lightStatusBars: Boolean,
+    val lightNavigationBars: Boolean,
+    val systemBarsBehavior: Int
+)
+
+internal fun resolveVideoDetailSystemBarsSnapshot(
+    statusBarColor: Int?,
+    navigationBarColor: Int?,
+    lightStatusBars: Boolean?,
+    lightNavigationBars: Boolean?,
+    systemBarsBehavior: Int?,
+    fallbackColor: Int,
+    fallbackLightBars: Boolean,
+    fallbackSystemBarsBehavior: Int
+): VideoDetailSystemBarsSnapshot {
+    return VideoDetailSystemBarsSnapshot(
+        statusBarColor = statusBarColor ?: fallbackColor,
+        navigationBarColor = navigationBarColor ?: fallbackColor,
+        lightStatusBars = lightStatusBars ?: fallbackLightBars,
+        lightNavigationBars = lightNavigationBars ?: fallbackLightBars,
+        systemBarsBehavior = systemBarsBehavior ?: fallbackSystemBarsBehavior
+    )
+}
+
+internal fun shouldShowSystemBarsOnVideoDetailExit(): Boolean {
+    return true
 }
 
 internal fun shouldShowWatchLaterQueueBarByPolicy(
@@ -599,15 +629,31 @@ fun VideoDetailScreen(
             WindowCompat.getInsetsController(window, window.decorView)
         } else null
     }
-    val originalStatusBarColor = remember { window?.statusBarColor ?: android.graphics.Color.TRANSPARENT }
-    val originalLightStatusBars = remember { insetsController?.isAppearanceLightStatusBars ?: true }
+    val originalSystemBarsSnapshot = remember(window, insetsController) {
+        resolveVideoDetailSystemBarsSnapshot(
+            statusBarColor = window?.statusBarColor,
+            navigationBarColor = window?.navigationBarColor,
+            lightStatusBars = insetsController?.isAppearanceLightStatusBars,
+            lightNavigationBars = insetsController?.isAppearanceLightNavigationBars,
+            systemBarsBehavior = insetsController?.systemBarsBehavior,
+            fallbackColor = android.graphics.Color.TRANSPARENT,
+            fallbackLightBars = true,
+            fallbackSystemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+        )
+    }
     
     //  [新增] 恢复状态栏的函数（可复用）
     val restoreStatusBar = remember {
         {
             if (window != null && insetsController != null) {
-                insetsController.isAppearanceLightStatusBars = originalLightStatusBars
-                window.statusBarColor = originalStatusBarColor
+                if (shouldShowSystemBarsOnVideoDetailExit()) {
+                    insetsController.show(WindowInsetsCompat.Type.systemBars())
+                }
+                insetsController.systemBarsBehavior = originalSystemBarsSnapshot.systemBarsBehavior
+                insetsController.isAppearanceLightStatusBars = originalSystemBarsSnapshot.lightStatusBars
+                insetsController.isAppearanceLightNavigationBars = originalSystemBarsSnapshot.lightNavigationBars
+                window.statusBarColor = originalSystemBarsSnapshot.statusBarColor
+                window.navigationBarColor = originalSystemBarsSnapshot.navigationBarColor
             }
         }
     }
@@ -1633,22 +1679,18 @@ fun VideoDetailScreen(
                             transitionEnabled = transitionEnabled,
                             hasSharedTransitionScope = sharedTransitionScope != null,
                             hasAnimatedVisibilityScope = animatedVisibilityScope != null
-                        )
+                        ) && !forceCoverOnlyOnReturn
                     ) {
                         with(requireNotNull(sharedTransitionScope)) {
                             Modifier
                                 .sharedBounds(
                                     sharedContentState = rememberSharedContentState(key = "video_cover_$bvid"),
                                     animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
-                                    //  添加回弹效果的 spring 动画
                                     boundsTransform = { _, _ ->
-                                        spring(
-                                            dampingRatio = 0.8f,   // [Hero] 高阻尼
-                                            stiffness = 200f       // [Hero] 低刚度，与卡片保持一致
-                                        )
+                                        com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                                     },
                                     clipInOverlayDuringTransition = OverlayClip(
-                                        RoundedCornerShape(0.dp)  //  播放器无圆角
+                                        RoundedCornerShape(12.dp)
                                     )
                                 )
                         }

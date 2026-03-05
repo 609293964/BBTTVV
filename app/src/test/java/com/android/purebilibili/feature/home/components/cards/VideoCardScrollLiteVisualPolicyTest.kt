@@ -22,13 +22,13 @@ class VideoCardScrollLiteVisualPolicyTest {
     }
 
     @Test
-    fun `scroll lite mode keeps stats but disables expensive overlays`() {
+    fun `scroll lite mode keeps stats and a perceivable cover shadow`() {
         val policy = resolveVideoCardScrollLiteVisualPolicy(
             scrollLiteModeEnabled = true,
             compactStatsOnCover = true
         )
 
-        assertEquals(0.4f, policy.coverShadowElevationDp, 0.0001f)
+        assertEquals(1f, policy.coverShadowElevationDp, 0.0001f)
         assertFalse(policy.showCoverGradientMask)
         assertFalse(policy.showHistoryProgressBar)
         assertTrue(policy.showCompactStatsOnCover)

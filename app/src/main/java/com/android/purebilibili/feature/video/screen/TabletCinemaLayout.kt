@@ -6,7 +6,6 @@ import android.content.res.Configuration
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,6 +72,7 @@ import coil.compose.AsyncImage
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.store.SettingsManager
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.util.FormatUtils
 import com.android.purebilibili.data.model.response.ViewPoint
 import com.android.purebilibili.feature.dynamic.components.ImagePreviewDialog
@@ -310,20 +310,15 @@ private fun CinemaStagePlayer(
             transitionEnabled = transitionEnabled,
             hasSharedTransitionScope = sharedTransitionScope != null,
             hasAnimatedVisibilityScope = animatedVisibilityScope != null
-        )
+        ) && !forceCoverOnlyOnReturn
     ) {
         with(requireNotNull(sharedTransitionScope)) {
             Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "video_cover_$bvid"),
                 animatedVisibilityScope = requireNotNull(animatedVisibilityScope),
-                boundsTransform = { _, _ ->
-                    spring(
-                        dampingRatio = 0.8f,
-                        stiffness = 200f
-                    )
-                },
+                boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                 clipInOverlayDuringTransition = OverlayClip(
-                    RoundedCornerShape(18.dp)
+                    RoundedCornerShape(12.dp)
                 )
             )
         }
@@ -342,7 +337,11 @@ private fun CinemaStagePlayer(
                 .padding(12.dp)
         ) {
             val playerWidth = minOf(maxWidth, playerMaxWidth)
-            val videoHeight = playerWidth * 9f / 16f
+            val videoHeight = if (forceCoverOnlyOnReturn) {
+                playerWidth / VIDEO_SHARED_COVER_ASPECT_RATIO
+            } else {
+                playerWidth * 9f / 16f
+            }
             Box(
                 modifier = playerContainerModifier
                     .width(playerWidth)

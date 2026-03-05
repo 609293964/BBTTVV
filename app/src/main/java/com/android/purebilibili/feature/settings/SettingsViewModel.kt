@@ -36,7 +36,7 @@ data class SettingsUiState(
     val cardAnimationEnabled: Boolean = false,     //  卡片进场动画（默认关闭）
     val cardTransitionEnabled: Boolean = false,    //  卡片过渡动画（默认关闭）
     val predictiveBackAnimationEnabled: Boolean = true, // [New] 预测性返回联动动画
-    val smartVisualGuardEnabled: Boolean = true, // [New] 智能流畅优先
+    val smartVisualGuardEnabled: Boolean = false, // [Retired] 智能流畅优先已下线
     val cacheSize: String = "计算中...",
     val cacheBreakdown: CacheUtils.CacheBreakdown? = null,  //  详细缓存统计
     //  实验性功能

@@ -128,7 +128,7 @@ data class HomeSettings(
     val cardAnimationEnabled: Boolean = false,    //  卡片进场动画（默认关闭）
     val cardTransitionEnabled: Boolean = true,    //  卡片过渡动画（默认开启）
     val predictiveBackAnimationEnabled: Boolean = true, // [New] 预测性返回联动动画（默认开启）
-    val smartVisualGuardEnabled: Boolean = true, // [New] 智能流畅优先（默认开启）
+    val smartVisualGuardEnabled: Boolean = false, // [Retired] 智能流畅优先已下线，固定关闭
     val compactVideoStatsOnCover: Boolean = true, //  播放量/评论数显示在封面底部（默认开启）
     //  [修复] 默认值改为 true，避免在 Flow 加载实际值之前错误触发弹窗
     // 当 Flow 加载完成后，如果实际值是 false，LaunchedEffect 会再次触发并显示弹窗
@@ -305,7 +305,7 @@ object SettingsManager {
             cardAnimationEnabled = preferences[KEY_CARD_ANIMATION_ENABLED] ?: false,
             cardTransitionEnabled = preferences[KEY_CARD_TRANSITION_ENABLED] ?: true,
             predictiveBackAnimationEnabled = preferences[KEY_PREDICTIVE_BACK_ANIMATION_ENABLED] ?: true,
-            smartVisualGuardEnabled = preferences[KEY_SMART_VISUAL_GUARD_ENABLED] ?: true,
+            smartVisualGuardEnabled = false,
             compactVideoStatsOnCover = preferences[KEY_COMPACT_VIDEO_STATS_ON_COVER] ?: true,
             // 保持现有运行时行为：首次未配置时按 false 返回
             crashTrackingConsentShown = preferences[KEY_CRASH_TRACKING_CONSENT_SHOWN] ?: false
@@ -700,11 +700,11 @@ object SettingsManager {
     }
 
     fun getSmartVisualGuardEnabled(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_SMART_VISUAL_GUARD_ENABLED] ?: true }
+        .map { false }
 
     suspend fun setSmartVisualGuardEnabled(context: Context, value: Boolean) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_SMART_VISUAL_GUARD_ENABLED] = value
+            preferences[KEY_SMART_VISUAL_GUARD_ENABLED] = false
         }
     }
 

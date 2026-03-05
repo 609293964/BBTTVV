@@ -45,9 +45,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 //  共享元素过渡
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.core.spring
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
 
 /**
@@ -133,13 +133,7 @@ fun GlassVideoCard(
                 .sharedBounds(
                     sharedContentState = rememberSharedContentState(key = "video_cover_${video.bvid}"),
                     animatedVisibilityScope = animatedVisibilityScope,
-                    //  添加回弹效果的 spring 动画
-                    boundsTransform = { _, _ ->
-                        spring(
-                            dampingRatio = 0.7f,   // 轻微回弹
-                            stiffness = 300f       // 适中速度
-                        )
-                    },
+                    boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                     clipInOverlayDuringTransition = OverlayClip(
                         RoundedCornerShape(cardCornerRadius)  // 过渡时保持动态圆角
                     )
@@ -224,7 +218,7 @@ fun GlassVideoCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(16f / 10f)
+                        .aspectRatio(VIDEO_SHARED_COVER_ASPECT_RATIO)
                         .padding(10.dp)
                 ) {
                     // 封面图片 - 圆角内嵌

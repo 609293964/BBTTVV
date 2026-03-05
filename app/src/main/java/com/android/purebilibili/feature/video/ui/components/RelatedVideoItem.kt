@@ -1,7 +1,6 @@
 package com.android.purebilibili.feature.video.ui.components
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +36,7 @@ import com.android.purebilibili.core.theme.iOSSystemGray
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
 import com.android.purebilibili.core.ui.components.UpBadgeName
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 
 /**
  * Related Video Components
@@ -145,27 +145,24 @@ fun RelatedVideoItem(
                         .sharedBounds(
                             sharedContentState = rememberSharedContentState(key = "video_cover_${video.bvid}"),
                             animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                spring(
-                                    dampingRatio = 0.8f,   // 高阻尼，平滑过渡
-                                    stiffness = 200f       // 低刚度，与首页卡片一致
-                                )
-                            },
+                            boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                             clipInOverlayDuringTransition = OverlayClip(
-                                RoundedCornerShape(8.dp)  // 保持封面圆角
+                                RoundedCornerShape(12.dp)
                             )
                         )
                 }
             } else {
                 Modifier
             }
+            val relatedCoverWidth = 130.dp
+            val relatedCoverHeight = relatedCoverWidth / VIDEO_SHARED_COVER_ASPECT_RATIO
             
             // Video cover
             Box(
                 modifier = coverModifier
-                    .width(130.dp)  // Slightly smaller to give text breathing room
-                    .height(82.dp)  // maintain 16:9ish ratio
-                    .clip(RoundedCornerShape(8.dp))
+                    .width(relatedCoverWidth)
+                    .height(relatedCoverHeight)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 AsyncImage(
@@ -202,7 +199,7 @@ fun RelatedVideoItem(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 82.dp),
+                    .heightIn(min = relatedCoverHeight),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // Title
@@ -215,7 +212,7 @@ fun RelatedVideoItem(
                             sharedContentState = rememberSharedContentState(key = "video_title_${video.bvid}"),
                             animatedVisibilityScope = animatedVisibilityScope,
                             boundsTransform = { _, _ ->
-                                spring(dampingRatio = 0.8f, stiffness = 200f)
+                                com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                             }
                         )
                     }
@@ -245,7 +242,19 @@ fun RelatedVideoItem(
                                     sharedContentState = rememberSharedContentState(key = "video_up_${video.bvid}"),
                                     animatedVisibilityScope = animatedVisibilityScope,
                                     boundsTransform = { _, _ ->
-                                        spring(dampingRatio = 0.8f, stiffness = 200f)
+                                        com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
+                                    }
+                                )
+                            }
+                        }
+                        var followActionModifier = Modifier.wrapContentSize()
+                        if (transitionEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                            with(sharedTransitionScope) {
+                                followActionModifier = followActionModifier.sharedBounds(
+                                    sharedContentState = rememberSharedContentState(key = "video_up_action_${video.bvid}"),
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    boundsTransform = { _, _ ->
+                                        com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                                     }
                                 )
                             }
@@ -258,7 +267,8 @@ fun RelatedVideoItem(
                                     Text(
                                         text = "已关注",
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                        color = iOSBlue
+                                        color = iOSBlue,
+                                        modifier = followActionModifier
                                     )
                                 }
                             } else null,
@@ -275,7 +285,7 @@ fun RelatedVideoItem(
                                                 sharedContentState = rememberSharedContentState(key = "video_avatar_${video.bvid}"),
                                                 animatedVisibilityScope = animatedVisibilityScope,
                                                 boundsTransform = { _, _ ->
-                                                    spring(dampingRatio = 0.8f, stiffness = 200f)
+                                                    com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                                                 },
                                                 clipInOverlayDuringTransition = OverlayClip(androidx.compose.foundation.shape.CircleShape)
                                             )
@@ -315,7 +325,7 @@ fun RelatedVideoItem(
                                     sharedContentState = rememberSharedContentState(key = "video_views_${video.bvid}"),
                                     animatedVisibilityScope = animatedVisibilityScope,
                                     boundsTransform = { _, _ ->
-                                        spring(dampingRatio = 0.8f, stiffness = 200f)
+                                        com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                                     }
                                 )
                             }
@@ -334,7 +344,7 @@ fun RelatedVideoItem(
                                     sharedContentState = rememberSharedContentState(key = "video_danmaku_${video.bvid}"),
                                     animatedVisibilityScope = animatedVisibilityScope,
                                     boundsTransform = { _, _ ->
-                                        spring(dampingRatio = 0.8f, stiffness = 200f)
+                                        com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec
                                     }
                                 )
                             }

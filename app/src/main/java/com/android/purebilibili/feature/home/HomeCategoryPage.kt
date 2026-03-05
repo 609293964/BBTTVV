@@ -97,7 +97,7 @@ internal fun HomeCategoryPageContent(
     firstGridItemModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
-    val scrollLiteModeEnabled = smartVisualGuardEnabled && gridState.isScrollInProgress
+    val scrollLiteModeEnabled = false
     TrackScrollJank(
         scrollableState = gridState,
         stateName = "home:feed:${category.name.lowercase()}"

@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-03-04 · 文档已同步至 v6.6.0（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-03-05 · 文档已同步至 v6.7.1（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-6.6.0-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-6.7.1-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -546,11 +546,11 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v6.6.0 · 2026-03-04)
+### 最近更新 (v6.7.1 · 2026-03-05)
 
-- 🎬 **字幕链路升级**：字幕默认开启；播放器信息改为 WBI 签名接口；字幕面板与字幕渲染可读性优化。
-- 🎵 **收藏夹听视频修复**：修复顺序/随机模式播完一首即暂停问题，收藏夹队列改为独立连续播放策略。
-- 💬 **体验细节优化**：私信置顶排序与乐观更新、搜索筛选横向滚动、首页卡片信息布局同步优化。
+- 🎞️ **返回动画稳定性提升**：修复详情返回列表时的路由层干扰，卡片回位更稳定、形变更少。
+- 🔁 **相关推荐链路优化**：优化“详情 -> 推荐视频 -> 返回详情”整条动画链路，减少跳变和抖动。
+- 📶 **系统栏恢复修复**：修复特定返回路径下状态栏图标/通知下拉异常隐藏问题。
 
 ### 历史版本
 

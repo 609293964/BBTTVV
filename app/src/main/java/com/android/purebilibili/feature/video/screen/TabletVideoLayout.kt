@@ -45,11 +45,11 @@ import kotlinx.coroutines.launch
 
 //  共享元素过渡
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
+import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 
 /**
  * 🖥️ 平板端视频详情页布局
@@ -91,7 +91,8 @@ fun TabletVideoLayout(
     onRelatedVideoClick: (String, android.os.Bundle?) -> Unit,
     // 🔁 [新增] 播放模式
     currentPlayMode: com.android.purebilibili.feature.video.player.PlayMode = com.android.purebilibili.feature.video.player.PlayMode.SEQUENTIAL,
-    onPlayModeClick: () -> Unit = {}
+    onPlayModeClick: () -> Unit = {},
+    forceCoverOnlyOnReturn: Boolean = false
 ) {
     val layoutPolicy = remember(configuration.screenWidthDp) {
         resolveTabletVideoLayoutPolicy(
@@ -133,21 +134,20 @@ fun TabletVideoLayout(
                 val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
                 
                 //  为播放器容器添加共享元素标记（受开关控制）
-                val playerContainerModifier = if (transitionEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                val playerContainerModifier = if (
+                    transitionEnabled &&
+                    sharedTransitionScope != null &&
+                    animatedVisibilityScope != null &&
+                    !forceCoverOnlyOnReturn
+                ) {
                     with(sharedTransitionScope) {
                         Modifier
                             .sharedBounds(
                                 sharedContentState = rememberSharedContentState(key = "video_cover_$bvid"),
                                 animatedVisibilityScope = animatedVisibilityScope,
-                                //  添加回弹效果的 spring 动画
-                                boundsTransform = { _, _ ->
-                                    spring(
-                                        dampingRatio = 0.7f,   // 轻微回弹
-                                        stiffness = 300f       // 适中速度
-                                    )
-                                },
+                                boundsTransform = { _, _ -> com.android.purebilibili.core.theme.AnimationSpecs.BiliPaiSpringSpec },
                                 clipInOverlayDuringTransition = OverlayClip(
-                                    RoundedCornerShape(0.dp)  //  播放器无圆角
+                                    RoundedCornerShape(12.dp)
                                 )
                             )
                     }
@@ -157,7 +157,11 @@ fun TabletVideoLayout(
 
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val playerWidth = minOf(maxWidth, layoutPolicy.playerMaxWidthDp.dp)
-                    val videoHeight = playerWidth * 9f / 16f
+                    val videoHeight = if (forceCoverOnlyOnReturn) {
+                        playerWidth / VIDEO_SHARED_COVER_ASPECT_RATIO
+                    } else {
+                        playerWidth * 9f / 16f
+                    }
                     Box(
                         modifier = playerContainerModifier
                             .width(playerWidth)

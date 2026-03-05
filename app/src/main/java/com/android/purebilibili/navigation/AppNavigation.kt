@@ -573,8 +573,16 @@ fun AppNavigation(
             //  进入动画：基于位置的扩散展开 (Scale + Fade)
             //  进入动画：基于位置的扩散展开 (Scale + Fade)
             enterTransition = { 
+                val fromRoute = initialState.destination.route
+                val useNoOpVideoToVideo = shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                    cardTransitionEnabled = cardTransitionEnabled,
+                    fromRoute = fromRoute,
+                    toRoute = targetState.destination.route
+                )
                 // [Hero Animation] 如果启用了卡片过渡，使用简单的淡入，让 SharedElement 成为主角
-                if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
+                if (useNoOpVideoToVideo) {
+                    EnterTransition.None
+                } else if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
                     fadeIn(animationSpec = tween(navMotionSpec.slowFadeDurationMillis))
                 } else {
                     // 未启用卡片过渡时，使用常规的推入动画
@@ -586,22 +594,37 @@ fun AppNavigation(
             },
             //  返回动画：当卡片过渡开启时用淡出（配合共享元素），关闭时用滑出
             popExitTransition = { 
+                val fromRoute = initialState.destination.route
                 val targetRoute = targetState.destination.route
-                val targetIsHome = targetRoute == ScreenRoutes.Home.route
+                val useNoOpVideoToVideo = shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                    cardTransitionEnabled = cardTransitionEnabled,
+                    fromRoute = fromRoute,
+                    toRoute = targetRoute
+                )
+                val quickReturnSharedTransitionReady =
+                    CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible
+                val useNoOpQuickReturnToNonHomeCardRoute = shouldUseNoOpQuickReturnForNonHomeCardRoute(
+                    targetRoute = targetRoute,
+                    cardTransitionEnabled = cardTransitionEnabled,
+                    isQuickReturnFromDetail = CardPositionManager.isQuickReturnFromDetail,
+                    sharedTransitionReady = quickReturnSharedTransitionReady
+                )
+                val targetIsCardReturnTarget = isVideoCardReturnTargetRoute(targetRoute)
                 val sharedTransitionReady = CardPositionManager.lastClickedCardBounds != null &&
                     CardPositionManager.isCardFullyVisible
-                val preferOneTakeReturn = targetIsHome &&
+                val preferOneTakeReturn = targetIsCardReturnTarget &&
                     shouldPreferOneTakeVideoToHomeReturn(
                         predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
                         cardTransitionEnabled = cardTransitionEnabled,
                         sharedTransitionReady = sharedTransitionReady
                     )
-                val useClassicBackRouteMotion = targetIsHome &&
+                val useClassicBackRouteMotion = targetIsCardReturnTarget &&
                     shouldUseClassicBackRouteMotion(
                         predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
                         cardTransitionEnabled = cardTransitionEnabled
                     )
-                val usePredictiveStableBackRouteMotion = targetIsHome &&
+                val usePredictiveStableBackRouteMotion = targetIsCardReturnTarget &&
                     shouldUsePredictiveStableBackRouteMotion(
                         predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
                         cardTransitionEnabled = cardTransitionEnabled
@@ -609,10 +632,14 @@ fun AppNavigation(
                 val useSeamlessBackTransition = shouldUseTabletSeamlessBackTransition(
                     isTabletLayout = isTabletLayout,
                     cardTransitionEnabled = cardTransitionEnabled,
-                    fromRoute = initialState.destination.route,
+                    fromRoute = fromRoute,
                     toRoute = targetRoute
                 )
-                if (preferOneTakeReturn) {
+                if (useNoOpVideoToVideo) {
+                    ExitTransition.None
+                } else if (useNoOpQuickReturnToNonHomeCardRoute) {
+                    ExitTransition.None
+                } else if (preferOneTakeReturn) {
                     ExitTransition.None
                 } else if (usePredictiveStableBackRouteMotion) {
                     slideOutOfContainer(
@@ -638,9 +665,6 @@ fun AppNavigation(
                     }
                     slideOutOfContainer(direction, tween(navMotionSpec.slideDurationMillis))
                 } else if (!predictiveBackAnimationEnabled && cardTransitionEnabled && CardPositionManager.isQuickReturnFromDetail) {
-                    val quickReturnSharedTransitionReady =
-                        CardPositionManager.lastClickedCardBounds != null &&
-                            CardPositionManager.isCardFullyVisible
                     if (shouldUseNoOpRouteTransitionOnQuickReturn(
                             cardTransitionEnabled = cardTransitionEnabled,
                             isQuickReturnFromDetail = CardPositionManager.isQuickReturnFromDetail,
@@ -676,7 +700,7 @@ fun AppNavigation(
                         VideoPopExitDirection.RIGHT -> AnimatedContentTransitionScope.SlideDirection.Right
                         VideoPopExitDirection.DOWN -> AnimatedContentTransitionScope.SlideDirection.Down
                     }
-                    if (targetIsHome) {
+                    if (targetIsCardReturnTarget) {
                         slideOutOfContainer(
                             direction,
                             tween(durationMillis = minOf(navMotionSpec.slideDurationMillis, 180), easing = IOS_RETURN_EASING)
@@ -688,7 +712,14 @@ fun AppNavigation(
             },
             // [新增] 前进退出动画 (A -> B, A is exiting)
             exitTransition = {
-                if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
+                val useNoOpVideoToVideo = shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                    cardTransitionEnabled = cardTransitionEnabled,
+                    fromRoute = initialState.destination.route,
+                    toRoute = targetState.destination.route
+                )
+                if (useNoOpVideoToVideo) {
+                    ExitTransition.None
+                } else if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
                      fadeOut(
                          animationSpec = tween(
                              durationMillis = navMotionSpec.slowFadeDurationMillis,
@@ -701,7 +732,14 @@ fun AppNavigation(
             },
             // [新增] 返回进入动画 (B -> A, A is re-entering)
             popEnterTransition = {
-                if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
+                val useNoOpVideoToVideo = shouldUseNoOpRouteTransitionBetweenVideoDetails(
+                    cardTransitionEnabled = cardTransitionEnabled,
+                    fromRoute = initialState.destination.route,
+                    toRoute = targetState.destination.route
+                )
+                if (useNoOpVideoToVideo) {
+                    EnterTransition.None
+                } else if (cardTransitionEnabled && !predictiveBackAnimationEnabled) {
                      if (CardPositionManager.isQuickReturnFromDetail) {
                          val quickReturnSharedTransitionReady =
                              CardPositionManager.lastClickedCardBounds != null &&
@@ -925,6 +963,50 @@ fun AppNavigation(
         composable(
             route = ScreenRoutes.History.route,
             enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(navMotionSpec.slideDurationMillis)) },
+            popEnterTransition = {
+                val fromRoute = initialState.destination.route
+                val fromVideoDetail = fromRoute?.startsWith("${VideoRoute.base}/") == true
+                val quickReturnSharedTransitionReady =
+                    CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible
+                val useNoOpQuickReturn = fromVideoDetail &&
+                    shouldUseNoOpRouteTransitionOnQuickReturn(
+                        cardTransitionEnabled = cardTransitionEnabled,
+                        isQuickReturnFromDetail = CardPositionManager.isQuickReturnFromDetail,
+                        sharedTransitionReady = quickReturnSharedTransitionReady
+                    )
+                val usePredictiveStableBackRouteMotion = fromVideoDetail &&
+                    shouldUsePredictiveStableBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                val useClassicBackRouteMotion = fromVideoDetail &&
+                    shouldUseClassicBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                if (usePredictiveStableBackRouteMotion || useClassicBackRouteMotion) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                } else if (useNoOpQuickReturn) {
+                    EnterTransition.None
+                } else if (fromVideoDetail && cardTransitionEnabled) {
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = navMotionSpec.mediumFadeDurationMillis,
+                            easing = IOS_RETURN_EASING
+                        ),
+                        initialAlpha = 0.98f
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                }
+            },
             popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(navMotionSpec.slideDurationMillis)) }
         ) {
             val historyViewModel: HistoryViewModel = viewModel()
@@ -987,6 +1069,50 @@ fun AppNavigation(
         composable(
             route = ScreenRoutes.Favorite.route,
             enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(navMotionSpec.slideDurationMillis)) },
+            popEnterTransition = {
+                val fromRoute = initialState.destination.route
+                val fromVideoDetail = fromRoute?.startsWith("${VideoRoute.base}/") == true
+                val quickReturnSharedTransitionReady =
+                    CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible
+                val useNoOpQuickReturn = fromVideoDetail &&
+                    shouldUseNoOpRouteTransitionOnQuickReturn(
+                        cardTransitionEnabled = cardTransitionEnabled,
+                        isQuickReturnFromDetail = CardPositionManager.isQuickReturnFromDetail,
+                        sharedTransitionReady = quickReturnSharedTransitionReady
+                    )
+                val usePredictiveStableBackRouteMotion = fromVideoDetail &&
+                    shouldUsePredictiveStableBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                val useClassicBackRouteMotion = fromVideoDetail &&
+                    shouldUseClassicBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                if (usePredictiveStableBackRouteMotion || useClassicBackRouteMotion) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                } else if (useNoOpQuickReturn) {
+                    EnterTransition.None
+                } else if (fromVideoDetail && cardTransitionEnabled) {
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = navMotionSpec.mediumFadeDurationMillis,
+                            easing = IOS_RETURN_EASING
+                        ),
+                        initialAlpha = 0.98f
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                }
+            },
             popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(navMotionSpec.slideDurationMillis)) }
         ) {
             val favoriteViewModel: FavoriteViewModel = viewModel()
@@ -1007,6 +1133,50 @@ fun AppNavigation(
         composable(
             route = ScreenRoutes.WatchLater.route,
             enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(navMotionSpec.slideDurationMillis)) },
+            popEnterTransition = {
+                val fromRoute = initialState.destination.route
+                val fromVideoDetail = fromRoute?.startsWith("${VideoRoute.base}/") == true
+                val quickReturnSharedTransitionReady =
+                    CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible
+                val useNoOpQuickReturn = fromVideoDetail &&
+                    shouldUseNoOpRouteTransitionOnQuickReturn(
+                        cardTransitionEnabled = cardTransitionEnabled,
+                        isQuickReturnFromDetail = CardPositionManager.isQuickReturnFromDetail,
+                        sharedTransitionReady = quickReturnSharedTransitionReady
+                    )
+                val usePredictiveStableBackRouteMotion = fromVideoDetail &&
+                    shouldUsePredictiveStableBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                val useClassicBackRouteMotion = fromVideoDetail &&
+                    shouldUseClassicBackRouteMotion(
+                        predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                        cardTransitionEnabled = cardTransitionEnabled
+                    )
+                if (usePredictiveStableBackRouteMotion || useClassicBackRouteMotion) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                } else if (useNoOpQuickReturn) {
+                    EnterTransition.None
+                } else if (fromVideoDetail && cardTransitionEnabled) {
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = navMotionSpec.mediumFadeDurationMillis,
+                            easing = IOS_RETURN_EASING
+                        ),
+                        initialAlpha = 0.98f
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(navMotionSpec.slideDurationMillis)
+                    )
+                }
+            },
             popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(navMotionSpec.slideDurationMillis)) }
         ) {
             ProvideAnimatedVisibilityScope(animatedVisibilityScope = this) {
@@ -1867,7 +2037,7 @@ fun AppNavigation(
                                     homeSettings = homeSettings,
                                     backdrop = bottomBarBackdrop, // [LayerBackdrop] Real background refraction
                                     motionTier = com.android.purebilibili.core.ui.adaptive.MotionTier.Normal,
-                                    forceLowBlurBudget = homeSettings.smartVisualGuardEnabled,
+                                    forceLowBlurBudget = false,
                                     onToggleSidebar = {
                                         // [Tablet] Toggle sidebar mode
                                         coroutineScope.launch {
@@ -1891,7 +2061,7 @@ fun AppNavigation(
                                 homeSettings = homeSettings,
                                 backdrop = bottomBarBackdrop, // [LayerBackdrop] Real background refraction
                                 motionTier = com.android.purebilibili.core.ui.adaptive.MotionTier.Normal,
-                                forceLowBlurBudget = homeSettings.smartVisualGuardEnabled,
+                                forceLowBlurBudget = false,
                                 onToggleSidebar = {
                                     // [Tablet] Toggle sidebar mode
                                     coroutineScope.launch {

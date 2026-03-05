@@ -14,7 +14,7 @@ internal fun resolveVideoCardScrollLiteVisualPolicy(
 ): VideoCardScrollLiteVisualPolicy {
     if (scrollLiteModeEnabled) {
         return VideoCardScrollLiteVisualPolicy(
-            coverShadowElevationDp = 0.4f,
+            coverShadowElevationDp = 1f,
             showCoverGradientMask = false,
             showHistoryProgressBar = false,
             showCompactStatsOnCover = compactStatsOnCover,
