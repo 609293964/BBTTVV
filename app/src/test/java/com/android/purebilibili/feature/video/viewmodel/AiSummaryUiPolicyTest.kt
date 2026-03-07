@@ -49,6 +49,7 @@ class AiSummaryUiPolicyTest {
 
         assertEquals("AI 总结暂未生成完成", prompt.title)
         assertEquals(AiSummaryPromptTone.MUTED, prompt.tone)
+        assertEquals("重新获取", prompt.actionLabel)
     }
 
     @Test
@@ -76,5 +77,6 @@ class AiSummaryUiPolicyTest {
 
         assertEquals("AI 总结加载失败", prompt?.title)
         assertEquals(AiSummaryPromptTone.WARNING, prompt?.tone)
+        assertEquals("重试", prompt?.actionLabel)
     }
 }

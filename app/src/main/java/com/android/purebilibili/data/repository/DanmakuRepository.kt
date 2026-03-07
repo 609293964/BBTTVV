@@ -1,6 +1,7 @@
 // 文件路径: data/repository/DanmakuRepository.kt
 package com.android.purebilibili.data.repository
 
+import com.android.purebilibili.core.store.normalizeDanmakuDisplayArea
 import com.android.purebilibili.core.network.NetworkModule
 import com.android.purebilibili.data.model.response.DanmakuThumbupStatsItem
 import kotlinx.coroutines.Dispatchers
@@ -47,9 +48,7 @@ private fun Boolean.toCloudFlag(): String = if (this) "true" else "false"
 
 internal fun mapDanmakuDisplayAreaRatioToCloudValue(displayAreaRatio: Float): Int {
     if (displayAreaRatio <= 0f) return 0
-    val ratioPercent = (displayAreaRatio.coerceIn(0f, 1f) * 100f).toInt()
-    val buckets = intArrayOf(25, 50, 75, 100)
-    return buckets.minByOrNull { abs(it - ratioPercent) } ?: 50
+    return (normalizeDanmakuDisplayArea(displayAreaRatio) * 100f).toInt()
 }
 
 internal fun buildDanmakuCloudConfigPayload(settings: DanmakuCloudSyncSettings): DanmakuCloudConfigPayload {

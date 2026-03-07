@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <sub>Last updated: 2026-03-07 · Synced to v6.9.1 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
+  <sub>Last updated: 2026-03-07 · Synced to v6.9.2 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-6.9.1-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-6.9.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -393,11 +393,11 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 See full changelog: [CHANGELOG.md](CHANGELOG.md)
 
-### Latest (v6.9.1 · 2026-03-07)
+### Latest (v6.9.2 · 2026-03-07)
 
-- 💬 **Smoother Comment Scrolling**: Reduced comment-row hot-path work and added better lazy-list reuse hints for main comments and reply threads.
-- 👍 **Desktop-Style Comment Labels**: Special comments can now show the plain-text `UP主觉得很赞` label, with server-provided desktop labels taking priority.
-- 🧪 **Regression Coverage**: Added parsing and policy tests around comment labels, fallback rules, and derived comment-row display behavior.
+- 🚀 **Smoother Comment Scrolling While Playing**: Comment pagination now waits until the user is near the bottom, and playback automatically switches comment rows into a lighter rendering mode.
+- 🎬 **Player Stability Improvements**: Mini-player, background playback, top controls, and danmaku settings coordination were tightened to reduce edge-case state glitches.
+- 🛠️ **Dynamic and Space Fixes**: Re-tapping a selected followed user now returns to the full dynamic feed, and the Space page `Play all` icon no longer renders clipped.
 
 ---
 

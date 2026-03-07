@@ -817,6 +817,7 @@ class PlayerViewModel : ViewModel() {
     private var currentLoadRequestToken: Long = 0L
     private var activeLoadJob: Job? = null
     private var playerInfoJob: Job? = null
+    private var aiSummaryJob: Job? = null
     
     //  Public Player Accessor
     val currentPlayer: Player?
@@ -1485,6 +1486,16 @@ class PlayerViewModel : ViewModel() {
              }
         }
     }
+
+    fun retryAiSummary() {
+        val current = _uiState.value as? PlayerUiState.Success ?: return
+        if (current.aiSummary != null) return
+        loadAiSummary(
+            bvid = current.info.bvid,
+            cid = current.info.cid,
+            upMid = current.info.owner.mid
+        )
+    }
     
     // [修复] 添加 aid 参数支持，用于移动端推荐流（可能只返回 aid）
     // [Added] autoPlay override: null = use settings, true/false = force
@@ -1500,6 +1511,7 @@ class PlayerViewModel : ViewModel() {
         if (bvid.isBlank()) return
         _resumePlaybackSuggestion.value = null
         bootstrapContextIfNeeded()
+        aiSummaryJob?.cancel()
         Logger.d(
             "PlayerVM",
             "SUB_DBG loadVideo start: request=$bvid/$cid, aid=$aid, force=$force, current=$currentBvid/$currentCid, ui=${(_uiState.value as? PlayerUiState.Success)?.info?.bvid}/${(_uiState.value as? PlayerUiState.Success)?.info?.cid}"
@@ -3879,110 +3891,127 @@ class PlayerViewModel : ViewModel() {
     private fun loadAiSummary(
         bvid: String,
         cid: Long,
-        upMid: Long,
-        queuedRetryCount: Int = 0
+        upMid: Long
     ) {
-        viewModelScope.launch {
-            if (queuedRetryCount == 0) {
-                val loadingPrompt = initialAiSummaryPromptState()
-                _uiState.update { current ->
-                    if (
-                        current is PlayerUiState.Success &&
-                        current.info.bvid == bvid &&
-                        current.aiSummary?.modelResult == null
-                    ) {
-                        current.copy(aiSummaryPrompt = loadingPrompt)
-                    } else current
-                }
+        aiSummaryJob?.cancel()
+        aiSummaryJob = viewModelScope.launch {
+            var queuedRetryCount = 0
+            val loadingPrompt = initialAiSummaryPromptState()
+            _uiState.update { current ->
+                if (
+                    current is PlayerUiState.Success &&
+                    current.info.bvid == bvid &&
+                    current.aiSummary?.modelResult == null
+                ) {
+                    current.copy(aiSummaryPrompt = loadingPrompt)
+                } else current
             }
-            try {
-                val result = VideoRepository.getAiSummary(bvid, cid, upMid)
-                result.onSuccess { response ->
-                    val diagnosis =
-                        com.android.purebilibili.data.repository.diagnoseAiSummaryResponse(response)
-                    if (
-                        diagnosis.status ==
-                        com.android.purebilibili.data.repository.AiSummaryFetchStatus.AVAILABLE &&
-                        response.data != null
-                    ) {
-                        _uiState.update { current ->
-                            if (current is PlayerUiState.Success && current.info.bvid == bvid) {
-                                current.copy(
-                                    aiSummary = response.data,
-                                    aiSummaryPrompt = null
+
+            while (true) {
+                try {
+                    val result = VideoRepository.getAiSummary(bvid, cid, upMid)
+                    var shouldPollAgain = false
+                    var nextDelayMs = 0L
+
+                    result.onSuccess { response ->
+                        val diagnosis =
+                            com.android.purebilibili.data.repository.diagnoseAiSummaryResponse(response)
+                        when {
+                            diagnosis.status ==
+                                com.android.purebilibili.data.repository.AiSummaryFetchStatus.AVAILABLE &&
+                                response.data != null -> {
+                                _uiState.update { current ->
+                                    if (current is PlayerUiState.Success && current.info.bvid == bvid) {
+                                        current.copy(
+                                            aiSummary = response.data,
+                                            aiSummaryPrompt = null
+                                        )
+                                    } else current
+                                }
+                                Logger.i(
+                                    "PlayerVM",
+                                    "🤖 Loaded AI Summary: bvid=$bvid cid=$cid status=${diagnosis.status}"
                                 )
-                            } else current
+                            }
+
+                            shouldContinueAiSummaryAutoRetry(
+                                status = diagnosis.status,
+                                queuedRetryCount = queuedRetryCount
+                            ) && diagnosis.shouldRetryLater -> {
+                                val prompt = resolveAiSummaryPromptState(diagnosis)
+                                _uiState.update { current ->
+                                    if (current is PlayerUiState.Success && current.info.bvid == bvid) {
+                                        current.copy(aiSummaryPrompt = prompt)
+                                    } else current
+                                }
+                                nextDelayMs = resolveAiSummaryRetryDelayMs(queuedRetryCount)
+                                shouldPollAgain = true
+                                Logger.i(
+                                    "PlayerVM",
+                                    "🤖 AI Summary queued, retry later: bvid=$bvid cid=$cid stid=${diagnosis.stid ?: ""} retryInMs=$nextDelayMs retryCount=$queuedRetryCount"
+                                )
+                            }
+
+                            diagnosis.status ==
+                                com.android.purebilibili.data.repository.AiSummaryFetchStatus.QUEUED -> {
+                                val prompt = queuedAiSummaryPendingPromptState()
+                                _uiState.update { current ->
+                                    if (current is PlayerUiState.Success && current.info.bvid == bvid) {
+                                        current.copy(aiSummaryPrompt = prompt)
+                                    } else current
+                                }
+                                Logger.i(
+                                    "PlayerVM",
+                                    "🤖 AI Summary still queued after auto retries: bvid=$bvid cid=$cid stid=${diagnosis.stid ?: ""} retryCount=$queuedRetryCount"
+                                )
+                            }
+
+                            else -> {
+                                val prompt = resolveAiSummaryPromptState(diagnosis)
+                                _uiState.update { current ->
+                                    if (current is PlayerUiState.Success && current.info.bvid == bvid) {
+                                        current.copy(aiSummaryPrompt = prompt)
+                                    } else current
+                                }
+                                Logger.i(
+                                    "PlayerVM",
+                                    "🤖 AI Summary unavailable: bvid=$bvid cid=$cid status=${diagnosis.status} reason=${diagnosis.reason} rootCode=${diagnosis.rootCode} dataCode=${diagnosis.dataCode} stid=${diagnosis.stid ?: ""}"
+                                )
+                            }
                         }
-                        Logger.i(
-                            "PlayerVM",
-                            "🤖 Loaded AI Summary: bvid=$bvid cid=$cid status=${diagnosis.status}"
-                        )
-                    } else if (
-                        diagnosis.shouldRetryLater &&
-                        queuedRetryCount < 1
-                    ) {
+                    }.onFailure { throwable ->
+                        val diagnosis =
+                            com.android.purebilibili.data.repository.diagnoseAiSummaryFailure(throwable)
                         val prompt = resolveAiSummaryPromptState(diagnosis)
                         _uiState.update { current ->
                             if (current is PlayerUiState.Success && current.info.bvid == bvid) {
                                 current.copy(aiSummaryPrompt = prompt)
                             } else current
                         }
-                        Logger.i(
+                        Logger.w(
                             "PlayerVM",
-                            "🤖 AI Summary queued, retry later: bvid=$bvid cid=$cid stid=${diagnosis.stid ?: ""}"
+                            "🤖 Failed to load AI Summary: bvid=$bvid cid=$cid status=${diagnosis.status} reason=${diagnosis.reason}"
                         )
-                        delay(2500L)
-                        val currentSuccess = _uiState.value as? PlayerUiState.Success
-                        if (currentSuccess?.info?.bvid == bvid && currentSuccess.aiSummary?.modelResult == null) {
-                            loadAiSummary(
-                                bvid = bvid,
-                                cid = cid,
-                                upMid = upMid,
-                                queuedRetryCount = queuedRetryCount + 1
-                            )
-                        }
-                    } else if (
-                        diagnosis.status ==
-                        com.android.purebilibili.data.repository.AiSummaryFetchStatus.QUEUED
+                    }
+
+                    if (!shouldPollAgain) {
+                        return@launch
+                    }
+
+                    queuedRetryCount += 1
+                    delay(nextDelayMs)
+                    val currentSuccess = _uiState.value as? PlayerUiState.Success
+                    if (
+                        currentSuccess?.info?.bvid != bvid ||
+                        currentSuccess.info.cid != cid ||
+                        currentSuccess.aiSummary?.modelResult != null
                     ) {
-                        val prompt = queuedAiSummaryPendingPromptState()
-                        _uiState.update { current ->
-                            if (current is PlayerUiState.Success && current.info.bvid == bvid) {
-                                current.copy(aiSummaryPrompt = prompt)
-                            } else current
-                        }
-                        Logger.i(
-                            "PlayerVM",
-                            "🤖 AI Summary still queued after retry: bvid=$bvid cid=$cid stid=${diagnosis.stid ?: ""}"
-                        )
-                    } else {
-                        val prompt = resolveAiSummaryPromptState(diagnosis)
-                        _uiState.update { current ->
-                            if (current is PlayerUiState.Success && current.info.bvid == bvid) {
-                                current.copy(aiSummaryPrompt = prompt)
-                            } else current
-                        }
-                        Logger.i(
-                            "PlayerVM",
-                            "🤖 AI Summary unavailable: bvid=$bvid cid=$cid status=${diagnosis.status} reason=${diagnosis.reason} rootCode=${diagnosis.rootCode} dataCode=${diagnosis.dataCode} stid=${diagnosis.stid ?: ""}"
-                        )
+                        return@launch
                     }
-                }.onFailure { throwable ->
-                    val diagnosis =
-                        com.android.purebilibili.data.repository.diagnoseAiSummaryFailure(throwable)
-                    val prompt = resolveAiSummaryPromptState(diagnosis)
-                    _uiState.update { current ->
-                        if (current is PlayerUiState.Success && current.info.bvid == bvid) {
-                            current.copy(aiSummaryPrompt = prompt)
-                        } else current
-                    }
-                    Logger.w(
-                        "PlayerVM",
-                        "🤖 Failed to load AI Summary: bvid=$bvid cid=$cid status=${diagnosis.status} reason=${diagnosis.reason}"
-                    )
+                } catch (e: Exception) {
+                    Logger.d("PlayerVM", "🤖 Failed to load AI Summary: ${e.message}")
+                    return@launch
                 }
-            } catch (e: Exception) {
-                Logger.d("PlayerVM", "🤖 Failed to load AI Summary: ${e.message}")
             }
         }
     }
@@ -4609,6 +4638,7 @@ class PlayerViewModel : ViewModel() {
         heartbeatJob?.cancel()
         pluginCheckJob?.cancel()
         onlineCountJob?.cancel()  // 👀 取消在线人数轮询
+        aiSummaryJob?.cancel()
         activeLoadJob?.cancel()
         playerInfoJob?.cancel()
         appContext?.let { context ->

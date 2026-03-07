@@ -97,9 +97,9 @@ internal fun resolveProfileTopBarScrimAlpha(
     collapsedFraction: Float
 ): Float {
     if (!isImmersive) return 0f
-    val normalizedFraction = collapsedFraction.coerceIn(0f, 1f)
-    val delayedFraction = ((normalizedFraction - 0.08f) / 0.42f).coerceIn(0f, 1f)
-    return 0.72f * delayedFraction
+    // Immersive profile pages already have a wallpaper gradient behind the top bar.
+    // Adding another black scrim on scroll creates the visible dark band regression.
+    return 0f
 }
 
 internal fun resolveProfileLightStatusBars(
@@ -110,6 +110,8 @@ internal fun resolveProfileLightStatusBars(
     if (!useSplitLayout && isImmersive) return false
     return !isDarkTheme
 }
+
+internal fun shouldPinProfileTopBarOnScroll(useSplitLayout: Boolean): Boolean = true
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -227,7 +229,11 @@ fun ProfileScreen(
                     onWatchLaterClick = onGoToLogin,
                     onInboxClick = onGoToLogin,  //  [新增] 游客点击需登录
                     onVideoClick = { },  // 游客模式不显示三连
-                    scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(),
+                    scrollBehavior = if (shouldPinProfileTopBarOnScroll(useSplitLayout = false)) {
+                        TopAppBarDefaults.pinnedScrollBehavior()
+                    } else {
+                        TopAppBarDefaults.enterAlwaysScrollBehavior()
+                    },
                     onBack = onBack,
                     onSettingsClick = onSettingsClick,
                     hazeState = hazeState,
@@ -308,7 +314,11 @@ fun ProfileScreen(
             }
         }
         is ProfileUiState.Success -> {
-            val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+            val scrollBehavior = if (shouldPinProfileTopBarOnScroll(windowSizeClass.shouldUseSplitLayout)) {
+                TopAppBarDefaults.pinnedScrollBehavior()
+            } else {
+                TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+            }
             
             Scaffold(
                 modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

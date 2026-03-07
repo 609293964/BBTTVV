@@ -74,7 +74,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.core.view.WindowCompat
 import com.android.purebilibili.data.model.response.BgmInfo
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.Player
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 //  已改用 MaterialTheme.colorScheme.primary
 
 import com.android.purebilibili.data.model.response.RelatedVideo
@@ -553,7 +555,7 @@ fun VideoDetailScreen(
     val isSavingFavoriteFolders by viewModel.isSavingFavoriteFolders.collectAsState()
     
     // [Blur] Haze State
-    val hazeState = remember { HazeState() }
+    val hazeState = rememberRecoverableHazeState()
     
     //  空降助手 - 已由插件系统自动处理
     // val sponsorSegment by viewModel.currentSponsorSegment.collectAsState()
@@ -1042,6 +1044,30 @@ fun VideoDetailScreen(
         cid = cid,
         startPaused = isPortraitFullscreen && !useSharedPortraitPlayer
     )
+    val isVideoPlaying by produceState(
+        initialValue = playerState.player.isPlaying,
+        key1 = playerState.player
+    ) {
+        val player = playerState.player
+        value = player.isPlaying
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                value = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                value = player.isPlaying
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                value = player.isPlaying
+            }
+        }
+        player.addListener(listener)
+        awaitDispose {
+            player.removeListener(listener)
+        }
+    }
 
     var hasAppliedInitialPageSwitch by remember(currentBvid, cid) { mutableStateOf(false) }
     LaunchedEffect(uiState, currentBvid, cid, hasAppliedInitialPageSwitch) {
@@ -2089,8 +2115,8 @@ fun VideoDetailScreen(
                                                         isRepliesEnd = commentState.isRepliesEnd,
                                                         // [新增] 传递删除相关参数
                                                         currentMid = commentState.currentMid,
-                                                        dissolvingIds = commentState.dissolvingIds,
                                                         showUpFlag = commentState.showUpFlag,
+                                                        dissolvingIds = commentState.dissolvingIds,
                                                         // [新增] 删除评论
                                                         onDeleteComment = { rpid ->
                                                             commentViewModel.deleteComment(rpid)
@@ -2178,11 +2204,13 @@ fun VideoDetailScreen(
                                                         // [新增] AI Summary & BGM
                                                         aiSummary = success.aiSummary,
                                                         aiSummaryPrompt = success.aiSummaryPrompt,
+                                                        onRetryAiSummary = { viewModel.retryAiSummary() },
                                                         bgmInfo = success.bgmInfo,
                                                         onBgmClick = onBgmClick,
                                                         ownerFollowerCount = success.ownerFollowerCount,
                                                         ownerVideoCount = success.ownerVideoCount,
-                                                        showInteractionActions = shouldShowVideoDetailActionButtons()
+                                                        showInteractionActions = shouldShowVideoDetailActionButtons(),
+                                                        isVideoPlaying = isVideoPlaying
                                                     )
 
                                                     // 底部输入栏 (覆盖在内容之上)
@@ -2920,9 +2948,9 @@ fun VideoDetailScreen(
             val successState = uiState as? PlayerUiState.Success
             SubReplySheet(
                 state = subReplyState,
+                showUpFlag = commentState.showUpFlag,
                 emoteMap = successState?.emoteMap ?: emptyMap(),
                 onDismiss = { commentViewModel.closeSubReply() },
-                showUpFlag = commentState.showUpFlag,
                 onLoadMore = { commentViewModel.loadMoreSubReplies() },
                 //  [新增] 时间戳点击跳转
                 onTimestampClick = { positionMs ->

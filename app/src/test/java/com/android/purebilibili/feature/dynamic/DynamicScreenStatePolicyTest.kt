@@ -1,10 +1,23 @@
 package com.android.purebilibili.feature.dynamic
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DynamicScreenStatePolicyTest {
+
+    @Test
+    fun `horizontal dynamic header should use tighter list top padding`() {
+        assertEquals(168, resolveDynamicListTopPaddingExtraDp(isHorizontalMode = true))
+        assertEquals(100, resolveDynamicListTopPaddingExtraDp(isHorizontalMode = false))
+    }
+
+    @Test
+    fun `horizontal user list should use compact vertical padding`() {
+        assertEquals(4, resolveHorizontalUserListVerticalPaddingDp())
+    }
 
     @Test
     fun `error overlay should show when active list is empty and error exists`() {
@@ -72,6 +85,34 @@ class DynamicScreenStatePolicyTest {
                 prependedCount = 2,
                 selectedUserId = null,
                 handledBoundaryKey = "dyn:123"
+            )
+        )
+    }
+
+    @Test
+    fun `clicking the selected user again should return to all followed dynamics`() {
+        assertNull(
+            resolveDynamicSelectedUserIdAfterClick(
+                selectedUserId = 10001L,
+                clickedUserId = 10001L
+            )
+        )
+    }
+
+    @Test
+    fun `clicking a different user should switch the dynamic filter`() {
+        assertEquals(
+            10002L,
+            resolveDynamicSelectedUserIdAfterClick(
+                selectedUserId = 10001L,
+                clickedUserId = 10002L
+            )
+        )
+        assertEquals(
+            10003L,
+            resolveDynamicSelectedUserIdAfterClick(
+                selectedUserId = null,
+                clickedUserId = 10003L
             )
         )
     }

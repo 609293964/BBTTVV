@@ -10,6 +10,63 @@ import com.android.purebilibili.BuildConfig
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
+
+private const val LOG_DIRECTORY_NAME = "logs"
+private const val RUNTIME_LOG_FILE_NAME = "runtime.log"
+private const val CRASH_SNAPSHOT_FILE_NAME = "last_crash_log.txt"
+private const val CRASH_SNAPSHOT_MARKER_FILE_NAME = "pending_crash.marker"
+private const val DOWNLOAD_LOG_RELATIVE_PATH = "Download/BiliPai/logs"
+
+internal fun resolveLogPersistenceDir(baseDir: File): File = File(baseDir, LOG_DIRECTORY_NAME)
+
+internal fun resolveRuntimeLogFile(baseDir: File): File =
+    File(resolveLogPersistenceDir(baseDir), RUNTIME_LOG_FILE_NAME)
+
+internal fun resolveCrashSnapshotFile(baseDir: File): File =
+    File(resolveLogPersistenceDir(baseDir), CRASH_SNAPSHOT_FILE_NAME)
+
+internal fun resolveCrashSnapshotMarkerFile(baseDir: File): File =
+    File(resolveLogPersistenceDir(baseDir), CRASH_SNAPSHOT_MARKER_FILE_NAME)
+
+internal fun resolveCrashSnapshotExportRelativePath(): String =
+    "$DOWNLOAD_LOG_RELATIVE_PATH/$CRASH_SNAPSHOT_FILE_NAME"
+
+internal fun hasPendingCrashSnapshot(
+    markerExists: Boolean,
+    snapshotExists: Boolean
+): Boolean = markerExists && snapshotExists
+
+internal fun buildCrashSnapshotContent(
+    throwable: Throwable,
+    entries: List<LogCollector.LogEntry>,
+    exportedAtMillis: Long,
+    appVersionName: String,
+    versionCode: Int,
+    manufacturer: String,
+    model: String,
+    androidRelease: String,
+    apiLevel: Int
+): String {
+    val headerDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+    return buildString {
+        appendLine("========================================")
+        appendLine("BiliPai 崩溃日志快照")
+        appendLine("========================================")
+        appendLine("生成时间: ${headerDateFormat.format(Date(exportedAtMillis))}")
+        appendLine("应用版本: $appVersionName ($versionCode)")
+        appendLine("设备信息: $manufacturer $model")
+        appendLine("Android版本: $androidRelease (API $apiLevel)")
+        appendLine("异常类型: ${throwable.javaClass.simpleName}")
+        appendLine("异常信息: ${throwable.message.orEmpty()}")
+        appendLine("========================================")
+        appendLine()
+        appendLine("----- Throwable -----")
+        appendLine(throwable.stackTraceToString())
+        appendLine("----- Recent Logs -----")
+        entries.forEach { appendLine(it.format()) }
+    }
+}
 
 /**
  *  统一日志工具类
@@ -20,6 +77,10 @@ import java.util.*
 object Logger {
     
     private val isDebug = BuildConfig.DEBUG
+
+    fun init(context: Context) {
+        LogCollector.init(context.applicationContext)
+    }
     
     /**
      * Debug 日志 - 仅在 Debug 版本输出
@@ -68,6 +129,25 @@ object Logger {
         }
         LogCollector.add("E", tag, fullMessage)
     }
+
+    fun persistCrashSnapshot(throwable: Throwable) {
+        LogCollector.persistCrashSnapshot(throwable)
+    }
+
+    fun getPendingCrashSnapshotPath(context: Context): String? {
+        init(context)
+        return LogCollector.getPendingCrashSnapshotFile()?.absolutePath
+    }
+
+    fun clearPendingCrashSnapshot(context: Context) {
+        init(context)
+        LogCollector.clearPendingCrashSnapshot()
+    }
+
+    fun sharePendingCrashSnapshot(context: Context): Boolean {
+        init(context)
+        return LogCollector.sharePendingCrashSnapshot(context)
+    }
 }
 
 /**
@@ -79,12 +159,17 @@ object LogCollector {
     
     private const val MAX_ENTRIES = 1000
     private const val DUPLICATE_SUPPRESS_WINDOW_MS = 250L
+    private const val MAX_PERSISTED_LOG_BYTES = 256 * 1024
+    private const val PERSISTED_LOG_TRIM_TARGET_BYTES = 128 * 1024
     private val lock = Any()
     private val buffer = ArrayDeque<LogEntry>(MAX_ENTRIES)
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     private val fileDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+    private val diskWriter = Executors.newSingleThreadExecutor()
     private var lastEntryFingerprint: String? = null
     private var lastEntryTimestamp: Long = 0L
+    @Volatile
+    private var appContext: Context? = null
     
     /**
      * 日志条目
@@ -107,6 +192,7 @@ object LogCollector {
     fun add(level: String, tag: String, message: String) {
         val now = System.currentTimeMillis()
         val fingerprint = "$level|$tag|$message"
+        var entryToPersist: LogEntry? = null
         synchronized(lock) {
             // 高频重复日志直接抑制，避免日志风暴拖垮主线程
             if (fingerprint == lastEntryFingerprint &&
@@ -118,14 +204,13 @@ object LogCollector {
             lastEntryFingerprint = fingerprint
             lastEntryTimestamp = now
 
-            buffer.addLast(
-                LogEntry(
-                    timestamp = now,
-                    level = level,
-                    tag = tag,
-                    message = message
-                )
+            entryToPersist = LogEntry(
+                timestamp = now,
+                level = level,
+                tag = tag,
+                message = message
             )
+            buffer.addLast(entryToPersist)
 
             while (buffer.size > MAX_ENTRIES) {
                 if (buffer.isNotEmpty()) {
@@ -134,6 +219,18 @@ object LogCollector {
                     break
                 }
             }
+        }
+
+        entryToPersist?.let { appendEntryToRuntimeFile(it) }
+    }
+
+    fun init(context: Context) {
+        if (appContext === context.applicationContext) return
+        appContext = context.applicationContext
+        runCatching {
+            resolveLogPersistenceDir(context.filesDir).mkdirs()
+        }.onFailure {
+            Log.e("LogCollector", "初始化持久化日志目录失败", it)
         }
     }
     
@@ -297,6 +394,75 @@ object LogCollector {
             lastEntryTimestamp = 0L
         }
     }
+
+    fun persistCrashSnapshot(throwable: Throwable) {
+        val context = appContext ?: return
+        val sanitizedEntries = getEntries().map { entry ->
+            entry.copy(message = sanitizeMessage(entry.message))
+        }
+        runCatching {
+            val content = buildCrashSnapshotContent(
+                throwable = throwable,
+                entries = sanitizedEntries,
+                exportedAtMillis = System.currentTimeMillis(),
+                appVersionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE,
+                manufacturer = android.os.Build.MANUFACTURER,
+                model = android.os.Build.MODEL,
+                androidRelease = android.os.Build.VERSION.RELEASE,
+                apiLevel = android.os.Build.VERSION.SDK_INT
+            )
+            val snapshotFile = resolveCrashSnapshotFile(context.filesDir)
+            val markerFile = resolveCrashSnapshotMarkerFile(context.filesDir)
+            snapshotFile.parentFile?.mkdirs()
+            snapshotFile.writeText(content)
+            markerFile.writeText(System.currentTimeMillis().toString())
+            saveToExternalDownload(
+                context = context,
+                fileName = CRASH_SNAPSHOT_FILE_NAME,
+                content = content,
+                replaceExisting = true
+            )
+        }.onFailure {
+            Log.e("LogCollector", "写入崩溃快照失败", it)
+        }
+    }
+
+    fun getPendingCrashSnapshotFile(): File? {
+        val context = appContext ?: return null
+        val snapshotFile = resolveCrashSnapshotFile(context.filesDir)
+        val markerFile = resolveCrashSnapshotMarkerFile(context.filesDir)
+        return snapshotFile.takeIf {
+            hasPendingCrashSnapshot(
+                markerExists = markerFile.exists(),
+                snapshotExists = snapshotFile.exists()
+            )
+        }
+    }
+
+    fun clearPendingCrashSnapshot() {
+        val context = appContext ?: return
+        runCatching {
+            resolveCrashSnapshotMarkerFile(context.filesDir).delete()
+        }.onFailure {
+            Log.e("LogCollector", "清理崩溃快照标记失败", it)
+        }
+    }
+
+    fun sharePendingCrashSnapshot(context: Context): Boolean {
+        val snapshotFile = getPendingCrashSnapshotFile() ?: return false
+        return runCatching {
+            val cacheDir = File(context.cacheDir, LOG_DIRECTORY_NAME)
+            cacheDir.mkdirs()
+            val shareFile = File(cacheDir, CRASH_SNAPSHOT_FILE_NAME)
+            shareFile.writeText(snapshotFile.readText())
+            shareLogFileFromCache(context, shareFile)
+            true
+        }.getOrElse {
+            Log.e("LogCollector", "分享崩溃快照失败", it)
+            false
+        }
+    }
     
     /**
      * 导出日志到文件并通过系统分享
@@ -367,14 +533,25 @@ object LogCollector {
      * 路径: /storage/emulated/0/Download/BiliPai/logs/xxx.txt
      * MT管理器路径: Download/BiliPai/logs/
      */
-    private fun saveToExternalDownload(context: Context, fileName: String, content: String): String? {
+    private fun saveToExternalDownload(
+        context: Context,
+        fileName: String,
+        content: String,
+        replaceExisting: Boolean = false
+    ): String? {
         return try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                if (replaceExisting) {
+                    val existingUri = findExistingDownloadUri(context, fileName)
+                    if (existingUri != null) {
+                        context.contentResolver.delete(existingUri, null, null)
+                    }
+                }
                 // Android 10+ 使用 MediaStore API
                 val contentValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
                     put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
-                    put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/BiliPai/logs")
+                    put(android.provider.MediaStore.Downloads.RELATIVE_PATH, DOWNLOAD_LOG_RELATIVE_PATH)
                 }
                 
                 val uri = context.contentResolver.insert(
@@ -386,7 +563,7 @@ object LogCollector {
                     context.contentResolver.openOutputStream(it)?.use { outputStream ->
                         outputStream.write(content.toByteArray())
                     }
-                    "Download/BiliPai/logs/$fileName"
+                    "$DOWNLOAD_LOG_RELATIVE_PATH/$fileName"
                 }
             } else {
                 // Android 9 及以下直接写入
@@ -403,6 +580,32 @@ object LogCollector {
         } catch (e: Exception) {
             Log.w("LogCollector", "无法保存到外部存储", e)
             null
+        }
+    }
+
+    private fun findExistingDownloadUri(context: Context, fileName: String): android.net.Uri? {
+        val projection = arrayOf(
+            android.provider.MediaStore.Downloads._ID
+        )
+        val selection =
+            "${android.provider.MediaStore.Downloads.DISPLAY_NAME}=? AND " +
+                "${android.provider.MediaStore.Downloads.RELATIVE_PATH}=?"
+        val selectionArgs = arrayOf(fileName, DOWNLOAD_LOG_RELATIVE_PATH)
+        return context.contentResolver.query(
+            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val idIndex = cursor.getColumnIndex(android.provider.MediaStore.Downloads._ID)
+            if (idIndex < 0) return@use null
+            val id = cursor.getLong(idIndex)
+            android.content.ContentUris.withAppendedId(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                id
+            )
         }
     }
     
@@ -471,5 +674,37 @@ object LogCollector {
         } catch (e: Exception) {
             Log.e("LogCollector", "分享失败", e)
         }
+    }
+
+    private fun appendEntryToRuntimeFile(entry: LogEntry) {
+        val context = appContext ?: return
+        val sanitizedEntry = entry.copy(message = sanitizeMessage(entry.message)).format() + "\n"
+        diskWriter.execute {
+            runCatching {
+                val runtimeLogFile = resolveRuntimeLogFile(context.filesDir)
+                runtimeLogFile.parentFile?.mkdirs()
+                appendTextWithRollingLimit(runtimeLogFile, sanitizedEntry)
+            }.onFailure {
+                Log.e("LogCollector", "持久化运行日志失败", it)
+            }
+        }
+    }
+
+    private fun appendTextWithRollingLimit(file: File, text: String) {
+        if (!file.exists()) {
+            file.writeText(text)
+            return
+        }
+
+        if (file.length() + text.toByteArray().size <= MAX_PERSISTED_LOG_BYTES) {
+            file.appendText(text)
+            return
+        }
+
+        val retained = runCatching {
+            val current = file.readText()
+            current.takeLast(PERSISTED_LOG_TRIM_TARGET_BYTES)
+        }.getOrDefault("")
+        file.writeText(retained + text)
     }
 }

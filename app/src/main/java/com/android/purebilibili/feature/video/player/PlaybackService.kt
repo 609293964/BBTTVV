@@ -18,6 +18,20 @@ internal fun shouldStartForegroundWithFallback(primaryNotification: Any?): Boole
     return primaryNotification == null
 }
 
+internal fun shouldRefreshPlaybackServiceForeground(
+    action: String?,
+    isForegroundStarted: Boolean
+): Boolean {
+    return action == PlaybackService.ACTION_START_FOREGROUND
+}
+
+internal fun shouldStopPlaybackServiceForStartId(
+    stopActionStartId: Int,
+    latestHandledStartId: Int
+): Boolean {
+    return stopActionStartId >= latestHandledStartId
+}
+
 internal fun resolvePlaybackServiceFallbackIconRes(iconKey: String): Int {
     return resolveNotificationSmallIconRes(iconKey)
 }
@@ -35,6 +49,7 @@ class PlaybackService : Service() {
         const val ACTION_STOP_FOREGROUND = "com.android.purebilibili.action.STOP_FOREGROUND"
         const val NOTIFICATION_ID = 1002 // 必须与 MiniPlayerManager 中的 ID 一致
         @Volatile private var isForegroundStarted = false
+        @Volatile private var latestHandledStartId = 0
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -43,28 +58,28 @@ class PlaybackService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        latestHandledStartId = maxOf(latestHandledStartId, startId)
         Logger.d(TAG, "onStartCommand: action=$action")
 
         when (action) {
             ACTION_START_FOREGROUND -> {
-                if (isForegroundStarted) {
-                    return START_NOT_STICKY
-                }
-                try {
-                    // 获取 MiniPlayerManager 中构建好的通知
-                    val primaryNotification = MiniPlayerManager.getInstance(applicationContext).currentNotification
-                    val notification = if (shouldStartForegroundWithFallback(primaryNotification)) {
-                        Logger.w(TAG, "Primary notification missing, starting foreground with fallback notification")
-                        buildFallbackNotification()
-                    } else {
-                        primaryNotification as Notification
+                if (shouldRefreshPlaybackServiceForeground(action, isForegroundStarted)) {
+                    try {
+                        // 获取 MiniPlayerManager 中构建好的通知
+                        val primaryNotification = MiniPlayerManager.getInstance(applicationContext).currentNotification
+                        val notification = if (shouldStartForegroundWithFallback(primaryNotification)) {
+                            Logger.w(TAG, "Primary notification missing, starting foreground with fallback notification")
+                            buildFallbackNotification()
+                        } else {
+                            primaryNotification as Notification
+                        }
+                        startAsForeground(notification)
+                        isForegroundStarted = true
+                    } catch (e: Exception) {
+                        isForegroundStarted = false
+                        Logger.e(TAG, "Failed to start foreground service", e)
+                        stopSelf()
                     }
-                    startAsForeground(notification)
-                    isForegroundStarted = true
-                } catch (e: Exception) {
-                    isForegroundStarted = false
-                    Logger.e(TAG, "Failed to start foreground service", e)
-                    stopSelf()
                 }
             }
             ACTION_STOP_FOREGROUND -> {
@@ -73,7 +88,9 @@ class PlaybackService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID)
-                stopSelf()
+                if (shouldStopPlaybackServiceForStartId(startId, latestHandledStartId)) {
+                    stopSelfResult(startId)
+                }
             }
         }
 
@@ -83,6 +100,7 @@ class PlaybackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isForegroundStarted = false
+        latestHandledStartId = 0
         Logger.d(TAG, "onDestroy")
     }
 

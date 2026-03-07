@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-03-07 · 文档已同步至 v6.9.1（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-03-07 · 文档已同步至 v6.9.2（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-6.9.1-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-6.9.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -546,11 +546,11 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v6.9.1 · 2026-03-07)
+### 最近更新 (v6.9.2 · 2026-03-07)
 
-- 💬 **评论区更顺滑**：收敛评论项热路径计算，补齐列表内容类型复用，降低评论区和楼中楼滑动时的掉帧概率。
-- 👍 **桌面端标签对齐**：特殊评论下方支持显示纯文字 `UP主觉得很赞`，并优先读取服务端下发的桌面端评论标签。
-- 🧪 **评论回归测试补齐**：新增评论标签解析与组件策略测试，减少后续继续调评论 UI 时的回归风险。
+- 🚀 **评论区边播边刷更顺滑**：评论分页改为接近底部再触发，播放中自动启用轻量评论渲染，优先保证滑动帧率。
+- 🎬 **播放器稳定性继续补强**：小窗、后台播放、控制条与弹幕设置联动继续收敛，减少叠层和状态切换时的异常。
+- 🛠️ **动态页与空间页修复**：动态页支持再次点击已选 UP 回到全部关注动态，空间页“播放全部”图标显示恢复完整。
 
 ### 历史版本
 

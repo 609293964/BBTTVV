@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,49 @@ import androidx.compose.ui.unit.sp
 // 主题色将在 Composable 内通过 MaterialTheme.colorScheme.primary 获取
 private val PanelBackground = Color(0xFF1E1E1E)
 private val CardBackground = Color(0xFF2A2A2A)
+
+enum class DanmakuSettingsPanelPresentation {
+    CenteredDialog,
+    BottomSheet
+}
+
+data class DanmakuSettingsPanelLayoutPolicy(
+    val presentation: DanmakuSettingsPanelPresentation,
+    val horizontalPaddingDp: Int,
+    val bottomPaddingDp: Int,
+    val minWidthDp: Int,
+    val maxWidthDp: Int,
+    val maxHeightDp: Int
+)
+
+fun resolveDanmakuSettingsPanelLayoutPolicy(
+    isFullscreen: Boolean,
+    screenWidthDp: Int,
+    screenHeightDp: Int
+): DanmakuSettingsPanelLayoutPolicy {
+    if (isFullscreen) {
+        return DanmakuSettingsPanelLayoutPolicy(
+            presentation = DanmakuSettingsPanelPresentation.CenteredDialog,
+            horizontalPaddingDp = 16,
+            bottomPaddingDp = 0,
+            minWidthDp = 300,
+            maxWidthDp = 380,
+            maxHeightDp = 480
+        )
+    }
+
+    val horizontalPaddingDp = if (screenWidthDp >= 600) 24 else 16
+    val maxHeightDp = (screenHeightDp - 72).coerceIn(420, 560)
+
+    return DanmakuSettingsPanelLayoutPolicy(
+        presentation = DanmakuSettingsPanelPresentation.BottomSheet,
+        horizontalPaddingDp = horizontalPaddingDp,
+        bottomPaddingDp = 20,
+        minWidthDp = 0,
+        maxWidthDp = maxOf(520, screenWidthDp - horizontalPaddingDp * 2),
+        maxHeightDp = maxHeightDp
+    )
+}
 
 /**
  * Danmaku Settings Panel
@@ -47,6 +91,7 @@ private val CardBackground = Color(0xFF2A2A2A)
  */
 @Composable
 fun DanmakuSettingsPanel(
+    isFullscreen: Boolean = true,
     opacity: Float,
     fontScale: Float,
     speed: Float,
@@ -58,6 +103,7 @@ fun DanmakuSettingsPanel(
     allowColorful: Boolean = true,
     allowSpecial: Boolean = true,
     showBlockRuleEditor: Boolean = false,
+    showSmartOcclusionSection: Boolean = true,
     blockRulesRaw: String = "",
     smartOcclusion: Boolean = true,
     smartOcclusionModuleState: FaceOcclusionModuleState = FaceOcclusionModuleState.Checking,
@@ -77,6 +123,14 @@ fun DanmakuSettingsPanel(
     onSmartOcclusionDownloadClick: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val layoutPolicy = remember(isFullscreen, configuration.screenWidthDp, configuration.screenHeightDp) {
+        resolveDanmakuSettingsPanelLayoutPolicy(
+            isFullscreen = isFullscreen,
+            screenWidthDp = configuration.screenWidthDp,
+            screenHeightDp = configuration.screenHeightDp
+        )
+    }
     val moduleUiState = remember(smartOcclusionModuleState, smartOcclusionDownloadProgress) {
         resolveFaceOcclusionModuleUiState(
             state = smartOcclusionModuleState,
@@ -95,12 +149,27 @@ fun DanmakuSettingsPanel(
                     onDismiss() 
                 }
             },
-        contentAlignment = Alignment.Center
+        contentAlignment = if (
+            layoutPolicy.presentation == DanmakuSettingsPanelPresentation.BottomSheet
+        ) {
+            Alignment.BottomCenter
+        } else {
+            Alignment.Center
+        }
     ) {
         Surface(
             modifier = Modifier
-                .widthIn(min = 300.dp, max = 380.dp)
-                .heightIn(max = 480.dp),
+                .fillMaxWidth()
+                .padding(
+                    start = layoutPolicy.horizontalPaddingDp.dp,
+                    end = layoutPolicy.horizontalPaddingDp.dp,
+                    bottom = layoutPolicy.bottomPaddingDp.dp
+                )
+                .widthIn(
+                    min = layoutPolicy.minWidthDp.dp,
+                    max = layoutPolicy.maxWidthDp.dp
+                )
+                .heightIn(max = layoutPolicy.maxHeightDp.dp),
             // Surface 本身就会阻止触摸穿透到背景，无需额外处理
             color = PanelBackground,
             shape = RoundedCornerShape(20.dp),
@@ -240,96 +309,98 @@ fun DanmakuSettingsPanel(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = CardBackground,
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                if (showSmartOcclusionSection) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = CardBackground,
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "人脸模型",
-                                color = Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = moduleUiState.statusText,
-                                color = Color.White.copy(0.65f),
-                                fontSize = 11.sp
-                            )
-                        }
-                        if (moduleUiState.showAction) {
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Button(
-                                onClick = onSmartOcclusionDownloadClick,
-                                enabled = moduleUiState.isActionEnabled,
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                            Column(
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = moduleUiState.actionText,
-                                    fontSize = 12.sp,
+                                    text = "人脸模型",
+                                    color = Color.White,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = moduleUiState.statusText,
+                                    color = Color.White.copy(0.65f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                            if (moduleUiState.showAction) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Button(
+                                    onClick = onSmartOcclusionDownloadClick,
+                                    enabled = moduleUiState.isActionEnabled,
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = moduleUiState.actionText,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = CardBackground,
-                    shape = RoundedCornerShape(16.dp),
-                    onClick = { onSmartOcclusionChange(!smartOcclusion) }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = CardBackground,
+                        shape = RoundedCornerShape(16.dp),
+                        onClick = { onSmartOcclusionChange(!smartOcclusion) }
                     ) {
-                        Column {
-                            Text(
-                                text = "智能避脸遮挡",
-                                color = Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "实时识别人脸并避让弹幕轨道",
-                                color = Color.White.copy(0.5f),
-                                fontSize = 11.sp
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "智能避脸遮挡",
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "实时识别人脸并避让弹幕轨道",
+                                    color = Color.White.copy(0.5f),
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            Switch(
+                                checked = smartOcclusion,
+                                onCheckedChange = onSmartOcclusionChange,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = Color.White,
+                                    uncheckedTrackColor = Color.White.copy(0.1f)
+                                )
                             )
                         }
-
-                        Switch(
-                            checked = smartOcclusion,
-                            onCheckedChange = onSmartOcclusionChange,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color.White.copy(0.1f)
-                            )
-                        )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),

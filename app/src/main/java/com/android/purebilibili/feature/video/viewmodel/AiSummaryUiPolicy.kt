@@ -12,7 +12,8 @@ enum class AiSummaryPromptTone {
 data class AiSummaryPromptState(
     val title: String,
     val message: String,
-    val tone: AiSummaryPromptTone
+    val tone: AiSummaryPromptTone,
+    val actionLabel: String? = null
 )
 
 fun initialAiSummaryPromptState(): AiSummaryPromptState {
@@ -27,7 +28,8 @@ fun queuedAiSummaryPendingPromptState(): AiSummaryPromptState {
     return AiSummaryPromptState(
         title = "AI 总结暂未生成完成",
         message = "这条视频还在后台排队，稍后下拉刷新或重新进入页面再试。",
-        tone = AiSummaryPromptTone.MUTED
+        tone = AiSummaryPromptTone.MUTED,
+        actionLabel = "重新获取"
     )
 }
 
@@ -64,13 +66,15 @@ internal fun resolveAiSummaryPromptState(
         AiSummaryFetchStatus.RETRYABLE_FAILURE -> AiSummaryPromptState(
             title = "AI 总结加载失败",
             message = "这次请求被风控或网络打断了，稍后重进页面通常可以恢复。",
-            tone = AiSummaryPromptTone.WARNING
+            tone = AiSummaryPromptTone.WARNING,
+            actionLabel = "重试"
         )
         AiSummaryFetchStatus.API_ERROR,
         AiSummaryFetchStatus.FAILURE -> AiSummaryPromptState(
             title = "AI 总结暂时不可用",
             message = "接口这次没有成功返回结果，可以稍后再试或导出日志反馈。",
-            tone = AiSummaryPromptTone.WARNING
+            tone = AiSummaryPromptTone.WARNING,
+            actionLabel = "重试"
         )
     }
 }

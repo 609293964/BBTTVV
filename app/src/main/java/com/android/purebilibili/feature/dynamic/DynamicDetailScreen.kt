@@ -1,6 +1,5 @@
 package com.android.purebilibili.feature.dynamic
 
-import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,9 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import coil.ImageLoader
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
+import coil.imageLoader
 import com.android.purebilibili.core.util.responsiveContentWidth
 import com.android.purebilibili.data.model.response.DynamicItem
 import com.android.purebilibili.data.repository.DynamicRepository
@@ -68,18 +65,7 @@ fun DynamicDetailScreen(
     }
 
     val context = LocalContext.current
-    val gifImageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
-                }
-            }
-            .crossfade(true)
-            .build()
-    }
+    val gifImageLoader = context.imageLoader
 
     Scaffold(
         topBar = {

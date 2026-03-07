@@ -879,6 +879,8 @@ fun PlaybackSettingsContent(
                             .getShowFullscreenScreenshotButton(context).collectAsState(initial = true)
                         val showFullscreenBatteryLevel by com.android.purebilibili.core.store.SettingsManager
                             .getShowFullscreenBatteryLevel(context).collectAsState(initial = true)
+                        val showFullscreenTime by com.android.purebilibili.core.store.SettingsManager
+                            .getShowFullscreenTime(context).collectAsState(initial = true)
                         val showFullscreenActionItems by com.android.purebilibili.core.store.SettingsManager
                             .getShowFullscreenActionItems(context).collectAsState(initial = true)
                         val showOnlineCount by com.android.purebilibili.core.store.SettingsManager
@@ -1034,7 +1036,7 @@ fun PlaybackSettingsContent(
                         IOSSwitchItem(
                             icon = CupertinoIcons.Default.Battery100,
                             title = "全屏显示电量",
-                            subtitle = "在横屏顶部展示当前电量百分比",
+                            subtitle = "在横屏左上角展示电池图标和电量百分比",
                             checked = showFullscreenBatteryLevel,
                             onCheckedChange = {
                                 scope.launch {
@@ -1043,6 +1045,20 @@ fun PlaybackSettingsContent(
                                 }
                             },
                             iconTint = iOSGreen
+                        )
+                        Divider()
+                        IOSSwitchItem(
+                            icon = CupertinoIcons.Default.Clock,
+                            title = "全屏显示时间",
+                            subtitle = "在横屏左上角单独展示当前时间",
+                            checked = showFullscreenTime,
+                            onCheckedChange = {
+                                scope.launch {
+                                    com.android.purebilibili.core.store.SettingsManager
+                                        .setShowFullscreenTime(context, it)
+                                }
+                            },
+                            iconTint = iOSTeal
                         )
                         Divider()
                         IOSSwitchItem(

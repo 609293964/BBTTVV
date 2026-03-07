@@ -136,6 +136,13 @@ internal fun shouldConsumeBackgroundGesturesForEndDrawer(
     return endDrawerVisible
 }
 
+internal fun shouldReleaseCastBindingAfterDialogVisibilityChange(
+    previousVisible: Boolean,
+    currentVisible: Boolean
+): Boolean {
+    return previousVisible && !currentVisible
+}
+
 internal fun shouldShowCenterPlayButton(
     isVisible: Boolean,
     isPlaying: Boolean,
@@ -368,6 +375,9 @@ fun VideoPlayerOverlay(
     val showFullscreenBatteryLevel by SettingsManager
         .getShowFullscreenBatteryLevel(context)
         .collectAsState(initial = true)
+    val showFullscreenTime by SettingsManager
+        .getShowFullscreenTime(context)
+        .collectAsState(initial = true)
     val showFullscreenActionItems by SettingsManager
         .getShowFullscreenActionItems(context)
         .collectAsState(initial = true)
@@ -429,6 +439,7 @@ fun VideoPlayerOverlay(
     //  双击检测状态
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var showLikeAnimation by remember { mutableStateOf(false) }
+    var previousShowCastDialog by remember { mutableStateOf(false) }
     val overlayVisualPolicy = remember(configuration.screenWidthDp) {
         resolveVideoPlayerOverlayVisualPolicy(
             widthDp = configuration.screenWidthDp
@@ -515,6 +526,13 @@ fun VideoPlayerOverlay(
             delay(800)
             showLikeAnimation = false
         }
+    }
+
+    LaunchedEffect(showCastDialog) {
+        if (shouldReleaseCastBindingAfterDialogVisibilityChange(previousShowCastDialog, showCastDialog)) {
+            DlnaManager.unbindService(context)
+        }
+        previousShowCastDialog = showCastDialog
     }
 
     fun togglePlayPause() {
@@ -614,6 +632,7 @@ fun VideoPlayerOverlay(
                         onlineCount = displayedOnlineCount,
                         isFullscreen = isFullscreen,
                         showBatteryLevel = showFullscreenBatteryLevel,
+                        showCurrentTime = showFullscreenTime,
                         showInteractiveActions = showFullscreenActionItems,
                         onBack = onBack,
                         // Interactions
@@ -940,6 +959,7 @@ fun VideoPlayerOverlay(
         // --- 8.  [新增] 弹幕设置面板 ---
         if (showDanmakuSettings) {
             DanmakuSettingsPanel(
+                isFullscreen = isFullscreen,
                 opacity = danmakuOpacity,
                 fontScale = danmakuFontScale,
                 speed = danmakuSpeed,

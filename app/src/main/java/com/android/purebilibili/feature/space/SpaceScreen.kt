@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -481,52 +482,21 @@ private fun SpaceContent(
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // 播放全部按钮
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            state.videos.firstOrNull()?.let { playSpaceVideo(it.bvid) }
-                                        }
-                                        .padding(end = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        CupertinoIcons.Default.Play,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onBackground
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        text = "播放全部",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onBackground
-                                    )
-                                }
+                                SpaceInlineActionButton(
+                                    icon = CupertinoIcons.Default.Play,
+                                    text = "播放全部",
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                    onClick = {
+                                        state.videos.firstOrNull()?.let { playSpaceVideo(it.bvid) }
+                                    }
+                                )
 
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .clickable { playAllSpaceAudio() }
-                                        .padding(end = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        CupertinoIcons.Outlined.Headphones,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        text = "全部听",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                SpaceInlineActionButton(
+                                    icon = CupertinoIcons.Outlined.Headphones,
+                                    text = "全部听",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    onClick = { playAllSpaceAudio() }
+                                )
                                 
                                 Spacer(Modifier.weight(1f))
                                 
@@ -1162,6 +1132,42 @@ private fun SpaceHeader(
         
         HorizontalDivider(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
+    }
+}
+
+@Composable
+private fun SpaceInlineActionButton(
+    icon: ImageVector,
+    text: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = tint
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = tint
         )
     }
 }

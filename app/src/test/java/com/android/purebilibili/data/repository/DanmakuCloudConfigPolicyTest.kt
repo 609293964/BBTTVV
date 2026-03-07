@@ -45,6 +45,13 @@ class DanmakuCloudConfigPolicyTest {
     }
 
     @Test
+    fun mapDanmakuDisplayAreaRatioToCloudValue_snapsArbitraryValuesToSupportedBuckets() {
+        assertEquals(25, mapDanmakuDisplayAreaRatioToCloudValue(0.33f))
+        assertEquals(50, mapDanmakuDisplayAreaRatioToCloudValue(0.62f))
+        assertEquals(75, mapDanmakuDisplayAreaRatioToCloudValue(0.63f))
+    }
+
+    @Test
     fun isDanmakuCloudSyncSuccessful_acceptsNoChangeCode() {
         assertTrue(isDanmakuCloudSyncSuccessful(0))
         assertTrue(isDanmakuCloudSyncSuccessful(23004))

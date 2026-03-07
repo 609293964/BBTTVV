@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -91,34 +92,50 @@ fun MiniPlayerOverlay(
     val miniPlayerHeight = layoutPolicy.miniPlayerHeightDp.dp
     val padding = layoutPolicy.outerPaddingDp.dp
     val headerHeight = layoutPolicy.headerHeightDp.dp // 顶部可拖动区域高度
+    val touchSlopPx = LocalViewConfiguration.current.touchSlop
 
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
     val miniPlayerWidthPx = with(density) { miniPlayerWidth.toPx() }
     val miniPlayerHeightPx = with(density) { miniPlayerHeight.toPx() }
     val paddingPx = with(density) { padding.toPx() }
+    val dragTopInsetPx = with(density) { layoutPolicy.dragTopInsetDp.dp.toPx() }
+    val dragBottomInsetPx = with(density) { layoutPolicy.dragBottomInsetDp.dp.toPx() }
 
     //  [新增] 获取卡片位置信息，用于初始落位和动画适配
     val cardBounds = com.android.purebilibili.core.util.CardPositionManager.lastClickedCardBounds
     val cardPosition = com.android.purebilibili.core.util.CardPositionManager.cardHorizontalPosition
     val entryFromLeft = miniPlayerManager.entryFromLeft
     
-    //  [修复] 位置状态 - 优先使用卡片原始位置，否则使用贴边逻辑
-    // 左边视频 → 小窗在左侧，右边视频 → 小窗在右侧
-    var offsetX by remember(entryFromLeft, cardBounds) { 
-        mutableFloatStateOf(
-            cardBounds?.left ?: if (entryFromLeft) paddingPx else screenWidthPx - miniPlayerWidthPx - paddingPx
-        ) 
+    val initialOverlayOffset = remember(
+        entryFromLeft,
+        cardBounds,
+        screenWidthPx,
+        screenHeightPx,
+        miniPlayerWidthPx,
+        miniPlayerHeightPx,
+        paddingPx,
+        dragTopInsetPx,
+        dragBottomInsetPx
+    ) {
+        clampMiniPlayerOverlayOffset(
+            offsetX = cardBounds?.left
+                ?: if (entryFromLeft) paddingPx else screenWidthPx - miniPlayerWidthPx - paddingPx,
+            offsetY = cardBounds?.top
+                ?: (screenHeightPx - miniPlayerHeightPx - paddingPx - dragBottomInsetPx),
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+            miniPlayerWidthPx = miniPlayerWidthPx,
+            miniPlayerHeightPx = miniPlayerHeightPx,
+            outerPaddingPx = paddingPx,
+            topInsetPx = dragTopInsetPx,
+            bottomInsetPx = dragBottomInsetPx
+        )
     }
-    var offsetY by remember(cardBounds) { 
-        mutableFloatStateOf(
-            cardBounds?.top ?: (
-                screenHeightPx - miniPlayerHeightPx - paddingPx - with(density) {
-                    layoutPolicy.dragBottomInsetDp.dp.toPx()
-                }
-            )
-        ) 
-    }
+
+    //  [修复] 首次打开前先夹进可见区域，避免右侧按钮跑出屏幕
+    var offsetX by remember(initialOverlayOffset) { mutableFloatStateOf(initialOverlayOffset.x) }
+    var offsetY by remember(initialOverlayOffset) { mutableFloatStateOf(initialOverlayOffset.y) }
     
     // 控制按钮显示状态
     var showControls by remember { mutableStateOf(true) }
@@ -130,7 +147,7 @@ fun MiniPlayerOverlay(
     var stashSide by remember { mutableStateOf(com.android.purebilibili.core.util.CardPositionManager.CardHorizontalPosition.RIGHT) }
     
     // [新增] Stashed 状态下的 Y 轴偏移量（允许在隐藏时上下拖动）
-    var stashedOffsetY by remember { mutableFloatStateOf(offsetY) }
+    var stashedOffsetY by remember(initialOverlayOffset) { mutableFloatStateOf(initialOverlayOffset.y) }
 
     
     // 进度拖动状态
@@ -140,6 +157,9 @@ fun MiniPlayerOverlay(
     
     // 位置拖动状态
     var isDraggingPosition by remember { mutableStateOf(false) }
+    var contentDragIntent by remember { mutableStateOf(MiniPlayerContentDragIntent.UNDECIDED) }
+    var contentDragTotalX by remember { mutableFloatStateOf(0f) }
+    var contentDragTotalY by remember { mutableFloatStateOf(0f) }
     
     // 播放器状态
     //  [修复] 在退出动画期间保持旧 Player 引用，防止画面跳变
@@ -203,6 +223,47 @@ fun MiniPlayerOverlay(
 
     val targetOffsetY = if (isStashed) stashedOffsetY else offsetY
 
+    fun clampCurrentOffset() {
+        val clamped = clampMiniPlayerOverlayOffset(
+            offsetX = offsetX,
+            offsetY = offsetY,
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+            miniPlayerWidthPx = miniPlayerWidthPx,
+            miniPlayerHeightPx = miniPlayerHeightPx,
+            outerPaddingPx = paddingPx,
+            topInsetPx = dragTopInsetPx,
+            bottomInsetPx = dragBottomInsetPx
+        )
+        offsetX = clamped.x
+        offsetY = clamped.y
+    }
+
+    fun moveMiniPlayerBy(deltaX: Float, deltaY: Float) {
+        val clamped = clampMiniPlayerOverlayOffset(
+            offsetX = offsetX + deltaX,
+            offsetY = offsetY + deltaY,
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+            miniPlayerWidthPx = miniPlayerWidthPx,
+            miniPlayerHeightPx = miniPlayerHeightPx,
+            outerPaddingPx = paddingPx,
+            topInsetPx = dragTopInsetPx,
+            bottomInsetPx = dragBottomInsetPx
+        )
+        offsetX = clamped.x
+        offsetY = clamped.y
+    }
+
+    fun snapMiniPlayerToNearestHorizontalEdge() {
+        offsetX = if (offsetX < screenWidthPx / 2 - miniPlayerWidthPx / 2) {
+            paddingPx
+        } else {
+            screenWidthPx - miniPlayerWidthPx - paddingPx
+        }
+        clampCurrentOffset()
+    }
+
     val animatedOffsetX by animateFloatAsState(
         targetValue = targetOffsetX,
         animationSpec = if (isDraggingPosition) snap() else spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -261,14 +322,13 @@ fun MiniPlayerOverlay(
                     }
                     // Y 坐标保持同步
                     offsetY = stashedOffsetY
+                    clampCurrentOffset()
                 },
                 onDrag = { deltaY ->
-                    with(density) {
-                        stashedOffsetY = (stashedOffsetY + deltaY).coerceIn(
-                            paddingPx + layoutPolicy.dragTopInsetDp.dp.toPx(),
-                            screenHeightPx - paddingPx - layoutPolicy.dragBottomInsetDp.dp.toPx()
-                        )
-                    }
+                    stashedOffsetY = (stashedOffsetY + deltaY).coerceIn(
+                        paddingPx + dragTopInsetPx,
+                        screenHeightPx - with(density) { layoutPolicy.stashedHeightDp.dp.toPx() } - paddingPx - dragBottomInsetPx
+                    )
                 }
             )
         } else {
@@ -302,41 +362,80 @@ fun MiniPlayerOverlay(
                             .fillMaxSize()
                             .clip(RoundedCornerShape(layoutPolicy.cardCornerRadiusDp.dp))
                             //  视频区域：左右滑动调节进度（直播模式禁用）
-                            .then(
-                                if (!miniPlayerManager.isLiveMode) {
-                                    Modifier.pointerInput(Unit) {
-                                        detectHorizontalDragGestures(
-                                            onDragStart = { 
-                                                isDraggingProgress = true
-                                                dragProgressDelta = 0f
-                                                seekPreviewPosition = currentPosition
-                                                showControls = true
-                                                lastInteractionTime = System.currentTimeMillis()
-                                            },
-                                            onDragEnd = {
-                                                if (isDraggingProgress && abs(dragProgressDelta) > 10f) {
+                            .pointerInput(miniPlayerManager.isLiveMode, miniPlayerWidthPx, duration, currentPosition, touchSlopPx) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        contentDragIntent = MiniPlayerContentDragIntent.UNDECIDED
+                                        contentDragTotalX = 0f
+                                        contentDragTotalY = 0f
+                                        dragProgressDelta = 0f
+                                        showControls = true
+                                        lastInteractionTime = System.currentTimeMillis()
+                                    },
+                                    onDragEnd = {
+                                        when (contentDragIntent) {
+                                            MiniPlayerContentDragIntent.SEEK -> {
+                                                if (abs(dragProgressDelta) > 10f) {
                                                     val seekDelta = (dragProgressDelta / miniPlayerWidthPx * duration).toLong()
                                                     val newPosition = (currentPosition + seekDelta).coerceIn(0L, duration)
                                                     player?.seekTo(newPosition)
                                                 }
                                                 isDraggingProgress = false
                                                 dragProgressDelta = 0f
-                                            },
-                                            onDragCancel = {
-                                                isDraggingProgress = false
+                                            }
+                                            MiniPlayerContentDragIntent.MOVE -> {
+                                                isDraggingPosition = false
+                                                snapMiniPlayerToNearestHorizontalEdge()
+                                            }
+                                            MiniPlayerContentDragIntent.UNDECIDED -> Unit
+                                        }
+                                        contentDragIntent = MiniPlayerContentDragIntent.UNDECIDED
+                                        contentDragTotalX = 0f
+                                        contentDragTotalY = 0f
+                                    },
+                                    onDragCancel = {
+                                        isDraggingProgress = false
+                                        isDraggingPosition = false
+                                        dragProgressDelta = 0f
+                                        contentDragIntent = MiniPlayerContentDragIntent.UNDECIDED
+                                        contentDragTotalX = 0f
+                                        contentDragTotalY = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        contentDragTotalX += dragAmount.x
+                                        contentDragTotalY += dragAmount.y
+                                        if (contentDragIntent == MiniPlayerContentDragIntent.UNDECIDED) {
+                                            contentDragIntent = resolveMiniPlayerContentDragIntent(
+                                                totalDragX = contentDragTotalX,
+                                                totalDragY = contentDragTotalY,
+                                                seekEnabled = !miniPlayerManager.isLiveMode,
+                                                touchSlopPx = touchSlopPx
+                                            )
+                                            if (contentDragIntent == MiniPlayerContentDragIntent.SEEK) {
+                                                isDraggingProgress = true
                                                 dragProgressDelta = 0f
-                                            },
-                                            onHorizontalDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragProgressDelta += dragAmount
+                                                seekPreviewPosition = currentPosition
+                                            } else if (contentDragIntent == MiniPlayerContentDragIntent.MOVE) {
+                                                isDraggingPosition = true
+                                            }
+                                        }
+
+                                        when (contentDragIntent) {
+                                            MiniPlayerContentDragIntent.SEEK -> {
+                                                dragProgressDelta += dragAmount.x
                                                 val seekDelta = (dragProgressDelta / miniPlayerWidthPx * duration).toLong()
                                                 seekPreviewPosition = (currentPosition + seekDelta).coerceIn(0L, duration)
                                                 currentProgress = (seekPreviewPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
                                             }
-                                        )
+                                            MiniPlayerContentDragIntent.MOVE -> {
+                                                moveMiniPlayerBy(dragAmount.x, dragAmount.y)
+                                            }
+                                            MiniPlayerContentDragIntent.UNDECIDED -> Unit
+                                        }
                                     }
-                                } else Modifier
-                            )
+                                )
+                            }
                             .pointerInput(Unit) {
                                 detectTapGestures(
                                     onTap = {
@@ -374,26 +473,14 @@ fun MiniPlayerOverlay(
                                 },
                                 onDragEnd = {
                                     isDraggingPosition = false
-                                    // 吸附到屏幕边缘
-                                    offsetX = if (offsetX < screenWidthPx / 2 - miniPlayerWidthPx / 2) {
-                                        paddingPx
-                                    } else {
-                                        screenWidthPx - miniPlayerWidthPx - paddingPx
-                                    }
-                                    offsetY = offsetY.coerceIn(
-                                        paddingPx + with(density) { layoutPolicy.dragTopInsetDp.dp.toPx() },
-                                        screenHeightPx - miniPlayerHeightPx - paddingPx - with(density) {
-                                            layoutPolicy.dragBottomInsetDp.dp.toPx()
-                                        }
-                                    )
+                                    snapMiniPlayerToNearestHorizontalEdge()
                                 },
                                 onDragCancel = {
                                     isDraggingPosition = false
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    offsetX += dragAmount.x
-                                    offsetY += dragAmount.y
+                                    moveMiniPlayerBy(dragAmount.x, dragAmount.y)
                                 }
                             )
                         }
@@ -542,7 +629,7 @@ fun MiniPlayerOverlay(
                         }
                     } else if (!isDraggingPosition) {
                         Text(
-                            text = if (miniPlayerManager.isLiveMode) "拖动顶部移动 | 双击展开" else "拖动顶部移动 | 左右滑动调进度",
+                            text = if (miniPlayerManager.isLiveMode) "拖动小窗移动 | 双击展开" else "拖动小窗移动 | 左右滑动调进度",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = layoutPolicy.dragHintFontSp.sp,
                             modifier = Modifier

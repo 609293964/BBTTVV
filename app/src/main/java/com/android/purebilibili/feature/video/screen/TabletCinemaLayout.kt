@@ -235,7 +235,8 @@ fun TabletCinemaLayout(
                             curtainStateName = TabletSideCurtainState.OPEN.name
                         },
                         onCollectionEpisodeClick = onRelatedVideoClick,
-                        onPageSelect = { pageIndex -> viewModel.switchPage(pageIndex) }
+                        onPageSelect = { pageIndex -> viewModel.switchPage(pageIndex) },
+                        onRetryAiSummary = viewModel::retryAiSummary
                     )
                 } else {
                     Surface(
@@ -435,7 +436,8 @@ private fun CinemaMetaPanel(
     onWatchLaterClick: () -> Unit,
     onOpenComments: () -> Unit,
     onCollectionEpisodeClick: (String, android.os.Bundle?) -> Unit,
-    onPageSelect: (Int) -> Unit
+    onPageSelect: (Int) -> Unit,
+    onRetryAiSummary: () -> Unit
 ) {
     val isDarkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val currentPageIndex = remember(success.info.cid, success.info.pages) {
@@ -526,7 +528,10 @@ private fun CinemaMetaPanel(
                         )
                     }
                     CinemaMetaPanelBlock.INTRO -> {
-                        CinemaVideoIntroSection(success = success)
+                        CinemaVideoIntroSection(
+                            success = success,
+                            onRetryAiSummary = onRetryAiSummary
+                        )
                     }
                     CinemaMetaPanelBlock.COLLECTION -> {
                         success.info.ugc_season?.let { season ->
@@ -555,7 +560,8 @@ private fun CinemaMetaPanel(
 
 @Composable
 private fun CinemaVideoIntroSection(
-    success: PlayerUiState.Success
+    success: PlayerUiState.Success,
+    onRetryAiSummary: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isDarkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -594,6 +600,7 @@ private fun CinemaVideoIntroSection(
             } else if (videoAiSummaryEntryEnabled && success.aiSummaryPrompt != null) {
                 AiSummaryPromptCard(
                     promptState = success.aiSummaryPrompt,
+                    onActionClick = onRetryAiSummary,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
@@ -845,6 +852,7 @@ private fun CinemaCommentsPane(
                 ReplyItemView(
                     item = reply,
                     upMid = success.info.owner.mid,
+                    showUpFlag = commentState.showUpFlag,
                     emoteMap = success.emoteMap,
                     onClick = {},
                     onSubClick = { commentViewModel.openSubReply(it) },
@@ -852,7 +860,6 @@ private fun CinemaCommentsPane(
                         playerState.player.seekTo(positionMs)
                         playerState.player.play()
                     },
-                    showUpFlag = commentState.showUpFlag,
                     onImagePreview = { images, index, rect, textContent ->
                         previewImages = images
                         previewInitialIndex = index

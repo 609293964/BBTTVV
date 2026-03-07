@@ -12,6 +12,14 @@ import kotlin.test.assertTrue
 class DanmakuSettingsMappingPolicyTest {
 
     @Test
+    fun arbitraryDisplayAreaValues_snapToNearestSupportedOption() {
+        assertEquals(0.25f, normalizeDanmakuDisplayArea(0.33f))
+        assertEquals(0.5f, normalizeDanmakuDisplayArea(0.6f))
+        assertEquals(0.75f, normalizeDanmakuDisplayArea(0.63f))
+        assertEquals(1.0f, normalizeDanmakuDisplayArea(0.99f))
+    }
+
+    @Test
     fun emptyPreferences_useExpectedDanmakuDefaults() {
         val prefs = mutablePreferencesOf()
 
@@ -67,5 +75,16 @@ class DanmakuSettingsMappingPolicyTest {
         assertTrue(result.smartOcclusion)
         assertEquals("剧透\n广告\n  \n测试", result.blockRulesRaw)
         assertEquals(listOf("剧透", "广告", "测试"), result.blockRules)
+    }
+
+    @Test
+    fun persistedDisplayArea_isNormalizedBackToDiscreteOption() {
+        val prefs = mutablePreferencesOf(
+            floatPreferencesKey("danmaku_area") to 0.33f
+        )
+
+        val result = mapDanmakuSettingsFromPreferences(prefs)
+
+        assertEquals(0.25f, result.displayArea)
     }
 }

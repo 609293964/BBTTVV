@@ -102,7 +102,11 @@ fun PureBiliBiliTheme(
         // 如果开启了动态取色 且 系统版本 >= Android 12 (S)
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) {
+                dynamicDarkColorScheme(context)
+            } else {
+                enforceDynamicLightTextContrast(dynamicLightColorScheme(context))
+            }
         }
         darkTheme && amoledDarkTheme -> createAmoledDarkColorScheme(customPrimaryColor)
         //  [新增] 使用自定义主题色

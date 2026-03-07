@@ -59,6 +59,7 @@ import com.android.purebilibili.core.store.DanmakuSettings
 import com.android.purebilibili.core.store.FullscreenAspectRatio
 import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.ui.blur.BlurSurfaceType
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 import com.android.purebilibili.core.ui.blur.unifiedBlur
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
@@ -297,7 +298,7 @@ fun FullscreenPlayerOverlay(
     
     // [问题8修复] 状态栏排除区域高度（像素）
     val statusBarExclusionZonePx = with(density) { 40.dp.toPx() }
-    val overlayHazeState = remember { HazeState() }
+    val overlayHazeState = rememberRecoverableHazeState()
     
     Box(
         modifier = Modifier
@@ -874,6 +875,7 @@ fun FullscreenPlayerOverlay(
             var localBlockRulesRaw by remember(danmakuBlockRulesRaw) { mutableStateOf(danmakuBlockRulesRaw) }
             
             DanmakuSettingsPanel(
+                isFullscreen = true,
                 opacity = localOpacity,
                 fontScale = localFontScale,
                 speed = localSpeed,

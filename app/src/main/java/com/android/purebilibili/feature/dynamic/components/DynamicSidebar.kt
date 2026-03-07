@@ -40,6 +40,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.android.purebilibili.core.ui.blur.BlurStyles
 import com.android.purebilibili.core.ui.blur.currentUnifiedBlurIntensity
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 import com.android.purebilibili.core.ui.blur.unifiedBlur
 import com.android.purebilibili.feature.dynamic.SidebarUser
 
@@ -71,7 +72,7 @@ fun DynamicSidebar(
     )
     
     // 模糊状态
-    val sidebarHazeState = remember { HazeState() }
+    val sidebarHazeState = rememberRecoverableHazeState()
     
     // 读取模糊强度设置
     val blurIntensity = currentUnifiedBlurIntensity()

@@ -189,6 +189,30 @@ class ReplyComponentsPolicyTest {
     }
 
     @Test
+    fun `lightweight reply mode hides ancillary decorations and sub previews`() {
+        assertFalse(shouldShowReplyAncillaryDecorations(lightweightMode = true))
+        assertTrue(shouldShowReplyAncillaryDecorations(lightweightMode = false))
+        assertFalse(
+            shouldShowReplySubPreview(
+                hideSubPreview = false,
+                lightweightMode = true
+            )
+        )
+        assertFalse(
+            shouldShowReplySubPreview(
+                hideSubPreview = true,
+                lightweightMode = false
+            )
+        )
+        assertTrue(
+            shouldShowReplySubPreview(
+                hideSubPreview = false,
+                lightweightMode = false
+            )
+        )
+    }
+
+    @Test
     fun `timestamp parser supports spaces and full-width colon`() {
         val text = "自用18: 07\n19：30"
         val matches = COMMENT_TIMESTAMP_PATTERN.findAll(text).toList()

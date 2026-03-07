@@ -8,6 +8,24 @@ import kotlin.test.assertTrue
 class ProfileTopBarSystemUiPolicyTest {
 
     @Test
+    fun mobileProfile_keepsTopBarPinnedWhileScrolling() {
+        assertTrue(
+            shouldPinProfileTopBarOnScroll(
+                useSplitLayout = false
+            )
+        )
+    }
+
+    @Test
+    fun splitLayoutProfile_keepsTopBarPinnedWhileScrolling() {
+        assertTrue(
+            shouldPinProfileTopBarOnScroll(
+                useSplitLayout = true
+            )
+        )
+    }
+
+    @Test
     fun immersiveMobileProfile_keepsTopScrimTransparentAtRest() {
         assertEquals(
             0f,
@@ -29,11 +47,25 @@ class ProfileTopBarSystemUiPolicyTest {
             ),
             0.001f
         )
-        assertTrue(
+        assertEquals(
+            0f,
             resolveProfileTopBarScrimAlpha(
                 isImmersive = true,
                 collapsedFraction = 0.45f
-            ) > 0.5f
+            ),
+            0.001f
+        )
+    }
+
+    @Test
+    fun immersiveMobileProfile_keepsTopScrimTransparentWhenFullyCollapsed() {
+        assertEquals(
+            0f,
+            resolveProfileTopBarScrimAlpha(
+                isImmersive = true,
+                collapsedFraction = 1f
+            ),
+            0.001f
         )
     }
 

@@ -74,6 +74,7 @@ import com.android.purebilibili.core.ui.shimmer
 import com.android.purebilibili.core.ui.LocalSharedTransitionScope  //  共享过渡
 import com.android.purebilibili.core.ui.animation.DissolvableVideoCard  //  粒子消散动画
 import com.android.purebilibili.core.ui.animation.jiggleOnDissolve      // 📳 iOS 风格抖动效果
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 import com.android.purebilibili.core.util.responsiveContentWidth
 import com.android.purebilibili.core.util.CardPositionManager
 import com.android.purebilibili.core.ui.adaptive.resolveDeviceUiProfile
@@ -149,7 +150,7 @@ fun HomeScreen(
         gridStates[category] = rememberLazyGridState()
     }
     val staggeredGridState = rememberLazyStaggeredGridState() // 🌊 瀑布流状态
-    val localHazeState = remember { HazeState(initialBlurEnabled = true) }
+    val localHazeState = rememberRecoverableHazeState(initialBlurEnabled = true)
     // 首页使用独立 HazeState，避免命中外层全局 source 的祖先过滤规则导致无模糊。
     val hazeState = localHazeState
 

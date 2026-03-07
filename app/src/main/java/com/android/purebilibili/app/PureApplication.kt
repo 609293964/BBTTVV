@@ -12,6 +12,8 @@ import android.os.Looper
 import androidx.profileinstaller.ProfileInstaller
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
@@ -47,8 +49,10 @@ internal fun shouldDeferTelemetryInitAtStartup(): Boolean = true
 internal fun deferredNonCriticalStartupDelayMs(): Long = 900L
 internal fun shouldRequestDex2OatProfileInstall(sdkInt: Int): Boolean = sdkInt >= Build.VERSION_CODES.N
 internal fun dex2OatProfileInstallDelayMs(): Long = 2_500L
+internal fun resolveImageMemoryCachePercent(): Double = 0.15
 internal fun shouldClearImageMemoryCacheOnTrimLevel(level: Int): Boolean {
     return when (level) {
+        ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN,
         ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
         ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
         ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> true
@@ -77,9 +81,16 @@ class PureApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
     
     //  Coil 图片加载器 - 优化内存和磁盘缓存
     override fun newImageLoader(): ImageLoader {
-        val memoryCachePercent = 0.30
+        val memoryCachePercent = resolveImageMemoryCachePercent()
         val diskCacheBytes = 150L * 1024 * 1024
         return ImageLoader.Builder(this)
+            .components {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
             //  内存缓存预算（移动/平板主仓）
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -110,6 +121,7 @@ class PureApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
         applyThemePreference()
         
         super.onCreate()
+        Logger.init(this)
 
         // 启动即确保首页视觉默认值生效：底栏悬浮 + 液态玻璃 + 顶部模糊
         // 冷启动路径不阻塞主线程，迁移改为后台执行。
@@ -292,14 +304,18 @@ class PureApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
         super.onTrimMemory(level)
         if (shouldClearImageMemoryCacheOnTrimLevel(level)) {
             _imageLoader?.memoryCache?.clear()
-            if (level == ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
-                Logger.d(TAG, "🚨 TRIM_MEMORY_COMPLETE, released image memory cache")
-            } else {
-                System.gc()
-                Logger.d(TAG, " Low memory trim(level=$level), cleared image memory cache")
+            when (level) {
+                ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                    Logger.d(TAG, " UI hidden, released image memory cache")
+                }
+                ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                    Logger.d(TAG, "🚨 TRIM_MEMORY_COMPLETE, released image memory cache")
+                }
+                else -> {
+                    System.gc()
+                    Logger.d(TAG, " Low memory trim(level=$level), cleared image memory cache")
+                }
             }
-        } else if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            Logger.d(TAG, " UI hidden, keep image memory cache for faster resume")
         }
     }
     

@@ -142,6 +142,7 @@ object CrashReporter {
                         )
                     }
                     log("FATAL: ${throwable.javaClass.simpleName}: ${throwable.message.orEmpty().take(200)}")
+                    Logger.persistCrashSnapshot(throwable)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to enrich fatal crash context", e)

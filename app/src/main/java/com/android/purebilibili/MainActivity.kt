@@ -46,6 +46,7 @@ import coil.compose.AsyncImage
 import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.theme.BiliPink
 import com.android.purebilibili.core.theme.PureBiliBiliTheme
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 import com.android.purebilibili.core.ui.SharedTransitionProvider
 import com.android.purebilibili.core.ui.wallpaper.SplashWallpaperLayout
 import com.android.purebilibili.core.ui.wallpaper.resolveSplashWallpaperLayout
@@ -171,6 +172,21 @@ internal fun shouldForceStopPlaybackOnUserLeaveHint(
 ): Boolean {
     return isInVideoDetail && stopPlaybackOnExit && !shouldTriggerPip
 }
+
+internal enum class CrashLogPromptAction {
+    SHARE,
+    DISMISS,
+    IGNORE
+}
+
+internal fun shouldShowPendingCrashLogPrompt(
+    hasPendingCrashSnapshot: Boolean,
+    hasPromptBeenHandled: Boolean
+): Boolean = hasPendingCrashSnapshot && !hasPromptBeenHandled
+
+internal fun shouldClearPendingCrashLogAfterAction(
+    action: CrashLogPromptAction
+): Boolean = action != CrashLogPromptAction.IGNORE
 
 internal fun shouldUseRealtimeSplashBlur(sdkInt: Int): Boolean = sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 
@@ -626,6 +642,10 @@ class MainActivity : ComponentActivity() {
             val uriHandler = LocalUriHandler.current
             val navController = androidx.navigation.compose.rememberNavController()
             var startupUpdateCheckResult by remember { mutableStateOf<AppUpdateCheckResult?>(null) }
+            var pendingCrashSnapshotPath by remember {
+                mutableStateOf(Logger.getPendingCrashSnapshotPath(context))
+            }
+            var hasHandledCrashPrompt by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
                 val autoCheckUpdateEnabled = SettingsManager.getAutoCheckAppUpdate(context).first()
@@ -730,9 +750,7 @@ class MainActivity : ComponentActivity() {
             
             //  全局 Haze 状态，用于实现毛玻璃效果
             // 强制启用 blur，避免部分设备（如 Android 12）默认降级为仅半透明遮罩
-            val mainHazeState = remember {
-                dev.chrisbanes.haze.HazeState(initialBlurEnabled = true)
-            }
+            val mainHazeState = rememberRecoverableHazeState(initialBlurEnabled = true)
             
             //  📐 [平板适配] 计算窗口尺寸类
             val windowSizeClass = com.android.purebilibili.core.util.calculateWindowSizeClass()
@@ -1052,6 +1070,50 @@ class MainActivity : ComponentActivity() {
                                 com.android.purebilibili.core.ui.IOSDialogAction(onClick = {
                                     startupUpdateCheckResult = null
                                 }) { Text("稍后") }
+                            }
+                        )
+                    }
+
+                    if (
+                        shouldShowPendingCrashLogPrompt(
+                            hasPendingCrashSnapshot = pendingCrashSnapshotPath != null,
+                            hasPromptBeenHandled = hasHandledCrashPrompt
+                        )
+                    ) {
+                        com.android.purebilibili.core.ui.IOSAlertDialog(
+                            onDismissRequest = {
+                                hasHandledCrashPrompt = true
+                                if (shouldClearPendingCrashLogAfterAction(CrashLogPromptAction.DISMISS)) {
+                                    Logger.clearPendingCrashSnapshot(context)
+                                    pendingCrashSnapshotPath = null
+                                }
+                            },
+                            title = {
+                                Text(text = "检测到上次闪退日志")
+                            },
+                            text = {
+                                Text(
+                                    text = "应用已自动保存一份崩溃快照，并同步导出到 Download/BiliPai/logs/last_crash_log.txt。现在可以直接分享给开发者排查，也可以先关闭提示。"
+                                )
+                            },
+                            confirmButton = {
+                                com.android.purebilibili.core.ui.IOSDialogAction(onClick = {
+                                    hasHandledCrashPrompt = true
+                                    Logger.sharePendingCrashSnapshot(context)
+                                    if (shouldClearPendingCrashLogAfterAction(CrashLogPromptAction.SHARE)) {
+                                        Logger.clearPendingCrashSnapshot(context)
+                                        pendingCrashSnapshotPath = null
+                                    }
+                                }) { Text("分享") }
+                            },
+                            dismissButton = {
+                                com.android.purebilibili.core.ui.IOSDialogAction(onClick = {
+                                    hasHandledCrashPrompt = true
+                                    if (shouldClearPendingCrashLogAfterAction(CrashLogPromptAction.DISMISS)) {
+                                        Logger.clearPendingCrashSnapshot(context)
+                                        pendingCrashSnapshotPath = null
+                                    }
+                                }) { Text("关闭") }
                             }
                         )
                     }

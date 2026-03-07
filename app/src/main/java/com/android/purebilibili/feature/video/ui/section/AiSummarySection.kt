@@ -140,6 +140,7 @@ fun AiSummaryCard(
 @Composable
 fun AiSummaryPromptCard(
     promptState: AiSummaryPromptState,
+    onActionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val containerColor = when (promptState.tone) {
@@ -160,49 +161,62 @@ fun AiSummaryPromptCard(
         color = containerColor,
         shape = RoundedCornerShape(18.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(accentColor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (promptState.tone == AiSummaryPromptTone.INFO) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = accentColor
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(accentColor.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (promptState.tone == AiSummaryPromptTone.INFO) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = accentColor
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (promptState.tone == AiSummaryPromptTone.WARNING) {
+                                CupertinoIcons.Default.ExclamationmarkCircle
+                            } else {
+                                CupertinoIcons.Default.InfoCircle
+                            },
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = promptState.title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                } else {
-                    Icon(
-                        imageVector = if (promptState.tone == AiSummaryPromptTone.WARNING) {
-                            CupertinoIcons.Default.ExclamationmarkCircle
-                        } else {
-                            CupertinoIcons.Default.InfoCircle
-                        },
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(16.dp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = promptState.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = promptState.title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = promptState.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+            if (!promptState.actionLabel.isNullOrBlank() && onActionClick != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                TextButton(
+                    onClick = onActionClick,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(promptState.actionLabel)
+                }
             }
         }
     }

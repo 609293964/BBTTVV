@@ -1,7 +1,6 @@
 // 文件路径: feature/dynamic/DynamicScreen.kt
 package com.android.purebilibili.feature.dynamic
 
-import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.tween
@@ -39,8 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
+import coil.imageLoader
 import com.android.purebilibili.core.ui.BiliGradientButton
 import com.android.purebilibili.core.ui.ComfortablePullToRefreshBox
 import com.android.purebilibili.core.ui.EmptyState
@@ -61,6 +59,7 @@ import dev.chrisbanes.haze.hazeSource
 import com.android.purebilibili.core.ui.blur.unifiedBlur
 import com.android.purebilibili.core.ui.blur.BlurStyles
 import com.android.purebilibili.core.ui.blur.currentUnifiedBlurIntensity
+import com.android.purebilibili.core.ui.blur.rememberRecoverableHazeState
 import com.android.purebilibili.core.util.resolveScrollToTopPlan
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -115,7 +114,7 @@ fun DynamicScreen(
     val displayMode by viewModel.displayMode.collectAsState()
     
     //  [Haze] 模糊状态
-    val hazeState = remember { HazeState() }
+    val hazeState = rememberRecoverableHazeState()
     
     val density = LocalDensity.current
     val statusBarHeight = WindowInsets.statusBars.getTop(density).let { with(density) { it.toDp() } }
@@ -123,18 +122,7 @@ fun DynamicScreen(
     
     // GIF 图片加载器
     val context = LocalContext.current
-    val gifImageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
-                }
-            }
-            .crossfade(true)
-            .build()
-    }
+    val gifImageLoader = context.imageLoader
     
     //  [修改] 过滤动态 - 选中用户时使用 userItems
     val filteredItems = remember(state.items, state.userItems, selectedTab, selectedUserId) {
@@ -322,7 +310,14 @@ fun DynamicScreen(
                             selectedUserId = selectedUserId,
                             isExpanded = isSidebarExpanded,
                             userListState = sidebarUserListState,
-                            onUserClick = { viewModel.selectUser(it) },
+                            onUserClick = { clickedUserId ->
+                                viewModel.selectUser(
+                                    resolveDynamicSelectedUserIdAfterClick(
+                                        selectedUserId = selectedUserId,
+                                        clickedUserId = clickedUserId
+                                    )
+                                )
+                            },
                             showHiddenUsers = showHiddenUsers,
                             hiddenCount = hiddenUserIds.size,
                             onToggleShowHidden = { viewModel.toggleShowHiddenUsers() },
@@ -348,7 +343,9 @@ fun DynamicScreen(
                                     filteredItems = filteredItems,
                                     listState = listState,
                                     statusBarHeight = statusBarHeight,
-                                    topPaddingExtra = 100.dp,  // 顶栏高度
+                                    topPaddingExtra = resolveDynamicListTopPaddingExtraDp(
+                                        isHorizontalMode = false
+                                    ).dp,
                                     oldContentDividerIndex = oldContentDividerIndex,
                                     oldContentDividerLabel = oldContentDividerLabel,
                                     onVideoClick = onVideoClick,
@@ -409,7 +406,9 @@ fun DynamicScreen(
                                  filteredItems = filteredItems,
                                  listState = listState,
                                  statusBarHeight = statusBarHeight,
-                                 topPaddingExtra = 220.dp,  // 顶栏 + 横向用户列表高度
+                                 topPaddingExtra = resolveDynamicListTopPaddingExtraDp(
+                                     isHorizontalMode = true
+                                 ).dp,
                                  oldContentDividerIndex = oldContentDividerIndex,
                                  oldContentDividerLabel = oldContentDividerLabel,
                                  onVideoClick = onVideoClick,
@@ -461,7 +460,14 @@ fun DynamicScreen(
                                          listState = horizontalUserListState,
                                          showHiddenUsers = showHiddenUsers,
                                          hiddenCount = hiddenUserIds.size,
-                                         onUserClick = { viewModel.selectUser(it) },
+                                         onUserClick = { clickedUserId ->
+                                             viewModel.selectUser(
+                                                 resolveDynamicSelectedUserIdAfterClick(
+                                                     selectedUserId = selectedUserId,
+                                                     clickedUserId = clickedUserId
+                                                 )
+                                             )
+                                         },
                                          onToggleShowHidden = { viewModel.toggleShowHiddenUsers() },
                                          onTogglePin = { viewModel.togglePinUser(it) },
                                          onToggleHidden = { viewModel.toggleHiddenUser(it) },
@@ -659,7 +665,10 @@ private fun HorizontalUserList(
     // 移除 Surface，直接使用 LazyRow 配合传入的 modifier，实现背景透明
     LazyRow(
         state = listState,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(
+            horizontal = 12.dp,
+            vertical = resolveHorizontalUserListVerticalPaddingDp().dp
+        ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier
     ) {

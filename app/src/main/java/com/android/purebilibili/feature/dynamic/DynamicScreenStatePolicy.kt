@@ -1,5 +1,21 @@
 package com.android.purebilibili.feature.dynamic
 
+internal fun resolveDynamicListTopPaddingExtraDp(isHorizontalMode: Boolean): Int {
+    return if (isHorizontalMode) 168 else 100
+}
+
+internal fun resolveDynamicSelectedUserIdAfterClick(
+    selectedUserId: Long?,
+    clickedUserId: Long?
+): Long? {
+    if (clickedUserId == null) return null
+    return if (selectedUserId == clickedUserId) null else clickedUserId
+}
+
+internal fun resolveHorizontalUserListVerticalPaddingDp(): Int {
+    return 4
+}
+
 internal fun shouldShowDynamicErrorOverlay(
     error: String?,
     activeItemsCount: Int

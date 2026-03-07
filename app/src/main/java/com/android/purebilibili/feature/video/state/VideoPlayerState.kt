@@ -498,7 +498,8 @@ fun rememberVideoPlayerState(
                         .shouldContinuePlaybackDuringPause(
                             isMiniMode = isMiniMode,
                             isPip = isPip,
-                            isBackgroundAudio = isBackgroundAudio
+                            isBackgroundAudio = isBackgroundAudio,
+                            wasPlaybackActive = wasPlaying
                         )
                     
                     //  [修复] 记录后台音频状态，恢复时不要 seek 回旧位置

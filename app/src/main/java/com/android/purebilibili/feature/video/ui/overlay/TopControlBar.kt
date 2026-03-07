@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -16,7 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +54,60 @@ internal fun shouldApplyStatusBarPaddingToTopControlBar(
     isFullscreen: Boolean
 ): Boolean = false
 
+internal enum class BatteryChargeTone {
+    CRITICAL,
+    LOW,
+    NORMAL
+}
+
+internal data class LandscapeBatteryVisualState(
+    val percent: Int,
+    val fillFraction: Float,
+    val chargeTone: BatteryChargeTone
+) {
+    val displayText: String
+        get() = "$percent%"
+}
+
+internal fun resolveLandscapeBatteryVisualState(percent: Int?): LandscapeBatteryVisualState? {
+    val normalizedPercent = percent?.coerceIn(0, 100) ?: return null
+    val chargeTone = when {
+        normalizedPercent <= 15 -> BatteryChargeTone.CRITICAL
+        normalizedPercent <= 35 -> BatteryChargeTone.LOW
+        else -> BatteryChargeTone.NORMAL
+    }
+    return LandscapeBatteryVisualState(
+        percent = normalizedPercent,
+        fillFraction = normalizedPercent / 100f,
+        chargeTone = chargeTone
+    )
+}
+
+internal data class LandscapeTopStatusInfo(
+    val battery: LandscapeBatteryVisualState? = null,
+    val currentTimeText: String? = null
+) {
+    val isVisible: Boolean
+        get() = battery != null || !currentTimeText.isNullOrBlank()
+}
+
+internal fun resolveLandscapeTopStatusInfo(
+    showBatteryLevel: Boolean,
+    batteryLevelPercent: Int?,
+    showCurrentTime: Boolean,
+    currentTimeText: String
+): LandscapeTopStatusInfo {
+    return LandscapeTopStatusInfo(
+        battery = if (showBatteryLevel) resolveLandscapeBatteryVisualState(batteryLevelPercent) else null,
+        currentTimeText = currentTimeText.takeIf { showCurrentTime }
+    )
+}
+
+internal fun shouldShowLandscapeMetaRow(
+    hasStatusInfo: Boolean,
+    onlineCount: String
+): Boolean = hasStatusInfo || onlineCount.isNotBlank()
+
 /**
  * Top Control Bar Component
  * 
@@ -63,6 +122,7 @@ fun TopControlBar(
     onlineCount: String = "",
     isFullscreen: Boolean,
     showBatteryLevel: Boolean = false,
+    showCurrentTime: Boolean = true,
     showInteractiveActions: Boolean = true,
     onBack: () -> Unit,
     // Interactions
@@ -99,23 +159,23 @@ fun TopControlBar(
             delay(nextMinuteDelay)
         }
     }
-    val batteryLevelText by produceState<String?>(initialValue = null, showBatteryLevel) {
+    val batteryLevelPercent by produceState<Int?>(initialValue = null, showBatteryLevel) {
         if (!showBatteryLevel) {
             value = null
             return@produceState
         }
         while (true) {
-            value = resolveBatteryLevelText(context)
+            value = resolveBatteryLevelPercent(context)
             delay(30_000L)
         }
     }
-    val statusText = remember(currentTimeText, batteryLevelText, showBatteryLevel) {
-        val battery = batteryLevelText
-        if (showBatteryLevel && !battery.isNullOrBlank()) {
-            "$currentTimeText  $battery"
-        } else {
-            currentTimeText
-        }
+    val statusInfo = remember(currentTimeText, batteryLevelPercent, showBatteryLevel, showCurrentTime) {
+        resolveLandscapeTopStatusInfo(
+            showBatteryLevel = showBatteryLevel,
+            batteryLevelPercent = batteryLevelPercent,
+            showCurrentTime = showCurrentTime,
+            currentTimeText = currentTimeText
+        )
     }
 
     Column(
@@ -133,21 +193,6 @@ fun TopControlBar(
                 vertical = layoutPolicy.verticalPaddingDp.dp
             )
     ) {
-        // 顶部时间栏
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = statusText,
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = layoutPolicy.timeFontSp.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        Spacer(modifier = Modifier.height(layoutPolicy.timeBottomSpacingDp.dp))
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -261,18 +306,59 @@ fun TopControlBar(
             }
         }
 
-        // 观看人数放到下一行，避免影响标题与右侧图标对齐
-        if (onlineCount.isNotEmpty()) {
-            Text(
-                text = onlineCount,
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = layoutPolicy.onlineCountFontSp.sp,
-                fontWeight = FontWeight.Normal,
+        if (shouldShowLandscapeMetaRow(statusInfo.isVisible, onlineCount)) {
+            Column(
                 modifier = Modifier.padding(
                     start = layoutPolicy.onlineCountStartPaddingDp.dp,
-                    top = layoutPolicy.onlineCountTopPaddingDp.dp
-                )
-            )
+                    top = layoutPolicy.timeBottomSpacingDp.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(layoutPolicy.onlineCountTopPaddingDp.dp)
+            ) {
+                statusInfo.battery?.let { battery ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BatteryStatusIcon(
+                            state = battery,
+                            modifier = Modifier.size(
+                                width = (layoutPolicy.timeFontSp + 14).dp,
+                                height = (layoutPolicy.timeFontSp + 4).dp
+                            )
+                        )
+                        Text(
+                            text = battery.displayText,
+                            color = resolveBatteryStatusTint(battery).copy(alpha = 0.95f),
+                            fontSize = layoutPolicy.timeFontSp.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        statusInfo.currentTimeText?.let { timeText ->
+                            Text(
+                                text = timeText,
+                                color = Color.White.copy(alpha = 0.88f),
+                                fontSize = layoutPolicy.timeFontSp.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                } ?: statusInfo.currentTimeText?.let { timeText ->
+                    Text(
+                        text = timeText,
+                        color = Color.White.copy(alpha = 0.88f),
+                        fontSize = layoutPolicy.timeFontSp.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                if (onlineCount.isNotEmpty()) {
+                    Text(
+                        text = onlineCount,
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = layoutPolicy.onlineCountFontSp.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
         }
     }
 }
@@ -282,15 +368,64 @@ private fun formatCurrentTime(): String {
     return formatter.format(Date())
 }
 
-private fun resolveBatteryLevelText(context: Context): String? {
+private fun resolveBatteryLevelPercent(context: Context): Int? {
     return runCatching {
         val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
         if (level < 0 || scale <= 0) return@runCatching null
-        val percent = (level * 100f / scale).toInt().coerceIn(0, 100)
-        "$percent%"
+        (level * 100f / scale).toInt().coerceIn(0, 100)
     }.getOrNull()
+}
+
+@Composable
+private fun BatteryStatusIcon(
+    state: LandscapeBatteryVisualState,
+    modifier: Modifier = Modifier
+) {
+    val tint = resolveBatteryStatusTint(state)
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.height * 0.12f
+        val terminalWidth = size.width * 0.09f
+        val bodyWidth = size.width - terminalWidth - strokeWidth
+        val bodyHeight = size.height * 0.76f
+        val bodyTop = (size.height - bodyHeight) / 2f
+        val cornerRadius = CornerRadius(bodyHeight * 0.18f, bodyHeight * 0.18f)
+        val innerPadding = strokeWidth * 1.1f
+        val fillWidth = ((bodyWidth - innerPadding * 2f) * state.fillFraction).coerceAtLeast(0f)
+
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.92f),
+            topLeft = Offset(0f, bodyTop),
+            size = Size(bodyWidth, bodyHeight),
+            cornerRadius = cornerRadius,
+            style = Stroke(width = strokeWidth)
+        )
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.92f),
+            topLeft = Offset(bodyWidth + strokeWidth * 0.35f, size.height * 0.34f),
+            size = Size(terminalWidth, size.height * 0.28f),
+            cornerRadius = CornerRadius(terminalWidth / 2f, terminalWidth / 2f)
+        )
+        if (fillWidth > 0f) {
+            drawRoundRect(
+                color = tint,
+                topLeft = Offset(innerPadding, bodyTop + innerPadding),
+                size = Size(fillWidth, bodyHeight - innerPadding * 2f),
+                cornerRadius = CornerRadius(cornerRadius.x / 1.5f, cornerRadius.y / 1.5f)
+            )
+        }
+    }
+}
+
+private fun resolveBatteryStatusTint(
+    state: LandscapeBatteryVisualState
+): Color {
+    return when (state.chargeTone) {
+        BatteryChargeTone.CRITICAL -> Color(0xFFFF5A5F)
+        BatteryChargeTone.LOW -> Color(0xFFFFB347)
+        BatteryChargeTone.NORMAL -> Color.White.copy(alpha = 0.92f)
+    }
 }
 
 @Composable

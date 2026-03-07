@@ -49,12 +49,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -239,18 +237,7 @@ private fun ImagePreviewOverlayContent(
     }
 
     //  GIF 图片加载器
-    val gifImageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
-                }
-            }
-            .crossfade(true)
-            .build()
-    }
+    val gifImageLoader = context.imageLoader
 
     //  使用 HorizontalPager 实现滑动切换
     val pagerState = rememberPagerState(
@@ -952,7 +939,7 @@ suspend fun saveImageToGallery(context: android.content.Context, imageUrl: Strin
             }
             
             //  对于 JPEG/PNG 等静态图片，使用 Coil 下载并转换
-            val imageLoader = ImageLoader(context)
+            val imageLoader = context.imageLoader
             val request = ImageRequest.Builder(context)
                 .data(imageUrl)
                 .addHeader("Referer", "https://www.bilibili.com/")

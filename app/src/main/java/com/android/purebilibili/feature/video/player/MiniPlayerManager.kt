@@ -112,10 +112,18 @@ internal fun shouldHandleNavigationLeaveForBvid(
 internal fun shouldContinuePlaybackDuringPause(
     isMiniMode: Boolean,
     isPip: Boolean,
-    isBackgroundAudio: Boolean
+    isBackgroundAudio: Boolean,
+    wasPlaybackActive: Boolean
 ): Boolean {
     if (isMiniMode || isPip) return true
-    return isBackgroundAudio
+    return isBackgroundAudio && wasPlaybackActive
+}
+
+internal fun shouldDisableVideoTrackOnEnterBackground(
+    shouldPauseBuffering: Boolean,
+    shouldContinueBackgroundAudio: Boolean
+): Boolean {
+    return shouldPauseBuffering || shouldContinueBackgroundAudio
 }
 
 internal fun shouldPauseBackgroundBuffering(
@@ -335,23 +343,28 @@ class MiniPlayerManager private constructor(private val context: Context) :
             playWhenReady = currentPlayer.playWhenReady,
             playbackState = currentPlayer.playbackState
         )
-        if (shouldPauseBuffering) {
-            currentPlayer.pause()
-            Logger.d(TAG, "🔋 后台模式：未播放，暂停缓冲节省流量")
-            return
-        }
-        
-        // 判断是否需要后台音频
-        if (shouldContinueBackgroundAudio()) {
-            // 保存原始轨道参数
-            savedTrackParams = currentPlayer.trackSelectionParameters
-            
-            // 禁用视频轨道，只播放音频
+        val shouldKeepBackgroundAudio = shouldContinueBackgroundAudio()
+        val shouldDisableVideoTrack = shouldDisableVideoTrackOnEnterBackground(
+            shouldPauseBuffering = shouldPauseBuffering,
+            shouldContinueBackgroundAudio = shouldKeepBackgroundAudio
+        )
+        if (shouldDisableVideoTrack) {
+            if (savedTrackParams == null) {
+                savedTrackParams = currentPlayer.trackSelectionParameters
+            }
             currentPlayer.trackSelectionParameters = currentPlayer.trackSelectionParameters
                 .buildUpon()
                 .setMaxVideoSize(0, 0)
                 .build()
-            
+        }
+        if (shouldPauseBuffering) {
+            currentPlayer.pause()
+            Logger.d(TAG, "🔋 后台模式：未播放，暂停缓冲并禁用视频轨道")
+            return
+        }
+        
+        // 判断是否需要后台音频
+        if (shouldKeepBackgroundAudio) {
             Logger.d(TAG, "🔋 后台模式：禁用视频轨道，仅保留音频")
         }
     }

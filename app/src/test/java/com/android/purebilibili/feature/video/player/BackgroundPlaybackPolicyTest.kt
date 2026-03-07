@@ -134,25 +134,58 @@ class BackgroundPlaybackPolicyTest {
             shouldContinuePlaybackDuringPause(
                 isMiniMode = true,
                 isPip = false,
-                isBackgroundAudio = false
+                isBackgroundAudio = false,
+                wasPlaybackActive = false
             )
         )
         assertTrue(
             shouldContinuePlaybackDuringPause(
                 isMiniMode = false,
                 isPip = true,
-                isBackgroundAudio = false
+                isBackgroundAudio = false,
+                wasPlaybackActive = false
             )
         )
     }
 
     @Test
-    fun pausePolicyKeepsBackgroundAudioEvenWithoutRecentLeaveHint() {
+    fun pausePolicyKeepsBackgroundAudioOnlyWhenPlaybackWasActive() {
         assertTrue(
             shouldContinuePlaybackDuringPause(
                 isMiniMode = false,
                 isPip = false,
-                isBackgroundAudio = true
+                isBackgroundAudio = true,
+                wasPlaybackActive = true
+            )
+        )
+        assertFalse(
+            shouldContinuePlaybackDuringPause(
+                isMiniMode = false,
+                isPip = false,
+                isBackgroundAudio = true,
+                wasPlaybackActive = false
+            )
+        )
+    }
+
+    @Test
+    fun backgroundEntryDisablesVideoTrackForPausedOrAudioOnlySessions() {
+        assertTrue(
+            shouldDisableVideoTrackOnEnterBackground(
+                shouldPauseBuffering = true,
+                shouldContinueBackgroundAudio = false
+            )
+        )
+        assertTrue(
+            shouldDisableVideoTrackOnEnterBackground(
+                shouldPauseBuffering = false,
+                shouldContinueBackgroundAudio = true
+            )
+        )
+        assertFalse(
+            shouldDisableVideoTrackOnEnterBackground(
+                shouldPauseBuffering = false,
+                shouldContinueBackgroundAudio = false
             )
         )
     }

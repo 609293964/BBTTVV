@@ -7,32 +7,26 @@ import kotlin.test.assertTrue
 class BottomBarIndicatorPolicyTest {
 
     @Test
-    fun `five or more items uses compact indicator geometry`() {
+    fun `five or more items stays close to top floating indicator family`() {
         val policy = resolveBottomBarIndicatorPolicy(itemCount = 5)
+        val topTuning = resolveTopTabVisualTuning()
 
-        assertTrue(policy.widthMultiplier < 1.42f)
-        assertTrue(policy.minWidthDp < 104f)
-        assertTrue(policy.maxWidthDp < 136f)
+        assertEquals(topTuning.floatingIndicatorWidthMultiplier + 0.02f, policy.widthMultiplier)
+        assertEquals(topTuning.floatingIndicatorMinWidthDp + 2f, policy.minWidthDp)
+        assertEquals(topTuning.floatingIndicatorMaxWidthDp + 2f, policy.maxWidthDp)
         assertEquals(true, policy.clampToBounds)
-        assertTrue(policy.maxWidthToItemRatio < 1.42f)
+        assertEquals(topTuning.floatingIndicatorMaxWidthToItemRatio + 0.02f, policy.maxWidthToItemRatio)
     }
 
     @Test
-    fun `five or more items keeps elongated ratio while remaining safe`() {
-        val policy = resolveBottomBarIndicatorPolicy(itemCount = 5)
-
-        assertTrue(policy.widthMultiplier >= 1.30f)
-        assertTrue(policy.maxWidthToItemRatio >= 1.30f)
-        assertTrue(policy.minWidthDp >= 88f)
-    }
-
-    @Test
-    fun `four items keeps legacy geometry while clamping bounds`() {
+    fun `four items is only slightly wider than five item geometry`() {
         val policy = resolveBottomBarIndicatorPolicy(itemCount = 4)
+        val topTuning = resolveTopTabVisualTuning()
 
-        assertEquals(1.42f, policy.widthMultiplier)
-        assertEquals(104f, policy.minWidthDp)
-        assertEquals(136f, policy.maxWidthDp)
+        assertEquals(topTuning.floatingIndicatorWidthMultiplier + 0.04f, policy.widthMultiplier)
+        assertEquals(topTuning.floatingIndicatorMinWidthDp + 4f, policy.minWidthDp)
+        assertEquals(topTuning.floatingIndicatorMaxWidthDp + 4f, policy.maxWidthDp)
+        assertEquals(topTuning.floatingIndicatorMaxWidthToItemRatio + 0.04f, policy.maxWidthToItemRatio)
         assertEquals(true, policy.clampToBounds)
     }
 

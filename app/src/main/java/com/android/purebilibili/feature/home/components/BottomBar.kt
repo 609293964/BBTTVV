@@ -163,21 +163,22 @@ internal data class BottomBarIndicatorPolicy(
 )
 
 internal fun resolveBottomBarIndicatorPolicy(itemCount: Int): BottomBarIndicatorPolicy {
+    val topTuning = resolveTopTabVisualTuning()
     return if (itemCount >= 5) {
         BottomBarIndicatorPolicy(
-            widthMultiplier = 1.34f,
-            minWidthDp = 90f,
-            maxWidthDp = 126f,
-            maxWidthToItemRatio = 1.34f,
+            widthMultiplier = topTuning.floatingIndicatorWidthMultiplier + 0.02f,
+            minWidthDp = topTuning.floatingIndicatorMinWidthDp + 2f,
+            maxWidthDp = topTuning.floatingIndicatorMaxWidthDp + 2f,
+            maxWidthToItemRatio = topTuning.floatingIndicatorMaxWidthToItemRatio + 0.02f,
             clampToBounds = true,
             edgeInsetDp = 2f
         )
     } else {
         BottomBarIndicatorPolicy(
-            widthMultiplier = 1.42f,
-            minWidthDp = 104f,
-            maxWidthDp = 136f,
-            maxWidthToItemRatio = Float.POSITIVE_INFINITY,
+            widthMultiplier = topTuning.floatingIndicatorWidthMultiplier + 0.04f,
+            minWidthDp = topTuning.floatingIndicatorMinWidthDp + 4f,
+            maxWidthDp = topTuning.floatingIndicatorMaxWidthDp + 4f,
+            maxWidthToItemRatio = topTuning.floatingIndicatorMaxWidthToItemRatio + 0.04f,
             clampToBounds = true,
             edgeInsetDp = 2f
         )

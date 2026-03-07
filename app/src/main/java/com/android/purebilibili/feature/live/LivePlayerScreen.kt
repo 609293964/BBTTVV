@@ -276,15 +276,16 @@ fun LivePlayerScreen(
                             (activity?.isInPictureInPictureMode == true)
                     val isBackgroundAudioEnabled = miniPlayerManager.shouldContinueBackgroundAudio()
                     val hasRecentUserLeaveHint = miniPlayerManager.hasRecentUserLeaveHint()
-                    val shouldKeepPlayingInBackground = shouldContinuePlaybackDuringPause(
-                        isMiniMode = miniPlayerManager.isMiniMode,
-                        isPip = isInPictureInPictureMode || isPipRequested,
-                        isBackgroundAudio = isBackgroundAudioEnabled
-                    )
                     wasPlaybackActiveBeforePause = isPlaybackActiveForLifecycle(
                         isPlaying = exoPlayer.isPlaying,
                         playWhenReady = exoPlayer.playWhenReady,
                         playbackState = exoPlayer.playbackState
+                    )
+                    val shouldKeepPlayingInBackground = shouldContinuePlaybackDuringPause(
+                        isMiniMode = miniPlayerManager.isMiniMode,
+                        isPip = isInPictureInPictureMode || isPipRequested,
+                        isBackgroundAudio = isBackgroundAudioEnabled,
+                        wasPlaybackActive = wasPlaybackActiveBeforePause
                     )
                     val shouldKeepBackgroundAudioByFallback =
                         isBackgroundAudioEnabled &&

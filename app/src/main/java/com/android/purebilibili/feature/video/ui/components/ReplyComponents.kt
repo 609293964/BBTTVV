@@ -87,6 +87,15 @@ internal fun shouldEnableRichCommentSelection(
     return !hasRenderableEmotes && !hasInteractiveAnnotations
 }
 
+internal fun shouldShowReplyAncillaryDecorations(
+    lightweightMode: Boolean
+): Boolean = !lightweightMode
+
+internal fun shouldShowReplySubPreview(
+    hideSubPreview: Boolean,
+    lightweightMode: Boolean
+): Boolean = !hideSubPreview && !lightweightMode
+
 internal fun resolveReplySpecialLabelText(
     cardLabels: List<ReplyCardLabel>?,
     showUpFlag: Boolean,
@@ -256,6 +265,7 @@ fun ReplyItemView(
     showUpFlag: Boolean = false,
     isPinned: Boolean = false,
     emoteMap: Map<String, String> = emptyMap(),
+    lightweightMode: Boolean = false,
     onClick: () -> Unit,
     onSubClick: (ReplyItem) -> Unit,
     onTimestampClick: ((Long) -> Unit)? = null,
@@ -271,6 +281,11 @@ fun ReplyItemView(
     onAvatarClick: (String) -> Unit
 ) {
     val isUpComment = upMid > 0 && item.mid == upMid
+    val showAncillaryDecorations = shouldShowReplyAncillaryDecorations(lightweightMode)
+    val showSubPreview = shouldShowReplySubPreview(
+        hideSubPreview = hideSubPreview,
+        lightweightMode = lightweightMode
+    )
     val localEmoteMap = remember(item.content.emote, emoteMap) {
         val inlineEmotes = item.content.emote.orEmpty()
         if (inlineEmotes.isEmpty()) {
@@ -285,7 +300,8 @@ fun ReplyItemView(
     val displayLocation = remember(location) {
         resolveReplyLocationText(location)
     }
-    val specialLabelText = remember(item.cardLabels, showUpFlag, item.upAction) {
+    val specialLabelText = remember(item.cardLabels, showUpFlag, item.upAction, showAncillaryDecorations) {
+        if (!showAncillaryDecorations) return@remember null
         resolveReplySpecialLabelText(
             cardLabels = item.cardLabels,
             showUpFlag = showUpFlag,
@@ -299,21 +315,34 @@ fun ReplyItemView(
             isLiked = isLiked
         )
     }
-    val fansDetail = item.member.fansDetail
-        ?.takeIf { it.medalName.isNotBlank() && it.level > 0 }
-    val nameplateImage = item.member.nameplate
-        ?.imageSmall
-        ?.takeIf { it.isNotBlank() }
-    val sailingCardBgs = listOfNotNull(
-        item.member.userSailing?.cardBg,
-        item.member.userSailing?.cardBgWithFocus,
-        item.member.userSailingV2?.cardBg,
-        item.member.userSailingV2?.cardBgWithFocus
-    )
-    val fanGroupVisual = resolveFanGroupVisualFromMemberAndSailing(
-        member = item.member,
-        cardBgs = sailingCardBgs
-    )
+    val fansDetail = if (showAncillaryDecorations) {
+        item.member.fansDetail?.takeIf { it.medalName.isNotBlank() && it.level > 0 }
+    } else {
+        null
+    }
+    val nameplateImage = if (showAncillaryDecorations) {
+        item.member.nameplate?.imageSmall?.takeIf { it.isNotBlank() }
+    } else {
+        null
+    }
+    val sailingCardBgs = if (showAncillaryDecorations) {
+        listOfNotNull(
+            item.member.userSailing?.cardBg,
+            item.member.userSailing?.cardBgWithFocus,
+            item.member.userSailingV2?.cardBg,
+            item.member.userSailingV2?.cardBgWithFocus
+        )
+    } else {
+        emptyList()
+    }
+    val fanGroupVisual = if (showAncillaryDecorations) {
+        resolveFanGroupVisualFromMemberAndSailing(
+            member = item.member,
+            cardBgs = sailingCardBgs
+        )
+    } else {
+        null
+    }
     val piliPlusDecoration = fanGroupVisual
         ?.takeIf { !it.cardBgImageUrl.isNullOrBlank() }
 
@@ -332,7 +361,7 @@ fun ReplyItemView(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(FormatUtils.fixImageUrl(item.member.avatar))
-                    .crossfade(true)
+                    .crossfade(!lightweightMode)
                     .build(),
                 contentDescription = null,
                 modifier = Modifier
@@ -505,7 +534,7 @@ fun ReplyItemView(
                 }
 
                 // Sub-comments (Threaded view)
-                if (!hideSubPreview && (!item.replies.isNullOrEmpty() || item.rcount > 0)) {
+                if (showSubPreview && (!item.replies.isNullOrEmpty() || item.rcount > 0)) {
                     Spacer(modifier = Modifier.height(12.dp))
                     // No background container, just cleaner list
                     Column(

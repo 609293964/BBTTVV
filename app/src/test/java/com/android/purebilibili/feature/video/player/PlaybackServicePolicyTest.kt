@@ -9,6 +9,26 @@ import kotlin.test.assertTrue
 class PlaybackServicePolicyTest {
 
     @Test
+    fun `foreground service should refresh promotion even when already started`() {
+        assertTrue(
+            shouldRefreshPlaybackServiceForeground(
+                action = PlaybackService.ACTION_START_FOREGROUND,
+                isForegroundStarted = true
+            )
+        )
+    }
+
+    @Test
+    fun `stop command should not stop service when newer start exists`() {
+        assertFalse(
+            shouldStopPlaybackServiceForStartId(
+                stopActionStartId = 4,
+                latestHandledStartId = 5
+            )
+        )
+    }
+
+    @Test
     fun `fallback foreground notification required when primary notification is null`() {
         assertTrue(shouldStartForegroundWithFallback(primaryNotification = null))
     }

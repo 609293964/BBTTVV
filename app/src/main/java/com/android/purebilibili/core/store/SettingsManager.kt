@@ -114,6 +114,12 @@ internal fun normalizePlaybackSpeed(speed: Float): Float {
     return speed.coerceIn(0.1f, 8.0f)
 }
 
+internal fun normalizeDanmakuDisplayArea(value: Float): Float {
+    val normalized = value.coerceIn(0.25f, 1.0f)
+    val supportedOptions = floatArrayOf(0.25f, 0.5f, 0.75f, 1.0f)
+    return supportedOptions.minByOrNull { abs(it - normalized) } ?: 0.5f
+}
+
 internal fun resolvePreferredPlaybackSpeed(
     defaultSpeed: Float,
     rememberLastSpeed: Boolean,
@@ -1186,7 +1192,9 @@ object SettingsManager {
             ),
             fontScale = preferences[KEY_DANMAKU_FONT_SCALE] ?: DEFAULT_DANMAKU_FONT_SCALE,
             speed = preferences[KEY_DANMAKU_SPEED] ?: DEFAULT_DANMAKU_SPEED,
-            displayArea = preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA,
+            displayArea = normalizeDanmakuDisplayArea(
+                preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA
+            ),
             mergeDuplicates = preferences[KEY_DANMAKU_MERGE_DUPLICATES] ?: true,
             allowScroll = preferences[KEY_DANMAKU_ALLOW_SCROLL] ?: true,
             allowTop = preferences[KEY_DANMAKU_ALLOW_TOP] ?: true,
@@ -1247,11 +1255,15 @@ object SettingsManager {
     
     // --- 弹幕显示区域 (0.25, 0.5, 0.75, 1.0, 默认 0.5) ---
     fun getDanmakuArea(context: Context): Flow<Float> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA }
+        .map { preferences ->
+            normalizeDanmakuDisplayArea(
+                preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA
+            )
+        }
 
     suspend fun setDanmakuArea(context: Context, value: Float) {
         context.settingsDataStore.edit { preferences -> 
-            preferences[KEY_DANMAKU_AREA] = value.coerceIn(0.25f, 1.0f)
+            preferences[KEY_DANMAKU_AREA] = normalizeDanmakuDisplayArea(value)
         }
     }
 
@@ -2125,6 +2137,7 @@ object SettingsManager {
     private val KEY_SHOW_FULLSCREEN_LOCK_BUTTON = booleanPreferencesKey("show_fullscreen_lock_button")
     private val KEY_SHOW_FULLSCREEN_SCREENSHOT_BUTTON = booleanPreferencesKey("show_fullscreen_screenshot_button")
     private val KEY_SHOW_FULLSCREEN_BATTERY_LEVEL = booleanPreferencesKey("show_fullscreen_battery_level")
+    private val KEY_SHOW_FULLSCREEN_TIME = booleanPreferencesKey("show_fullscreen_time")
     private val KEY_SHOW_FULLSCREEN_ACTION_ITEMS = booleanPreferencesKey("show_fullscreen_action_items")
     private val KEY_SHOW_ONLINE_COUNT = booleanPreferencesKey("show_online_count")
     private val KEY_SUBTITLE_AUTO_PREFERENCE = intPreferencesKey("subtitle_auto_preference")
@@ -2240,6 +2253,15 @@ object SettingsManager {
     suspend fun setShowFullscreenBatteryLevel(context: Context, enabled: Boolean) {
         context.settingsDataStore.edit { preferences ->
             preferences[KEY_SHOW_FULLSCREEN_BATTERY_LEVEL] = enabled
+        }
+    }
+
+    fun getShowFullscreenTime(context: Context): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences -> preferences[KEY_SHOW_FULLSCREEN_TIME] ?: true }
+
+    suspend fun setShowFullscreenTime(context: Context, enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[KEY_SHOW_FULLSCREEN_TIME] = enabled
         }
     }
 
@@ -2552,6 +2574,7 @@ object SettingsManager {
             BooleanShareablePreferenceDefinition(KEY_SHOW_FULLSCREEN_LOCK_BUTTON, SettingsShareSection.GESTURE),
             BooleanShareablePreferenceDefinition(KEY_SHOW_FULLSCREEN_SCREENSHOT_BUTTON, SettingsShareSection.GESTURE),
             BooleanShareablePreferenceDefinition(KEY_SHOW_FULLSCREEN_BATTERY_LEVEL, SettingsShareSection.GESTURE),
+            BooleanShareablePreferenceDefinition(KEY_SHOW_FULLSCREEN_TIME, SettingsShareSection.GESTURE),
             BooleanShareablePreferenceDefinition(KEY_SHOW_FULLSCREEN_ACTION_ITEMS, SettingsShareSection.GESTURE),
 
             BooleanShareablePreferenceDefinition(KEY_DANMAKU_ENABLED, SettingsShareSection.DANMAKU),
