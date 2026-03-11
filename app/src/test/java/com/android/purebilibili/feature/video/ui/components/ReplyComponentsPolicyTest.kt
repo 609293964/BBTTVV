@@ -191,10 +191,10 @@ class ReplyComponentsPolicyTest {
     }
 
     @Test
-    fun `lightweight reply mode hides ancillary decorations and sub previews`() {
+    fun `lightweight reply mode keeps sub previews while hiding ancillary decorations`() {
         assertFalse(shouldShowReplyAncillaryDecorations(lightweightMode = true))
         assertTrue(shouldShowReplyAncillaryDecorations(lightweightMode = false))
-        assertFalse(
+        assertTrue(
             shouldShowReplySubPreview(
                 hideSubPreview = false,
                 lightweightMode = true

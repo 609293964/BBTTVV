@@ -104,7 +104,7 @@ internal fun shouldShowReplyAncillaryDecorations(
 internal fun shouldShowReplySubPreview(
     hideSubPreview: Boolean,
     lightweightMode: Boolean
-): Boolean = !hideSubPreview && !lightweightMode
+): Boolean = !hideSubPreview
 
 internal fun resolveReplySpecialLabelText(
     cardLabels: List<ReplyCardLabel>?,

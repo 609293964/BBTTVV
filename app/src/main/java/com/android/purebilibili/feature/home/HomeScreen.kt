@@ -10,6 +10,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.foundation.ExperimentalFoundationApi //  Added
 import androidx.compose.foundation.LocalOverscrollFactory // [Fix] Import for disabling overscroll (New API)
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -61,6 +62,7 @@ import com.android.purebilibili.feature.home.components.resolveHomeInteractionMo
 import com.android.purebilibili.feature.home.components.resolveHomeDrawerScrimAlpha
 import com.android.purebilibili.feature.home.components.shouldSnapHomeTopTabSelection
 import com.android.purebilibili.feature.home.components.resolveTopTabStyle
+import com.android.purebilibili.feature.home.components.resolveHomeTopChromeMaterialMode
 import com.android.purebilibili.feature.home.policy.BottomBarVisibilityIntent
 import com.android.purebilibili.feature.home.policy.HomeBottomBarScrollState
 import com.android.purebilibili.feature.home.policy.reduceHomePreScroll
@@ -841,6 +843,12 @@ fun HomeScreen(
             isLiquidGlassEnabled = isLiquidGlassEnabled
         )
     }
+    val topChromeMaterialMode = remember(isBottomBarBlurEnabled, isLiquidGlassEnabled) {
+        resolveHomeTopChromeMaterialMode(
+            isBottomBarBlurEnabled = isBottomBarBlurEnabled,
+            isLiquidGlassEnabled = isLiquidGlassEnabled
+        )
+    }
     val searchBarHeightDp = 52.dp 
     val tabRowHeightDp = if (topTabStyle.floating) 62.dp else 48.dp
     val headerHeightDp = searchBarHeightDp + tabRowHeightDp // Total height
@@ -1126,6 +1134,8 @@ fun HomeScreen(
                                      smartVisualGuardEnabled = false,
                                      isDataSaverActive = isDataSaverActive,
                                      compactStatsOnCover = homeSettings.compactVideoStatsOnCover,
+                                     showCoverGlassBadges = homeSettings.showHomeCoverGlassBadges,
+                                     showInfoGlassBadges = homeSettings.showHomeInfoGlassBadges,
                                      oldContentAnchorBvid = if (category == HomeCategory.RECOMMEND &&
                                          dividerRevealRefreshKey == state.refreshNewItemsKey
                                      ) {
@@ -1192,6 +1202,16 @@ fun HomeScreen(
             isActive = isHeaderTransitionRunning
         )
         val forceLowBlurBudget = false
+        val overlayChromeColors = rememberHomeGlassChromeColors(
+            glassEnabled = isLiquidGlassEnabled,
+            blurEnabled = isHeaderBlurEnabled || isBottomBarBlurEnabled
+        )
+        val overlayPillColors = rememberHomeGlassPillColors(
+            glassEnabled = isLiquidGlassEnabled,
+            blurEnabled = isHeaderBlurEnabled || isBottomBarBlurEnabled,
+            emphasized = true,
+            baseColor = MaterialTheme.colorScheme.surface
+        )
         
         // Calculate parameters based on scroll
         // 1. Search Bar Collapse (First phase)
@@ -1226,7 +1246,11 @@ fun HomeScreen(
             onPartitionClick = onPartitionClick,
             onLiveClick = onLiveListClick,  // [修复] 直播分区点击导航到独立页面
             // isScrollingUp = isHeaderVisible, // [Removed] logic moved to offset
-            hazeState = if (isHeaderBlurEnabled) hazeState else null,
+            hazeState = if (topChromeMaterialMode != com.android.purebilibili.feature.home.components.TopTabMaterialMode.PLAIN) {
+                hazeState
+            } else {
+                null
+            },
             onStatusBarDoubleTap = {
                 coroutineScope.launch {
                     gridStates[state.currentCategory]?.animateScrollToItem(0)
@@ -1271,14 +1295,15 @@ fun HomeScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                    color = overlayChromeColors.containerColor,
+                    border = BorderStroke(0.8.dp, overlayChromeColors.borderColor),
                     tonalElevation = 2.dp,
                     shadowElevation = 6.dp
                 ) {
                     Text(
                         text = refreshDeltaTipText.orEmpty(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                     )
                 }
@@ -1308,11 +1333,13 @@ fun HomeScreen(
             androidx.compose.material3.Button(
                 onClick = { viewModel.undoRefresh() },
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.95f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = overlayPillColors.containerColor,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ),
+                border = BorderStroke(0.8.dp, overlayPillColors.borderColor),
+                shape = RoundedCornerShape(999.dp),
                 elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(
-                    defaultElevation = 6.dp,
+                    defaultElevation = 4.dp,
                     pressedElevation = 2.dp
                 ),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)

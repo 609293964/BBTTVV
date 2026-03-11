@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -280,6 +281,16 @@ fun FluidHomeTopBar(
  * - 支持水平惯性滚动
  * - 液态玻璃选中指示器 (变长胶囊)
  */
+internal fun resolveTopTabUnselectedAlpha(): Float = 0.78f
+
+internal fun resolveTopTabUnselectedColor(isLightMode: Boolean): Color {
+    return if (isLightMode) {
+        Color.Black
+    } else {
+        Color.White.copy(alpha = 0.9f)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryTabRow(
@@ -298,7 +309,8 @@ fun CategoryTabRow(
 ) {
     val visualTuning = remember { resolveTopTabVisualTuning() }
     val primaryColor = MaterialTheme.colorScheme.primary
-    val unselectedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+    val isLightMode = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val unselectedColor = resolveTopTabUnselectedColor(isLightMode = isLightMode)
     val effectiveLiquidGlassEnabled = resolveEffectiveTopTabLiquidGlassEnabled(
         isLiquidGlassEnabled = isLiquidGlassEnabled,
         interactionBudget = interactionBudget

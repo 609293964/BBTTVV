@@ -2,6 +2,7 @@ package com.android.purebilibili.feature.home.components.cards
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +16,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Shape
 //  Cupertino Icons
 import io.github.alexzhirkevich.cupertino.icons.CupertinoIcons
 import io.github.alexzhirkevich.cupertino.icons.outlined.*
@@ -58,6 +60,7 @@ import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RAT
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedTransition
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
+import com.android.purebilibili.feature.home.rememberHomeGlassPillColors
 //  [预览播放] 相关引用已移除
 
 // 显式导入 collectAsState 以避免 ambiguity 或 missing reference
@@ -91,6 +94,8 @@ fun ElegantVideoCard(
     showPublishTime: Boolean = false,   //  是否显示发布时间（搜索结果用）
     isDataSaverActive: Boolean = false, // 🚀 [性能优化] 从父级传入，避免每个卡片重复计算
     compactStatsOnCover: Boolean = true, // 播放量/评论数是否贴在封面底部
+    showCoverGlassBadges: Boolean = true,
+    showInfoGlassBadges: Boolean = true,
     upFollowerCount: Int? = null,
     upVideoCount: Int? = null,
     onDismiss: (() -> Unit)? = null,    //  [新增] 删除/过滤回调（长按触发）
@@ -109,10 +114,34 @@ fun ElegantVideoCard(
     val cardCornerRadius = 12.dp * cornerRadiusScale  // HIG 标准圆角
     val smallCornerRadius = iOSCornerRadius.Tiny * cornerRadiusScale  // 4.dp * scale
     val durationBadgeStyle = remember { resolveVideoCardDurationBadgeVisualStyle() }
+    val coverPillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = false,
+        baseColor = Color.White
+    )
+    val emphasizedCoverPillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = true,
+        baseColor = Color.White
+    )
+    val inlinePillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = false,
+        baseColor = MaterialTheme.colorScheme.surface
+    )
     val scrollLitePolicy = remember(scrollLiteModeEnabled, compactStatsOnCover) {
         resolveVideoCardScrollLiteVisualPolicy(
             scrollLiteModeEnabled = scrollLiteModeEnabled,
             compactStatsOnCover = compactStatsOnCover
+        )
+    }
+    val badgeStylePolicy = remember(showCoverGlassBadges, showInfoGlassBadges) {
+        resolveHomeVideoGlassBadgeStylePolicy(
+            showCoverGlassBadges = showCoverGlassBadges,
+            showInfoGlassBadges = showInfoGlassBadges
         )
     }
     val showHistoryProgressBar = remember(video.view_at, video.duration, video.progress) {
@@ -366,39 +395,48 @@ fun ElegantVideoCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Icon(
-                            imageVector = CupertinoIcons.Outlined.PlayCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(10.dp),
-                            tint = Color.White.copy(alpha = 0.92f)
-                        )
-                        Text(
-                            text = if (video.stat.view > 0) {
-                                FormatUtils.formatStat(video.stat.view.toLong())
-                            } else {
-                                FormatUtils.formatProgress(video.progress, video.duration)
-                            },
-                            color = Color.White.copy(alpha = 0.92f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        HomeVideoBadgePill(
+                            style = badgeStylePolicy.coverStyle,
+                            shape = RoundedCornerShape(999.dp),
+                            containerColor = coverPillColors.containerColor,
+                            borderColor = coverPillColors.borderColor
+                        ) {
+                            Icon(
+                                imageVector = CupertinoIcons.Outlined.PlayCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(10.dp),
+                                tint = Color.White.copy(alpha = 0.94f)
+                            )
+                            Text(
+                                text = if (video.stat.view > 0) {
+                                    FormatUtils.formatStat(video.stat.view.toLong())
+                                } else {
+                                    FormatUtils.formatProgress(video.progress, video.duration)
+                                },
+                                color = Color.White.copy(alpha = 0.94f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
 
                     val commentCount = video.stat.reply.takeIf { it > 0 } ?: video.stat.danmaku
                     if (commentCount > 0) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        HomeVideoBadgePill(
+                            style = badgeStylePolicy.coverStyle,
+                            shape = RoundedCornerShape(999.dp),
+                            containerColor = coverPillColors.containerColor,
+                            borderColor = coverPillColors.borderColor
                         ) {
                             Icon(
                                 imageVector = CupertinoIcons.Outlined.BubbleLeft,
                                 contentDescription = null,
                                 modifier = Modifier.size(10.dp),
-                                tint = Color.White.copy(alpha = 0.86f)
+                                tint = Color.White.copy(alpha = 0.90f)
                             )
                             Text(
                                 text = FormatUtils.formatStat(commentCount.toLong()),
-                                color = Color.White.copy(alpha = 0.86f),
+                                color = Color.White.copy(alpha = 0.90f),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -408,9 +446,53 @@ fun ElegantVideoCard(
                     Spacer(modifier = Modifier.weight(1f))
 
                     //  时长标签 (与播放量/评论数同行对齐)
+                    if (badgeStylePolicy.coverStyle == HomeVideoBadgeStyle.GLASS) {
+                        Surface(
+                            shape = RoundedCornerShape(smallCornerRadius),
+                            color = emphasizedCoverPillColors.containerColor,
+                            border = BorderStroke(0.8.dp, emphasizedCoverPillColors.borderColor)
+                        ) {
+                            Text(
+                                text = FormatUtils.formatDuration(video.duration),
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = durationBadgeStyle.textShadowAlpha),
+                                        offset = Offset(0f, 1f),
+                                        blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
+                                    )
+                                ),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = FormatUtils.formatDuration(video.duration),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            style = androidx.compose.ui.text.TextStyle(
+                                shadow = Shadow(
+                                    color = Color.Black.copy(alpha = durationBadgeStyle.textShadowAlpha),
+                                    offset = Offset(0f, 1f),
+                                    blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
+                                )
+                            )
+                        )
+                    }
+                }
+            } else {
+                //  非贴封面模式时，时长标签仍独立显示在右下角
+                if (badgeStylePolicy.coverStyle == HomeVideoBadgeStyle.GLASS) {
                     Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp),
                         shape = RoundedCornerShape(smallCornerRadius),
-                        color = Color.Black.copy(alpha = durationBadgeStyle.backgroundAlpha)
+                        color = emphasizedCoverPillColors.containerColor,
+                        border = BorderStroke(0.8.dp, emphasizedCoverPillColors.borderColor)
                     ) {
                         Text(
                             text = FormatUtils.formatDuration(video.duration),
@@ -427,16 +509,7 @@ fun ElegantVideoCard(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         )
                     }
-                }
-            } else {
-                //  非贴封面模式时，时长标签仍独立显示在右下角
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp),
-                    shape = RoundedCornerShape(smallCornerRadius),
-                    color = Color.Black.copy(alpha = durationBadgeStyle.backgroundAlpha)
-                ) {
+                } else {
                     Text(
                         text = FormatUtils.formatDuration(video.duration),
                         color = Color.White,
@@ -449,7 +522,9 @@ fun ElegantVideoCard(
                                 blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
                             )
                         ),
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(10.dp)
                     )
                 }
             }
@@ -611,13 +686,30 @@ fun ElegantVideoCard(
                 ),
                 badgeTrailingContent = if (isFollowing) {
                     {
-                        Text(
-                            text = "已关注",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = followBadgeModifier
-                        )
+                        if (badgeStylePolicy.infoStyle == HomeVideoBadgeStyle.GLASS) {
+                            Surface(
+                                modifier = followBadgeModifier,
+                                shape = RoundedCornerShape(999.dp),
+                                color = inlinePillColors.containerColor,
+                                border = BorderStroke(0.8.dp, inlinePillColors.borderColor)
+                            ) {
+                                Text(
+                                    text = "已关注",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "已关注",
+                                modifier = followBadgeModifier,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 } else null,
                 leadingContent = if (video.owner.face.isNotEmpty()) {
@@ -692,34 +784,39 @@ fun ElegantVideoCard(
                         )
                     }
                 }
-                Row(
-                    modifier = viewsRowModifier,
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Icon(
-                        imageVector = CupertinoIcons.Outlined.PlayCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (video.stat.view > 0) {
-                            FormatUtils.formatStat(video.stat.view.toLong())
-                        } else {
-                            FormatUtils.formatProgress(video.progress, video.duration)
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                Box(modifier = viewsRowModifier) {
+                    HomeVideoBadgePill(
+                        style = badgeStylePolicy.infoStyle,
+                        shape = RoundedCornerShape(999.dp),
+                        containerColor = inlinePillColors.containerColor,
+                        borderColor = inlinePillColors.borderColor
+                    ) {
+                        Icon(
+                            imageVector = CupertinoIcons.Outlined.PlayCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (video.stat.view > 0) {
+                                FormatUtils.formatStat(video.stat.view.toLong())
+                            } else {
+                                FormatUtils.formatProgress(video.progress, video.duration)
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
                 val commentCount = video.stat.reply.takeIf { it > 0 } ?: video.stat.danmaku
                 if (commentCount > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    HomeVideoBadgePill(
+                        style = badgeStylePolicy.infoStyle,
+                        shape = RoundedCornerShape(999.dp),
+                        containerColor = inlinePillColors.containerColor,
+                        borderColor = inlinePillColors.borderColor
                     ) {
                         Icon(
                             imageVector = CupertinoIcons.Outlined.BubbleLeft,
@@ -818,6 +915,39 @@ fun ElegantVideoCard(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun HomeVideoBadgePill(
+    style: HomeVideoBadgeStyle,
+    shape: Shape,
+    containerColor: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    if (style == HomeVideoBadgeStyle.GLASS) {
+        Surface(
+            modifier = modifier,
+            shape = shape,
+            color = containerColor,
+            border = BorderStroke(0.8.dp, borderColor)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                content = content
+            )
+        }
+    } else {
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            content = content
+        )
     }
 }
 

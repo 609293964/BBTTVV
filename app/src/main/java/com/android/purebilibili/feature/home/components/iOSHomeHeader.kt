@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 //  Cupertino Icons - iOS SF Symbols 风格图标
 import io.github.alexzhirkevich.cupertino.icons.CupertinoIcons
@@ -22,15 +23,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance  //  状态栏亮度计算
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -45,15 +52,61 @@ import com.android.purebilibili.feature.home.UserState
 import com.android.purebilibili.core.theme.iOSSystemGray
 import com.android.purebilibili.core.store.LiquidGlassStyle
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.hazeEffect
 import com.android.purebilibili.core.ui.blur.unifiedBlur
 import com.android.purebilibili.core.ui.blur.BlurStyles
 import com.android.purebilibili.core.ui.blur.BlurIntensity
 import com.android.purebilibili.core.ui.blur.currentUnifiedBlurIntensity
 import com.android.purebilibili.core.ui.blur.BlurSurfaceType
 import com.android.purebilibili.core.ui.adaptive.MotionTier
+import com.android.purebilibili.core.ui.effect.liquidGlassBackground
+import com.android.purebilibili.core.ui.effect.simpMusicLiquidGlass
+import com.android.purebilibili.feature.home.LocalHomeScrollOffset
 import com.android.purebilibili.feature.home.resolveHomeTopCategories
+import com.android.purebilibili.feature.home.HomeGlassResolvedColors
+import com.android.purebilibili.feature.home.rememberHomeGlassChromeColors
+import com.android.purebilibili.feature.home.rememberHomeGlassPillColors
+import com.android.purebilibili.feature.home.resolveHomeGlassChromeStyle
+import com.android.purebilibili.feature.home.resolveHomeGlassPillStyle
 
 private const val HOME_HEADER_LIQUID_GLASS_ALPHA = 0.10f
+
+internal enum class HomeTopChromeRenderMode {
+    PLAIN,
+    BLUR,
+    LIQUID_GLASS_HAZE,
+    LIQUID_GLASS_BACKDROP
+}
+
+internal fun resolveHomeTopChromeMaterialMode(
+    isBottomBarBlurEnabled: Boolean,
+    isLiquidGlassEnabled: Boolean
+): TopTabMaterialMode {
+    return when {
+        isLiquidGlassEnabled -> TopTabMaterialMode.LIQUID_GLASS
+        isBottomBarBlurEnabled -> TopTabMaterialMode.BLUR
+        else -> TopTabMaterialMode.PLAIN
+    }
+}
+
+internal fun resolveHomeTopChromeRenderMode(
+    materialMode: TopTabMaterialMode,
+    isGlassSupported: Boolean,
+    hasBackdrop: Boolean,
+    hasHazeState: Boolean
+): HomeTopChromeRenderMode {
+    return when (materialMode) {
+        TopTabMaterialMode.PLAIN -> HomeTopChromeRenderMode.PLAIN
+        TopTabMaterialMode.BLUR -> HomeTopChromeRenderMode.BLUR
+        TopTabMaterialMode.LIQUID_GLASS -> when {
+            isGlassSupported && hasBackdrop -> HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP
+            isGlassSupported && hasHazeState -> HomeTopChromeRenderMode.LIQUID_GLASS_HAZE
+            hasHazeState -> HomeTopChromeRenderMode.BLUR
+            else -> HomeTopChromeRenderMode.PLAIN
+        }
+    }
+}
 
 internal fun resolveHomeHeaderSurfaceAlpha(
     isGlassEnabled: Boolean,
@@ -82,6 +135,200 @@ internal fun resolveHomeHeaderTabBorderAlpha(
     isTabGlassEnabled: Boolean
 ): Float {
     return 0f
+}
+
+internal fun resolveHomeTopChromeReadabilityAlpha(
+    renderMode: HomeTopChromeRenderMode
+): Float {
+    return when (renderMode) {
+        HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP -> 0.22f
+        HomeTopChromeRenderMode.LIQUID_GLASS_HAZE -> 0.24f
+        HomeTopChromeRenderMode.BLUR -> 0.30f
+        HomeTopChromeRenderMode.PLAIN -> 0.16f
+    }
+}
+
+internal fun resolveHomeTopSearchContentAlpha(
+    renderMode: HomeTopChromeRenderMode
+): Float {
+    return when (renderMode) {
+        HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP -> 0.84f
+        HomeTopChromeRenderMode.LIQUID_GLASS_HAZE -> 0.86f
+        HomeTopChromeRenderMode.BLUR -> 0.88f
+        HomeTopChromeRenderMode.PLAIN -> 0.76f
+    }
+}
+
+internal fun resolveHomeTopForegroundColor(
+    isLightMode: Boolean
+): Color {
+    return if (isLightMode) {
+        Color.Black
+    } else {
+        Color.White.copy(alpha = 0.92f)
+    }
+}
+
+internal fun resolveHomeTopInnerUnderlayColor(
+    isLightMode: Boolean,
+    renderMode: HomeTopChromeRenderMode
+): Color {
+    val alpha = resolveHomeTopTabContentUnderlayAlpha(renderMode)
+    return if (isLightMode) {
+        Color.White.copy(alpha = alpha)
+    } else {
+        Color.Black.copy(alpha = (alpha * 0.72f).coerceAtLeast(0.05f))
+    }
+}
+
+internal fun tuneHomeTopGlassColors(
+    colors: HomeGlassResolvedColors,
+    isLightMode: Boolean,
+    emphasized: Boolean
+): HomeGlassResolvedColors {
+    if (isLightMode) return colors
+    return colors.copy(
+        containerColor = colors.containerColor.copy(alpha = colors.containerColor.alpha * if (emphasized) 0.74f else 0.68f),
+        borderColor = Color.White.copy(alpha = colors.borderColor.alpha * 0.48f),
+        highlightColor = Color.White.copy(alpha = colors.highlightColor.alpha * 0.28f)
+    )
+}
+
+internal fun resolveHomeTopActionIconAlpha(
+    renderMode: HomeTopChromeRenderMode
+): Float {
+    return when (renderMode) {
+        HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP -> 0.82f
+        HomeTopChromeRenderMode.LIQUID_GLASS_HAZE -> 0.84f
+        HomeTopChromeRenderMode.BLUR -> 0.86f
+        HomeTopChromeRenderMode.PLAIN -> 0.78f
+    }
+}
+
+internal fun resolveHomeTopTabContentUnderlayAlpha(
+    renderMode: HomeTopChromeRenderMode
+): Float {
+    return when (renderMode) {
+        HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP -> 0.10f
+        HomeTopChromeRenderMode.LIQUID_GLASS_HAZE -> 0.12f
+        HomeTopChromeRenderMode.BLUR -> 0.14f
+        HomeTopChromeRenderMode.PLAIN -> 0.08f
+    }
+}
+
+internal fun resolveHomeTopChromeLensShape(shape: Shape): Shape? {
+    return when {
+        shape is CornerBasedShape -> shape
+        shape === CircleShape -> RoundedCornerShape(50)
+        shape === androidx.compose.ui.graphics.RectangleShape -> RoundedCornerShape(0.dp)
+        else -> null
+    }
+}
+
+internal fun Modifier.homeTopChromeSurface(
+    renderMode: HomeTopChromeRenderMode,
+    shape: Shape,
+    surfaceColor: Color,
+    hazeState: HazeState?,
+    backdrop: LayerBackdrop?,
+    liquidStyle: LiquidGlassStyle,
+    motionTier: MotionTier,
+    isScrolling: Boolean,
+    isTransitionRunning: Boolean,
+    forceLowBlurBudget: Boolean
+): Modifier = composed {
+    val scrollState = LocalHomeScrollOffset.current
+    val lensShape = resolveHomeTopChromeLensShape(shape)
+
+    when (renderMode) {
+        HomeTopChromeRenderMode.LIQUID_GLASS_BACKDROP -> {
+            if (liquidStyle == LiquidGlassStyle.SIMP_MUSIC && backdrop != null && lensShape != null) {
+                this.simpMusicLiquidGlass(
+                    backdrop = backdrop,
+                    shape = lensShape
+                )
+            } else if (backdrop != null && lensShape != null) {
+                this.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { lensShape },
+                    effects = {
+                        lens(
+                            refractionHeight = if (liquidStyle == LiquidGlassStyle.IOS26) 136f else 164f,
+                            refractionAmount = if (liquidStyle == LiquidGlassStyle.IOS26) 32f else 56f,
+                            depthEffect = liquidStyle != LiquidGlassStyle.IOS26,
+                            chromaticAberration = liquidStyle == LiquidGlassStyle.CLASSIC
+                        )
+                    },
+                    onDrawSurface = {
+                        drawRect(surfaceColor)
+                        drawRect(
+                            Color.White.copy(
+                                alpha = if (liquidStyle == LiquidGlassStyle.CLASSIC) 0.04f else 0.08f
+                            )
+                        )
+                    }
+                )
+            } else if (backdrop != null) {
+                this.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { shape },
+                    effects = { blur(24f) },
+                    onDrawSurface = {
+                        drawRect(surfaceColor)
+                        drawRect(Color.White.copy(alpha = 0.06f))
+                    }
+                )
+            } else {
+                this.background(surfaceColor)
+            }
+        }
+
+        HomeTopChromeRenderMode.LIQUID_GLASS_HAZE -> {
+            if (hazeState != null) {
+                this
+                    .hazeEffect(
+                        state = hazeState,
+                        style = HazeStyle(
+                            tint = null,
+                            blurRadius = 0.1.dp,
+                            noiseFactor = 0f
+                        )
+                    )
+                    .liquidGlassBackground(
+                        refractIntensity = if (liquidStyle == LiquidGlassStyle.IOS26) 0.22f else 0.6f,
+                        scrollOffsetProvider = {
+                            if (liquidStyle == LiquidGlassStyle.IOS26) 0f else scrollState.floatValue
+                        },
+                        backgroundColor = surfaceColor
+                    )
+            } else {
+                this.background(surfaceColor)
+            }
+        }
+
+        HomeTopChromeRenderMode.BLUR -> {
+            this
+                .then(
+                    if (hazeState != null) {
+                        Modifier.unifiedBlur(
+                            hazeState = hazeState,
+                            surfaceType = BlurSurfaceType.HEADER,
+                            motionTier = motionTier,
+                            isScrolling = isScrolling,
+                            isTransitionRunning = isTransitionRunning,
+                            forceLowBudget = forceLowBlurBudget
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(surfaceColor)
+        }
+
+        HomeTopChromeRenderMode.PLAIN -> {
+            this.background(surfaceColor)
+        }
+    }
 }
 
 /**
@@ -126,13 +373,18 @@ fun iOSHomeHeader(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     
     // [Feature] Liquid Glass Logic
-    val isGlassEnabled = homeSettings?.isLiquidGlassEnabled == true
+    val topChromeMaterialMode = resolveHomeTopChromeMaterialMode(
+        isBottomBarBlurEnabled = homeSettings?.isBottomBarBlurEnabled == true,
+        isLiquidGlassEnabled = homeSettings?.isLiquidGlassEnabled == true
+    )
+    val isGlassEnabled = topChromeMaterialMode == TopTabMaterialMode.LIQUID_GLASS
+    val isTopChromeBlurEnabled = topChromeMaterialMode != TopTabMaterialMode.PLAIN
 
     //  读取当前模糊强度以确定背景透明度
     val blurIntensity = currentUnifiedBlurIntensity()
     val backgroundAlpha = resolveHomeHeaderSurfaceAlpha(
         isGlassEnabled = isGlassEnabled,
-        blurEnabled = hazeState != null,
+        blurEnabled = isTopChromeBlurEnabled,
         blurIntensity = blurIntensity
     )
     val targetHeaderColor = MaterialTheme.colorScheme.surface.copy(alpha = backgroundAlpha)
@@ -153,18 +405,85 @@ fun iOSHomeHeader(
         isLiquidGlassEnabled = homeSettings?.isLiquidGlassEnabled == true
     )
     val isTabFloating = topTabStyle.floating
-    val isTabGlassEnabled = topTabStyle.materialMode == TopTabMaterialMode.LIQUID_GLASS
-    val isTabBlurEnabled = topTabStyle.materialMode == TopTabMaterialMode.BLUR
+    val isTabGlassEnabled = topChromeMaterialMode == TopTabMaterialMode.LIQUID_GLASS
+    val isTabBlurEnabled = topChromeMaterialMode == TopTabMaterialMode.BLUR
     val enableTopTabSecondaryBlur = shouldEnableTopTabSecondaryBlur(
         hasHeaderBlur = hazeState != null,
-        topTabMaterialMode = topTabStyle.materialMode,
+        topTabMaterialMode = topChromeMaterialMode,
         isScrolling = isScrolling,
         isTransitionRunning = isTransitionRunning
     )
     val isGlassSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val liquidStyle = homeSettings?.liquidGlassStyle ?: LiquidGlassStyle.CLASSIC
+    val topChromeRenderMode = resolveHomeTopChromeRenderMode(
+        materialMode = topChromeMaterialMode,
+        isGlassSupported = isGlassSupported,
+        hasBackdrop = backdrop != null,
+        hasHazeState = hazeState != null
+    )
     val tabShape = RoundedCornerShape(if (isTabFloating) 22.dp else 0.dp)
     val tabSurfaceColor = MaterialTheme.colorScheme.surface
+    val isLightMode = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val effectiveTabMaterialMode = resolveEffectiveHomeHeaderTabMaterialMode(
+        materialMode = topChromeMaterialMode,
+        interactionBudget = interactionBudget
+    )
+    val headerChromeColors = tuneHomeTopGlassColors(
+        colors = rememberHomeGlassChromeColors(
+            glassEnabled = isGlassEnabled,
+            blurEnabled = isTopChromeBlurEnabled
+        ),
+        isLightMode = isLightMode,
+        emphasized = false
+    )
+    val searchPillColors = tuneHomeTopGlassColors(
+        colors = rememberHomeGlassPillColors(
+            glassEnabled = isGlassEnabled,
+            blurEnabled = isTopChromeBlurEnabled,
+            emphasized = true,
+            baseColor = MaterialTheme.colorScheme.surface
+        ),
+        isLightMode = isLightMode,
+        emphasized = true
+    )
+    val tabChromeColors = tuneHomeTopGlassColors(
+        colors = rememberHomeGlassChromeColors(
+            glassEnabled = effectiveTabMaterialMode == TopTabMaterialMode.LIQUID_GLASS,
+            blurEnabled = enableTopTabSecondaryBlur || effectiveTabMaterialMode != TopTabMaterialMode.PLAIN
+        ),
+        isLightMode = isLightMode,
+        emphasized = false
+    )
+    val searchPillStyle = remember(isGlassEnabled, isTopChromeBlurEnabled) {
+        resolveHomeGlassPillStyle(
+            glassEnabled = isGlassEnabled,
+            blurEnabled = isTopChromeBlurEnabled,
+            emphasized = true
+        )
+    }
+    val tabChromeStyle = remember(effectiveTabMaterialMode, enableTopTabSecondaryBlur) {
+        resolveHomeGlassChromeStyle(
+            glassEnabled = effectiveTabMaterialMode == TopTabMaterialMode.LIQUID_GLASS,
+            blurEnabled = enableTopTabSecondaryBlur || effectiveTabMaterialMode != TopTabMaterialMode.PLAIN
+        )
+    }
+    val topForegroundColor = resolveHomeTopForegroundColor(isLightMode = isLightMode)
+    val topSearchContentAlpha = resolveHomeTopSearchContentAlpha(topChromeRenderMode)
+    val topActionIconAlpha = resolveHomeTopActionIconAlpha(topChromeRenderMode)
+    val tabChromeRenderMode = when (effectiveTabMaterialMode) {
+        TopTabMaterialMode.LIQUID_GLASS -> resolveHomeTopChromeRenderMode(
+            materialMode = effectiveTabMaterialMode,
+            isGlassSupported = isGlassSupported,
+            hasBackdrop = backdrop != null,
+            hasHazeState = hazeState != null
+        )
+        TopTabMaterialMode.BLUR -> if (enableTopTabSecondaryBlur) {
+            HomeTopChromeRenderMode.BLUR
+        } else {
+            HomeTopChromeRenderMode.PLAIN
+        }
+        TopTabMaterialMode.PLAIN -> HomeTopChromeRenderMode.PLAIN
+    }
 
     // [Optimization] Calculate layout values LOCALLY using deferred state read
     // This prevents HomeScreen from recomposing when headerOffset changes
@@ -210,15 +529,11 @@ fun iOSHomeHeader(
         label = "tabShadowElevation"
     )
     val effectiveTabShadowElevation = if (interactionBudget == HomeInteractionMotionBudget.REDUCED) 0.dp else tabShadowElevation
-    val effectiveTabMaterialMode = resolveEffectiveHomeHeaderTabMaterialMode(
-        materialMode = topTabStyle.materialMode,
-        interactionBudget = interactionBudget
-    )
     val tabOverlayAlpha by animateFloatAsState(
         targetValue = when (effectiveTabMaterialMode) {
-            TopTabMaterialMode.PLAIN -> if (isTabFloating) 0.95f else 1f
-            TopTabMaterialMode.BLUR -> 0.72f
-            TopTabMaterialMode.LIQUID_GLASS -> 0.22f
+            TopTabMaterialMode.PLAIN -> if (isTabFloating) tabChromeStyle.containerAlpha else 1f
+            TopTabMaterialMode.BLUR -> if (isTabFloating) tabChromeStyle.containerAlpha else 0.72f
+            TopTabMaterialMode.LIQUID_GLASS -> tabChromeStyle.containerAlpha
         },
         animationSpec = tween(220),
         label = "tabOverlayAlpha"
@@ -229,239 +544,246 @@ fun iOSHomeHeader(
         label = "tabContentAlpha"
     )
     val tabBorderAlpha by animateFloatAsState(
-        targetValue = resolveHomeHeaderTabBorderAlpha(
-            isTabFloating = isTabFloating,
-            isTabGlassEnabled = isTabGlassEnabled
-        ),
+        targetValue = if (isTabFloating) tabChromeStyle.borderAlpha else 0f,
         animationSpec = tween(220),
         label = "tabBorderAlpha"
     )
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .zIndex(10f) // Ensure high z-index for the whole header
-            // [Revert] Removed Liquid Glass Effect due to performance issues
-             .run {
-                  this.then(
-                      if (hazeState != null) {
-                          Modifier.unifiedBlur(
-                              hazeState = hazeState,
-                              surfaceType = BlurSurfaceType.HEADER,
-                              motionTier = motionTier,
-                              isScrolling = isScrolling,
-                              isTransitionRunning = isTransitionRunning,
-                              forceLowBudget = forceLowBlurBudget
-                          )
-                      } else {
-                          Modifier
-                      }
-                  )
-                      .background(animatedHeaderColor)
-             }
-            .padding(bottom = 0.dp) // Reset padding, controlled by spacer
+            .zIndex(10f)
     ) {
-        // 1. Status Bar Placeholder
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(statusBarHeight)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            haptic(HapticType.LIGHT)
-                            onStatusBarDoubleTap()
-                        }
-                    )
-                }
-        )
-
-        // 2. Search Bar + Avatar + Settings
-        // 高度和透明度由外部直接控制，实现物理跟手
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(currentSearchHeight) // Use local derived value
-                .graphicsLayer { alpha = searchAlpha } // Use local derived value
-                .clip(androidx.compose.ui.graphics.RectangleShape) // Ensure content is clipped when shrinking
+                .padding(bottom = 0.dp) // Reset padding, controlled by spacer
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp) // 内部内容保持原始高度，通过父容器裁剪实现收缩
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Avatar
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .iOSTapEffect { onAvatarClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                    ) {
-                        if (user.isLogin && user.face.isNotEmpty()) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(FormatUtils.fixImageUrl(user.face))
-                                    .crossfade(true).build(),
-                                contentDescription = "用户头像",
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(
-                                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("未", fontSize = 11.sp, fontWeight = FontWeight.Bold, 
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                // Search Box
-                // [优化] 外层容器用于居中，内层容器限制最大宽度 (640dp)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(36.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .widthIn(max = 640.dp)
-                            .fillMaxWidth()
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                            .clickable { 
-                                haptic(HapticType.LIGHT)
-                                onSearchClick() 
-                            }
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                CupertinoIcons.Default.MagnifyingGlass,
-                                contentDescription = "搜索",
-                                tint = iOSSystemGray,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            // [优化] 响应式字体大小
-                            val isTablet = com.android.purebilibili.core.util.LocalWindowSizeClass.current.isTablet
-                            Text(
-                                text = "搜索视频、UP主...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontSize = if (isTablet) 16.sp else 15.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = iOSSystemGray,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                // Settings Button
-                IconButton(
-                    onClick = { 
-                        haptic(HapticType.LIGHT)
-                        onSettingsClick() 
-                    },
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        CupertinoIcons.Default.Gearshape,
-                        contentDescription = "设置",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-        
-        // 3. Category Tabs (Merged directly below Search Bar)
-        // Tabs 始终显示，但会随 SearchBar 收缩而上移
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .zIndex(-1f) // Slide behind search bar
-                .height(currentTabHeight) // Use local derived value [Feature] Collapse Tabs
-                .graphicsLayer { alpha = tabAlpha * tabContentAlpha } // Use local derived value
-                .clip(RoundedCornerShape(bottomStart = 0.dp, bottomEnd = 0.dp))
-        ) {
+            // 1. Status Bar Placeholder
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = tabHorizontalPadding, vertical = tabVerticalPadding)
-                    .then(
-                        if (isTabFloating) {
-                            Modifier.shadow(
-                                elevation = effectiveTabShadowElevation,
-                                shape = tabShape,
-                                ambientColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                spotColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .clip(tabShape)
-                    .run {
-                        when {
-                            isTabGlassEnabled && enableTopTabSecondaryBlur -> {
-                                this
-                                    .unifiedBlur(
-                                        hazeState = requireNotNull(hazeState),
-                                        surfaceType = BlurSurfaceType.HEADER,
-                                        motionTier = motionTier,
-                                        isScrolling = isScrolling,
-                                        isTransitionRunning = isTransitionRunning,
-                                        forceLowBudget = forceLowBlurBudget
-                                    )
-                                    .background(tabSurfaceColor.copy(alpha = tabOverlayAlpha))
+                    .fillMaxWidth()
+                    .height(statusBarHeight)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                haptic(HapticType.LIGHT)
+                                onStatusBarDoubleTap()
                             }
+                        )
+                    }
+            )
 
-                            isTabBlurEnabled && enableTopTabSecondaryBlur -> {
-                                this
-                                    .unifiedBlur(
-                                        hazeState = requireNotNull(hazeState),
-                                        surfaceType = BlurSurfaceType.HEADER,
-                                        motionTier = motionTier,
-                                        isScrolling = isScrolling,
-                                        isTransitionRunning = isTransitionRunning,
-                                        forceLowBudget = forceLowBlurBudget
-                                    )
-                                    .background(tabSurfaceColor.copy(alpha = tabOverlayAlpha))
-                            }
-
-                            else -> {
-                                this.background(tabSurfaceColor.copy(alpha = tabOverlayAlpha))
+            // 2. Search Bar + Avatar + Settings
+            // 高度和透明度由外部直接控制，实现物理跟手
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(currentSearchHeight) // Use local derived value
+                    .graphicsLayer { alpha = searchAlpha } // Use local derived value
+                    .clip(androidx.compose.ui.graphics.RectangleShape) // Ensure content is clipped when shrinking
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp) // 内部内容保持原始高度，通过父容器裁剪实现收缩
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Avatar
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .iOSTapEffect { onAvatarClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .homeTopChromeSurface(
+                                    renderMode = topChromeRenderMode,
+                                    shape = CircleShape,
+                                    surfaceColor = headerChromeColors.containerColor,
+                                    hazeState = hazeState,
+                                    backdrop = backdrop,
+                                    liquidStyle = liquidStyle,
+                                    motionTier = motionTier,
+                                    isScrolling = isScrolling,
+                                    isTransitionRunning = isTransitionRunning,
+                                    forceLowBlurBudget = forceLowBlurBudget
+                                )
+                                .border(1.dp, headerChromeColors.borderColor, CircleShape)
+                        ) {
+                            if (user.isLogin && user.face.isNotEmpty()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(FormatUtils.fixImageUrl(user.face))
+                                        .crossfade(true).build(),
+                                    contentDescription = "用户头像",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(
+                                    Modifier.fillMaxSize().background(headerChromeColors.containerColor),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("未", fontSize = 11.sp, fontWeight = FontWeight.Bold, 
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
-                    .then(
-                        if (isTabFloating) {
-                            Modifier.border(
-                                width = 0.8.dp,
-                                color = Color.White.copy(alpha = tabBorderAlpha),
-                                shape = tabShape
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    // Search Box
+                    // [优化] 外层容器用于居中，内层容器限制最大宽度 (640dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 640.dp)
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .homeTopChromeSurface(
+                                    renderMode = topChromeRenderMode,
+                                    shape = RoundedCornerShape(10.dp),
+                                    surfaceColor = searchPillColors.containerColor,
+                                    hazeState = hazeState,
+                                    backdrop = backdrop,
+                                    liquidStyle = liquidStyle,
+                                    motionTier = motionTier,
+                                    isScrolling = isScrolling,
+                                    isTransitionRunning = isTransitionRunning,
+                                    forceLowBlurBudget = forceLowBlurBudget
+                                )
+                                .border(
+                                    width = 0.8.dp,
+                                    color = searchPillColors.borderColor,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { 
+                                    haptic(HapticType.LIGHT)
+                                    onSearchClick() 
+                                }
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(14.dp)
+                                    .align(Alignment.TopCenter)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                searchPillColors.highlightColor,
+                                                Color.Transparent
+                                            )
+                                        )
+                                    )
                             )
-                        } else {
-                            Modifier
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    CupertinoIcons.Default.MagnifyingGlass,
+                                    contentDescription = "搜索",
+                                    tint = if (isLightMode) {
+                                        topForegroundColor
+                                    } else {
+                                        topForegroundColor.copy(alpha = topActionIconAlpha)
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                // [优化] 响应式字体大小
+                                val isTablet = com.android.purebilibili.core.util.LocalWindowSizeClass.current.isTablet
+                                Text(
+                                    text = "搜索视频、UP主...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = if (isTablet) 16.sp else 15.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = if (isLightMode) {
+                                        topForegroundColor
+                                    } else {
+                                        topForegroundColor.copy(
+                                            alpha = minOf(searchPillStyle.contentAlpha, topSearchContentAlpha)
+                                        )
+                                    },
+                                    maxLines = 1
+                                )
+                            }
                         }
-                    )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    // Settings Button
+                    IconButton(
+                        onClick = { 
+                            haptic(HapticType.LIGHT)
+                            onSettingsClick() 
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .homeTopChromeSurface(
+                                renderMode = topChromeRenderMode,
+                                shape = CircleShape,
+                                surfaceColor = headerChromeColors.containerColor,
+                                hazeState = hazeState,
+                                backdrop = backdrop,
+                                liquidStyle = liquidStyle,
+                                motionTier = motionTier,
+                                isScrolling = isScrolling,
+                                isTransitionRunning = isTransitionRunning,
+                                forceLowBlurBudget = forceLowBlurBudget
+                            )
+                            .border(0.8.dp, headerChromeColors.borderColor, CircleShape)
+                    ) {
+                        Icon(
+                            CupertinoIcons.Default.Gearshape,
+                            contentDescription = "设置",
+                            tint = if (isLightMode) {
+                                topForegroundColor
+                            } else {
+                                topForegroundColor.copy(alpha = topActionIconAlpha)
+                            },
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            HomeTopTabChrome(
+                currentTabHeight = currentTabHeight,
+                tabAlpha = tabAlpha,
+                tabContentAlpha = tabContentAlpha,
+                tabHorizontalPadding = tabHorizontalPadding,
+                tabVerticalPadding = tabVerticalPadding,
+                isTabFloating = isTabFloating,
+                effectiveTabShadowElevation = effectiveTabShadowElevation,
+                tabShape = tabShape,
+                tabChromeRenderMode = tabChromeRenderMode,
+                tabSurfaceColor = tabSurfaceColor.copy(alpha = tabOverlayAlpha),
+                hazeState = hazeState,
+                backdrop = backdrop,
+                liquidStyle = liquidStyle,
+                motionTier = motionTier,
+                isScrolling = isScrolling,
+                isTransitionRunning = isTransitionRunning,
+                forceLowBlurBudget = forceLowBlurBudget,
+                tabBorderAlpha = tabBorderAlpha,
+                tabHighlightColor = tabChromeColors.highlightColor,
+                tabContentUnderlayColor = resolveHomeTopInnerUnderlayColor(
+                    isLightMode = isLightMode,
+                    renderMode = tabChromeRenderMode
+                )
             ) {
                 if (tabContentAlpha > 0.01f) {
                     CategoryTabRow(

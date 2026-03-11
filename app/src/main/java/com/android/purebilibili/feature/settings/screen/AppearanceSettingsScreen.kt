@@ -161,6 +161,12 @@ fun AppearanceSettingsContent(
     val compactVideoStatsOnCover by SettingsManager
         .getCompactVideoStatsOnCover(context)
         .collectAsState(initial = true)
+    val homeCoverGlassBadgesVisible by SettingsManager
+        .getHomeCoverGlassBadgesVisible(context)
+        .collectAsState(initial = true)
+    val homeInfoGlassBadgesVisible by SettingsManager
+        .getHomeInfoGlassBadgesVisible(context)
+        .collectAsState(initial = true)
 
     LazyColumn(
         modifier = modifier
@@ -816,6 +822,42 @@ fun AppearanceSettingsContent(
                                 }
                             },
                             iconTint = iOSTeal
+                        )
+
+                        Divider(modifier = Modifier.padding(start = 16.dp))
+                        IOSSwitchItem(
+                            icon = CupertinoIcons.Default.PlayCircle,
+                            title = "封面玻璃样式",
+                            subtitle = if (homeCoverGlassBadgesVisible) {
+                                "封面的播放量、评论量、时长和竖屏标记使用玻璃胶囊"
+                            } else {
+                                "封面信息继续显示，但不使用玻璃胶囊"
+                            },
+                            checked = homeCoverGlassBadgesVisible,
+                            onCheckedChange = {
+                                scope.launch {
+                                    SettingsManager.setHomeCoverGlassBadgesVisible(context, it)
+                                }
+                            },
+                            iconTint = com.android.purebilibili.core.theme.iOSOrange
+                        )
+
+                        Divider(modifier = Modifier.padding(start = 16.dp))
+                        IOSSwitchItem(
+                            icon = CupertinoIcons.Default.Tag,
+                            title = "信息区玻璃样式",
+                            subtitle = if (homeInfoGlassBadgesVisible) {
+                                "已关注和次级统计使用玻璃标签"
+                            } else {
+                                "信息区信息继续显示，但不使用玻璃标签"
+                            },
+                            checked = homeInfoGlassBadgesVisible,
+                            onCheckedChange = {
+                                scope.launch {
+                                    SettingsManager.setHomeInfoGlassBadgesVisible(context, it)
+                                }
+                            },
+                            iconTint = com.android.purebilibili.core.theme.iOSPurple
                         )
                         
                         // 网格列数设置 (仅在双列网格模式下显示)

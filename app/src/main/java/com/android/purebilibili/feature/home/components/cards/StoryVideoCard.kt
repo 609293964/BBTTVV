@@ -70,6 +70,8 @@ fun StoryVideoCard(
     motionTier: MotionTier = MotionTier.Normal,
     transitionEnabled: Boolean = false, //  卡片过渡动画开关
     scrollLiteModeEnabled: Boolean = false,
+    showCoverGlassBadges: Boolean = true,
+    showInfoGlassBadges: Boolean = true,
     upFollowerCount: Int? = null,
     upVideoCount: Int? = null,
     onDismiss: (() -> Unit)? = null,    //  [新增] 删除/过滤回调（长按触发）
@@ -86,6 +88,12 @@ fun StoryVideoCard(
     val scrollLitePolicy = remember(scrollLiteModeEnabled) {
         resolveStoryVideoCardScrollLiteVisualPolicy(
             scrollLiteModeEnabled = scrollLiteModeEnabled
+        )
+    }
+    val badgeStylePolicy = remember(showCoverGlassBadges, showInfoGlassBadges) {
+        resolveHomeVideoGlassBadgeStylePolicy(
+            showCoverGlassBadges = showCoverGlassBadges,
+            showInfoGlassBadges = showInfoGlassBadges
         )
     }
     
@@ -228,13 +236,30 @@ fun StoryVideoCard(
             )
             
             //  时长标签 (保留在封面上)
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp),
-                color = Color.Black.copy(alpha = durationBadgeStyle.backgroundAlpha),
-                shape = RoundedCornerShape(6.dp)
-            ) {
+            if (badgeStylePolicy.coverStyle == HomeVideoBadgeStyle.GLASS) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp),
+                    color = Color.Black.copy(alpha = durationBadgeStyle.backgroundAlpha),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = FormatUtils.formatDuration(video.duration),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = durationBadgeStyle.textShadowAlpha),
+                                offset = androidx.compose.ui.geometry.Offset(0f, 1f),
+                                blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
+                            )
+                        ),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            } else {
                 Text(
                     text = FormatUtils.formatDuration(video.duration),
                     color = Color.White,
@@ -247,7 +272,9 @@ fun StoryVideoCard(
                             blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
                         )
                     ),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(14.dp)
                 )
             }
         }

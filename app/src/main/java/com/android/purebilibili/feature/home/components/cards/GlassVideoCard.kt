@@ -2,6 +2,7 @@
 package com.android.purebilibili.feature.home.components.cards
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -18,6 +19,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -49,6 +53,7 @@ import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
 import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
+import com.android.purebilibili.feature.home.rememberHomeGlassPillColors
 
 /**
  *  玻璃拟态卡片 - Vision Pro 风格 (性能优化版)
@@ -68,6 +73,8 @@ fun GlassVideoCard(
     animationEnabled: Boolean = true,  //  卡片动画开关
     motionTier: MotionTier = MotionTier.Normal,
     transitionEnabled: Boolean = false, //  卡片过渡动画开关
+    showCoverGlassBadges: Boolean = true,
+    showInfoGlassBadges: Boolean = true,
     onDismiss: (() -> Unit)? = null,    //  [新增] 删除/过滤回调（长按触发）
     onClick: (String, Long) -> Unit
 ) {
@@ -80,6 +87,30 @@ fun GlassVideoCard(
     val tagCornerRadius = iOSCornerRadius.Small * cornerRadiusScale  // 10.dp * scale
     val smallTagRadius = iOSCornerRadius.ExtraSmall * cornerRadiusScale  // 6.dp * scale
     val durationBadgeStyle = remember { resolveVideoCardDurationBadgeVisualStyle() }
+    val coverPillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = false,
+        baseColor = Color.White
+    )
+    val emphasizedCoverPillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = true,
+        baseColor = Color.White
+    )
+    val inlinePillColors = rememberHomeGlassPillColors(
+        glassEnabled = true,
+        blurEnabled = true,
+        emphasized = false,
+        baseColor = MaterialTheme.colorScheme.surface
+    )
+    val badgeStylePolicy = remember(showCoverGlassBadges, showInfoGlassBadges) {
+        resolveHomeVideoGlassBadgeStylePolicy(
+            showCoverGlassBadges = showCoverGlassBadges,
+            showInfoGlassBadges = showInfoGlassBadges
+        )
+    }
     
     //  [新增] 长按删除菜单状态
     var showDismissMenu by remember { mutableStateOf(false) }
@@ -264,36 +295,57 @@ fun GlassVideoCard(
                         
                         //  已删除悬浮播放按钮
                         //  时长标签 - 玻璃胶囊
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(10.dp),
-                            color = Color.Black.copy(alpha = durationBadgeStyle.backgroundAlpha),
-                            shape = RoundedCornerShape(tagCornerRadius)
-                        ) {
+                        if (badgeStylePolicy.coverStyle == HomeVideoBadgeStyle.GLASS) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(10.dp),
+                                color = emphasizedCoverPillColors.containerColor,
+                                border = BorderStroke(0.8.dp, emphasizedCoverPillColors.borderColor),
+                                shape = RoundedCornerShape(tagCornerRadius)
+                            ) {
+                                Text(
+                                    text = FormatUtils.formatDuration(video.duration),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        shadow = Shadow(
+                                            color = Color.Black.copy(alpha = durationBadgeStyle.textShadowAlpha),
+                                            offset = Offset(0f, 1f),
+                                            blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
+                                        )
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        } else {
                             Text(
                                 text = FormatUtils.formatDuration(video.duration),
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 style = androidx.compose.ui.text.TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                    shadow = Shadow(
                                         color = Color.Black.copy(alpha = durationBadgeStyle.textShadowAlpha),
-                                        offset = androidx.compose.ui.geometry.Offset(0f, 1f),
+                                        offset = Offset(0f, 1f),
                                         blurRadius = durationBadgeStyle.textShadowBlurRadiusPx
                                     )
                                 ),
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(20.dp, 0.dp, 20.dp, 16.dp)
                             )
                         }
                         
                         //  [新增] 竖屏标签 - 左上角显示
-                        if (video.isVertical) {
+                        if (video.isVertical && badgeStylePolicy.coverStyle == HomeVideoBadgeStyle.GLASS) {
                             Surface(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .padding(10.dp),
-                                color = Color(0xFF00D1B2).copy(alpha = 0.9f),
+                                color = Color(0xFF00D1B2).copy(alpha = 0.82f),
+                                border = BorderStroke(0.8.dp, coverPillColors.borderColor),
                                 shape = RoundedCornerShape(smallTagRadius)
                             ) {
                                 Text(
@@ -304,6 +356,23 @@ fun GlassVideoCard(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
                             }
+                        } else if (video.isVertical) {
+                            Text(
+                                text = "竖屏",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.45f),
+                                        offset = Offset(0f, 1f),
+                                        blurRadius = 3f
+                                    )
+                                ),
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(10.dp)
+                            )
                         }
                     }
                 }
@@ -363,11 +432,26 @@ fun GlassVideoCard(
                         
                         // 播放量 -  [修复] 只在有播放量时显示
                         if (video.stat.view > 0) {
-                            Text(
-                                text = "${FormatUtils.formatStat(video.stat.view.toLong())}播放",
-                                color = onSurfaceVariant.copy(alpha = 0.7f),
-                                fontSize = 11.sp
-                            )
+                            if (badgeStylePolicy.infoStyle == HomeVideoBadgeStyle.GLASS) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = inlinePillColors.containerColor,
+                                    border = BorderStroke(0.8.dp, inlinePillColors.borderColor)
+                                ) {
+                                    Text(
+                                        text = "${FormatUtils.formatStat(video.stat.view.toLong())}播放",
+                                        color = onSurfaceVariant.copy(alpha = 0.78f),
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "${FormatUtils.formatStat(video.stat.view.toLong())}播放",
+                                    color = onSurfaceVariant.copy(alpha = 0.78f),
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
