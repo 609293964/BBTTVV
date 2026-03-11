@@ -243,8 +243,26 @@ class iOSHomeHeaderVisualPolicyTest {
             blurEnabled = true,
             blurIntensity = BlurIntensity.THICK
         )
+        val bottomBarAlpha = resolveBottomBarSurfaceColor(
+            surfaceColor = Color.White,
+            blurEnabled = true,
+            blurIntensity = BlurIntensity.THICK
+        ).alpha
 
-        assertEquals(0.48f, alpha, 0.0001f)
+        assertEquals(bottomBarAlpha, alpha, 0.0001f)
+    }
+
+    @Test
+    fun `docked blur top tabs use same overlay alpha as blur chrome container`() {
+        assertEquals(
+            0.4f,
+            resolveHomeTopTabOverlayAlpha(
+                materialMode = TopTabMaterialMode.BLUR,
+                isTabFloating = false,
+                containerAlpha = 0.4f
+            ),
+            0.0001f
+        )
     }
 
     @Test
@@ -260,7 +278,7 @@ class iOSHomeHeaderVisualPolicyTest {
     }
 
     @Test
-    fun `top tab secondary blur disabled during motion to reduce duplicate blur passes`() {
+    fun `liquid glass top tab secondary blur disabled during motion to reduce duplicate blur passes`() {
         assertFalse(
             shouldEnableTopTabSecondaryBlur(
                 hasHeaderBlur = true,
@@ -270,6 +288,26 @@ class iOSHomeHeaderVisualPolicyTest {
             )
         )
         assertFalse(
+            shouldEnableTopTabSecondaryBlur(
+                hasHeaderBlur = true,
+                topTabMaterialMode = TopTabMaterialMode.LIQUID_GLASS,
+                isScrolling = false,
+                isTransitionRunning = true
+            )
+        )
+    }
+
+    @Test
+    fun `blur mode keeps top tab secondary blur during motion`() {
+        assertTrue(
+            shouldEnableTopTabSecondaryBlur(
+                hasHeaderBlur = true,
+                topTabMaterialMode = TopTabMaterialMode.BLUR,
+                isScrolling = true,
+                isTransitionRunning = false
+            )
+        )
+        assertTrue(
             shouldEnableTopTabSecondaryBlur(
                 hasHeaderBlur = true,
                 topTabMaterialMode = TopTabMaterialMode.BLUR,

@@ -115,7 +115,33 @@ internal fun resolveHomeHeaderSurfaceAlpha(
 ): Float {
     if (!blurEnabled) return 1f
     if (isGlassEnabled) return HOME_HEADER_LIQUID_GLASS_ALPHA
-    return (BlurStyles.getBackgroundAlpha(blurIntensity) * 0.8f).coerceIn(0f, 1f)
+    return BlurStyles.getBackgroundAlpha(blurIntensity)
+}
+
+internal fun resolveHomeTopBlurContainerAlpha(
+    blurIntensity: BlurIntensity
+): Float = BlurStyles.getBackgroundAlpha(blurIntensity)
+
+internal fun resolveHomeTopTabOverlayAlpha(
+    materialMode: TopTabMaterialMode,
+    isTabFloating: Boolean,
+    containerAlpha: Float
+): Float {
+    return when (materialMode) {
+        TopTabMaterialMode.PLAIN -> if (isTabFloating) containerAlpha else 1f
+        TopTabMaterialMode.BLUR -> containerAlpha
+        TopTabMaterialMode.LIQUID_GLASS -> containerAlpha
+    }
+}
+
+internal fun resolveHomeTopBlurContainerColors(
+    colors: HomeGlassResolvedColors,
+    surfaceColor: Color,
+    blurIntensity: BlurIntensity
+): HomeGlassResolvedColors {
+    return colors.copy(
+        containerColor = surfaceColor.copy(alpha = resolveHomeTopBlurContainerAlpha(blurIntensity))
+    )
 }
 
 internal fun shouldEnableTopTabSecondaryBlur(
@@ -126,7 +152,9 @@ internal fun shouldEnableTopTabSecondaryBlur(
 ): Boolean {
     if (!hasHeaderBlur) return false
     if (topTabMaterialMode == TopTabMaterialMode.PLAIN) return false
-    if (isScrolling || isTransitionRunning) return false
+    if (topTabMaterialMode == TopTabMaterialMode.LIQUID_GLASS && (isScrolling || isTransitionRunning)) {
+        return false
+    }
     return true
 }
 
@@ -421,14 +449,15 @@ fun iOSHomeHeader(
         hasBackdrop = backdrop != null,
         hasHazeState = hazeState != null
     )
+    val surfaceColor = MaterialTheme.colorScheme.surface
     val tabShape = RoundedCornerShape(if (isTabFloating) 22.dp else 0.dp)
-    val tabSurfaceColor = MaterialTheme.colorScheme.surface
-    val isLightMode = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val tabSurfaceColor = surfaceColor
+    val isLightMode = surfaceColor.luminance() > 0.5f
     val effectiveTabMaterialMode = resolveEffectiveHomeHeaderTabMaterialMode(
         materialMode = topChromeMaterialMode,
         interactionBudget = interactionBudget
     )
-    val headerChromeColors = tuneHomeTopGlassColors(
+    val rawHeaderChromeColors = tuneHomeTopGlassColors(
         colors = rememberHomeGlassChromeColors(
             glassEnabled = isGlassEnabled,
             blurEnabled = isTopChromeBlurEnabled
@@ -436,7 +465,18 @@ fun iOSHomeHeader(
         isLightMode = isLightMode,
         emphasized = false
     )
-    val searchPillColors = tuneHomeTopGlassColors(
+    val headerChromeColors = remember(rawHeaderChromeColors, isGlassEnabled, isTopChromeBlurEnabled, blurIntensity) {
+        if (!isGlassEnabled && isTopChromeBlurEnabled) {
+            resolveHomeTopBlurContainerColors(
+                colors = rawHeaderChromeColors,
+                surfaceColor = surfaceColor,
+                blurIntensity = blurIntensity
+            )
+        } else {
+            rawHeaderChromeColors
+        }
+    }
+    val rawSearchPillColors = tuneHomeTopGlassColors(
         colors = rememberHomeGlassPillColors(
             glassEnabled = isGlassEnabled,
             blurEnabled = isTopChromeBlurEnabled,
@@ -446,7 +486,18 @@ fun iOSHomeHeader(
         isLightMode = isLightMode,
         emphasized = true
     )
-    val tabChromeColors = tuneHomeTopGlassColors(
+    val searchPillColors = remember(rawSearchPillColors, isGlassEnabled, isTopChromeBlurEnabled, blurIntensity) {
+        if (!isGlassEnabled && isTopChromeBlurEnabled) {
+            resolveHomeTopBlurContainerColors(
+                colors = rawSearchPillColors,
+                surfaceColor = surfaceColor,
+                blurIntensity = blurIntensity
+            )
+        } else {
+            rawSearchPillColors
+        }
+    }
+    val rawTabChromeColors = tuneHomeTopGlassColors(
         colors = rememberHomeGlassChromeColors(
             glassEnabled = effectiveTabMaterialMode == TopTabMaterialMode.LIQUID_GLASS,
             blurEnabled = enableTopTabSecondaryBlur || effectiveTabMaterialMode != TopTabMaterialMode.PLAIN
@@ -454,6 +505,17 @@ fun iOSHomeHeader(
         isLightMode = isLightMode,
         emphasized = false
     )
+    val tabChromeColors = remember(rawTabChromeColors, effectiveTabMaterialMode, blurIntensity) {
+        if (effectiveTabMaterialMode == TopTabMaterialMode.BLUR) {
+            resolveHomeTopBlurContainerColors(
+                colors = rawTabChromeColors,
+                surfaceColor = tabSurfaceColor,
+                blurIntensity = blurIntensity
+            )
+        } else {
+            rawTabChromeColors
+        }
+    }
     val searchPillStyle = remember(isGlassEnabled, isTopChromeBlurEnabled) {
         resolveHomeGlassPillStyle(
             glassEnabled = isGlassEnabled,
@@ -530,11 +592,11 @@ fun iOSHomeHeader(
     )
     val effectiveTabShadowElevation = if (interactionBudget == HomeInteractionMotionBudget.REDUCED) 0.dp else tabShadowElevation
     val tabOverlayAlpha by animateFloatAsState(
-        targetValue = when (effectiveTabMaterialMode) {
-            TopTabMaterialMode.PLAIN -> if (isTabFloating) tabChromeStyle.containerAlpha else 1f
-            TopTabMaterialMode.BLUR -> if (isTabFloating) tabChromeStyle.containerAlpha else 0.72f
-            TopTabMaterialMode.LIQUID_GLASS -> tabChromeStyle.containerAlpha
-        },
+        targetValue = resolveHomeTopTabOverlayAlpha(
+            materialMode = effectiveTabMaterialMode,
+            isTabFloating = isTabFloating,
+            containerAlpha = tabChromeColors.containerColor.alpha
+        ),
         animationSpec = tween(220),
         label = "tabOverlayAlpha"
     )
