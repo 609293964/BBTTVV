@@ -99,9 +99,9 @@ class HomeInteractionMotionBudgetPolicyTest {
     }
 
     @Test
-    fun idlePager_keepsSettledSelectionForTopTabViewportAnchor() {
+    fun idlePagerViewportAnchor_prefersSettledPagerPage() {
         assertEquals(
-            1,
+            3,
             resolveTopTabViewportAnchorIndex(
                 selectedIndex = 1,
                 pagerCurrentPage = 3,
@@ -136,9 +136,9 @@ class HomeInteractionMotionBudgetPolicyTest {
     }
 
     @Test
-    fun idlePagerPosition_fallsBackToSettledSelection() {
+    fun idlePagerPosition_prefersSettledPagerPage() {
         assertEquals(
-            2f,
+            1f,
             resolveTopTabPagerPosition(
                 selectedIndex = 2,
                 pagerCurrentPage = 1,

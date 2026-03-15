@@ -46,7 +46,7 @@ internal fun resolveTopTabViewportAnchorIndex(
     pagerTargetPage: Int?,
     pagerIsScrolling: Boolean
 ): Int {
-    if (!pagerIsScrolling) return selectedIndex
+    if (!pagerIsScrolling) return pagerCurrentPage ?: selectedIndex
     return pagerTargetPage ?: pagerCurrentPage ?: selectedIndex
 }
 
@@ -57,7 +57,7 @@ internal fun resolveTopTabPagerPosition(
     pagerCurrentPageOffsetFraction: Float?,
     pagerIsScrolling: Boolean
 ): Float {
-    if (!pagerIsScrolling) return selectedIndex.toFloat()
+    if (!pagerIsScrolling) return (pagerCurrentPage ?: selectedIndex).toFloat()
     val currentPage = pagerCurrentPage ?: return selectedIndex.toFloat()
     val offsetFraction = pagerCurrentPageOffsetFraction ?: 0f
     val targetPage = pagerTargetPage
