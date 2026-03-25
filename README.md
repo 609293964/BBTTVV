@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-03-24 · 文档已同步至 v7.1.3（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-03-25 · 文档已同步至 v7.2.0（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.1.3-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.2.0-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -42,9 +42,6 @@
 
 > [!IMPORTANT]
 > 应用内默认设置为通用场景，可能不适合所有用户。建议进入 **设置** 按个人习惯手动调整（如外观、动画、播放设置等）。
-
-> [!NOTE]
-> 首页推荐流、视频详情/播放页等高频滑动与动效链路正在进行结构性性能重构。近期 `main` 分支会持续出现滚动、模糊、转场、播放控制相关调整；若遇到阶段性波动，请以最新提交与 `CHANGELOG`/Wiki 说明为准。
 
 > [!CAUTION]
 > `README`、`AI.txt`、`llm.txt`、`llms.txt` 与 Wiki 会定期维护，但主线迭代较快，仍可能存在时效性偏差；内容仅供参考，具体行为请以最新源码、`CHANGELOG.md` 与实际构建结果为准。
@@ -527,7 +524,7 @@ app/src/main/java/com/android/purebilibili
 ## 🗺️ 路线图
 
 > [!TIP]
-> 路线图最后同步于 2026-03-24（v7.1.3）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
+> 路线图最后同步于 2026-03-25（v7.2.0）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
 
 ### ✅ 已完成功能
 
@@ -540,6 +537,7 @@ app/src/main/java/com/android/purebilibili
 - [x] 图片预览文案与过渡升级（评论场景顶部文案 + 方向感动画）
 - [x] 离线下载 + 当前视频批量缓存 + 本地播放
 - [x] 搜索 + 历史记录（批量全删当前暂勿使用）
+- [x] 原生专栏搜索 + 专栏详情页 + 历史记录专栏卡片/跳转
 - [x] Material You + 深色模式
 - [x] 高画质扫码登录 + 首播清晰度鉴权修复（非大会员首次 720P 回退问题）
 - [x] 横屏控制栏增强（字幕面板 / 更多面板 / 播放顺序快捷切换）
@@ -553,7 +551,6 @@ app/src/main/java/com/android/purebilibili
 
 ### 🚧 开发中
 
-- [ ] 首页 / 动态 / 播放器高频链路性能重构（状态拆分、减少重组、降低首屏请求扇出）
 - [ ] 文档站与 Wiki 持续补全（模块 API / 调试手册 / 回归清单）
 
 ### 📋 计划中
@@ -569,13 +566,13 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v7.1.3 · 2026-03-24)
+### 最近更新 (v7.2.0 · 2026-03-25)
 
-- 🎧 **后台播放与音频焦点可独立控制**：播放设置页新增“后台播放”与“占用音频焦点”开关，打游戏或和其它音频 App 同时使用时更灵活。
-- 🔍 **UP 空间搜索补齐**：现在可以分别搜索 TA 的视频与动态，并提供对应空态提示、占位文案与输入防抖。
-- ▶️ **播放器封面与手动起播体验优化**：进入详情页后更稳定沿用入口封面，未主动播放前会保留封面并显示更明确的播放按钮。
-- 🧭 **首页 / 动态 / 搜索细节继续收口**：首页头像点击行为按导航形态自动分流，动态页会记住上次选中的顶部 Tab，搜索页头部模糊预算也更稳。
-- 📁 **下载目录显示更准确**：下载列表现在会优先展示用户通过系统目录授权选择的真实导出路径。
+- 📰 **原生专栏搜索与详情上线**：搜索页新增专栏类型，支持直接进入原生专栏详情，并按重定向自动分流到专栏或动态详情。
+- 🕘 **发布时间展示更清晰**：视频详情、首页卡片和故事卡片补齐发布时间行，资讯/新闻类内容会同时强调相对时间与精确时间。
+- 📚 **历史记录补齐专栏链路**：历史记录现在能正确识别专栏/文集记录，使用独立卡片样式，并按内容类型跳转到正确详情页。
+- 🎛️ **弹幕设置改为横竖屏分离**：竖屏和横屏可分别保存弹幕开关、透明度、字号、速度、显示区域和屏蔽规则，切换场景更顺手。
+- 🖼️ **图片预览与 PiP 体验继续打磨**：图片预览按安全区重新布局，关闭动画更自然；视频进入画中画时会自动收起评论详情，避免遮挡画面。
 
 ### 历史版本
 

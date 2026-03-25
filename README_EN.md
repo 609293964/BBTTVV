@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <sub>Last updated: 2026-03-24 · Synced to v7.1.3 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
+  <sub>Last updated: 2026-03-25 · Synced to v7.2.0 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.1.3-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.2.0-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -377,7 +377,7 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 ## 🗺️ Roadmap
 
 > [!TIP]
-> Roadmap last refreshed on 2026-03-24 (v7.1.3). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
+> Roadmap last refreshed on 2026-03-25 (v7.2.0). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
 
 ### ✅ Completed
 
@@ -389,6 +389,7 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 - [x] Dynamic Feed (with fast-switch stability improvements)
 - [x] Offline Download + current-video batch caching
 - [x] Search + History (avoid "Delete All" for now)
+- [x] Native article search + article detail + article-aware history navigation
 - [x] Material You + Dark Mode
 - [x] TV Login + first-play quality auth fixes for logged-in non-premium users
 - [x] Landscape player controls upgrade (subtitle panel + more panel + play-order quick switch)
@@ -400,7 +401,6 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 ### 🚧 WIP
 
-- [ ] Home / Dynamic / Player performance refactor (state isolation, fewer root recompositions, lower startup fanout)
 - [ ] Wiki and module-level documentation expansion
 
 ### 📋 Planned
@@ -416,13 +416,13 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 See full changelog: [CHANGELOG.md](CHANGELOG.md)
 
-### Latest (v7.1.3 · 2026-03-24)
+### Latest (v7.2.0 · 2026-03-25)
 
-- 🎧 **Background playback and audio focus are now independently configurable**: playback settings now expose dedicated toggles, making it much easier to keep audio running alongside games or other media apps.
-- 🔍 **UP space search is now built in**: users can search a creator's videos and dynamics directly inside the space page, with debounced input and clearer empty states.
-- ▶️ **Player cover and manual-start behavior feel more polished**: the detail page now keeps the entry cover more consistently and shows a clearer play affordance before the user explicitly starts playback.
-- 🧭 **Home / Dynamic / Search details were tightened up**: avatar tap behavior now follows the active navigation layout, Dynamic restores the last selected top tab, and Search uses a steadier header-blur budget during active queries.
-- 📁 **Download location display is more accurate**: the download list now prefers the real user-selected export directory instead of always showing the app-managed path.
+- 📰 **Native article search and detail are now built in**: Search adds an article tab, and article results can route directly into native article or dynamic detail pages.
+- 🕘 **Publish-time presentation is clearer**: video detail, home cards, and story cards now show a dedicated publish-time row, with precise timestamps emphasized for news/current-affairs content.
+- 📚 **History now understands article entries**: article and article-list history records are identified correctly, rendered with dedicated cards, and routed to the proper destination.
+- 🎛️ **Danmaku settings are now split by orientation**: portrait and landscape can each keep their own danmaku toggle, opacity, font scale, speed, area, and blocking rules.
+- 🖼️ **Image preview and PiP behavior were polished further**: preview overlays now respect safe insets better, and entering PiP from comment thread detail now dismisses the overlay automatically.
 
 ---
 
