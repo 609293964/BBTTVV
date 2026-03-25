@@ -2,6 +2,7 @@
 package com.android.purebilibili.feature.video.ui.components
 
 import com.android.purebilibili.core.store.DanmakuPanelWidthMode
+import com.android.purebilibili.core.store.DanmakuSettingsScope
 import com.android.purebilibili.feature.video.danmaku.FaceOcclusionModuleState
 import com.android.purebilibili.feature.video.danmaku.resolveFaceOcclusionModuleUiState
 import androidx.compose.foundation.background
@@ -137,6 +138,7 @@ internal fun shouldDismissDanmakuSettingsPanelFromBackdropGesture(
 @Composable
 fun DanmakuSettingsPanel(
     isFullscreen: Boolean = true,
+    settingsScope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT,
     opacity: Float,
     fontScale: Float,
     speed: Float,
@@ -276,12 +278,45 @@ fun DanmakuSettingsPanel(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "弹幕设置",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "弹幕设置",
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                            shape = RoundedCornerShape(999.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = settingsScope.badgeLabel,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Text(
+                                    text = settingsScope.subtitle,
+                                    color = Color.White.copy(alpha = 0.58f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier

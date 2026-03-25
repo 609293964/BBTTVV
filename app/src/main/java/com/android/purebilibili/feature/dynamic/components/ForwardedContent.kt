@@ -127,6 +127,7 @@ fun ForwardedContent(
             val playableBvid = resolveArchivePlayableBvid(archive)
             VideoCardSmall(
                 archive = archive,
+                publishTs = author?.pub_ts ?: 0L,
                 onClick = { playableBvid?.let(onVideoClick) }
             )
         }

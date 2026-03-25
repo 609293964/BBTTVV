@@ -36,6 +36,7 @@ data class HistoryData(
     val title: String = "",
     val pic: String = "",
     val cover: String = "",
+    val covers: List<String> = emptyList(),
     val author_name: String = "",
     val author_face: String = "",
     val author_mid: Long = 0,
@@ -46,12 +47,19 @@ data class HistoryData(
     val view_at: Long = 0
 ) {
     fun toVideoItem(): VideoItem {
+        val rawBusiness = history?.business.orEmpty()
+        val business = HistoryBusiness.fromValue(rawBusiness)
+        val resolvedArticleId = when {
+            rawBusiness == "article-list" && (history?.cid ?: 0) > 0L -> history?.cid ?: 0L
+            business == HistoryBusiness.ARTICLE -> history?.oid ?: 0L
+            else -> history?.oid ?: 0L
+        }
         return VideoItem(
-            id = history?.oid ?: 0,
+            id = if (business == HistoryBusiness.ARTICLE) resolvedArticleId else (history?.oid ?: 0L),
             bvid = history?.bvid ?: "",
             cid = history?.cid ?: 0,
             title = title,
-            pic = if (cover.isNotEmpty()) cover else pic,
+            pic = listOf(cover, pic, covers.firstOrNull().orEmpty()).firstOrNull { it.isNotBlank() }.orEmpty(),
             owner = Owner(mid = author_mid, name = author_name, face = author_face),
             stat = stat ?: Stat(),
             duration = duration,
@@ -64,7 +72,8 @@ data class HistoryData(
      * 转换为 UI 层使用的 HistoryItem（包含完整导航信息）
      */
     fun toHistoryItem(): HistoryItem {
-        val business = HistoryBusiness.fromValue(history?.business ?: "")
+        val rawBusiness = history?.business.orEmpty()
+        val business = HistoryBusiness.fromValue(rawBusiness)
         return HistoryItem(
             videoItem = toVideoItem(),
             business = business,
@@ -100,7 +109,14 @@ enum class HistoryBusiness(val value: String) {
     
     companion object {
         fun fromValue(value: String): HistoryBusiness {
-            return entries.find { it.value == value } ?: UNKNOWN
+            val normalizedValue = value.trim()
+            return when {
+                normalizedValue.equals(ARCHIVE.value, ignoreCase = true) -> ARCHIVE
+                normalizedValue.equals(PGC.value, ignoreCase = true) -> PGC
+                normalizedValue.equals(LIVE.value, ignoreCase = true) -> LIVE
+                normalizedValue.contains(ARTICLE.value, ignoreCase = true) -> ARTICLE
+                else -> UNKNOWN
+            }
         }
     }
 }

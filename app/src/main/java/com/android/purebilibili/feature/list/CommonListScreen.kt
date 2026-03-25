@@ -1,5 +1,7 @@
 package com.android.purebilibili.feature.list
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.core.spring
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.hazeEffect
@@ -9,8 +11,10 @@ import com.android.purebilibili.core.ui.blur.unifiedBlur
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.platform.LocalContext // [New]
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity // [New]
 import androidx.compose.ui.zIndex // [New]
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned // [New]
 import com.android.purebilibili.core.store.SettingsManager // [New]
 import com.android.purebilibili.core.ui.blur.BlurStyles // [New]
@@ -22,6 +26,8 @@ import com.android.purebilibili.core.ui.adaptive.resolveEffectiveMotionTier
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -54,13 +60,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.android.purebilibili.core.theme.BiliPink
 import com.android.purebilibili.core.ui.animation.DissolveAnimationPreset
 import com.android.purebilibili.core.ui.animation.DissolvableVideoCard
 import com.android.purebilibili.core.ui.animation.jiggleOnDissolve
+import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
+import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.util.VideoGridItemSkeleton
+import com.android.purebilibili.core.util.CardPositionManager
 import com.android.purebilibili.feature.home.components.cards.ElegantVideoCard
 import io.github.alexzhirkevich.cupertino.CupertinoActivityIndicator
 import com.android.purebilibili.core.util.LocalWindowSizeClass
@@ -69,7 +83,12 @@ import com.android.purebilibili.core.util.rememberResponsiveSpacing
 import com.android.purebilibili.core.util.rememberResponsiveValue
 import com.android.purebilibili.core.util.PinyinUtils
 import com.android.purebilibili.core.theme.LocalUiPreset
+import com.android.purebilibili.data.model.response.HistoryBusiness
+import com.android.purebilibili.data.model.response.HistoryItem
 import com.android.purebilibili.data.model.response.VideoItem
+import com.android.purebilibili.feature.article.ArticleSharedElementSlot
+import com.android.purebilibili.feature.article.resolveHistoryArticleCoverAspectRatio
+import com.android.purebilibili.feature.article.resolveArticleSharedTransitionKey
 import com.android.purebilibili.feature.space.SeasonSeriesDetailViewModel
 import com.android.purebilibili.feature.video.player.ExternalPlaylistSource
 import com.android.purebilibili.feature.video.player.PlayMode
@@ -593,6 +612,9 @@ fun CommonListScreen(
                         resolveHistoryLookupKey = historyViewModel?.let { vm ->
                             { video -> vm.resolveHistoryLookupKey(video) }
                         },
+                        resolveHistoryItem = historyViewModel?.let { vm ->
+                            { video -> vm.getHistoryItem(vm.resolveHistoryLookupKey(video)) }
+                        },
                         onHistoryLongDelete = if (historyViewModel != null) {
                             { key ->
                                 if (!isHistoryBatchMode) {
@@ -890,6 +912,7 @@ private fun CommonListContent(
         video.bvid.ifBlank { video.id.toString() }
     },
     resolveHistoryLookupKey: ((com.android.purebilibili.data.model.response.VideoItem) -> String)? = null,
+    resolveHistoryItem: ((com.android.purebilibili.data.model.response.VideoItem) -> HistoryItem?)? = null,
     onHistoryLongDelete: ((String) -> Unit)? = null,
     onHistoryDissolveComplete: ((String) -> Unit)? = null,
     onHistoryToggleSelect: ((String) -> Unit)? = null
@@ -969,6 +992,7 @@ private fun CommonListContent(
                     }
                 ) { index, video ->
                     val historyKey = resolveHistoryItemKey(video)
+                    val historyItem = resolveHistoryItem?.invoke(video)
                     val supportsHistoryDissolve = onHistoryLongDelete != null && onHistoryDissolveComplete != null
                     val isDissolving = supportsHistoryDissolve &&
                         historyKey in resolveActiveHistoryDeleteKeys(historyDeleteSession)
@@ -977,6 +1001,11 @@ private fun CommonListContent(
                     val isSelected = historyBatchMode && historyKey in historySelectedKeys
                     val historyDeleteAnimationMode = historyDeleteSession?.animationMode
                         ?: HistoryDeleteAnimationMode.SINGLE_DISSOLVE
+                    val historySelectionShape = if (historyItem?.business == HistoryBusiness.ARTICLE) {
+                        RoundedCornerShape(20.dp)
+                    } else {
+                        RoundedCornerShape(12.dp)
+                    }
 
                     val cardContent: @Composable () -> Unit = {
                         Box {
@@ -987,6 +1016,28 @@ private fun CommonListContent(
                                         resolveFavoriteCollectionRoute(video)?.let { route ->
                                             onCollectionClick?.invoke(route.id, route.mid, route.title)
                                         }
+                                    }
+                                )
+                            } else if (historyItem?.business == HistoryBusiness.ARTICLE) {
+                                HistoryArticleCard(
+                                    article = video,
+                                    transitionEnabled = cardTransitionEnabled,
+                                    onClick = {
+                                        if (historyBatchMode) {
+                                            onHistoryToggleSelect?.invoke(historyKey)
+                                        } else {
+                                            resolveCommonListVideoNavigationRequest(
+                                                video = video,
+                                                fallbackLookupKey = resolveHistoryLookupKey?.invoke(video)
+                                            )?.let { request ->
+                                                onVideoClick(request.lookupKey, request.cid, request.coverUrl)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = if (!historyBatchMode && supportsHistoryDissolve) {
+                                        { onHistoryLongDelete?.invoke(historyKey) }
+                                    } else {
+                                        null
                                     }
                                 )
                             } else {
@@ -1030,7 +1081,7 @@ private fun CommonListContent(
                                             } else {
                                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                                             },
-                                            shape = RoundedCornerShape(12.dp)
+                                            shape = historySelectionShape
                                         )
                                         .background(
                                             if (isSelected) {
@@ -1038,7 +1089,7 @@ private fun CommonListContent(
                                             } else {
                                                 Color.Transparent
                                             },
-                                            shape = RoundedCornerShape(12.dp)
+                                            shape = historySelectionShape
                                         )
                                 )
                                 Icon(
@@ -1079,6 +1130,114 @@ private fun CommonListContent(
                         cardContent()
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun HistoryArticleCard(
+    article: VideoItem,
+    transitionEnabled: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val articleId = article.id.coerceAtLeast(0L)
+    val coverTransitionKey = remember(articleId) {
+        resolveArticleSharedTransitionKey(articleId, ArticleSharedElementSlot.COVER)
+    }
+    val cardBoundsRef = remember { object { var value: androidx.compose.ui.geometry.Rect? = null } }
+    val triggerArticleClick = {
+        cardBoundsRef.value?.let { bounds ->
+            CardPositionManager.recordCardPosition(
+                bounds = bounds,
+                screenWidth = screenWidthPx,
+                screenHeight = screenHeightPx,
+                density = density.density
+            )
+        }
+        onClick()
+    }
+    val baseCoverModifier = Modifier
+        .fillMaxWidth()
+        .aspectRatio(resolveHistoryArticleCoverAspectRatio())
+    val coverModifier = if (transitionEnabled && sharedTransitionScope != null && animatedVisibilityScope != null && articleId > 0L) {
+        with(sharedTransitionScope) {
+            baseCoverModifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key = coverTransitionKey),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = { _, _ -> spring(dampingRatio = 0.82f, stiffness = 260f) },
+                clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(20.dp))
+            )
+        }
+    } else {
+        baseCoverModifier
+    }
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                cardBoundsRef.value = coordinates.boundsInRoot()
+            }
+            .combinedClickable(
+                onClick = triggerArticleClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            ) {
+                AsyncImage(
+                    model = article.pic,
+                    contentDescription = article.title,
+                    modifier = coverModifier,
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "专栏",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Text(
+                    text = article.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = article.owner.name.ifBlank { "未知作者" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

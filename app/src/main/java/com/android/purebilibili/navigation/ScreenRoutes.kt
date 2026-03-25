@@ -39,6 +39,13 @@ sealed class ScreenRoutes(val route: String) {
             return "dynamic_detail/${android.net.Uri.encode(dynamicId)}"
         }
     }
+
+    object ArticleDetail : ScreenRoutes("article/{articleId}?title={title}") {
+        fun createRoute(articleId: Long, title: String? = null): String {
+            val encodedTitle = title?.let(android.net.Uri::encode).orEmpty()
+            return "article/$articleId?title=$encodedTitle"
+        }
+    }
     
     //  [新增] 竖屏短视频 (故事模式)
     object Story : ScreenRoutes("story")

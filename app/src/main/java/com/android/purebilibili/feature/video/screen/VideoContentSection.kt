@@ -868,8 +868,9 @@ private fun VideoDetailDanmakuSettingsPanel(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val danmakuScope = com.android.purebilibili.core.store.DanmakuSettingsScope.PORTRAIT
     val danmakuSettings by SettingsManager
-        .getDanmakuSettings(context)
+        .getDanmakuSettings(context, danmakuScope)
         .collectAsState(initial = DanmakuSettings())
 
     var localOpacity by remember(danmakuSettings.opacity) { mutableFloatStateOf(danmakuSettings.opacity) }
@@ -886,6 +887,7 @@ private fun VideoDetailDanmakuSettingsPanel(
 
     DanmakuSettingsPanel(
         isFullscreen = false,
+        settingsScope = danmakuScope,
         opacity = localOpacity,
         fontScale = localFontScale,
         speed = localSpeed,
@@ -902,47 +904,47 @@ private fun VideoDetailDanmakuSettingsPanel(
         smartOcclusion = false,
         onOpacityChange = {
             localOpacity = it
-            scope.launch { SettingsManager.setDanmakuOpacity(context, it) }
+            scope.launch { SettingsManager.setDanmakuOpacity(context, it, danmakuScope) }
         },
         onFontScaleChange = {
             localFontScale = it
-            scope.launch { SettingsManager.setDanmakuFontScale(context, it) }
+            scope.launch { SettingsManager.setDanmakuFontScale(context, it, danmakuScope) }
         },
         onSpeedChange = {
             localSpeed = it
-            scope.launch { SettingsManager.setDanmakuSpeed(context, it) }
+            scope.launch { SettingsManager.setDanmakuSpeed(context, it, danmakuScope) }
         },
         onDisplayAreaChange = {
             localDisplayArea = it
-            scope.launch { SettingsManager.setDanmakuArea(context, it) }
+            scope.launch { SettingsManager.setDanmakuArea(context, it, danmakuScope) }
         },
         onMergeDuplicatesChange = {
             localMergeDuplicates = it
-            scope.launch { SettingsManager.setDanmakuMergeDuplicates(context, it) }
+            scope.launch { SettingsManager.setDanmakuMergeDuplicates(context, it, danmakuScope) }
         },
         onAllowScrollChange = {
             localAllowScroll = it
-            scope.launch { SettingsManager.setDanmakuAllowScroll(context, it) }
+            scope.launch { SettingsManager.setDanmakuAllowScroll(context, it, danmakuScope) }
         },
         onAllowTopChange = {
             localAllowTop = it
-            scope.launch { SettingsManager.setDanmakuAllowTop(context, it) }
+            scope.launch { SettingsManager.setDanmakuAllowTop(context, it, danmakuScope) }
         },
         onAllowBottomChange = {
             localAllowBottom = it
-            scope.launch { SettingsManager.setDanmakuAllowBottom(context, it) }
+            scope.launch { SettingsManager.setDanmakuAllowBottom(context, it, danmakuScope) }
         },
         onAllowColorfulChange = {
             localAllowColorful = it
-            scope.launch { SettingsManager.setDanmakuAllowColorful(context, it) }
+            scope.launch { SettingsManager.setDanmakuAllowColorful(context, it, danmakuScope) }
         },
         onAllowSpecialChange = {
             localAllowSpecial = it
-            scope.launch { SettingsManager.setDanmakuAllowSpecial(context, it) }
+            scope.launch { SettingsManager.setDanmakuAllowSpecial(context, it, danmakuScope) }
         },
         onBlockRulesRawChange = {
             localBlockRulesRaw = it
-            scope.launch { SettingsManager.setDanmakuBlockRulesRaw(context, it) }
+            scope.launch { SettingsManager.setDanmakuBlockRulesRaw(context, it, danmakuScope) }
         },
         onDismiss = onDismiss
     )

@@ -1,6 +1,8 @@
 package com.android.purebilibili.feature.dynamic.components
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -71,6 +73,13 @@ internal data class ImagePreviewTextTransform(
     val rotationX: Float,
     val alpha: Float,
     val translateYDp: Float
+)
+
+internal data class ImagePreviewOverlayPadding(
+    val start: Dp,
+    val top: Dp,
+    val end: Dp,
+    val bottom: Dp
 )
 
 internal fun resolveImagePreviewTransitionFrame(
@@ -186,6 +195,36 @@ internal fun resolveImagePreviewDismissRectFrame(
             bottom = centerY + height / 2f
         ),
         dismissFraction = dismissFraction
+    )
+}
+
+internal fun resolveImagePreviewDismissStartRect(
+    previewSurfaceRect: Rect?,
+    displayedImageRect: Rect?,
+    preferPreviewSurface: Boolean
+): Rect? {
+    return if (preferPreviewSurface) {
+        previewSurfaceRect ?: displayedImageRect
+    } else {
+        displayedImageRect ?: previewSurfaceRect
+    }
+}
+
+internal fun resolveImagePreviewOverlayPadding(
+    safeInsetStart: Dp,
+    safeInsetTop: Dp,
+    safeInsetEnd: Dp,
+    safeInsetBottom: Dp,
+    extraHorizontal: Dp = 16.dp,
+    extraVertical: Dp = 16.dp
+): ImagePreviewOverlayPadding {
+    val resolvedHorizontal = extraHorizontal.coerceAtLeast(0.dp)
+    val resolvedVertical = extraVertical.coerceAtLeast(0.dp)
+    return ImagePreviewOverlayPadding(
+        start = safeInsetStart.coerceAtLeast(0.dp) + resolvedHorizontal,
+        top = safeInsetTop.coerceAtLeast(0.dp) + resolvedVertical,
+        end = safeInsetEnd.coerceAtLeast(0.dp) + resolvedHorizontal,
+        bottom = safeInsetBottom.coerceAtLeast(0.dp) + resolvedVertical
     )
 }
 

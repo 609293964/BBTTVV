@@ -27,11 +27,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.android.purebilibili.feature.article.ArticleDetailScreen
+import com.android.purebilibili.feature.article.shouldUseArticleNoOpRouteTransition
 import com.android.purebilibili.feature.home.HomeVideoClickRequest
 import com.android.purebilibili.feature.home.HomeScreen
 import com.android.purebilibili.feature.home.HomeViewModel
 import com.android.purebilibili.feature.login.LoginScreen
 import com.android.purebilibili.feature.profile.ProfileScreen
+import com.android.purebilibili.feature.search.ArticleNavigationTarget
+import com.android.purebilibili.feature.search.resolveArticleNavigationTarget
 import com.android.purebilibili.feature.search.SearchScreen
 import com.android.purebilibili.feature.settings.SettingsScreen
 import com.android.purebilibili.feature.settings.AppearanceSettingsScreen
@@ -43,6 +47,8 @@ import com.android.purebilibili.feature.settings.ReleaseChannelDisclaimerDialog
 import com.android.purebilibili.feature.list.CommonListScreen
 import com.android.purebilibili.feature.list.HistoryViewModel
 import com.android.purebilibili.feature.list.FavoriteViewModel
+import com.android.purebilibili.feature.list.HistoryNavigationKind
+import com.android.purebilibili.feature.list.resolveHistoryNavigationKind
 import com.android.purebilibili.feature.list.resolveHistoryPlaybackCid
 import com.android.purebilibili.feature.list.resolveHistoryResumePositionMs
 import com.android.purebilibili.feature.video.screen.VideoDetailScreen
@@ -1034,10 +1040,28 @@ fun AppNavigation(
         composable(
             route = ScreenRoutes.History.route,
             enterTransition = { slideEnterLeft(navMotionSpec) },
-            popEnterTransition = { videoCardReturnPopEnterTransition(ScreenRoutes.History.route) },
+            popEnterTransition = {
+                val fromRoute = initialState.destination.route
+                val articleSharedTransitionReady =
+                    fromRoute?.startsWith("article/") == true &&
+                        CardPositionManager.isReturningFromDetail &&
+                        CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible &&
+                        shouldUseArticleNoOpRouteTransition(
+                            cardTransitionEnabled = cardTransitionEnabled,
+                            predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                            sharedTransitionReady = true
+                        )
+                if (articleSharedTransitionReady) {
+                    EnterTransition.None
+                } else {
+                    videoCardReturnPopEnterTransition(ScreenRoutes.History.route)
+                }
+            },
             popExitTransition = { slideExitRight(navMotionSpec) }
         ) {
             val historyViewModel: HistoryViewModel = viewModel()
+            val historyNavigationScope = rememberCoroutineScope()
             
             //  [修复] 每次进入历史记录页面时刷新数据
             androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -1058,12 +1082,12 @@ fun AppNavigation(
                             historyItem = historyItem
                         )
                         val resumePositionMs = resolveHistoryResumePositionMs(historyItem)
-                        when (historyItem?.business) {
-                            com.android.purebilibili.data.model.response.HistoryBusiness.PGC -> {
+                        when (resolveHistoryNavigationKind(historyItem)) {
+                            HistoryNavigationKind.PGC -> {
                                 // 番剧: 导航到番剧播放页
-                                if (historyItem.epid > 0 && historyItem.seasonId > 0) {
+                                if (historyItem != null && historyItem.epid > 0 && historyItem.seasonId > 0) {
                                     navController.navigate(ScreenRoutes.BangumiPlayer.createRoute(historyItem.seasonId, historyItem.epid))
-                                } else if (historyItem.seasonId > 0 || historyItem.epid > 0) {
+                                } else if (historyItem != null && (historyItem.seasonId > 0 || historyItem.epid > 0)) {
                                     // 有 seasonId (可能是 oid) 或 epid，进详情页
                                     // 注意：即使 seasonId 可能是错误的 (AVID)，只要有 epid，新的详情页逻辑也能正确加载
                                     navController.navigate(ScreenRoutes.BangumiDetail.createRoute(historyItem.seasonId, historyItem.epid))
@@ -1077,9 +1101,9 @@ fun AppNavigation(
                                     )
                                 }
                             }
-                            com.android.purebilibili.data.model.response.HistoryBusiness.LIVE -> {
+                            HistoryNavigationKind.LIVE -> {
                                 // 直播: 导航到直播页
-                                if (historyItem.roomId > 0) {
+                                if (historyItem != null && historyItem.roomId > 0) {
                                     navController.navigate(ScreenRoutes.Live.createRoute(
                                         historyItem.roomId,
                                         historyItem.videoItem.title,
@@ -1094,7 +1118,37 @@ fun AppNavigation(
                                     )
                                 }
                             }
-                            else -> {
+                            HistoryNavigationKind.ARTICLE -> {
+                                val articleId = historyItem?.videoItem?.id ?: 0L
+                                val articleTitle = historyItem?.videoItem?.title.orEmpty()
+                                if (articleId > 0L) {
+                                    historyNavigationScope.launch {
+                                        when (val target = resolveArticleNavigationTarget(articleId)) {
+                                            is ArticleNavigationTarget.NativeDynamic -> {
+                                                navController.navigate(ScreenRoutes.DynamicDetail.createRoute(target.dynamicId))
+                                            }
+                                            is ArticleNavigationTarget.NativeArticle -> {
+                                                navController.navigate(
+                                                    ScreenRoutes.ArticleDetail.createRoute(target.articleId, articleTitle)
+                                                )
+                                            }
+                                            null -> {
+                                                navController.navigate(
+                                                    ScreenRoutes.ArticleDetail.createRoute(articleId, articleTitle)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    navigateToVideo(
+                                        lookupKey,
+                                        resolvedCid,
+                                        cover,
+                                        resumePositionMs = resumePositionMs
+                                    )
+                                }
+                            }
+                            HistoryNavigationKind.VIDEO -> {
                                 // 普通视频 (archive) 或未知类型
                                 navigateToVideo(
                                     lookupKey,
@@ -1330,6 +1384,25 @@ fun AppNavigation(
                     onLiveClick = { roomId, title, uname ->
                         if (canNavigate(false)) navController.navigate(ScreenRoutes.Live.createRoute(roomId, title, uname))
                     },
+                    onArticleClick = { articleId, title ->
+                        if (canNavigate(false)) {
+                            coroutineScope.launch {
+                                when (val target = resolveArticleNavigationTarget(articleId)) {
+                                    is ArticleNavigationTarget.NativeDynamic -> {
+                                        navController.navigate(
+                                            ScreenRoutes.DynamicDetail.createRoute(target.dynamicId)
+                                        )
+                                    }
+                                    is ArticleNavigationTarget.NativeArticle -> {
+                                        navController.navigate(
+                                            ScreenRoutes.ArticleDetail.createRoute(target.articleId, title)
+                                        )
+                                    }
+                                    null -> Unit
+                                }
+                            }
+                        }
+                    },
                     onAvatarClick = {
                         // 如果已登录 -> 去个人中心，未登录 -> 去登录页
                         if (homeState.user.isLogin) {
@@ -1438,6 +1511,77 @@ fun AppNavigation(
                     // 用户需要从视频页直接点击 BGM 按钮
                 }
             )
+        }
+
+        composable(
+            route = ScreenRoutes.ArticleDetail.route,
+            arguments = listOf(
+                navArgument("articleId") { type = NavType.LongType },
+                navArgument("title") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                    nullable = true
+                }
+            ),
+            enterTransition = {
+                val fromRoute = initialState.destination.route
+                val articleSharedTransitionReady =
+                    fromRoute == ScreenRoutes.History.route &&
+                        CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible &&
+                        shouldUseArticleNoOpRouteTransition(
+                            cardTransitionEnabled = cardTransitionEnabled,
+                            predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                            sharedTransitionReady = true
+                        )
+                if (articleSharedTransitionReady) {
+                    EnterTransition.None
+                } else {
+                    slideEnterUp(navMotionSpec)
+                }
+            },
+            popExitTransition = {
+                val targetRoute = targetState.destination.route
+                val articleSharedTransitionReady =
+                    targetRoute == ScreenRoutes.History.route &&
+                        CardPositionManager.isReturningFromDetail &&
+                        CardPositionManager.lastClickedCardBounds != null &&
+                        CardPositionManager.isCardFullyVisible &&
+                        shouldUseArticleNoOpRouteTransition(
+                            cardTransitionEnabled = cardTransitionEnabled,
+                            predictiveBackAnimationEnabled = predictiveBackAnimationEnabled,
+                            sharedTransitionReady = true
+                        )
+                if (articleSharedTransitionReady) {
+                    ExitTransition.None
+                } else {
+                    slideExitDown(navMotionSpec)
+                }
+            }
+        ) { backStackEntry ->
+            val articleId = backStackEntry.arguments?.getLong("articleId") ?: 0L
+            val title = android.net.Uri.decode(backStackEntry.arguments?.getString("title") ?: "")
+
+            ProvideAnimatedVisibilityScope(animatedVisibilityScope = this) {
+                ArticleDetailScreen(
+                    articleId = articleId,
+                    initialTitle = title,
+                    transitionEnabled = cardTransitionEnabled,
+                    onBack = { useSharedReturn ->
+                        if (useSharedReturn) {
+                            CardPositionManager.markReturning()
+                        } else {
+                            CardPositionManager.clearReturning()
+                        }
+                        navController.popBackStack()
+                    },
+                    onUserClick = { mid ->
+                        if (mid > 0) {
+                            navController.navigate(ScreenRoutes.Space.createRoute(mid))
+                        }
+                    }
+                )
+            }
         }
 
         // --- 8. 开源许可证 ---
@@ -1608,6 +1752,25 @@ fun AppNavigation(
                     },
                     onDynamicDetailClick = { dynamicId ->
                         navController.navigate(ScreenRoutes.DynamicDetail.createRoute(dynamicId))
+                    },
+                    onArticleClick = { articleId, title ->
+                        if (canNavigate(false)) {
+                            coroutineScope.launch {
+                                when (val target = resolveArticleNavigationTarget(articleId)) {
+                                    is ArticleNavigationTarget.NativeDynamic -> {
+                                        navController.navigate(
+                                            ScreenRoutes.DynamicDetail.createRoute(target.dynamicId)
+                                        )
+                                    }
+                                    is ArticleNavigationTarget.NativeArticle -> {
+                                        navController.navigate(
+                                            ScreenRoutes.ArticleDetail.createRoute(target.articleId, title)
+                                        )
+                                    }
+                                    null -> Unit
+                                }
+                            }
+                        }
                     },
                     onViewAllClick = { type, id, mid, title ->
                         navController.navigate(ScreenRoutes.SeasonSeriesDetail.createRoute(type, id, mid, title))

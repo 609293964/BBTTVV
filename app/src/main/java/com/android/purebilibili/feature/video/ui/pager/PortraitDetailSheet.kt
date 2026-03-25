@@ -25,13 +25,12 @@ import com.android.purebilibili.data.model.response.RelatedVideo
 import com.android.purebilibili.core.util.FormatUtils
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.shape.CircleShape
+import com.android.purebilibili.feature.video.ui.section.resolvePublishTimeRowText
+import com.android.purebilibili.feature.video.ui.section.shouldEmphasizePrecisePublishTime
 import kotlinx.coroutines.launch
 
 /**
@@ -166,11 +165,6 @@ fun PortraitDetailSheet(
                             val scope = rememberCoroutineScope()
                             var showBlockConfirmDialog by remember { mutableStateOf(false) }
                             
-                            val pubDateStr = try {
-                                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                sdf.format(Date(info.pubdate * 1000))
-                            } catch (e: Exception) { "" }
-                            
                             if (showBlockConfirmDialog) {
                                 com.android.purebilibili.core.ui.IOSAlertDialog(
                                     onDismissRequest = { showBlockConfirmDialog = false },
@@ -210,6 +204,45 @@ fun PortraitDetailSheet(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
+
+                            val publishTimeRowText = remember(info.pubdate, info.tname, info.title) {
+                                resolvePublishTimeRowText(
+                                    pubdate = info.pubdate,
+                                    partitionName = info.tname,
+                                    title = info.title
+                                )
+                            }
+                            val emphasizePublishTime = remember(info.tname, info.title) {
+                                shouldEmphasizePrecisePublishTime(
+                                    partitionName = info.tname,
+                                    title = info.title
+                                )
+                            }
+
+                            if (publishTimeRowText.isNotBlank()) {
+                                if (emphasizePublishTime) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.padding(bottom = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = publishTimeRowText,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = publishTimeRowText,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.74f),
+                                        modifier = Modifier.padding(bottom = 10.dp)
+                                    )
+                                }
+                            }
                             
                             // 基础信息 (UP主 / 时间 / 播放量)
                             Row(
@@ -243,7 +276,7 @@ fun PortraitDetailSheet(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "${FormatUtils.formatStat(info.stat.view.toLong())}观看 · $pubDateStr",
+                                        text = "${FormatUtils.formatStat(info.stat.view.toLong())}观看 · ${FormatUtils.formatStat(info.stat.danmaku.toLong())}弹幕",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

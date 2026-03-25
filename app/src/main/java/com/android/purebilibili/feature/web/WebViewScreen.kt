@@ -1,6 +1,5 @@
 package com.android.purebilibili.feature.web
 
-import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -88,13 +87,23 @@ fun WebViewScreen(
                                 request: WebResourceRequest?
                             ): Boolean {
                                 val requestUrl = request?.url?.toString() ?: return false
-                                return handleBilibiliUrl(view, requestUrl)
+                                return handleBilibiliUrl(
+                                    webView = view,
+                                    urlString = requestUrl,
+                                    hasUserGesture = request.hasGesture()
+                                )
                             }
                             
                             // 兼容旧版 API
                             @Deprecated("Deprecated in Java")
                             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                                return url?.let { handleBilibiliUrl(view, it) } ?: false
+                                return url?.let {
+                                    handleBilibiliUrl(
+                                        webView = view,
+                                        urlString = it,
+                                        hasUserGesture = false
+                                    )
+                                } ?: false
                             }
                             
                             /**
@@ -102,10 +111,14 @@ fun WebViewScreen(
                              * @param webView WebView 实例，用于加载转换后的 URL
                              * @return true 表示已拦截处理，false 表示继续加载网页
                              */
-                            private fun handleBilibiliUrl(webView: WebView?, urlString: String): Boolean {
+                            private fun handleBilibiliUrl(
+                                webView: WebView?,
+                                urlString: String,
+                                hasUserGesture: Boolean
+                            ): Boolean {
                                 android.util.Log.d("WebViewScreen", "🔗 Intercepting URL: $urlString")
                                 try {
-                                    val uri = Uri.parse(urlString)
+                                    val uri = android.net.Uri.parse(urlString)
                                     val scheme = uri.scheme ?: ""
                                     val host = uri.host ?: ""
                                     
@@ -148,25 +161,31 @@ fun WebViewScreen(
                                         }
                                     }
 
-                                    BilibiliNavigationTargetParser.parse(urlString)?.let { target ->
-                                        if (dispatchTarget(target)) {
-                                            android.util.Log.d("WebViewScreen", "✅ Routed target: $target")
+                                    when (val action = resolveWebViewNavigationAction(urlString, hasUserGesture)) {
+                                        is WebViewNavigationAction.Block -> {
+                                            android.util.Log.d("WebViewScreen", "⛔ Blocked navigation: $urlString")
                                             return true
                                         }
-                                    }
-                                    
-                                    // ===== 0. 处理 bilibili:// Deep Link =====
-                                    // 将自定义协议转换为 HTTPS URL 并在 WebView 中加载
-                                    if (scheme == "bilibili" || scheme == "bili") {
-                                        val convertedUrl = convertDeepLinkToWebUrl(uri)
-                                        if (convertedUrl != null) {
-                                            android.util.Log.d("WebViewScreen", "🔄 Deep link -> $convertedUrl")
-                                            // 在 WebView 中加载转换后的 URL
-                                            webView?.loadUrl(convertedUrl)
-                                            return true // 拦截原始 deep link
+
+                                        is WebViewNavigationAction.LoadInWebView -> {
+                                            android.util.Log.d("WebViewScreen", "🔄 Deep link -> ${action.url}")
+                                            webView?.loadUrl(action.url)
+                                            return true
                                         }
-                                        android.util.Log.w("WebViewScreen", "⚠️ Unknown deep link: $urlString")
-                                        return true // 拦截，防止 ERR_UNKNOWN_URL_SCHEME
+
+                                        is WebViewNavigationAction.DispatchTarget -> {
+                                            if (dispatchTarget(action.target)) {
+                                                android.util.Log.d("WebViewScreen", "✅ Routed target: ${action.target}")
+                                                return true
+                                            }
+                                        }
+
+                                        WebViewNavigationAction.AllowWebLoad -> Unit
+                                    }
+
+                                    if (scheme == "bilibili" || scheme == "bili") {
+                                        android.util.Log.w("WebViewScreen", "⚠️ Blocked unknown deep link: $urlString")
+                                        return true
                                     }
 
                                     if (host.contains("b23.tv")) {
@@ -201,67 +220,5 @@ fun WebViewScreen(
                 modifier = Modifier.fillMaxSize()
             )
         }
-    }
-}
-
-/**
- * 将 bilibili:// 深链接转换为 HTTPS 网页 URL
- * 
- * 支持的格式:
- * - bilibili://video/{id} -> https://m.bilibili.com/video/av{id}
- * - bilibili://space/{mid} -> https://space.bilibili.com/{mid}
- * - bilibili://live/{roomId} -> https://live.bilibili.com/{roomId}
- * - bilibili://bangumi/season/{ssid} -> https://m.bilibili.com/bangumi/play/ss{ssid}
- */
-private fun convertDeepLinkToWebUrl(uri: android.net.Uri): String? {
-    val host = uri.host ?: uri.pathSegments?.getOrNull(0) ?: return null
-    val pathSegments = uri.pathSegments ?: return null
-    
-    android.util.Log.d("WebViewScreen", "🔗 Converting deep link: host=$host, segments=$pathSegments")
-    
-    return when {
-        // bilibili://video/123456 -> https://m.bilibili.com/video/av123456
-        host == "video" || (pathSegments.isNotEmpty() && pathSegments[0] == "video") -> {
-            val videoId = if (host == "video") {
-                pathSegments.getOrNull(0) ?: uri.path?.removePrefix("/")
-            } else {
-                pathSegments.getOrNull(1)
-            }
-            if (videoId != null) {
-                // 检查是否已经是 BV 格式
-                if (videoId.startsWith("BV")) {
-                    "https://m.bilibili.com/video/$videoId"
-                } else {
-                    // [重要] 检查 AV ID 是否有效
-                    // 超大 ID (> 10B) 是音乐页面的内部 ID，不是真实视频
-                    // 返回 null 阻止转换，防止无限循环
-                    val numericId = videoId.toLongOrNull()
-                    if (numericId != null && numericId > 10_000_000_000L) {
-                        android.util.Log.w("WebViewScreen", "⚠️ Blocking invalid video ID: $numericId")
-                        null // 不转换，直接阻止
-                    } else {
-                        "https://m.bilibili.com/video/av$videoId"
-                    }
-                }
-            } else null
-        }
-        // bilibili://space/123456
-        host == "space" -> {
-            val mid = pathSegments.getOrNull(0)
-            if (mid != null) "https://space.bilibili.com/$mid" else null
-        }
-        // bilibili://live/123456
-        host == "live" -> {
-            val roomId = pathSegments.getOrNull(0)
-            if (roomId != null) "https://live.bilibili.com/$roomId" else null
-        }
-        // bilibili://bangumi/season/123456
-        host == "bangumi" -> {
-            if (pathSegments.getOrNull(0) == "season") {
-                val ssid = pathSegments.getOrNull(1)
-                if (ssid != null) "https://m.bilibili.com/bangumi/play/ss$ssid" else null
-            } else null
-        }
-        else -> null
     }
 }

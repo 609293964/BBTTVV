@@ -1811,100 +1811,36 @@ fun VideoPlayerSection(
             }
     ) {
         val scope = rememberCoroutineScope()  //  用于设置弹幕开关
+        val activeDanmakuScope = remember(isFullscreen) {
+            com.android.purebilibili.core.store.resolveDanmakuSettingsScope(isLandscape = isFullscreen)
+        }
         
-        //  弹幕开关设置
-        val danmakuEnabled by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuEnabled(context)
+        val danmakuSettings by com.android.purebilibili.core.store.SettingsManager
+            .getDanmakuSettings(context, activeDanmakuScope)
             .collectAsStateWithLifecycle(
-                initialValue = true,
+                initialValue = com.android.purebilibili.core.store.DanmakuSettings(),
                 lifecycle = lifecycleOwner.lifecycle
             )
-        
-        //  弹幕设置（全局持久化）
-        val danmakuOpacity by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuOpacity(context)
-            .collectAsStateWithLifecycle(
-                initialValue = 0.85f,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuFontScale by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuFontScale(context)
-            .collectAsStateWithLifecycle(
-                initialValue = 1.0f,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuSpeed by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuSpeed(context)
-            .collectAsStateWithLifecycle(
-                initialValue = 1.0f,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuDisplayArea by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuArea(context)
-            .collectAsStateWithLifecycle(
-                initialValue = 0.5f,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuMergeDuplicates by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuMergeDuplicates(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuAllowScroll by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuAllowScroll(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuAllowTop by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuAllowTop(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuAllowBottom by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuAllowBottom(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuAllowColorful by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuAllowColorful(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuAllowSpecial by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuAllowSpecial(context)
-            .collectAsStateWithLifecycle(
-                initialValue = true,
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuSmartOcclusion by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuSmartOcclusion(context)
-            .collectAsStateWithLifecycle(
-                initialValue = false,
-                lifecycle = lifecycleOwner.lifecycle
-            )
+        val danmakuEnabled = danmakuSettings.enabled
+        val danmakuOpacity = danmakuSettings.opacity
+        val danmakuFontScale = danmakuSettings.fontScale
+        val danmakuSpeed = danmakuSettings.speed
+        val danmakuDisplayArea = danmakuSettings.displayArea
+        val danmakuMergeDuplicates = danmakuSettings.mergeDuplicates
+        val danmakuAllowScroll = danmakuSettings.allowScroll
+        val danmakuAllowTop = danmakuSettings.allowTop
+        val danmakuAllowBottom = danmakuSettings.allowBottom
+        val danmakuAllowColorful = danmakuSettings.allowColorful
+        val danmakuAllowSpecial = danmakuSettings.allowSpecial
+        val danmakuSmartOcclusion = danmakuSettings.smartOcclusion
         val danmakuFullscreenPanelWidthMode by com.android.purebilibili.core.store.SettingsManager
             .getDanmakuFullscreenPanelWidthMode(context)
             .collectAsStateWithLifecycle(
                 initialValue = com.android.purebilibili.core.store.DanmakuPanelWidthMode.THIRD,
                 lifecycle = lifecycleOwner.lifecycle
             )
-        val danmakuBlockRulesRaw by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuBlockRulesRaw(context)
-            .collectAsStateWithLifecycle(
-                initialValue = "",
-                lifecycle = lifecycleOwner.lifecycle
-            )
-        val danmakuBlockRules by com.android.purebilibili.core.store.SettingsManager
-            .getDanmakuBlockRules(context)
-            .collectAsStateWithLifecycle(
-                initialValue = emptyList<String>(),
-                lifecycle = lifecycleOwner.lifecycle
-            )
+        val danmakuBlockRulesRaw = danmakuSettings.blockRulesRaw
+        val danmakuBlockRules = danmakuSettings.blockRules
         val faceDetector = remember { createFaceOcclusionDetector() }
         DisposableEffect(faceDetector) {
             onDispose { faceDetector.close() }
@@ -3380,7 +3316,11 @@ fun VideoPlayerSection(
                 onDanmakuToggle = {
                     val newState = !danmakuEnabled
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuEnabled(context, newState)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuEnabled(
+                            context,
+                            newState,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(enabled = newState)
                     //  记录弹幕开关事件
@@ -3403,69 +3343,113 @@ fun VideoPlayerSection(
                 onDanmakuOpacityChange = { value ->
                     danmakuManager.opacity = value
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuOpacity(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuOpacity(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(opacity = value)
                 },
                 onDanmakuFontScaleChange = { value ->
                     danmakuManager.fontScale = value
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuFontScale(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuFontScale(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(fontScale = value)
                 },
                 onDanmakuSpeedChange = { value ->
                     danmakuManager.speedFactor = value
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuSpeed(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuSpeed(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(speed = value)
                 },
                 onDanmakuDisplayAreaChange = { value ->
                     danmakuManager.displayArea = value
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuArea(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuArea(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(displayAreaRatio = value)
                 },
                 onDanmakuMergeDuplicatesChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuMergeDuplicates(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuMergeDuplicates(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                 },
                 onDanmakuAllowScrollChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowScroll(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowScroll(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(allowScroll = value)
                 },
                 onDanmakuAllowTopChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowTop(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowTop(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(allowTop = value)
                 },
                 onDanmakuAllowBottomChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowBottom(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowBottom(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(allowBottom = value)
                 },
                 onDanmakuAllowColorfulChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowColorful(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowColorful(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(allowColorful = value)
                 },
                 onDanmakuAllowSpecialChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowSpecial(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuAllowSpecial(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                     queueDanmakuCloudSync(allowSpecial = value)
                 },
                 onDanmakuSmartOcclusionChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuSmartOcclusion(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuSmartOcclusion(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                 },
                 onDanmakuFullscreenPanelWidthModeChange = { value ->
@@ -3475,7 +3459,11 @@ fun VideoPlayerSection(
                 },
                 onDanmakuBlockRulesRawChange = { value ->
                     scope.launch {
-                        com.android.purebilibili.core.store.SettingsManager.setDanmakuBlockRulesRaw(context, value)
+                        com.android.purebilibili.core.store.SettingsManager.setDanmakuBlockRulesRaw(
+                            context,
+                            value,
+                            activeDanmakuScope
+                        )
                     }
                 },
                 smartOcclusionModuleState = smartOcclusionModuleState,

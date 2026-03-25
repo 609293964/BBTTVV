@@ -245,6 +245,7 @@ data class RecommendItem(
             owner = Owner(mid = owner?.mid ?: 0, name = owner?.name ?: "", face = owner?.face ?: ""),
             stat = Stat(view = requestStatConvert(stat?.view), like = requestStatConvert(stat?.like), danmaku = requestStatConvert(stat?.danmaku)),
             duration = duration ?: 0,
+            pubdate = pubdate ?: 0L,
             isVertical = dimension?.isVertical == true,
             rights = rights
         )
@@ -305,6 +306,7 @@ data class PopularItem(
             owner = owner,
             stat = Stat(view = stat.view, like = stat.like, danmaku = stat.danmaku),
             duration = duration,
+            pubdate = pubdate,
             rights = rights
         )
     }

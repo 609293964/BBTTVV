@@ -3,6 +3,7 @@ package com.android.purebilibili.data.repository
 import com.android.purebilibili.core.network.NetworkModule
 import com.android.purebilibili.core.network.WbiUtils
 import com.android.purebilibili.data.model.response.HotItem
+import com.android.purebilibili.data.model.response.SearchArticleItem
 import com.android.purebilibili.data.model.response.VideoItem
 import com.android.purebilibili.data.model.response.SearchUpItem
 import com.android.purebilibili.data.model.response.LiveRoomSearchItem
@@ -303,6 +304,42 @@ object SearchRepository {
             com.android.purebilibili.core.util.Logger.d("SearchRepo", "🔍 Live search result: ${liveList.size} rooms, page ${pageInfo.currentPage}/${pageInfo.totalPages}")
 
             Result.success(Pair(liveList, pageInfo))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    suspend fun searchArticle(
+        keyword: String,
+        page: Int = 1
+    ): Result<Pair<List<SearchArticleItem>, SearchPageInfo>> = withContext(Dispatchers.IO) {
+        try {
+            val params = mutableMapOf(
+                "keyword" to keyword,
+                "search_type" to "article",
+                "page" to page.toString(),
+                "pagesize" to "20"
+            )
+
+            val signedParams = signWithWbi(params)
+            val response = api.searchArticle(signedParams)
+            if (response.code != 0) {
+                return@withContext Result.failure(createSearchError(response.code, response.message))
+            }
+
+            val articleList = response.data?.result
+                ?.map { it.cleanupFields() }
+                ?: emptyList()
+
+            val pageInfo = SearchPageInfo(
+                currentPage = response.data?.page ?: page,
+                totalPages = response.data?.numPages ?: 1,
+                totalResults = response.data?.numResults ?: articleList.size,
+                hasMore = (response.data?.page ?: page) < (response.data?.numPages ?: 1)
+            )
+
+            Result.success(Pair(articleList, pageInfo))
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)

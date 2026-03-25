@@ -1030,6 +1030,9 @@ fun VideoPlayerOverlay(
         if (showDanmakuSettings) {
             DanmakuSettingsPanel(
                 isFullscreen = isFullscreen,
+                settingsScope = com.android.purebilibili.core.store.resolveDanmakuSettingsScope(
+                    isLandscape = isFullscreen
+                ),
                 opacity = danmakuOpacity,
                 fontScale = danmakuFontScale,
                 speed = danmakuSpeed,

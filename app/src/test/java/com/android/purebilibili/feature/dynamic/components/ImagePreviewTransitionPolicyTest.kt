@@ -228,6 +228,48 @@ class ImagePreviewTransitionPolicyTest {
     }
 
     @Test
+    fun resolveImagePreviewDismissStartRect_prefersPreviewSurfaceForChromeDismiss() {
+        val previewSurface = Rect(
+            left = 0f,
+            top = 0f,
+            right = 1080f,
+            bottom = 2400f
+        )
+        val displayed = Rect(
+            left = 120f,
+            top = 320f,
+            right = 960f,
+            bottom = 1760f
+        )
+
+        val startRect = resolveImagePreviewDismissStartRect(
+            previewSurfaceRect = previewSurface,
+            displayedImageRect = displayed,
+            preferPreviewSurface = true
+        )
+
+        assertEquals(previewSurface, startRect)
+    }
+
+    @Test
+    fun resolveImagePreviewDismissStartRect_fallsBackToDisplayedImageWhenPreviewSurfaceMissing() {
+        val displayed = Rect(
+            left = 120f,
+            top = 320f,
+            right = 960f,
+            bottom = 1760f
+        )
+
+        val startRect = resolveImagePreviewDismissStartRect(
+            previewSurfaceRect = null,
+            displayedImageRect = displayed,
+            preferPreviewSurface = true
+        )
+
+        assertEquals(displayed, startRect)
+    }
+
+    @Test
     fun resolveImagePreviewDraggedDisplayRect_appliesTranslationAndScaleAroundCenter() {
         val displayed = Rect(
             left = 180f,

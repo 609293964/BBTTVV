@@ -51,6 +51,8 @@ import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RAT
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedTransition
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
+import com.android.purebilibili.feature.video.ui.section.resolvePublishTimeRowText
+import com.android.purebilibili.feature.video.ui.section.shouldEmphasizePrecisePublishTime
 import io.github.alexzhirkevich.cupertino.icons.CupertinoIcons
 import io.github.alexzhirkevich.cupertino.icons.outlined.*
 
@@ -74,6 +76,7 @@ fun StoryVideoCard(
     scrollLiteModeEnabled: Boolean = false,
     showCoverGlassBadges: Boolean = true,
     showInfoGlassBadges: Boolean = true,
+    showPublishTime: Boolean = false,
     upFollowerCount: Int? = null,
     upVideoCount: Int? = null,
     onDismiss: (() -> Unit)? = null,    //  [新增] 删除/过滤回调（长按触发）
@@ -107,6 +110,23 @@ fun StoryVideoCard(
     }
     val premiumBadgeLabel = remember(video.rights) {
         resolveVideoPremiumBadgeLabel(video.rights)
+    }
+    val publishTimeRowText = remember(showPublishTime, video.pubdate, video.title) {
+        if (!showPublishTime) {
+            ""
+        } else {
+            resolvePublishTimeRowText(
+                pubdate = video.pubdate,
+                partitionName = "",
+                title = video.title
+            )
+        }
+    }
+    val emphasizePublishTime = remember(showPublishTime, video.title) {
+        showPublishTime && shouldEmphasizePrecisePublishTime(
+            partitionName = "",
+            title = video.title
+        )
     }
     
     //  [新增] 长按删除菜单状态
@@ -345,6 +365,34 @@ fun StoryVideoCard(
             lineHeight = 23.sp,
             modifier = titleModifier
         )
+
+        if (publishTimeRowText.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            if (emphasizePublishTime) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = publishTimeRowText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         
         Spacer(modifier = Modifier.height(8.dp))
         

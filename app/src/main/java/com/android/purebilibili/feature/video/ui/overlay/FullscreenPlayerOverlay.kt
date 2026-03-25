@@ -475,8 +475,9 @@ fun FullscreenPlayerOverlay(
                 )
             }
     ) {
+        val danmakuScope = com.android.purebilibili.core.store.DanmakuSettingsScope.LANDSCAPE
         val danmakuSettings by SettingsManager
-            .getDanmakuSettings(context)
+            .getDanmakuSettings(context, danmakuScope)
             .collectAsState(initial = DanmakuSettings())
         val danmakuEnabled = danmakuSettings.enabled
         val danmakuOpacity = danmakuSettings.opacity
@@ -795,7 +796,7 @@ fun FullscreenPlayerOverlay(
                                     onClick = {
                                         val newValue = !danmakuEnabled
                                         danmakuManager.isEnabled = newValue
-                                        scope.launch { SettingsManager.setDanmakuEnabled(context, newValue) }
+                                        scope.launch { SettingsManager.setDanmakuEnabled(context, newValue, danmakuScope) }
                                         com.android.purebilibili.core.util.Logger.d("FullscreenDanmaku", " Danmaku toggle: $newValue")
                                     }
                                 )
@@ -954,6 +955,7 @@ fun FullscreenPlayerOverlay(
             
             DanmakuSettingsPanel(
                 isFullscreen = true,
+                settingsScope = danmakuScope,
                 opacity = localOpacity,
                 fontScale = localFontScale,
                 speed = localSpeed,
@@ -973,56 +975,56 @@ fun FullscreenPlayerOverlay(
                 onOpacityChange = { 
                     localOpacity = it
                     danmakuManager.opacity = it
-                    scope.launch { SettingsManager.setDanmakuOpacity(context, it) }
+                    scope.launch { SettingsManager.setDanmakuOpacity(context, it, danmakuScope) }
                 },
                 onFontScaleChange = { 
                     localFontScale = it
                     danmakuManager.fontScale = it
-                    scope.launch { SettingsManager.setDanmakuFontScale(context, it) }
+                    scope.launch { SettingsManager.setDanmakuFontScale(context, it, danmakuScope) }
                 },
                 onSpeedChange = { 
                     localSpeed = it
                     danmakuManager.speedFactor = it
-                    scope.launch { SettingsManager.setDanmakuSpeed(context, it) }
+                    scope.launch { SettingsManager.setDanmakuSpeed(context, it, danmakuScope) }
                 },
                 onDisplayAreaChange = {
                     localDisplayArea = it
                     danmakuManager.displayArea = it
-                    scope.launch { SettingsManager.setDanmakuArea(context, it) }
+                    scope.launch { SettingsManager.setDanmakuArea(context, it, danmakuScope) }
                 },
                 onMergeDuplicatesChange = {
                     localMergeDuplicates = it
                     // 需要在 Manager 中添加临时变量或直接持久化
                     // 对于 Switch 这种立即生效的 Prefernce，直接存就行
-                    scope.launch { SettingsManager.setDanmakuMergeDuplicates(context, it) }
+                    scope.launch { SettingsManager.setDanmakuMergeDuplicates(context, it, danmakuScope) }
                 },
                 onAllowScrollChange = {
                     localAllowScroll = it
-                    scope.launch { SettingsManager.setDanmakuAllowScroll(context, it) }
+                    scope.launch { SettingsManager.setDanmakuAllowScroll(context, it, danmakuScope) }
                 },
                 onAllowTopChange = {
                     localAllowTop = it
-                    scope.launch { SettingsManager.setDanmakuAllowTop(context, it) }
+                    scope.launch { SettingsManager.setDanmakuAllowTop(context, it, danmakuScope) }
                 },
                 onAllowBottomChange = {
                     localAllowBottom = it
-                    scope.launch { SettingsManager.setDanmakuAllowBottom(context, it) }
+                    scope.launch { SettingsManager.setDanmakuAllowBottom(context, it, danmakuScope) }
                 },
                 onAllowColorfulChange = {
                     localAllowColorful = it
-                    scope.launch { SettingsManager.setDanmakuAllowColorful(context, it) }
+                    scope.launch { SettingsManager.setDanmakuAllowColorful(context, it, danmakuScope) }
                 },
                 onAllowSpecialChange = {
                     localAllowSpecial = it
-                    scope.launch { SettingsManager.setDanmakuAllowSpecial(context, it) }
+                    scope.launch { SettingsManager.setDanmakuAllowSpecial(context, it, danmakuScope) }
                 },
                 onSmartOcclusionChange = {
                     localSmartOcclusion = it
-                    scope.launch { SettingsManager.setDanmakuSmartOcclusion(context, it) }
+                    scope.launch { SettingsManager.setDanmakuSmartOcclusion(context, it, danmakuScope) }
                 },
                 onBlockRulesRawChange = {
                     localBlockRulesRaw = it
-                    scope.launch { SettingsManager.setDanmakuBlockRulesRaw(context, it) }
+                    scope.launch { SettingsManager.setDanmakuBlockRulesRaw(context, it, danmakuScope) }
                 },
                 onFullscreenWidthModeChange = {
                     localFullscreenPanelWidthMode = it

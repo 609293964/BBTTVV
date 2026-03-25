@@ -100,6 +100,7 @@ import com.android.purebilibili.core.theme.LocalUiPreset
 import com.android.purebilibili.core.theme.UiPreset
 import com.android.purebilibili.core.util.LocalWindowSizeClass
 import com.android.purebilibili.data.model.response.HotItem
+import com.android.purebilibili.data.model.response.SearchArticleItem
 import kotlinx.coroutines.launch
 
 internal fun shouldShowSearchHotSection(
@@ -212,6 +213,7 @@ fun SearchScreen(
     onUpClick: (Long) -> Unit,  //  点击UP主跳转到空间
     onBangumiClick: (Long) -> Unit, //  点击番剧/影视跳转详情
     onLiveClick: (Long, String, String) -> Unit, // [新增] 直播点击
+    onArticleClick: (Long, String) -> Unit,
     onAvatarClick: () -> Unit
 ) {
     val uiPreset = LocalUiPreset.current
@@ -739,6 +741,91 @@ fun SearchScreen(
                                     
                                     // [新增] 空状态提示
                                     if (!state.isSearching && state.liveResults.isEmpty() && state.error == null && emptyStateCopy != null) {
+                                        item {
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Text(
+                                                        text = emptyStateCopy.title,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text(
+                                                        text = emptyStateCopy.subtitle,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                        fontSize = 13.sp,
+                                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (state.isLoadingMore) {
+                                        item {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 16.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            com.android.purebilibili.data.model.response.SearchType.ARTICLE -> {
+                                LazyColumn(
+                                    contentPadding = PaddingValues(top = contentTopPadding + 8.dp, bottom = resultBottomPadding, start = 16.dp, end = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    state = resultListState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .then(if (searchHazeEnabled) Modifier.hazeSource(state = hazeState) else Modifier)
+                                ) {
+                                    item {
+                                        SearchFilterBar(
+                                            currentType = state.searchType,
+                                            currentOrder = state.searchOrder,
+                                            currentDuration = state.searchDuration,
+                                            currentVideoTid = state.videoTid,
+                                            currentUpOrder = state.upOrder,
+                                            currentUpOrderSort = state.upOrderSort,
+                                            currentUpUserType = state.upUserType,
+                                            currentLiveOrder = state.liveOrder,
+                                            onTypeChange = { viewModel.setSearchType(it) },
+                                            onOrderChange = { viewModel.setSearchOrder(it) },
+                                            onDurationChange = { viewModel.setSearchDuration(it) },
+                                            onVideoTidChange = { viewModel.setVideoTid(it) },
+                                            onUpOrderChange = { viewModel.setUpOrder(it) },
+                                            onUpOrderSortChange = { viewModel.setUpOrderSort(it) },
+                                            onUpUserTypeChange = { viewModel.setUpUserType(it) },
+                                            onLiveOrderChange = { viewModel.setLiveOrder(it) }
+                                        )
+                                    }
+
+                                    itemsIndexed(state.articleResults) { index, articleItem ->
+                                        ArticleSearchResultCard(
+                                            item = articleItem,
+                                            appearance = genericResultCardAppearance,
+                                            onClick = { onArticleClick(articleItem.id, articleItem.title) }
+                                        )
+                                        if (index == state.articleResults.size - 3 && state.hasMoreResults && !state.isLoadingMore) {
+                                            LaunchedEffect(state.currentPage, state.searchType) {
+                                                viewModel.loadMoreResults()
+                                            }
+                                        }
+                                    }
+
+                                    if (!state.isSearching && state.articleResults.isEmpty() && state.error == null && emptyStateCopy != null) {
                                         item {
                                             Box(
                                                 modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
@@ -1623,7 +1710,8 @@ fun SearchFilterBar(
                 com.android.purebilibili.data.model.response.SearchType.UP to "UP主",
                 com.android.purebilibili.data.model.response.SearchType.BANGUMI to "番剧",
                 com.android.purebilibili.data.model.response.SearchType.MEDIA_FT to "影视",
-                com.android.purebilibili.data.model.response.SearchType.LIVE to "直播"
+                com.android.purebilibili.data.model.response.SearchType.LIVE to "直播",
+                com.android.purebilibili.data.model.response.SearchType.ARTICLE to "专栏"
             ).forEach { (type, label) ->
                 val isSelected = currentType == type
                 val chipColors = resolveSearchSelectionChipColors(
@@ -2363,6 +2451,79 @@ internal fun LiveSearchResultCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ArticleSearchResultCard(
+    item: SearchArticleItem,
+    appearance: SearchResultCardAppearance,
+    onClick: () -> Unit
+) {
+    SearchResultCardSurface(
+        appearance = appearance,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            if (item.imageUrls.isNotEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(FormatUtils.buildSizedImageUrl(item.imageUrls.first(), width = 360, height = 240))
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(width = 112.dp, height = 74.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val metaLine = buildString {
+                    val publishTime = FormatUtils.formatPublishTime(item.pubTime)
+                    if (publishTime.isNotBlank()) {
+                        append(publishTime)
+                    }
+                    if (item.categoryName.isNotBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append(item.categoryName)
+                    }
+                }
+                if (metaLine.isNotBlank()) {
+                    Text(
+                        text = metaLine,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Text(
+                    text = "${FormatUtils.formatStat(item.view.toLong())}浏览 · ${FormatUtils.formatStat(item.reply.toLong())}评论 · ${FormatUtils.formatStat(item.like.toLong())}点赞",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
             }
         }
     }

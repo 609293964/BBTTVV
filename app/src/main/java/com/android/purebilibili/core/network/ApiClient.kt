@@ -767,6 +767,10 @@ interface SearchApi {
     //  [新增] 直播搜索 - search_type=live_room
     @GET("x/web-interface/wbi/search/type")
     suspend fun searchLive(@QueryMap params: Map<String, String>): com.android.purebilibili.data.model.response.LiveRoomSearchResponse
+
+    //  [新增] 专栏搜索 - search_type=article
+    @GET("x/web-interface/wbi/search/type")
+    suspend fun searchArticle(@QueryMap params: Map<String, String>): com.android.purebilibili.data.model.response.SearchArticleResponse
     
     //  搜索建议/联想
     @GET("https://s.search.bilibili.com/main/suggest")
@@ -775,6 +779,13 @@ interface SearchApi {
         @Query("main_ver") mainVer: String = "v1",
         @Query("highlight") highlight: Int = 0
     ): SearchSuggestResponse
+}
+
+interface ArticleApi {
+    @GET("x/article/view")
+    suspend fun getArticleView(
+        @QueryMap params: Map<String, String>
+    ): com.android.purebilibili.data.model.response.ArticleDetailResponse
 }
 
 //  [新增] 故事模式 (竖屏短视频) API
@@ -1581,6 +1592,12 @@ object NetworkModule {
         Retrofit.Builder().baseUrl("https://api.bilibili.com/").client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType())).build()
             .create(SearchApi::class.java)
+    }
+
+    val articleApi: ArticleApi by lazy {
+        Retrofit.Builder().baseUrl("https://api.bilibili.com/").client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType())).build()
+            .create(ArticleApi::class.java)
     }
     
     //  动态 API

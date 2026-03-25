@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.android.purebilibili.core.database.AppDatabase
 import com.android.purebilibili.core.database.entity.SearchHistory
 import com.android.purebilibili.data.model.response.HotItem
+import com.android.purebilibili.data.model.response.SearchArticleItem
 import com.android.purebilibili.data.model.response.VideoItem
 import com.android.purebilibili.data.model.response.SearchUpItem
 import com.android.purebilibili.data.model.response.SearchType
@@ -39,6 +40,7 @@ data class SearchUiState(
     val bangumiResults: List<BangumiSearchItem> = emptyList(),
     //  [新增] 直播结果
     val liveResults: List<LiveRoomSearchItem> = emptyList(),
+    val articleResults: List<SearchArticleItem> = emptyList(),
     val hotList: List<HotItem> = emptyList(),
     val historyList: List<SearchHistory> = emptyList(),
     //  搜索建议
@@ -94,9 +96,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     newLives.size != currentState.liveResults.size) {
                     _uiState.update { 
                         it.copy(
-                            searchResults = newVideos,
-                            upResults = newUps,
-                            liveResults = newLives,
+                                searchResults = newVideos,
+                                upResults = newUps,
+                                liveResults = newLives,
                             emptyStateReason = when (it.searchType) {
                                 SearchType.VIDEO -> resolveSearchEmptyStateReason(
                                     rawResultCount = it.searchResults.size,
@@ -264,6 +266,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 upResults = emptyList(),
                                 bangumiResults = emptyList(),
                                 liveResults = emptyList(),
+                                articleResults = emptyList(),
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore,
@@ -300,6 +303,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 searchResults = emptyList(),
                                 bangumiResults = emptyList(),
                                 liveResults = emptyList(),
+                                articleResults = emptyList(),
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore,
@@ -329,6 +333,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 searchResults = emptyList(),
                                 upResults = emptyList(),
                                 liveResults = emptyList(),
+                                articleResults = emptyList(),
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore,
@@ -358,6 +363,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 searchResults = emptyList(),
                                 upResults = emptyList(),
                                 liveResults = emptyList(),
+                                articleResults = emptyList(),
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore,
@@ -392,6 +398,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 searchResults = emptyList(),
                                 upResults = emptyList(),
                                 bangumiResults = emptyList(),
+                                articleResults = emptyList(),
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore,
@@ -400,6 +407,36 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                     visibleResultCount = filteredLive.size
                                 )
                             ) 
+                        }
+                    }.onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isSearching = false,
+                                error = e.message ?: "搜索失败",
+                                emptyStateReason = SearchEmptyStateReason.NONE
+                            )
+                        }
+                    }
+                }
+                SearchType.ARTICLE -> {
+                    val result = SearchRepository.searchArticle(keyword = keyword, page = 1)
+                    result.onSuccess { (articles, pageInfo) ->
+                        _uiState.update {
+                            it.copy(
+                                isSearching = false,
+                                articleResults = articles,
+                                searchResults = emptyList(),
+                                upResults = emptyList(),
+                                bangumiResults = emptyList(),
+                                liveResults = emptyList(),
+                                currentPage = pageInfo.currentPage,
+                                totalPages = pageInfo.totalPages,
+                                hasMoreResults = pageInfo.hasMore,
+                                emptyStateReason = resolveSearchEmptyStateReason(
+                                    rawResultCount = articles.size,
+                                    visibleResultCount = articles.size
+                                )
+                            )
                         }
                     }.onFailure { e ->
                         _uiState.update {
@@ -524,6 +561,25 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                             it.copy(
                                 isLoadingMore = false,
                                 liveResults = (it.liveResults + filteredLive).distinctBy { room -> room.roomid },
+                                currentPage = pageInfo.currentPage,
+                                totalPages = pageInfo.totalPages,
+                                hasMoreResults = pageInfo.hasMore
+                            )
+                        }
+                    }.onFailure { e ->
+                        _uiState.update { it.copy(isLoadingMore = false, error = "加载更多失败: ${e.message}") }
+                    }
+                }
+                SearchType.ARTICLE -> {
+                    val result = SearchRepository.searchArticle(
+                        keyword = state.query,
+                        page = nextPage
+                    )
+                    result.onSuccess { (articles, pageInfo) ->
+                        _uiState.update {
+                            it.copy(
+                                isLoadingMore = false,
+                                articleResults = (it.articleResults + articles).distinctBy { article -> article.id },
                                 currentPage = pageInfo.currentPage,
                                 totalPages = pageInfo.totalPages,
                                 hasMoreResults = pageInfo.hasMore

@@ -248,6 +248,27 @@ internal fun normalizeDanmakuFullscreenPanelWidthMode(
     mode: DanmakuPanelWidthMode
 ): DanmakuPanelWidthMode = DanmakuPanelWidthMode.THIRD
 
+enum class DanmakuSettingsScope(
+    val keyPrefix: String,
+    val badgeLabel: String,
+    val subtitle: String
+) {
+    PORTRAIT(
+        keyPrefix = "portrait",
+        badgeLabel = "竖屏专用",
+        subtitle = "当前修改仅作用于竖屏观看"
+    ),
+    LANDSCAPE(
+        keyPrefix = "landscape",
+        badgeLabel = "横屏专用",
+        subtitle = "当前修改仅作用于横屏观看"
+    )
+}
+
+internal fun resolveDanmakuSettingsScope(isLandscape: Boolean): DanmakuSettingsScope {
+    return if (isLandscape) DanmakuSettingsScope.LANDSCAPE else DanmakuSettingsScope.PORTRAIT
+}
+
 data class DanmakuSettings(
     val enabled: Boolean = true,
     val opacity: Float = DANMAKU_DEFAULT_OPACITY,
@@ -393,8 +414,11 @@ internal fun mapHomeSettingsFromPreferences(preferences: Preferences): HomeSetti
     return SettingsManager.mapHomeSettingsFromPreferences(preferences)
 }
 
-internal fun mapDanmakuSettingsFromPreferences(preferences: Preferences): DanmakuSettings {
-    return SettingsManager.mapDanmakuSettingsFromPreferences(preferences)
+internal fun mapDanmakuSettingsFromPreferences(
+    preferences: Preferences,
+    scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+): DanmakuSettings {
+    return SettingsManager.mapDanmakuSettingsFromPreferences(preferences, scope)
 }
 
 internal fun mapAppNavigationSettingsFromPreferences(preferences: Preferences): AppNavigationSettings {
@@ -1638,6 +1662,11 @@ object SettingsManager {
     private const val DEFAULT_DANMAKU_FONT_SCALE = 1.0f
     private const val DEFAULT_DANMAKU_SPEED = 1.0f
     private const val DEFAULT_DANMAKU_AREA = 0.5f
+
+    private fun buildScopedDanmakuKeyName(
+        scope: DanmakuSettingsScope,
+        suffix: String
+    ): String = "danmaku_${scope.keyPrefix}_$suffix"
     
     private val KEY_DANMAKU_ENABLED = booleanPreferencesKey("danmaku_enabled")
     private val KEY_DANMAKU_OPACITY = floatPreferencesKey("danmaku_opacity")
@@ -1657,27 +1686,131 @@ object SettingsManager {
     private val KEY_DANMAKU_DEFAULTS_VERSION = intPreferencesKey("danmaku_defaults_version")
     private val KEY_HOME_VISUAL_DEFAULTS_VERSION = intPreferencesKey("home_visual_defaults_version")
 
-    internal fun mapDanmakuSettingsFromPreferences(preferences: Preferences): DanmakuSettings {
-        val blockRulesRaw = preferences[KEY_DANMAKU_BLOCK_RULES] ?: ""
+    private fun keyDanmakuEnabled(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "enabled"))
+    private fun keyDanmakuOpacity(scope: DanmakuSettingsScope) =
+        floatPreferencesKey(buildScopedDanmakuKeyName(scope, "opacity"))
+    private fun keyDanmakuFontScale(scope: DanmakuSettingsScope) =
+        floatPreferencesKey(buildScopedDanmakuKeyName(scope, "font_scale"))
+    private fun keyDanmakuSpeed(scope: DanmakuSettingsScope) =
+        floatPreferencesKey(buildScopedDanmakuKeyName(scope, "speed"))
+    private fun keyDanmakuArea(scope: DanmakuSettingsScope) =
+        floatPreferencesKey(buildScopedDanmakuKeyName(scope, "area"))
+    private fun keyDanmakuAllowScroll(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "allow_scroll"))
+    private fun keyDanmakuAllowTop(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "allow_top"))
+    private fun keyDanmakuAllowBottom(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "allow_bottom"))
+    private fun keyDanmakuAllowColorful(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "allow_colorful"))
+    private fun keyDanmakuAllowSpecial(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "allow_special"))
+    private fun keyDanmakuSmartOcclusion(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "smart_occlusion"))
+    private fun keyDanmakuBlockRules(scope: DanmakuSettingsScope) =
+        stringPreferencesKey(buildScopedDanmakuKeyName(scope, "block_rules"))
+    private fun keyDanmakuMergeDuplicates(scope: DanmakuSettingsScope) =
+        booleanPreferencesKey(buildScopedDanmakuKeyName(scope, "merge_duplicates"))
+
+    private fun <T> readScopedDanmakuPreference(
+        preferences: Preferences,
+        scopeKey: Preferences.Key<T>,
+        legacyKey: Preferences.Key<T>,
+        defaultValue: T
+    ): T {
+        return preferences[scopeKey] ?: preferences[legacyKey] ?: defaultValue
+    }
+
+    internal fun mapDanmakuSettingsFromPreferences(
+        preferences: Preferences,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): DanmakuSettings {
+        val blockRulesRaw = readScopedDanmakuPreference(
+            preferences = preferences,
+            scopeKey = keyDanmakuBlockRules(scope),
+            legacyKey = KEY_DANMAKU_BLOCK_RULES,
+            defaultValue = ""
+        )
         return DanmakuSettings(
-            enabled = preferences[KEY_DANMAKU_ENABLED] ?: true,
+            enabled = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuEnabled(scope),
+                legacyKey = KEY_DANMAKU_ENABLED,
+                defaultValue = true
+            ),
             opacity = normalizeDanmakuOpacity(
-                preferences[KEY_DANMAKU_OPACITY] ?: DEFAULT_DANMAKU_OPACITY
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuOpacity(scope),
+                    legacyKey = KEY_DANMAKU_OPACITY,
+                    defaultValue = DEFAULT_DANMAKU_OPACITY
+                )
             ),
             fontScale = normalizeDanmakuFontScale(
-                preferences[KEY_DANMAKU_FONT_SCALE] ?: DEFAULT_DANMAKU_FONT_SCALE
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuFontScale(scope),
+                    legacyKey = KEY_DANMAKU_FONT_SCALE,
+                    defaultValue = DEFAULT_DANMAKU_FONT_SCALE
+                )
             ),
-            speed = preferences[KEY_DANMAKU_SPEED] ?: DEFAULT_DANMAKU_SPEED,
+            speed = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuSpeed(scope),
+                legacyKey = KEY_DANMAKU_SPEED,
+                defaultValue = DEFAULT_DANMAKU_SPEED
+            ),
             displayArea = normalizeDanmakuDisplayArea(
-                preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuArea(scope),
+                    legacyKey = KEY_DANMAKU_AREA,
+                    defaultValue = DEFAULT_DANMAKU_AREA
+                )
             ),
-            mergeDuplicates = preferences[KEY_DANMAKU_MERGE_DUPLICATES] ?: true,
-            allowScroll = preferences[KEY_DANMAKU_ALLOW_SCROLL] ?: true,
-            allowTop = preferences[KEY_DANMAKU_ALLOW_TOP] ?: true,
-            allowBottom = preferences[KEY_DANMAKU_ALLOW_BOTTOM] ?: true,
-            allowColorful = preferences[KEY_DANMAKU_ALLOW_COLORFUL] ?: true,
-            allowSpecial = preferences[KEY_DANMAKU_ALLOW_SPECIAL] ?: true,
-            smartOcclusion = preferences[KEY_DANMAKU_SMART_OCCLUSION] ?: false,
+            mergeDuplicates = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuMergeDuplicates(scope),
+                legacyKey = KEY_DANMAKU_MERGE_DUPLICATES,
+                defaultValue = true
+            ),
+            allowScroll = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowScroll(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_SCROLL,
+                defaultValue = true
+            ),
+            allowTop = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowTop(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_TOP,
+                defaultValue = true
+            ),
+            allowBottom = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowBottom(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_BOTTOM,
+                defaultValue = true
+            ),
+            allowColorful = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowColorful(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_COLORFUL,
+                defaultValue = true
+            ),
+            allowSpecial = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowSpecial(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_SPECIAL,
+                defaultValue = true
+            ),
+            smartOcclusion = readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuSmartOcclusion(scope),
+                legacyKey = KEY_DANMAKU_SMART_OCCLUSION,
+                defaultValue = false
+            ),
             fullscreenPanelWidthMode = normalizeDanmakuFullscreenPanelWidthMode(
                 DanmakuPanelWidthMode.fromValue(
                     preferences[KEY_DANMAKU_FULLSCREEN_PANEL_WIDTH_MODE]
@@ -1689,122 +1822,277 @@ object SettingsManager {
         )
     }
 
-    fun getDanmakuSettings(context: Context): Flow<DanmakuSettings> {
+    fun getDanmakuSettings(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<DanmakuSettings> {
         return context.settingsDataStore.data
-            .map(::mapDanmakuSettingsFromPreferences)
+            .map { preferences -> mapDanmakuSettingsFromPreferences(preferences, scope) }
             .distinctUntilChanged()
     }
     
     // --- 弹幕开关 ---
-    fun getDanmakuEnabled(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ENABLED] ?: true }
+    fun getDanmakuEnabled(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuEnabled(scope),
+                legacyKey = KEY_DANMAKU_ENABLED,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuEnabled(context: Context, value: Boolean) {
-        context.settingsDataStore.edit { preferences -> preferences[KEY_DANMAKU_ENABLED] = value }
+    suspend fun setDanmakuEnabled(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyDanmakuEnabled(scope)] = value
+        }
     }
     
     // --- 弹幕透明度 (0.0 ~ 1.0, 默认 0.85) ---
-    fun getDanmakuOpacity(context: Context): Flow<Float> = context.settingsDataStore.data
+    fun getDanmakuOpacity(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Float> = context.settingsDataStore.data
         .map { preferences ->
-            normalizeDanmakuOpacity(preferences[KEY_DANMAKU_OPACITY] ?: DEFAULT_DANMAKU_OPACITY)
+            normalizeDanmakuOpacity(
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuOpacity(scope),
+                    legacyKey = KEY_DANMAKU_OPACITY,
+                    defaultValue = DEFAULT_DANMAKU_OPACITY
+                )
+            )
         }
 
-    suspend fun setDanmakuOpacity(context: Context, value: Float) {
-        context.settingsDataStore.edit { preferences -> 
-            preferences[KEY_DANMAKU_OPACITY] = normalizeDanmakuOpacity(value)
+    suspend fun setDanmakuOpacity(
+        context: Context,
+        value: Float,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyDanmakuOpacity(scope)] = normalizeDanmakuOpacity(value)
         }
     }
     
     // --- 弹幕字体大小 (0.3 ~ 2.0, 默认 1.0) ---
-    fun getDanmakuFontScale(context: Context): Flow<Float> = context.settingsDataStore.data
+    fun getDanmakuFontScale(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Float> = context.settingsDataStore.data
         .map { preferences ->
             normalizeDanmakuFontScale(
-                preferences[KEY_DANMAKU_FONT_SCALE] ?: DEFAULT_DANMAKU_FONT_SCALE
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuFontScale(scope),
+                    legacyKey = KEY_DANMAKU_FONT_SCALE,
+                    defaultValue = DEFAULT_DANMAKU_FONT_SCALE
+                )
             )
         }
 
-    suspend fun setDanmakuFontScale(context: Context, value: Float) {
+    suspend fun setDanmakuFontScale(
+        context: Context,
+        value: Float,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_FONT_SCALE] = normalizeDanmakuFontScale(value)
+            preferences[keyDanmakuFontScale(scope)] = normalizeDanmakuFontScale(value)
         }
     }
     
     // --- 弹幕速度 (0.5 ~ 3.0, 默认 1.0 适中) ---
-    fun getDanmakuSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_SPEED] ?: DEFAULT_DANMAKU_SPEED }
+    fun getDanmakuSpeed(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Float> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuSpeed(scope),
+                legacyKey = KEY_DANMAKU_SPEED,
+                defaultValue = DEFAULT_DANMAKU_SPEED
+            )
+        }
 
-    suspend fun setDanmakuSpeed(context: Context, value: Float) {
-        context.settingsDataStore.edit { preferences -> 
-            preferences[KEY_DANMAKU_SPEED] = value.coerceIn(0.5f, 3.0f)
+    suspend fun setDanmakuSpeed(
+        context: Context,
+        value: Float,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyDanmakuSpeed(scope)] = value.coerceIn(0.5f, 3.0f)
         }
     }
     
     // --- 弹幕显示区域 (0.25, 0.5, 0.75, 1.0, 默认 0.5) ---
-    fun getDanmakuArea(context: Context): Flow<Float> = context.settingsDataStore.data
+    fun getDanmakuArea(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Float> = context.settingsDataStore.data
         .map { preferences ->
             normalizeDanmakuDisplayArea(
-                preferences[KEY_DANMAKU_AREA] ?: DEFAULT_DANMAKU_AREA
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuArea(scope),
+                    legacyKey = KEY_DANMAKU_AREA,
+                    defaultValue = DEFAULT_DANMAKU_AREA
+                )
             )
         }
 
-    suspend fun setDanmakuArea(context: Context, value: Float) {
-        context.settingsDataStore.edit { preferences -> 
-            preferences[KEY_DANMAKU_AREA] = normalizeDanmakuDisplayArea(value)
+    suspend fun setDanmakuArea(
+        context: Context,
+        value: Float,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyDanmakuArea(scope)] = normalizeDanmakuDisplayArea(value)
         }
     }
 
     // --- 弹幕类型过滤 (true=显示/不屏蔽) ---
-    fun getDanmakuAllowScroll(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ALLOW_SCROLL] ?: true }
+    fun getDanmakuAllowScroll(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowScroll(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_SCROLL,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuAllowScroll(context: Context, value: Boolean) {
+    suspend fun setDanmakuAllowScroll(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_ALLOW_SCROLL] = value
+            preferences[keyDanmakuAllowScroll(scope)] = value
         }
     }
 
-    fun getDanmakuAllowTop(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ALLOW_TOP] ?: true }
+    fun getDanmakuAllowTop(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowTop(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_TOP,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuAllowTop(context: Context, value: Boolean) {
+    suspend fun setDanmakuAllowTop(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_ALLOW_TOP] = value
+            preferences[keyDanmakuAllowTop(scope)] = value
         }
     }
 
-    fun getDanmakuAllowBottom(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ALLOW_BOTTOM] ?: true }
+    fun getDanmakuAllowBottom(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowBottom(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_BOTTOM,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuAllowBottom(context: Context, value: Boolean) {
+    suspend fun setDanmakuAllowBottom(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_ALLOW_BOTTOM] = value
+            preferences[keyDanmakuAllowBottom(scope)] = value
         }
     }
 
-    fun getDanmakuAllowColorful(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ALLOW_COLORFUL] ?: true }
+    fun getDanmakuAllowColorful(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowColorful(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_COLORFUL,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuAllowColorful(context: Context, value: Boolean) {
+    suspend fun setDanmakuAllowColorful(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_ALLOW_COLORFUL] = value
+            preferences[keyDanmakuAllowColorful(scope)] = value
         }
     }
 
-    fun getDanmakuAllowSpecial(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_ALLOW_SPECIAL] ?: true }
+    fun getDanmakuAllowSpecial(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuAllowSpecial(scope),
+                legacyKey = KEY_DANMAKU_ALLOW_SPECIAL,
+                defaultValue = true
+            )
+        }
 
-    suspend fun setDanmakuAllowSpecial(context: Context, value: Boolean) {
+    suspend fun setDanmakuAllowSpecial(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_ALLOW_SPECIAL] = value
+            preferences[keyDanmakuAllowSpecial(scope)] = value
         }
     }
 
-    fun getDanmakuSmartOcclusion(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_SMART_OCCLUSION] ?: false }
+    fun getDanmakuSmartOcclusion(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuSmartOcclusion(scope),
+                legacyKey = KEY_DANMAKU_SMART_OCCLUSION,
+                defaultValue = false
+            )
+        }
 
-    suspend fun setDanmakuSmartOcclusion(context: Context, value: Boolean) {
+    suspend fun setDanmakuSmartOcclusion(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_SMART_OCCLUSION] = value
+            preferences[keyDanmakuSmartOcclusion(scope)] = value
         }
     }
 
@@ -1828,26 +2116,66 @@ object SettingsManager {
         }
     }
 
-    fun getDanmakuBlockRulesRaw(context: Context): Flow<String> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_BLOCK_RULES] ?: "" }
+    fun getDanmakuBlockRulesRaw(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<String> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuBlockRules(scope),
+                legacyKey = KEY_DANMAKU_BLOCK_RULES,
+                defaultValue = ""
+            )
+        }
 
-    fun getDanmakuBlockRules(context: Context): Flow<List<String>> = context.settingsDataStore.data
-        .map { preferences -> parseDanmakuBlockRules(preferences[KEY_DANMAKU_BLOCK_RULES] ?: "") }
+    fun getDanmakuBlockRules(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<List<String>> = context.settingsDataStore.data
+        .map { preferences ->
+            parseDanmakuBlockRules(
+                readScopedDanmakuPreference(
+                    preferences = preferences,
+                    scopeKey = keyDanmakuBlockRules(scope),
+                    legacyKey = KEY_DANMAKU_BLOCK_RULES,
+                    defaultValue = ""
+                )
+            )
+        }
 
-    suspend fun setDanmakuBlockRulesRaw(context: Context, value: String) {
+    suspend fun setDanmakuBlockRulesRaw(
+        context: Context,
+        value: String,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         val normalized = parseDanmakuBlockRules(value).joinToString(separator = "\n")
         context.settingsDataStore.edit { preferences ->
-            preferences[KEY_DANMAKU_BLOCK_RULES] = normalized
+            preferences[keyDanmakuBlockRules(scope)] = normalized
         }
     }
     
     // --- 弹幕合并重复 (默认开启) ---
-    fun getDanmakuMergeDuplicates(context: Context): Flow<Boolean> = context.settingsDataStore.data
-        .map { preferences -> preferences[KEY_DANMAKU_MERGE_DUPLICATES] ?: true }
+    fun getDanmakuMergeDuplicates(
+        context: Context,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences ->
+            readScopedDanmakuPreference(
+                preferences = preferences,
+                scopeKey = keyDanmakuMergeDuplicates(scope),
+                legacyKey = KEY_DANMAKU_MERGE_DUPLICATES,
+                defaultValue = true
+            )
+        }
         
-    suspend fun setDanmakuMergeDuplicates(context: Context, value: Boolean) {
+    suspend fun setDanmakuMergeDuplicates(
+        context: Context,
+        value: Boolean,
+        scope: DanmakuSettingsScope = DanmakuSettingsScope.PORTRAIT
+    ) {
         context.settingsDataStore.edit { preferences -> 
-            preferences[KEY_DANMAKU_MERGE_DUPLICATES] = value
+            preferences[keyDanmakuMergeDuplicates(scope)] = value
         }
     }
     

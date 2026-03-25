@@ -264,6 +264,67 @@ data class SearchUpResponse(
 )
 
 @Serializable
+data class SearchArticleResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: SearchArticleData? = null
+)
+
+@Serializable
+data class SearchArticleData(
+    val page: Int = 1,
+    val pagesize: Int = 20,
+    val numResults: Int = 0,
+    val numPages: Int = 0,
+    val result: List<SearchArticleItem>? = null
+)
+
+@Serializable
+data class SearchArticleItem(
+    @Serializable(with = FlexibleLongSerializer::class)
+    val id: Long = 0,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val mid: Long = 0,
+    val title: String = "",
+    @SerialName("desc")
+    val description: String = "",
+    @SerialName("pub_time")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val pubTime: Long = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val view: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val reply: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val like: Int = 0,
+    @SerialName("image_urls")
+    val imageUrls: List<String> = emptyList(),
+    @SerialName("category_name")
+    val categoryName: String = "",
+    @SerialName("category_id")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val categoryId: Int = 0,
+    @SerialName("templateId")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val templateId: Int = 0
+) {
+    fun cleanupFields(): SearchArticleItem {
+        return copy(
+            title = title.replace(Regex("<.*?>"), ""),
+            imageUrls = imageUrls.mapNotNull { url ->
+                normalizeImageUrlCandidate(url)?.let { normalized ->
+                    when {
+                        normalized.startsWith("//") -> "https:$normalized"
+                        normalized.startsWith("http://") -> normalized.replace("http://", "https://")
+                        else -> normalized
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Serializable
 data class SearchUpData(
     val page: Int = 1,
     val pagesize: Int = 20,
@@ -306,7 +367,8 @@ enum class SearchType(val value: String, val displayName: String) {
     UP("bili_user", "UP主"),
     BANGUMI("media_bangumi", "番剧"),
     MEDIA_FT("media_ft", "影视"),
-    LIVE("live_room", "直播");
+    LIVE("live_room", "直播"),
+    ARTICLE("article", "专栏");
     
     companion object {
         fun fromValue(value: String): SearchType {

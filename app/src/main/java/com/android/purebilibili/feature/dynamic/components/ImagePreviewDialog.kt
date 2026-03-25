@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
@@ -82,6 +83,7 @@ private data class ImagePreviewOverlayRequest(
     val images: List<String>,
     val initialIndex: Int,
     val sourceRect: androidx.compose.ui.geometry.Rect?,
+    val sourceCornerRadiusDp: Float,
     val textContent: ImagePreviewTextContent?,
     val onImageLongPress: ((String) -> Unit)?,
     val onDismiss: () -> Unit
@@ -108,12 +110,13 @@ fun ImagePreviewDialog(
     images: List<String>,
     initialIndex: Int,
     sourceRect: androidx.compose.ui.geometry.Rect? = null,
+    sourceCornerRadiusDp: Float = 12f,
     textContent: ImagePreviewTextContent? = null,
     onImageLongPress: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val latestOnDismiss by rememberUpdatedState(onDismiss)
-    val requestToken = remember(images, initialIndex, sourceRect) { System.nanoTime() }
+    val requestToken = remember(images, initialIndex, sourceRect, sourceCornerRadiusDp) { System.nanoTime() }
 
     LaunchedEffect(requestToken) {
         ImagePreviewOverlayController.show(
@@ -122,6 +125,7 @@ fun ImagePreviewDialog(
                 images = images,
                 initialIndex = initialIndex,
                 sourceRect = sourceRect,
+                sourceCornerRadiusDp = sourceCornerRadiusDp,
                 textContent = textContent,
                 onImageLongPress = onImageLongPress,
                 onDismiss = { latestOnDismiss() }
@@ -156,6 +160,7 @@ fun ImagePreviewOverlayHost(
                 images = request.images,
                 initialIndex = request.initialIndex,
                 sourceRect = request.sourceRect,
+                sourceCornerRadiusDp = request.sourceCornerRadiusDp,
                 textContent = request.textContent,
                 onImageLongPress = request.onImageLongPress,
                 onDismiss = {
@@ -175,6 +180,7 @@ private fun ImagePreviewOverlayContent(
     images: List<String>,
     initialIndex: Int,
     sourceRect: androidx.compose.ui.geometry.Rect? = null,
+    sourceCornerRadiusDp: Float = 12f,
     textContent: ImagePreviewTextContent? = null,
     onImageLongPress: ((String) -> Unit)? = null,
     onDismiss: () -> Unit,
@@ -182,6 +188,7 @@ private fun ImagePreviewOverlayContent(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
     val scope = rememberCoroutineScope()
     val haptic = rememberHapticFeedback()
     var isSaving by remember { mutableStateOf(false) }
@@ -230,43 +237,6 @@ private fun ImagePreviewOverlayContent(
             if (success) "图片已保存到相册" else "保存失败，请重试",
             Toast.LENGTH_SHORT
         ).show()
-    }
-    
-    // 启动入场动画 - 使用轻阻尼弹簧，保留自然惯性
-    LaunchedEffect(Unit) {
-        animateTrigger.snapTo(0f)
-        animateTrigger.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 340, easing = ImagePreviewOpenEasing)
-        )
-    }
-    
-    // 触发退场动画
-    fun triggerDismiss(startRect: androidx.compose.ui.geometry.Rect? = currentImageDisplayRect) {
-        if (isDismissing) return
-        dismissImageDisplayRect = startRect
-        isVerticalDismissDragging = false
-        isDismissing = true
-        scope.launch {
-            verticalDismissOffsetYPx.snapTo(0f)
-            val dismissMotion = imagePreviewDismissMotion()
-            animateTrigger.animateTo(
-                targetValue = dismissMotion.overshootTarget,
-                animationSpec = tween(durationMillis = 240, easing = ImagePreviewCloseEasing)
-            )
-            animateTrigger.animateTo(
-                targetValue = dismissMotion.settleTarget,
-                animationSpec = spring(
-                    dampingRatio = 0.72f,
-                    stiffness = 520f
-                )
-            )
-            onDismiss()
-        }
-    }
-
-    BackHandler(enabled = !isDismissing) {
-        triggerDismiss()
     }
 
     //  GIF 图片加载器
@@ -351,7 +321,7 @@ private fun ImagePreviewOverlayContent(
             val transitionFrame = resolveImagePreviewTransitionFrame(
                 rawProgress = rawProgress,
                 hasSourceRect = shouldUseRectAnim,
-                sourceCornerRadiusDp = 12f
+                sourceCornerRadiusDp = sourceCornerRadiusDp
             )
             val visualFrame = resolveImagePreviewVisualFrame(
                 visualProgress = transitionFrame.visualProgress,
@@ -373,6 +343,55 @@ private fun ImagePreviewOverlayContent(
             val targetTop = 0.dp
             val targetWidth = fullWidth
             val targetHeight = fullHeight
+            val previewSurfaceRect = remember(constraints.maxWidth, constraints.maxHeight) {
+                androidx.compose.ui.geometry.Rect(
+                    left = 0f,
+                    top = 0f,
+                    right = with(density) { constraints.maxWidth.toPx() },
+                    bottom = with(density) { constraints.maxHeight.toPx() }
+                )
+            }
+
+            LaunchedEffect(Unit) {
+                animateTrigger.snapTo(0f)
+                animateTrigger.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 340, easing = ImagePreviewOpenEasing)
+                )
+            }
+
+            fun triggerDismiss(
+                startRect: androidx.compose.ui.geometry.Rect? = resolveImagePreviewDismissStartRect(
+                    previewSurfaceRect = previewSurfaceRect,
+                    displayedImageRect = currentImageDisplayRect,
+                    preferPreviewSurface = true
+                )
+            ) {
+                if (isDismissing) return
+                dismissImageDisplayRect = startRect
+                isVerticalDismissDragging = false
+                isDismissing = true
+                scope.launch {
+                    verticalDismissOffsetYPx.snapTo(0f)
+                    val dismissMotion = imagePreviewDismissMotion()
+                    animateTrigger.animateTo(
+                        targetValue = dismissMotion.overshootTarget,
+                        animationSpec = tween(durationMillis = 240, easing = ImagePreviewCloseEasing)
+                    )
+                    animateTrigger.animateTo(
+                        targetValue = dismissMotion.settleTarget,
+                        animationSpec = spring(
+                            dampingRatio = 0.72f,
+                            stiffness = 520f
+                        )
+                    )
+                    onDismiss()
+                }
+            }
+
+            BackHandler(enabled = !isDismissing) {
+                triggerDismiss()
+            }
             
             val (currentLeft, currentTop, currentWidth, currentHeight) = if (shouldUseRectAnim) {
                 val source = sourceRect
@@ -609,6 +628,13 @@ private fun ImagePreviewOverlayContent(
                     .fillMaxSize()
                     .graphicsLayer { alpha = transitionFrame.visualProgress }
             ) {
+                val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
+                val overlayPadding = resolveImagePreviewOverlayPadding(
+                    safeInsetStart = safeDrawingPadding.calculateStartPadding(layoutDirection),
+                    safeInsetTop = safeDrawingPadding.calculateTopPadding(),
+                    safeInsetEnd = safeDrawingPadding.calculateEndPadding(layoutDirection),
+                    safeInsetBottom = safeDrawingPadding.calculateBottomPadding()
+                )
                 val textTransform = resolveImagePreviewTextTransform(
                     pageOffsetFraction = pagerState.currentPageOffsetFraction
                 )
@@ -624,8 +650,11 @@ private fun ImagePreviewOverlayContent(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 82.dp)
+                            .padding(
+                                start = overlayPadding.start,
+                                end = overlayPadding.end,
+                                bottom = overlayPadding.bottom + 66.dp
+                            )
                             .graphicsLayer {
                                 alpha = textTransform.alpha
                                 rotationX = textTransform.rotationX
@@ -699,8 +728,7 @@ private fun ImagePreviewOverlayContent(
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()  //  避开导航栏
-                            .padding(bottom = 16.dp)
+                            .padding(bottom = overlayPadding.bottom)
                             .background(Color.Black.copy(0.5f), RoundedCornerShape(16.dp))
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -740,8 +768,11 @@ private fun ImagePreviewOverlayContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(16.dp),
+                        .padding(
+                            start = overlayPadding.start,
+                            top = overlayPadding.top,
+                            end = overlayPadding.end
+                        ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 关闭按钮

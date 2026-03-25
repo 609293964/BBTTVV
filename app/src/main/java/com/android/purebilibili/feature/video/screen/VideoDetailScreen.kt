@@ -381,6 +381,14 @@ internal fun shouldApplyPipParamsUpdate(
     return elapsedSinceLastUpdateMs >= minUpdateIntervalMs
 }
 
+internal fun shouldDismissCommentThreadDetailForPip(
+    wasInPipMode: Boolean,
+    isInPipMode: Boolean,
+    subReplyVisible: Boolean
+): Boolean {
+    return !wasInPipMode && isInPipMode && subReplyVisible
+}
+
 internal fun shouldAutoEnterAudioModeFromRoute(
     startAudioFromRoute: Boolean,
     hasAutoEnteredAudioMode: Boolean,
@@ -586,7 +594,10 @@ fun VideoDetailScreen(
     }
     val sortPreferenceScope = rememberCoroutineScope()
     val danmakuEnabledForDetail by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuEnabled(context)
+        .getDanmakuEnabled(
+            context,
+            com.android.purebilibili.core.store.DanmakuSettingsScope.PORTRAIT
+        )
         .collectAsStateWithLifecycle(
             initialValue = true,
             lifecycle = lifecycleOwner.lifecycle
@@ -648,7 +659,19 @@ fun VideoDetailScreen(
     val isFullscreenMode = if (isOrientationDrivenFullscreen) isLandscape else userRequestedFullscreen
 
     var isPipMode by remember { mutableStateOf(isInPipMode) }
+    var previousPipMode by remember { mutableStateOf(isInPipMode) }
     LaunchedEffect(isInPipMode) { isPipMode = isInPipMode }
+    LaunchedEffect(isPipMode, subReplyState.visible) {
+        val shouldDismissThreadDetail = shouldDismissCommentThreadDetailForPip(
+            wasInPipMode = previousPipMode,
+            isInPipMode = isPipMode,
+            subReplyVisible = subReplyState.visible
+        )
+        previousPipMode = isPipMode
+        if (shouldDismissThreadDetail) {
+            commentViewModel.closeSubReply()
+        }
+    }
     val openFavoriteFolders: (VideoFavoriteEntryPoint) -> Unit = { entryPoint ->
         when (resolveVideoFavoriteAction(entryPoint)) {
             VideoFavoriteAction.ToggleFavorite -> viewModel.toggleFavorite()
@@ -2418,7 +2441,11 @@ fun VideoDetailScreen(
                                                             val newValue = !danmakuEnabledForDetail
                                                             sortPreferenceScope.launch {
                                                                 com.android.purebilibili.core.store.SettingsManager
-                                                                    .setDanmakuEnabled(context, newValue)
+                                                                    .setDanmakuEnabled(
+                                                                        context,
+                                                                        newValue,
+                                                                        com.android.purebilibili.core.store.DanmakuSettingsScope.PORTRAIT
+                                                                    )
                                                             }
                                                         },
                                                         // 🔗 [新增] 传递共享元素过渡开关

@@ -43,4 +43,26 @@ class HistoryModelsMappingTest {
         assertEquals(3, item.page)
         assertEquals(321, item.progress)
     }
+
+    @Test
+    fun `article list history maps to article business with cover fallback and cvid target`() {
+        val data = HistoryData(
+            title = "article",
+            cover = "",
+            pic = "",
+            covers = listOf("https://i0.hdslb.com/bfs/article/cover.jpg"),
+            history = HistoryPage(
+                oid = 268656L,
+                bvid = "",
+                cid = 6233590L,
+                business = "article-list"
+            )
+        )
+
+        val item = data.toHistoryItem()
+
+        assertEquals(HistoryBusiness.ARTICLE, item.business)
+        assertEquals(6233590L, item.videoItem.id)
+        assertEquals("https://i0.hdslb.com/bfs/article/cover.jpg", item.videoItem.pic)
+    }
 }

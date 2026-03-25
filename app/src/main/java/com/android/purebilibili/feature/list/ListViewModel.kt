@@ -242,17 +242,18 @@ class HistoryViewModel(application: Application) : BaseListViewModel(application
                 
                 // 保存历史记录项并转换为 VideoItem
                 val historyItems = enrichHistoryProgress(historyResult.list.map { it.toHistoryItem() })
-                cacheHistoryItems(historyItems)
+                val uniqueNewHistoryItems = filterAppendableHistoryItems(
+                    currentRenderKeys = _historyItemsByRenderKey.keys,
+                    incomingItems = historyItems
+                )
+                cacheHistoryItems(uniqueNewHistoryItems)
                 
-                val newItems = historyItems.map { it.videoItem }
+                val newItems = uniqueNewHistoryItems.map { it.videoItem }
                 com.android.purebilibili.core.util.Logger.d("HistoryVM", " Loaded ${newItems.size} more items, hasMore=$hasMore")
                 
                 if (newItems.isNotEmpty()) {
-                    // 追加到现有列表（过滤重复）
                     val currentItems = _uiState.value.items
-                    val existingBvids = currentItems.map { it.bvid }.toSet()
-                    val uniqueNewItems = newItems.filter { it.bvid !in existingBvids }
-                    _uiState.value = _uiState.value.copy(items = currentItems + uniqueNewItems)
+                    _uiState.value = _uiState.value.copy(items = currentItems + newItems)
                     com.android.purebilibili.core.util.Logger.d("HistoryVM", " Total items: ${_uiState.value.items.size}")
                 }
             } catch (e: Exception) {

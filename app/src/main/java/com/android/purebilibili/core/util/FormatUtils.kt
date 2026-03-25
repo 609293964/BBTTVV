@@ -1,5 +1,10 @@
 package com.android.purebilibili.core.util
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
 object FormatUtils {
     private const val DEFAULT_IMAGE_WIDTH = 640
     private const val DEFAULT_IMAGE_HEIGHT = 400
@@ -90,12 +95,14 @@ object FormatUtils {
      *  格式化发布时间 (相对时间 + 日期)
      * 例如: "3小时前" / "昨天" / "2024-01-15"
      */
-    fun formatPublishTime(timestampSeconds: Long): String {
+    fun formatPublishTime(
+        timestampSeconds: Long,
+        nowMs: Long = System.currentTimeMillis()
+    ): String {
         if (timestampSeconds <= 0) return ""
         
-        val now = System.currentTimeMillis()
         val pubTime = timestampSeconds * 1000L
-        val diff = now - pubTime
+        val diff = (nowMs - pubTime).coerceAtLeast(0L)
         
         val seconds = diff / 1000
         val minutes = seconds / 60
@@ -109,9 +116,22 @@ object FormatUtils {
             days == 1L -> "昨天"
             days < 7 -> "${days}天前"
             else -> {
-                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                sdf.format(java.util.Date(pubTime))
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                sdf.format(Date(pubTime))
             }
         }
+    }
+
+    fun formatPrecisePublishTime(
+        timestampSeconds: Long,
+        pattern: String = "yyyy-MM-dd HH:mm",
+        locale: Locale = Locale.getDefault(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): String {
+        if (timestampSeconds <= 0) return ""
+
+        return SimpleDateFormat(pattern, locale).apply {
+            this.timeZone = timeZone
+        }.format(Date(timestampSeconds * 1000L))
     }
 }

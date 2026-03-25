@@ -62,6 +62,8 @@ import com.android.purebilibili.core.ui.transition.shouldEnableVideoCoverSharedT
 import com.android.purebilibili.core.ui.transition.shouldEnableVideoMetadataSharedTransition
 import com.android.purebilibili.feature.home.resolveHomeCardEnterAnimationEnabledAtMount
 import com.android.purebilibili.feature.home.rememberHomeGlassPillColors
+import com.android.purebilibili.feature.video.ui.section.resolvePublishTimeRowText
+import com.android.purebilibili.feature.video.ui.section.shouldEmphasizePrecisePublishTime
 //  [预览播放] 相关引用已移除
 
 // 显式导入 collectAsState 以避免 ambiguity 或 missing reference
@@ -193,6 +195,23 @@ fun ElegantVideoCard(
     }
     val premiumBadgeLabel = remember(video.rights) {
         resolveVideoPremiumBadgeLabel(video.rights)
+    }
+    val publishTimeRowText = remember(showPublishTime, video.pubdate, video.title) {
+        if (!showPublishTime) {
+            ""
+        } else {
+            resolvePublishTimeRowText(
+                pubdate = video.pubdate,
+                partitionName = "",
+                title = video.title
+            )
+        }
+    }
+    val emphasizePublishTime = remember(showPublishTime, video.title) {
+        showPublishTime && shouldEmphasizePrecisePublishTime(
+            partitionName = "",
+            title = video.title
+        )
     }
     
     //  判断是否为竖屏视频（通过封面图 URL 中的尺寸信息或默认不显示）
@@ -818,12 +837,32 @@ fun ElegantVideoCard(
                 modifier = upNameModifier
             )
             
-            //  发布时间（搜索结果显示）
-            if (showPublishTime && video.pubdate > 0) {
+        }
+
+        if (publishTimeRowText.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            if (emphasizePublishTime) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = publishTimeRowText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            } else {
                 Text(
-                    text = " · ${FormatUtils.formatPublishTime(video.pubdate)}",
+                    text = publishTimeRowText,
                     fontSize = 11.sp,
-                    color = iOSSystemGray.copy(alpha = 0.7f)
+                    color = iOSSystemGray.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

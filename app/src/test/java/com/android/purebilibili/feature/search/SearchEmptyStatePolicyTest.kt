@@ -55,4 +55,18 @@ class SearchEmptyStatePolicyTest {
             )
         )
     }
+
+    @Test
+    fun `resolveSearchEmptyStateCopy supports article type`() {
+        assertEquals(
+            SearchEmptyStateCopy(
+                title = "未找到相关专栏",
+                subtitle = "试试其他关键词或调整筛选条件"
+            ),
+            resolveSearchEmptyStateCopy(
+                reason = SearchEmptyStateReason.NO_RESULTS,
+                searchType = SearchType.ARTICLE
+            )
+        )
+    }
 }

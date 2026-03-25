@@ -219,6 +219,7 @@ fun DynamicCardV2(
             val playableBvid = resolveArchivePlayableBvid(archive)
             VideoCardLarge(
                 archive = archive,
+                publishTs = author?.pub_ts ?: 0L,
                 onClick = {
                     playableBvid?.let(onVideoClick)
                         ?: onDynamicDetailClick?.invoke(item.id_str)
@@ -348,6 +349,7 @@ fun DynamicCardV2(
             if (seasonArchive != null) {
                 VideoCardLarge(
                     archive = seasonArchive,
+                    publishTs = author?.pub_ts ?: 0L,
                     onClick = {
                         playableBvid?.let(onVideoClick)
                             ?: onDynamicDetailClick?.invoke(item.id_str)

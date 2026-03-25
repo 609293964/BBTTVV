@@ -38,4 +38,19 @@ class HistoryNavigationPolicyTest {
 
         assertEquals("live_445566", key)
     }
+
+    @Test
+    fun `history navigation kind resolves article entries explicitly`() {
+        val kind = resolveHistoryNavigationKind(
+            HistoryItem(
+                videoItem = VideoItem(
+                    id = 334455L,
+                    title = "专栏"
+                ),
+                business = HistoryBusiness.ARTICLE
+            )
+        )
+
+        assertEquals(HistoryNavigationKind.ARTICLE, kind)
+    }
 }

@@ -66,6 +66,19 @@ fun VideoTitleSection(
     onUpClick: (Long) -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val publishTimeRowText = remember(info.pubdate, info.tname, info.title) {
+        resolvePublishTimeRowText(
+            pubdate = info.pubdate,
+            partitionName = info.tname,
+            title = info.title
+        )
+    }
+    val emphasizePublishTime = remember(info.tname, info.title) {
+        shouldEmphasizePrecisePublishTime(
+            partitionName = info.tname,
+            title = info.title
+        )
+    }
     
     Column(
         modifier = Modifier
@@ -105,13 +118,38 @@ fun VideoTitleSection(
         
         Spacer(Modifier.height(2.dp))
         
-        // Stats row (views, danmaku, date)
+        // Stats row (views, danmaku)
         Text(
-            text = "${FormatUtils.formatStat(info.stat.view.toLong())}  \u2022  ${FormatUtils.formatStat(info.stat.danmaku.toLong())}\u5f39\u5e55  \u2022  ${FormatUtils.formatPublishTime(info.pubdate)}",
+            text = "${FormatUtils.formatStat(info.stat.view.toLong())}  \u2022  ${FormatUtils.formatStat(info.stat.danmaku.toLong())}\u5f39\u5e55",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             maxLines = 1
         )
+
+        if (publishTimeRowText.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            if (emphasizePublishTime) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = publishTimeRowText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 
@@ -132,6 +170,19 @@ fun VideoTitleWithDesc(
     onBgmClick: (BgmInfo) -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val publishTimeRowText = remember(info.pubdate, info.tname, info.title) {
+        resolvePublishTimeRowText(
+            pubdate = info.pubdate,
+            partitionName = info.tname,
+            title = info.title
+        )
+    }
+    val emphasizePublishTime = remember(info.tname, info.title) {
+        shouldEmphasizePrecisePublishTime(
+            partitionName = info.tname,
+            title = info.title
+        )
+    }
     
     //  尝试获取共享元素作用域
     val sharedTransitionScope = com.android.purebilibili.core.ui.LocalSharedTransitionScope.current
@@ -249,11 +300,6 @@ fun VideoTitleWithDesc(
                     modifier = danmakuModifier
                 )
 
-                Text(
-                    text = "  •  ${FormatUtils.formatPublishTime(info.pubdate)}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
             }
             // [新增] 显示 BVID 并支持点击复制
             Spacer(Modifier.width(8.dp))
@@ -263,6 +309,31 @@ fun VideoTitleWithDesc(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.copyOnClick(info.bvid, "BV号")
             )
+        }
+
+        if (publishTimeRowText.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            if (emphasizePublishTime) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = publishTimeRowText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1
+                )
+            }
         }
 
         // [新增] BGM Info Row

@@ -157,45 +157,23 @@ fun PortraitVideoPager(
     val entryStartPositionMs = remember(initialBvid) { initialStartPositionMs.coerceAtLeast(0L) }
     val scope = rememberCoroutineScope()
     val danmakuManager = rememberDanmakuManager()
-    val danmakuEnabled by SettingsManager
-        .getDanmakuEnabled(context)
-        .collectAsState(initial = true)
-    val danmakuOpacity by SettingsManager
-        .getDanmakuOpacity(context)
-        .collectAsState(initial = 0.85f)
-    val danmakuFontScale by SettingsManager
-        .getDanmakuFontScale(context)
-        .collectAsState(initial = 1.0f)
-    val danmakuSpeed by SettingsManager
-        .getDanmakuSpeed(context)
-        .collectAsState(initial = 1.0f)
-    val danmakuDisplayArea by SettingsManager
-        .getDanmakuArea(context)
-        .collectAsState(initial = 0.5f)
-    val danmakuMergeDuplicates by SettingsManager
-        .getDanmakuMergeDuplicates(context)
-        .collectAsState(initial = true)
-    val danmakuAllowScroll by SettingsManager
-        .getDanmakuAllowScroll(context)
-        .collectAsState(initial = true)
-    val danmakuAllowTop by SettingsManager
-        .getDanmakuAllowTop(context)
-        .collectAsState(initial = true)
-    val danmakuAllowBottom by SettingsManager
-        .getDanmakuAllowBottom(context)
-        .collectAsState(initial = true)
-    val danmakuAllowColorful by SettingsManager
-        .getDanmakuAllowColorful(context)
-        .collectAsState(initial = true)
-    val danmakuAllowSpecial by SettingsManager
-        .getDanmakuAllowSpecial(context)
-        .collectAsState(initial = true)
-    val danmakuBlockRules by SettingsManager
-        .getDanmakuBlockRules(context)
-        .collectAsState(initial = emptyList())
-    val danmakuSmartOcclusion by SettingsManager
-        .getDanmakuSmartOcclusion(context)
-        .collectAsState(initial = false)
+    val danmakuScope = com.android.purebilibili.core.store.DanmakuSettingsScope.PORTRAIT
+    val danmakuSettings by SettingsManager
+        .getDanmakuSettings(context, danmakuScope)
+        .collectAsState(initial = com.android.purebilibili.core.store.DanmakuSettings())
+    val danmakuEnabled = danmakuSettings.enabled
+    val danmakuOpacity = danmakuSettings.opacity
+    val danmakuFontScale = danmakuSettings.fontScale
+    val danmakuSpeed = danmakuSettings.speed
+    val danmakuDisplayArea = danmakuSettings.displayArea
+    val danmakuMergeDuplicates = danmakuSettings.mergeDuplicates
+    val danmakuAllowScroll = danmakuSettings.allowScroll
+    val danmakuAllowTop = danmakuSettings.allowTop
+    val danmakuAllowBottom = danmakuSettings.allowBottom
+    val danmakuAllowColorful = danmakuSettings.allowColorful
+    val danmakuAllowSpecial = danmakuSettings.allowSpecial
+    val danmakuBlockRules = danmakuSettings.blockRules
+    val danmakuSmartOcclusion = danmakuSettings.smartOcclusion
     val faceDetector = remember { createFaceOcclusionDetector() }
     var smartOcclusionModuleState by remember { mutableStateOf(FaceOcclusionModuleState.Checking) }
     DisposableEffect(faceDetector) {
@@ -1582,7 +1560,11 @@ private fun VideoPageItem(
         val next = !danmakuEnabled
         danmakuManager.isEnabled = next
         scope.launch {
-            SettingsManager.setDanmakuEnabled(context, next)
+            SettingsManager.setDanmakuEnabled(
+                context,
+                next,
+                com.android.purebilibili.core.store.DanmakuSettingsScope.PORTRAIT
+            )
         }
         Unit
     }

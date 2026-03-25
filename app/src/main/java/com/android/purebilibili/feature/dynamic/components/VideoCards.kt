@@ -32,6 +32,8 @@ import com.android.purebilibili.core.ui.LocalSharedTransitionScope
 import com.android.purebilibili.core.ui.LocalAnimatedVisibilityScope
 import com.android.purebilibili.feature.dynamic.DynamicVideoCardLayoutMode
 import com.android.purebilibili.feature.dynamic.resolveDynamicVideoCardLayoutMode
+import com.android.purebilibili.feature.video.ui.section.resolveDynamicPublishTimeRowText
+import com.android.purebilibili.feature.video.ui.section.shouldEmphasizePrecisePublishTime
 
 /**
  *  大尺寸视频卡片
@@ -42,6 +44,7 @@ import com.android.purebilibili.feature.dynamic.resolveDynamicVideoCardLayoutMod
 fun VideoCardLarge(
     archive: ArchiveMajor,
     onClick: () -> Unit,
+    publishTs: Long = 0L,
     // [新增] 合集相关参数
     isCollection: Boolean = false,
     collectionTitle: String = "",
@@ -85,6 +88,7 @@ fun VideoCardLarge(
                 VideoCardLargeVerticalContent(
                     archive = archive,
                     coverUrl = coverUrl,
+                    publishTs = publishTs,
                     isCollection = isCollection,
                     collectionTitle = collectionTitle,
                     context = context
@@ -94,6 +98,7 @@ fun VideoCardLarge(
                 VideoCardLargeHorizontalContent(
                     archive = archive,
                     coverUrl = coverUrl,
+                    publishTs = publishTs,
                     isCollection = isCollection,
                     collectionTitle = collectionTitle,
                     context = context
@@ -107,6 +112,7 @@ fun VideoCardLarge(
 private fun VideoCardLargeVerticalContent(
     archive: ArchiveMajor,
     coverUrl: String,
+    publishTs: Long,
     isCollection: Boolean,
     collectionTitle: String,
     context: android.content.Context
@@ -126,6 +132,7 @@ private fun VideoCardLargeVerticalContent(
         Spacer(modifier = Modifier.height(10.dp))
         VideoCardLargeInfo(
             archive = archive,
+            publishTs = publishTs,
             isCollection = isCollection,
             collectionTitle = collectionTitle,
             titleMaxLines = 2
@@ -137,6 +144,7 @@ private fun VideoCardLargeVerticalContent(
 private fun VideoCardLargeHorizontalContent(
     archive: ArchiveMajor,
     coverUrl: String,
+    publishTs: Long,
     isCollection: Boolean,
     collectionTitle: String,
     context: android.content.Context
@@ -214,6 +222,21 @@ private fun VideoCardLargeHorizontalContent(
             }
 
             VideoCardLargeStats(archive = archive)
+            val publishTimeRowText = remember(publishTs, archive.title) {
+                resolveDynamicPublishTimeRowText(
+                    publishTs = publishTs,
+                    title = archive.title
+                )
+            }
+            if (publishTimeRowText.isNotBlank()) {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -297,10 +320,21 @@ private fun VideoCardLargeCover(
 @Composable
 private fun VideoCardLargeInfo(
     archive: ArchiveMajor,
+    publishTs: Long,
     isCollection: Boolean,
     collectionTitle: String,
     titleMaxLines: Int
 ) {
+    val publishTimeRowText = remember(publishTs, archive.title) {
+        resolveDynamicPublishTimeRowText(
+            publishTs = publishTs,
+            title = archive.title
+        )
+    }
+    val emphasizePublishTime = remember(archive.title) {
+        shouldEmphasizePrecisePublishTime(partitionName = "", title = archive.title)
+    }
+
     if (isCollection && collectionTitle.isNotEmpty()) {
         Text(
             text = collectionTitle,
@@ -328,6 +362,34 @@ private fun VideoCardLargeInfo(
             lineHeight = 20.sp,
             color = MaterialTheme.colorScheme.onSurface
         )
+    }
+
+    if (publishTimeRowText.isNotBlank()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        if (emphasizePublishTime) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+        } else {
+            Text(
+                text = publishTimeRowText,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 
     Spacer(modifier = Modifier.height(6.dp))
@@ -375,6 +437,7 @@ private fun VideoCardLargeStats(
 @Composable
 fun VideoCardSmall(
     archive: ArchiveMajor,
+    publishTs: Long = 0L,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -389,10 +452,17 @@ fun VideoCardSmall(
         }
     }
     
+    val publishTimeRowText = remember(publishTs, archive.title) {
+        resolveDynamicPublishTimeRowText(
+            publishTs = publishTs,
+            title = archive.title
+        )
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .heightIn(min = 70.dp)
             .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
@@ -429,13 +499,26 @@ fun VideoCardSmall(
         
         Spacer(modifier = Modifier.width(8.dp))
         
-        // 标题
-        Text(
-            archive.title,
-            fontSize = 13.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                archive.title,
+                fontSize = 13.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (publishTimeRowText.isNotBlank()) {
+                Text(
+                    text = publishTimeRowText,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                )
+            }
+        }
     }
 }

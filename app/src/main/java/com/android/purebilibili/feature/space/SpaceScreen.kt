@@ -83,6 +83,7 @@ fun SpaceScreen(
     onUserClick: (Long) -> Unit = {},
     onPlayAllAudioClick: ((String) -> Unit)? = null,
     onDynamicDetailClick: (String) -> Unit = {},
+    onArticleClick: (Long, String) -> Unit = { _, _ -> },
     onViewAllClick: (String, Long, Long, String) -> Unit = { _, _, _, _ -> }, // type, id, mid, title
     viewModel: SpaceViewModel = viewModel(),
     sharedTransitionScope: SharedTransitionScope? = null,
@@ -264,6 +265,7 @@ fun SpaceScreen(
                         onSubTabSelected = { viewModel.selectSubTab(it) },
                         onSearchModeChange = { viewModel.setSearchMode(it) },
                         onSearchQueryChange = { viewModel.updateSearchQuery(it) },
+                        onArticleClick = onArticleClick,
                         onViewAllClick = onViewAllClick,
                         // [Blur] Pass content padding to handle list top spacing
                         contentPadding = padding,
@@ -461,6 +463,7 @@ private fun SpaceContent(
     onSubTabSelected: (SpaceSubTab) -> Unit,  // Uploads Sub-tab selection
     onSearchModeChange: (Boolean) -> Unit,
     onSearchQueryChange: (String) -> Unit,
+    onArticleClick: (Long, String) -> Unit,
 
     onViewAllClick: (String, Long, Long, String) -> Unit,
     contentPadding: PaddingValues, // [Blur] Receive padding from Scaffold
@@ -742,7 +745,7 @@ private fun SpaceContent(
                     }
                     SpaceSubTab.ARTICLE -> {
                          items(state.articles, key = { it.id }) { article ->
-                             SpaceArticleCard(article = article, onClick = { /* TODO: Open Article */ })
+                             SpaceArticleCard(article = article, onClick = { onArticleClick(article.id, article.title) })
                          }
                          
                          // Load More for Articles
@@ -939,7 +942,7 @@ private fun SpaceContent(
                     // 显示前2个图文 (列表样式)
                     state.articles.take(2).forEach { article ->
                         item(key = "home_article_${article.id}", span = { GridItemSpan(maxLineSpan) }) {
-                            SpaceArticleCard(article = article, onClick = { /* TODO */ })
+                            SpaceArticleCard(article = article, onClick = { onArticleClick(article.id, article.title) })
                         }
                     }
                 }

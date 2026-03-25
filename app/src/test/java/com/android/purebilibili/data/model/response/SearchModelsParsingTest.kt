@@ -3,6 +3,7 @@ package com.android.purebilibili.data.model.response
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SearchModelsParsingTest {
 
@@ -84,5 +85,47 @@ class SearchModelsParsingTest {
         assertEquals(12000, item?.play)
         assertEquals(34000, item?.video_review)
         assertEquals("03:21", item?.duration)
+    }
+
+    @Test
+    fun decodeSearchArticleResponse_cleansHtmlAndProtocolRelativeImages() {
+        val payload = """
+            {
+              "code": 0,
+              "message": "",
+              "data": {
+                "page": 1,
+                "numPages": 2,
+                "numResults": 21,
+                "result": [
+                  {
+                    "id": "12345",
+                    "mid": "778899",
+                    "title": "<em class='keyword'>测试</em>专栏",
+                    "desc": "desc",
+                    "pub_time": "1730000000",
+                    "view": "1.2万",
+                    "reply": "345",
+                    "like": "567",
+                    "image_urls": ["//i0.hdslb.com/article.jpg"],
+                    "category_name": "专栏"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val response = json.decodeFromString<SearchArticleResponse>(payload)
+        val item = response.data?.result?.first()?.cleanupFields()
+
+        assertEquals(12345L, item?.id)
+        assertEquals(778899L, item?.mid)
+        assertEquals("测试专栏", item?.title)
+        assertEquals(1730000000L, item?.pubTime)
+        assertEquals(12000, item?.view)
+        assertEquals(345, item?.reply)
+        assertEquals(567, item?.like)
+        assertEquals("专栏", item?.categoryName)
+        assertTrue(item?.imageUrls?.firstOrNull()?.startsWith("https://") == true)
     }
 }

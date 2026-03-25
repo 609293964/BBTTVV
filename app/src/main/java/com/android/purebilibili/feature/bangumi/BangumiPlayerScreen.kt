@@ -165,50 +165,32 @@ fun BangumiPlayerScreen(
     
     //  [重构] 弹幕管理器 - 使用单例确保横竖屏切换时保持状态
     val danmakuManager = rememberDanmakuManager()
+    val activeDanmakuScope = remember(isLandscape) {
+        com.android.purebilibili.core.store.resolveDanmakuSettingsScope(isLandscape)
+    }
     
     // 弹幕开关设置
     val scope = rememberCoroutineScope()  //  用于弹幕开关和设置保存
-    val danmakuEnabled by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuEnabled(context)
-        .collectAsState(initial = true)
+    val danmakuSettings by com.android.purebilibili.core.store.SettingsManager
+        .getDanmakuSettings(context, activeDanmakuScope)
+        .collectAsState(initial = com.android.purebilibili.core.store.DanmakuSettings())
+    val danmakuEnabled = danmakuSettings.enabled
     
     //  倍速状态
     var currentSpeed by remember { mutableFloatStateOf(1.0f) }
     
     //  弹幕设置状态
-    val danmakuOpacity by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuOpacity(context)
-        .collectAsState(initial = 0.85f)
-    val danmakuFontScale by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuFontScale(context)
-        .collectAsState(initial = 1.0f)
-    val danmakuSpeed by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuSpeed(context)
-        .collectAsState(initial = 1.0f)
-    val danmakuDisplayArea by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuArea(context)
-        .collectAsState(initial = 0.5f)
-    val danmakuMergeDuplicates by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuMergeDuplicates(context)
-        .collectAsState(initial = true)
-    val danmakuAllowScroll by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuAllowScroll(context)
-        .collectAsState(initial = true)
-    val danmakuAllowTop by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuAllowTop(context)
-        .collectAsState(initial = true)
-    val danmakuAllowBottom by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuAllowBottom(context)
-        .collectAsState(initial = true)
-    val danmakuAllowColorful by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuAllowColorful(context)
-        .collectAsState(initial = true)
-    val danmakuAllowSpecial by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuAllowSpecial(context)
-        .collectAsState(initial = true)
-    val danmakuBlockRules by com.android.purebilibili.core.store.SettingsManager
-        .getDanmakuBlockRules(context)
-        .collectAsState(initial = emptyList())
+    val danmakuOpacity = danmakuSettings.opacity
+    val danmakuFontScale = danmakuSettings.fontScale
+    val danmakuSpeed = danmakuSettings.speed
+    val danmakuDisplayArea = danmakuSettings.displayArea
+    val danmakuMergeDuplicates = danmakuSettings.mergeDuplicates
+    val danmakuAllowScroll = danmakuSettings.allowScroll
+    val danmakuAllowTop = danmakuSettings.allowTop
+    val danmakuAllowBottom = danmakuSettings.allowBottom
+    val danmakuAllowColorful = danmakuSettings.allowColorful
+    val danmakuAllowSpecial = danmakuSettings.allowSpecial
+    val danmakuBlockRules = danmakuSettings.blockRules
     
     //  弹幕设置变化时实时应用到 DanmakuManager
     LaunchedEffect(
@@ -412,7 +394,11 @@ fun BangumiPlayerScreen(
                     danmakuEnabled = danmakuEnabled,
                     onDanmakuToggle = {
                         scope.launch {
-                            com.android.purebilibili.core.store.SettingsManager.setDanmakuEnabled(context, !danmakuEnabled)
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuEnabled(
+                                context,
+                                !danmakuEnabled,
+                                activeDanmakuScope
+                            )
                         }
                     },
                     seasonId = successState?.seasonDetail?.seasonId ?: 0L,
@@ -460,11 +446,31 @@ fun BangumiPlayerScreen(
                     danmakuSpeed = danmakuSpeed,
                     danmakuDisplayArea = danmakuDisplayArea,
                     danmakuMergeDuplicates = danmakuMergeDuplicates,
-                    onDanmakuOpacityChange = { scope.launch { com.android.purebilibili.core.store.SettingsManager.setDanmakuOpacity(context, it) } },
-                    onDanmakuFontScaleChange = { scope.launch { com.android.purebilibili.core.store.SettingsManager.setDanmakuFontScale(context, it) } },
-                    onDanmakuSpeedChange = { scope.launch { com.android.purebilibili.core.store.SettingsManager.setDanmakuSpeed(context, it) } },
-                    onDanmakuDisplayAreaChange = { scope.launch { com.android.purebilibili.core.store.SettingsManager.setDanmakuArea(context, it) } },
-                    onDanmakuMergeDuplicatesChange = { scope.launch { com.android.purebilibili.core.store.SettingsManager.setDanmakuMergeDuplicates(context, it) } },
+                    onDanmakuOpacityChange = {
+                        scope.launch {
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuOpacity(context, it, activeDanmakuScope)
+                        }
+                    },
+                    onDanmakuFontScaleChange = {
+                        scope.launch {
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuFontScale(context, it, activeDanmakuScope)
+                        }
+                    },
+                    onDanmakuSpeedChange = {
+                        scope.launch {
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuSpeed(context, it, activeDanmakuScope)
+                        }
+                    },
+                    onDanmakuDisplayAreaChange = {
+                        scope.launch {
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuArea(context, it, activeDanmakuScope)
+                        }
+                    },
+                    onDanmakuMergeDuplicatesChange = {
+                        scope.launch {
+                            com.android.purebilibili.core.store.SettingsManager.setDanmakuMergeDuplicates(context, it, activeDanmakuScope)
+                        }
+                    },
                     isLiked = successState?.isLiked ?: false,
                     coinCount = successState?.coinCount ?: 0,
                     onToggleLike = { viewModel.toggleLike() },
