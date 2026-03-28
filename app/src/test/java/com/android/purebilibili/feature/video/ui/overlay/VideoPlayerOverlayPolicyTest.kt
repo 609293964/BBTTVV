@@ -150,7 +150,8 @@ class VideoPlayerOverlayPolicyTest {
                 isQualitySwitching = false,
                 isFullscreen = true,
                 isBuffering = true,
-                isScrubbing = false
+                isScrubbing = false,
+                isSeekTransitionPending = false
             )
         )
         assertFalse(
@@ -160,7 +161,8 @@ class VideoPlayerOverlayPolicyTest {
                 isQualitySwitching = false,
                 isFullscreen = true,
                 isBuffering = false,
-                isScrubbing = true
+                isScrubbing = true,
+                isSeekTransitionPending = false
             )
         )
         assertTrue(
@@ -170,7 +172,23 @@ class VideoPlayerOverlayPolicyTest {
                 isQualitySwitching = false,
                 isFullscreen = true,
                 isBuffering = false,
-                isScrubbing = false
+                isScrubbing = false,
+                isSeekTransitionPending = false
+            )
+        )
+    }
+
+    @Test
+    fun centerPlayButtonHiddenDuringSeekResumeTransition() {
+        assertFalse(
+            shouldShowCenterPlayButton(
+                isVisible = true,
+                isPlaying = false,
+                isQualitySwitching = false,
+                isFullscreen = true,
+                isBuffering = false,
+                isScrubbing = false,
+                isSeekTransitionPending = true
             )
         )
     }

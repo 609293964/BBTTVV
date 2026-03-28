@@ -443,7 +443,7 @@ class VideoPlaybackUseCase(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
         val dataSourceFactory = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(
-            NetworkModule.okHttpClient
+            NetworkModule.playbackOkHttpClient
         ).setDefaultRequestProperties(headers)
         
         val mediaSourceFactory = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)

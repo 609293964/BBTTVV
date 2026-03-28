@@ -74,9 +74,16 @@ class VideoLoadPolicyTest {
     }
 
     @Test
-    fun `buildDashAttemptQualities falls back to 80 for high target`() {
-        assertEquals(listOf(120, 80), buildDashAttemptQualities(120))
+    fun `buildDashAttemptQualities includes premium fallbacks for high target`() {
+        assertEquals(listOf(120, 116, 112, 80), buildDashAttemptQualities(120))
         assertEquals(listOf(80), buildDashAttemptQualities(80))
+    }
+
+    @Test
+    fun `buildDashAttemptQualities walks premium 1080p tiers before plain 1080p`() {
+        assertEquals(listOf(120, 116, 112, 80), buildDashAttemptQualities(120))
+        assertEquals(listOf(116, 112, 80), buildDashAttemptQualities(116))
+        assertEquals(listOf(112, 80), buildDashAttemptQualities(112))
     }
 
     @Test

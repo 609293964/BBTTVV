@@ -13,7 +13,20 @@ class ThemeDynamicColorPolicyTest {
         assertTrue(
             resolveEffectiveDynamicColorEnabled(
                 dynamicColorEnabled = true,
-                amoledDarkTheme = true
+                amoledDarkTheme = true,
+                uiPreset = UiPreset.MD3
+            )
+        )
+    }
+
+    @Test
+    fun `ios preset should also allow monet when user enables dynamic color`() {
+        assertEquals(
+            true,
+            resolveEffectiveDynamicColorEnabled(
+                dynamicColorEnabled = true,
+                amoledDarkTheme = false,
+                uiPreset = UiPreset.IOS
             )
         )
     }

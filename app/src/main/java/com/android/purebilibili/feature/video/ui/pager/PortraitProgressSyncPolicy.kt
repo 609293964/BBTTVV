@@ -1,6 +1,7 @@
 package com.android.purebilibili.feature.video.ui.pager
 
-import kotlin.math.abs
+import com.android.purebilibili.feature.video.playback.policy.resolveDisplayedPlaybackTransitionPosition
+import com.android.purebilibili.feature.video.playback.policy.shouldHoldPlaybackTransitionPosition
 
 private const val PORTRAIT_PENDING_SEEK_TOLERANCE_MS = 500L
 
@@ -22,8 +23,24 @@ internal fun shouldHoldPortraitSeekUiPosition(
     pendingSeekPositionMs: Long?,
     toleranceMs: Long = PORTRAIT_PENDING_SEEK_TOLERANCE_MS
 ): Boolean {
-    val pendingPosition = pendingSeekPositionMs ?: return false
-    return abs(playerPositionMs - pendingPosition) > toleranceMs
+    return shouldHoldPlaybackTransitionPosition(
+        playerPositionMs = playerPositionMs,
+        transitionPositionMs = pendingSeekPositionMs,
+        toleranceMs = toleranceMs
+    )
+}
+
+internal fun resolvePortraitCommittedSeekPosition(
+    requestedPositionMs: Long,
+    durationMs: Long
+): Long {
+    val safeRequestedPosition = requestedPositionMs.coerceAtLeast(0L)
+    val safeDuration = durationMs.coerceAtLeast(0L)
+    return if (safeDuration > 0L) {
+        safeRequestedPosition.coerceAtMost(safeDuration)
+    } else {
+        safeRequestedPosition
+    }
 }
 
 internal fun resolvePortraitDisplayedProgressPosition(
@@ -31,9 +48,13 @@ internal fun resolvePortraitDisplayedProgressPosition(
     localSeekPositionMs: Long,
     pendingSeekPositionMs: Long?
 ): Long {
-    return if (shouldHoldPortraitSeekUiPosition(playerPositionMs, pendingSeekPositionMs)) {
-        localSeekPositionMs
-    } else {
+    val resolvedPlayerPosition = resolveDisplayedPlaybackTransitionPosition(
+        playerPositionMs = playerPositionMs,
+        transitionPositionMs = pendingSeekPositionMs
+    )
+    return if (resolvedPlayerPosition == playerPositionMs) {
         playerPositionMs
+    } else {
+        localSeekPositionMs
     }
 }

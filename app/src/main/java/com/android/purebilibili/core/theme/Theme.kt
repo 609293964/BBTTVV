@@ -62,7 +62,8 @@ private fun createAmoledDarkColorScheme(primaryColor: Color) = darkColorScheme(
 
 internal fun resolveEffectiveDynamicColorEnabled(
     dynamicColorEnabled: Boolean,
-    amoledDarkTheme: Boolean
+    amoledDarkTheme: Boolean,
+    uiPreset: UiPreset
 ): Boolean = dynamicColorEnabled
 
 internal fun applyAmoledSurfaceOverrides(
@@ -154,7 +155,8 @@ fun PureBiliBiliTheme(
     val renderingProfile = resolveUiRenderingProfile(uiPreset)
     val isDynamicColorActive = resolveEffectiveDynamicColorEnabled(
         dynamicColorEnabled = dynamicColor,
-        amoledDarkTheme = amoledDarkTheme
+        amoledDarkTheme = amoledDarkTheme,
+        uiPreset = uiPreset
     ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val shapes = if (renderingProfile.useMaterialChrome) {
         Shapes()

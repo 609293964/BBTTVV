@@ -1099,6 +1099,18 @@ object VideoRepository {
                             )
                             continue
                         }
+                        if (!shouldAcceptAppApiResultForTargetQuality(
+                                targetQn = dashQn,
+                                returnedQuality = payload.quality,
+                                dashVideoIds = dashVideoIds
+                            )
+                        ) {
+                            com.android.purebilibili.core.util.Logger.d(
+                                "VideoRepo",
+                                " [LoggedIn] DASH downgraded qn=$dashQn to quality=${payload.quality}, dashIds=$dashVideoIds, continue fallback chain"
+                            )
+                            continue
+                        }
                         com.android.purebilibili.core.util.Logger.d(
                             "VideoRepo",
                             " [LoggedIn] DASH success: quality=${payload.quality}, requestedQn=$dashQn"

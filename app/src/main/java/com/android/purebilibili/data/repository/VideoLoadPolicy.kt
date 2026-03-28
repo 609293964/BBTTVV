@@ -88,8 +88,12 @@ internal fun shouldSkipPlayUrlCache(
 }
 
 internal fun buildDashAttemptQualities(targetQn: Int): List<Int> {
-    val fallback = if (targetQn > 80) listOf(targetQn, 80) else listOf(targetQn)
-    return fallback.distinct()
+    if (targetQn <= 80) return listOf(targetQn)
+
+    val premiumFallbacks = listOf(120, 116, 112)
+        .filter { quality -> quality <= targetQn }
+
+    return (premiumFallbacks + 80).distinct()
 }
 
 internal fun resolveDashRetryDelays(targetQn: Int): List<Long> {

@@ -918,7 +918,8 @@ class MainActivity : AppCompatActivity() {
             val useAmoledDarkTheme = themePreferenceState.useAmoledDarkTheme
             val effectiveDynamicColor = resolveEffectiveDynamicColorEnabled(
                 dynamicColorEnabled = dynamicColor,
-                amoledDarkTheme = useAmoledDarkTheme
+                amoledDarkTheme = useAmoledDarkTheme,
+                uiPreset = uiPreset
             )
 
             //  [新增] 根据主题动态更新状态栏样式

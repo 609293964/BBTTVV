@@ -58,6 +58,7 @@ import com.android.purebilibili.feature.video.playback.loader.PlaybackLoader
 import com.android.purebilibili.feature.video.playback.policy.PlaybackPostLoadTask
 import com.android.purebilibili.feature.video.playback.policy.resolveOnlineCountPollingDelayMs
 import com.android.purebilibili.feature.video.playback.policy.buildPlaybackPostLoadPlan
+import com.android.purebilibili.feature.video.playback.policy.shouldHoldPlaybackTransitionPosition
 import com.android.purebilibili.feature.video.playback.policy.resolvePluginPollingIntervalMs
 import com.android.purebilibili.feature.video.playback.policy.shouldRefreshOnlineCount
 import com.android.purebilibili.feature.video.playback.policy.shouldSendPlaybackHeartbeat
@@ -113,6 +114,7 @@ sealed class PlayerUiState {
         val qualityLabels: List<String> = emptyList(),
         val qualityIds: List<Int> = emptyList(),
         val startPosition: Long = 0L,
+        val pendingPlaybackTransitionPositionMs: Long? = null,
         val cachedDashVideos: List<DashVideo> = emptyList(),
         val cachedDashAudios: List<DashAudio> = emptyList(),
         val isQualitySwitching: Boolean = false,
@@ -3411,6 +3413,7 @@ class PlayerViewModel : ViewModel() {
     
     // 👀 [新增] 在线观看人数定时刷新 Job
     private var onlineCountJob: Job? = null
+    private var playbackTransitionMonitorJob: Job? = null
     
     // 👀 [新增] 获取并更新在线观看人数
     private fun startOnlineCountPolling(bvid: String, cid: Long) {
@@ -4563,6 +4566,30 @@ class PlayerViewModel : ViewModel() {
     }
     
     // ========== Quality ==========
+
+    private fun monitorPlaybackTransitionPosition(targetPositionMs: Long) {
+        playbackTransitionMonitorJob?.cancel()
+        playbackTransitionMonitorJob = viewModelScope.launch {
+            while (true) {
+                val current = _uiState.value as? PlayerUiState.Success ?: return@launch
+                val pendingPositionMs = current.pendingPlaybackTransitionPositionMs ?: return@launch
+                if (pendingPositionMs != targetPositionMs) return@launch
+                val playerPositionMs = playbackUseCase.getCurrentPosition().coerceAtLeast(0L)
+                if (!shouldHoldPlaybackTransitionPosition(playerPositionMs, targetPositionMs)) {
+                    _uiState.update { state ->
+                        val success = state as? PlayerUiState.Success ?: return@update state
+                        if (success.pendingPlaybackTransitionPositionMs != targetPositionMs) {
+                            state
+                        } else {
+                            success.copy(pendingPlaybackTransitionPositionMs = null)
+                        }
+                    }
+                    return@launch
+                }
+                delay(50)
+            }
+        }
+    }
     
     fun changeQuality(qualityId: Int, currentPos: Long) {
         val current = _uiState.value as? PlayerUiState.Success ?: return
@@ -4631,7 +4658,12 @@ class PlayerViewModel : ViewModel() {
             }
         }
         
-        _uiState.value = current.copy(isQualitySwitching = true, requestedQuality = qualityId)
+        val transitionPositionMs = currentPos.coerceAtLeast(0L)
+        _uiState.value = current.copy(
+            isQualitySwitching = true,
+            requestedQuality = qualityId,
+            pendingPlaybackTransitionPositionMs = transitionPositionMs
+        )
         
         viewModelScope.launch {
             // [新增] 获取当前音频偏好
@@ -4669,12 +4701,14 @@ class PlayerViewModel : ViewModel() {
                 _uiState.value = current.copy(
                     playUrl = result.videoUrl, audioUrl = result.audioUrl,
                     currentQuality = result.actualQuality, isQualitySwitching = false, requestedQuality = null,
+                    pendingPlaybackTransitionPositionMs = transitionPositionMs,
                     qualityIds = result.qualityIds.ifEmpty { current.qualityIds },
                     qualityLabels = result.qualityLabels.ifEmpty { current.qualityLabels },
                     //  [修复] 更新缓存的DASH流，否则后续画质切换可能失败
                     cachedDashVideos = result.cachedDashVideos.ifEmpty { current.cachedDashVideos },
                     cachedDashAudios = result.cachedDashAudios.ifEmpty { current.cachedDashAudios }
                 )
+                monitorPlaybackTransitionPosition(transitionPositionMs)
                 val label = current.qualityLabels.getOrNull(
                     current.qualityIds.indexOf(result.actualQuality)
                 ) ?: qualityManager.getQualityLabel(result.actualQuality)
@@ -4689,7 +4723,11 @@ class PlayerViewModel : ViewModel() {
                 //  记录画质切换事件
                 AnalyticsHelper.logQualityChange(currentBvid, current.currentQuality, result.actualQuality)
             } else {
-                _uiState.value = current.copy(isQualitySwitching = false, requestedQuality = null)
+                _uiState.value = current.copy(
+                    isQualitySwitching = false,
+                    requestedQuality = null,
+                    pendingPlaybackTransitionPositionMs = null
+                )
                 toast("清晰度切换失败", PlayerToastPresentation.CenteredHighlight)
             }
         }
@@ -4709,7 +4747,10 @@ class PlayerViewModel : ViewModel() {
             playbackUseCase.savePosition(currentBvid, previousCid)
         }
         currentCid = page.cid
-        _uiState.value = subtitleClearedState.copy(isQualitySwitching = true)
+        _uiState.value = subtitleClearedState.copy(
+            isQualitySwitching = true,
+            pendingPlaybackTransitionPositionMs = 0L
+        )
         
         viewModelScope.launch {
             try {
@@ -4751,11 +4792,13 @@ class PlayerViewModel : ViewModel() {
                         _uiState.value = subtitleClearedState.copy(
                             info = current.info.copy(cid = page.cid), playUrl = selection.videoUrl, audioUrl = selection.audioUrl,
                             startPosition = restoredPosition, isQualitySwitching = false,
+                            pendingPlaybackTransitionPositionMs = restoredPosition.coerceAtLeast(0L),
                             qualityIds = selection.qualityIds,
                             qualityLabels = selection.qualityLabels,
                             cachedDashVideos = selection.cachedDashVideos,
                             cachedDashAudios = selection.cachedDashAudios
                         )
+                        monitorPlaybackTransitionPosition(restoredPosition.coerceAtLeast(0L))
                         interactiveCurrentEdgeId = 0L
                         loadPlayerInfo(currentBvid, page.cid)
                         loadVideoshot(currentBvid, page.cid)
@@ -4763,10 +4806,16 @@ class PlayerViewModel : ViewModel() {
                         return@launch
                     }
                 }
-                _uiState.value = current.copy(isQualitySwitching = false)
+                _uiState.value = current.copy(
+                    isQualitySwitching = false,
+                    pendingPlaybackTransitionPositionMs = null
+                )
                 toast("\u5206P\u5207\u6362\u5931\u8d25")
             } catch (e: Exception) {
-                _uiState.value = current.copy(isQualitySwitching = false)
+                _uiState.value = current.copy(
+                    isQualitySwitching = false,
+                    pendingPlaybackTransitionPositionMs = null
+                )
             }
         }
     }
@@ -5150,6 +5199,7 @@ class PlayerViewModel : ViewModel() {
         heartbeatJob?.cancel()
         pluginCheckJob?.cancel()
         onlineCountJob?.cancel()  // 👀 取消在线人数轮询
+        playbackTransitionMonitorJob?.cancel()
         aiSummaryJob?.cancel()
         activeLoadJob?.cancel()
         playerInfoJob?.cancel()

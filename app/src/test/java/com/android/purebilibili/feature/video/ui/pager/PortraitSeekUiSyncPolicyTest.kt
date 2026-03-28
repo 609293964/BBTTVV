@@ -8,6 +8,35 @@ import kotlin.test.assertTrue
 class PortraitSeekUiSyncPolicyTest {
 
     @Test
+    fun committedSeekPosition_clampsToKnownDuration() {
+        assertEquals(
+            120_000L,
+            resolvePortraitCommittedSeekPosition(
+                requestedPositionMs = 150_000L,
+                durationMs = 120_000L
+            )
+        )
+        assertEquals(
+            0L,
+            resolvePortraitCommittedSeekPosition(
+                requestedPositionMs = -8_000L,
+                durationMs = 120_000L
+            )
+        )
+    }
+
+    @Test
+    fun committedSeekPosition_keepsPositiveRequestWhenDurationUnknown() {
+        assertEquals(
+            42_000L,
+            resolvePortraitCommittedSeekPosition(
+                requestedPositionMs = 42_000L,
+                durationMs = 0L
+            )
+        )
+    }
+
+    @Test
     fun localSeekPosition_winsWhileSeekCommitIsStillAwaitingPlayerCatchUp() {
         assertEquals(
             25_000L,

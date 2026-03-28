@@ -79,6 +79,7 @@ import com.android.purebilibili.core.ui.AppIcons
 import com.android.purebilibili.core.util.HapticType
 import com.android.purebilibili.core.util.rememberHapticFeedback
 import com.android.purebilibili.feature.video.usecase.seekPlayerFromUserAction
+import com.android.purebilibili.feature.video.playback.policy.shouldHoldPlaybackTransitionPosition
 import com.android.purebilibili.feature.cast.DeviceListDialog
 import com.android.purebilibili.feature.cast.DlnaManager
 import com.android.purebilibili.feature.cast.LocalProxyServer
@@ -160,14 +161,16 @@ internal fun shouldShowCenterPlayButton(
     isQualitySwitching: Boolean,
     isFullscreen: Boolean,
     isBuffering: Boolean,
-    isScrubbing: Boolean
+    isScrubbing: Boolean,
+    isSeekTransitionPending: Boolean
 ): Boolean {
     return isVisible &&
         !isPlaying &&
         !isQualitySwitching &&
         isFullscreen &&
         !isBuffering &&
-        !isScrubbing
+        !isScrubbing &&
+        !isSeekTransitionPending
 }
 
 internal fun shouldShowBufferingIndicator(
@@ -205,6 +208,8 @@ internal fun resolveDisplayedOnlineCount(
 ): String {
     return if (showOnlineCount) onlineCount else ""
 }
+
+private const val CENTER_PLAY_BUTTON_SEEK_TRANSITION_GRACE_MS = 350L
 
 @Composable
 fun VideoPlayerOverlay(
@@ -320,6 +325,7 @@ fun VideoPlayerOverlay(
     onSeekTo: ((Long) -> Unit)? = null,
     previewSeekPositionMs: Long? = null,
     previewSeekActive: Boolean = false,
+    playbackTransitionPositionMs: Long? = null,
     // [New] Codec & Audio Params
     currentCodec: String = "hev1",
     onCodecChange: (String) -> Unit = {},
@@ -358,6 +364,7 @@ fun VideoPlayerOverlay(
     onToggleFavorite: () -> Unit = {},
     // 复用 onRelatedVideoClick 或 onVideoClick
     onDrawerVideoClick: (String, android.os.Bundle?) -> Unit = { _, _ -> },
+    onPlaybackTransitionSettled: (Long) -> Unit = {},
     // 分P
     pages: List<com.android.purebilibili.data.model.response.Page> = emptyList(),
     currentPageIndex: Int = 0,
@@ -379,6 +386,10 @@ fun VideoPlayerOverlay(
     //  使用传入的比例状态
     var isPlaying by remember { mutableStateOf(player.isPlaying) }
     var isProgressScrubbing by remember { mutableStateOf(false) }
+    var pendingSeekPositionMs by remember { mutableStateOf<Long?>(null) }
+    var suppressCenterPlayButtonForSeekTransition by remember { mutableStateOf(false) }
+    var wasPlayingWhenProgressScrubbingStarted by remember { mutableStateOf(false) }
+    var lastSettledPlaybackTransitionPositionMs by remember { mutableStateOf<Long?>(null) }
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -553,12 +564,40 @@ fun VideoPlayerOverlay(
             delay(delayMs)
         }
     }
-    val displayedProgressState = remember(progressState, previewSeekPositionMs, previewSeekActive) {
+    val activePlaybackTransitionPositionMs = pendingSeekPositionMs ?: playbackTransitionPositionMs
+    val displayedProgressState = remember(
+        progressState,
+        previewSeekPositionMs,
+        previewSeekActive,
+        activePlaybackTransitionPositionMs
+    ) {
         resolveDisplayedPlayerProgress(
             progress = progressState,
             previewPositionMs = previewSeekPositionMs,
-            previewActive = previewSeekActive
+            previewActive = previewSeekActive,
+            playbackTransitionPositionMs = activePlaybackTransitionPositionMs
         )
+    }
+
+    LaunchedEffect(progressState.current, pendingSeekPositionMs) {
+        if (!shouldHoldPlaybackTransitionPosition(progressState.current, pendingSeekPositionMs)) {
+            pendingSeekPositionMs = null
+        }
+    }
+
+    LaunchedEffect(playbackTransitionPositionMs) {
+        if (playbackTransitionPositionMs == null) {
+            lastSettledPlaybackTransitionPositionMs = null
+        }
+    }
+
+    LaunchedEffect(progressState.current, playbackTransitionPositionMs) {
+        val pendingPositionMs = playbackTransitionPositionMs ?: return@LaunchedEffect
+        if (pendingPositionMs == lastSettledPlaybackTransitionPositionMs) return@LaunchedEffect
+        if (!shouldHoldPlaybackTransitionPosition(progressState.current, pendingPositionMs)) {
+            lastSettledPlaybackTransitionPositionMs = pendingPositionMs
+            onPlaybackTransitionSettled(pendingPositionMs)
+        }
     }
     
     // 📖 计算当前章节（必须在 progressState 之后定义）
@@ -584,6 +623,23 @@ fun VideoPlayerOverlay(
         }
     }
 
+    LaunchedEffect(suppressCenterPlayButtonForSeekTransition) {
+        if (suppressCenterPlayButtonForSeekTransition) {
+            delay(CENTER_PLAY_BUTTON_SEEK_TRANSITION_GRACE_MS)
+            suppressCenterPlayButtonForSeekTransition = false
+        }
+    }
+
+    LaunchedEffect(isPlaying, isBuffering, isProgressScrubbing, suppressCenterPlayButtonForSeekTransition) {
+        if (
+            suppressCenterPlayButtonForSeekTransition &&
+            !isProgressScrubbing &&
+            (isPlaying || isBuffering)
+        ) {
+            suppressCenterPlayButtonForSeekTransition = false
+        }
+    }
+
     LaunchedEffect(showCastDialog) {
         if (shouldReleaseCastBindingAfterDialogVisibilityChange(previousShowCastDialog, showCastDialog)) {
             DlnaManager.unbindService(context)
@@ -603,6 +659,12 @@ fun VideoPlayerOverlay(
             player.play()
             isPlaying = true
         }
+    }
+
+    val commitSeek: (Long) -> Unit = { position ->
+        val safePosition = position.coerceAtLeast(0L)
+        pendingSeekPositionMs = safePosition
+        onSeekTo?.invoke(safePosition) ?: seekPlayerFromUserAction(player, safePosition)
     }
 
     Box(
@@ -740,9 +802,15 @@ fun VideoPlayerOverlay(
                     onPlayPauseClick = {
                         togglePlayPause()
                     },
-                    onSeek = { position -> onSeekTo?.invoke(position) ?: seekPlayerFromUserAction(player, position) },
+                    onSeek = commitSeek,
                     onSeekStart = onSeekStart,  //  拖动进度条开始时清除弹幕
                     onScrubbingChanged = { scrubbing ->
+                        if (scrubbing) {
+                            wasPlayingWhenProgressScrubbingStarted = isPlaying
+                            suppressCenterPlayButtonForSeekTransition = false
+                        } else if (wasPlayingWhenProgressScrubbingStarted) {
+                            suppressCenterPlayButtonForSeekTransition = true
+                        }
                         isProgressScrubbing = scrubbing
                     },
                     onSpeedClick = { showSpeedMenu = true },
@@ -908,7 +976,8 @@ fun VideoPlayerOverlay(
                 isQualitySwitching = isQualitySwitching,
                 isFullscreen = isFullscreen,
                 isBuffering = isBuffering,
-                isScrubbing = isProgressScrubbing
+                isScrubbing = isProgressScrubbing,
+                isSeekTransitionPending = suppressCenterPlayButtonForSeekTransition || activePlaybackTransitionPositionMs != null
             ),
             modifier = Modifier.align(Alignment.Center),
             enter = scaleIn(tween(250)) + fadeIn(tween(200)),
@@ -1161,7 +1230,7 @@ fun VideoPlayerOverlay(
             ChapterListPanel(
                 viewPoints = viewPoints,
                 currentPositionMs = displayedProgressState.current,
-                onSeek = { position -> onSeekTo?.invoke(position) ?: seekPlayerFromUserAction(player, position) },
+                onSeek = commitSeek,
                 onDismiss = { showChapterList = false }
             )
         }

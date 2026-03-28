@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -1046,6 +1047,24 @@ private fun VideoPageItem(
         }
     }
 
+    LaunchedEffect(isCurrentPage, isLongPressing, longPressOriginPlaybackParameters) {
+        if (shouldRestorePortraitLongPressSpeed(isLongPressing = isLongPressing, isCurrentPage = isCurrentPage)) {
+            exoPlayer.playbackParameters = longPressOriginPlaybackParameters
+            isLongPressing = false
+            showLongPressSpeedFeedback = false
+        }
+    }
+
+    val latestIsLongPressing by rememberUpdatedState(isLongPressing)
+    val latestLongPressOriginPlaybackParameters by rememberUpdatedState(longPressOriginPlaybackParameters)
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            if (latestIsLongPressing) {
+                exoPlayer.playbackParameters = latestLongPressOriginPlaybackParameters
+            }
+        }
+    }
+
     LaunchedEffect(isCurrentPage, scale, onCurrentPageScaleChange) {
         onCurrentPageScaleChange(if (isCurrentPage) scale else 1f)
     }
@@ -1738,11 +1757,17 @@ private fun VideoPageItem(
             },
             onSeek = {
                 if (isCurrentPage) {
-                    val targetPosition = it.coerceAtLeast(0L)
+                    val resolvedDuration = progressState.duration
+                        .takeIf { durationMs -> durationMs > 0L }
+                        ?: exoPlayer.duration.coerceAtLeast(0L)
+                    val targetPosition = resolvePortraitCommittedSeekPosition(
+                        requestedPositionMs = it,
+                        durationMs = resolvedDuration
+                    )
                     localSeekPositionMs = targetPosition
                     pendingSeekPositionMs = targetPosition
                     progressState = progressState.copy(current = targetPosition)
-                    seekPlayerFromUserAction(exoPlayer, it)
+                    seekPlayerFromUserAction(exoPlayer, targetPosition)
                     danmakuManager.seekTo(targetPosition)
                 }
             },

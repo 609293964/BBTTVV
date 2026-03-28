@@ -181,6 +181,134 @@ class VideoPlayerSectionPolicyTest {
     }
 
     @Test
+    fun foregroundSurfaceRecovery_runsOnlyForInlineForegroundPlayerView() {
+        assertTrue(
+            shouldStartForegroundSurfaceRecovery(
+                hasPlayerView = true,
+                shouldBindInlinePlayerView = true,
+                isInPipMode = false
+            )
+        )
+        assertFalse(
+            shouldStartForegroundSurfaceRecovery(
+                hasPlayerView = false,
+                shouldBindInlinePlayerView = true,
+                isInPipMode = false
+            )
+        )
+        assertFalse(
+            shouldStartForegroundSurfaceRecovery(
+                hasPlayerView = true,
+                shouldBindInlinePlayerView = false,
+                isInPipMode = false
+            )
+        )
+        assertFalse(
+            shouldStartForegroundSurfaceRecovery(
+                hasPlayerView = true,
+                shouldBindInlinePlayerView = true,
+                isInPipMode = true
+            )
+        )
+    }
+
+    @Test
+    fun foregroundSurfaceRecovery_kicksPlaybackOnlyWhenRenderChainLooksStuck() {
+        assertTrue(
+            shouldKickPlaybackAfterSurfaceRecovery(
+                playWhenReady = true,
+                isPlaying = false,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+        assertTrue(
+            shouldKickPlaybackAfterSurfaceRecovery(
+                playWhenReady = true,
+                isPlaying = false,
+                playbackState = androidx.media3.common.Player.STATE_BUFFERING
+            )
+        )
+        assertFalse(
+            shouldKickPlaybackAfterSurfaceRecovery(
+                playWhenReady = false,
+                isPlaying = false,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+        assertFalse(
+            shouldKickPlaybackAfterSurfaceRecovery(
+                playWhenReady = true,
+                isPlaying = true,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+    }
+
+    @Test
+    fun foregroundRecoveryWatchdog_logsOnlyWhenNoFrameReturns() {
+        assertTrue(
+            shouldLogForegroundSurfaceRecoveryTimeout(
+                hasRenderedFirstFrameSinceRecovery = false,
+                playWhenReady = true,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+        assertTrue(
+            shouldLogForegroundSurfaceRecoveryTimeout(
+                hasRenderedFirstFrameSinceRecovery = false,
+                playWhenReady = true,
+                playbackState = androidx.media3.common.Player.STATE_BUFFERING
+            )
+        )
+        assertFalse(
+            shouldLogForegroundSurfaceRecoveryTimeout(
+                hasRenderedFirstFrameSinceRecovery = true,
+                playWhenReady = true,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+        assertFalse(
+            shouldLogForegroundSurfaceRecoveryTimeout(
+                hasRenderedFirstFrameSinceRecovery = false,
+                playWhenReady = false,
+                playbackState = androidx.media3.common.Player.STATE_READY
+            )
+        )
+    }
+
+    @Test
+    fun playbackStallLogging_requiresMeaningfulDelayDuringActivePlayback() {
+        assertTrue(
+            shouldLogPlaybackStall(
+                bufferingDurationMs = 900L,
+                playWhenReady = true,
+                currentPositionMs = 12_000L
+            )
+        )
+        assertFalse(
+            shouldLogPlaybackStall(
+                bufferingDurationMs = 300L,
+                playWhenReady = true,
+                currentPositionMs = 12_000L
+            )
+        )
+        assertFalse(
+            shouldLogPlaybackStall(
+                bufferingDurationMs = 900L,
+                playWhenReady = false,
+                currentPositionMs = 12_000L
+            )
+        )
+        assertFalse(
+            shouldLogPlaybackStall(
+                bufferingDurationMs = 900L,
+                playWhenReady = true,
+                currentPositionMs = 0L
+            )
+        )
+    }
+
+    @Test
     fun inlinePlayerBinding_keepsSurfaceAttached_onlyWhenForegroundOrPip() {
         assertTrue(
             shouldBindInlinePlayerViewToPlayer(

@@ -19,6 +19,7 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.QueryMap
+import java.net.Proxy
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.UUID
@@ -1354,6 +1355,14 @@ object NetworkModule {
         return 32L * 1024 * 1024
     }
 
+    internal fun buildPlaybackOkHttpClient(sharedClient: OkHttpClient): OkHttpClient {
+        return sharedClient.newBuilder()
+            // Media playback should not inherit device-local proxy apps that may expose
+            // an unavailable loopback port and break streaming with ECONNREFUSED.
+            .proxy(Proxy.NO_PROXY)
+            .build()
+    }
+
     val okHttpClient: OkHttpClient by lazy {
         val builder = OkHttpClient.Builder()
             .protocols(resolveSharedNetworkProtocols())
@@ -1573,6 +1582,10 @@ object NetworkModule {
                 }
             }
             .build()
+    }
+
+    val playbackOkHttpClient: OkHttpClient by lazy {
+        buildPlaybackOkHttpClient(okHttpClient)
     }
     
     //  [新增] Guest OkHttpClient - 不带登录凭证，用于风控时的降级

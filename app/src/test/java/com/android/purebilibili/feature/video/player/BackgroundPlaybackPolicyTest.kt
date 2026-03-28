@@ -343,6 +343,45 @@ class BackgroundPlaybackPolicyTest {
     }
 
     @Test
+    fun foregroundEntryKicksPlaybackWhenVideoTrackReturnsFromBackgroundAudio() {
+        assertTrue(
+            shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = true,
+                playWhenReady = true,
+                playbackState = Player.STATE_READY
+            )
+        )
+        assertTrue(
+            shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = true,
+                playWhenReady = true,
+                playbackState = Player.STATE_BUFFERING
+            )
+        )
+        assertFalse(
+            shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = false,
+                playWhenReady = true,
+                playbackState = Player.STATE_READY
+            )
+        )
+        assertFalse(
+            shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = true,
+                playWhenReady = false,
+                playbackState = Player.STATE_READY
+            )
+        )
+        assertFalse(
+            shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = true,
+                playWhenReady = true,
+                playbackState = Player.STATE_IDLE
+            )
+        )
+    }
+
+    @Test
     fun bufferingWithPlayWhenReadyShouldNotBeTreatedAsInactiveInBackground() {
         assertFalse(
             shouldPauseBackgroundBuffering(

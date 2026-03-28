@@ -163,6 +163,14 @@ internal fun shouldRefreshVideoFrameOnEnterForeground(
     return hadSavedTrackParams && hasMediaItems && playbackState != Player.STATE_IDLE
 }
 
+internal fun shouldKickPlaybackAfterForegroundTrackRestore(
+    hadSavedTrackParams: Boolean,
+    playWhenReady: Boolean,
+    playbackState: Int
+): Boolean {
+    return hadSavedTrackParams && playWhenReady && playbackState != Player.STATE_IDLE
+}
+
 internal fun shouldResumePlaybackOnEnterForeground(
     playWhenReady: Boolean,
     isPlaying: Boolean,
@@ -621,7 +629,15 @@ class MiniPlayerManager private constructor(private val context: Context) :
             Logger.d(TAG, "🎬 前台模式：请求重新渲染当前帧，避免返回视频页黑屏")
         }
 
-        if (shouldResumePlaybackOnEnterForeground(
+        if (shouldKickPlaybackAfterForegroundTrackRestore(
+                hadSavedTrackParams = hadSavedTrackParams,
+                playWhenReady = currentPlayer.playWhenReady,
+                playbackState = currentPlayer.playbackState
+            )
+        ) {
+            currentPlayer.play()
+            Logger.d(TAG, "▶️ 前台模式：恢复视频轨道后主动唤醒渲染链路")
+        } else if (shouldResumePlaybackOnEnterForeground(
                 playWhenReady = currentPlayer.playWhenReady,
                 isPlaying = currentPlayer.isPlaying,
                 playbackState = currentPlayer.playbackState
@@ -1135,7 +1151,7 @@ class MiniPlayerManager private constructor(private val context: Context) :
                 "Referer" to "https://www.bilibili.com",
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             )
-            val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.okHttpClient)
+            val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.playbackOkHttpClient)
                 .setDefaultRequestProperties(headers)
 
             val audioAttributes = AudioAttributes.Builder()
@@ -1223,7 +1239,7 @@ class MiniPlayerManager private constructor(private val context: Context) :
             "Referer" to "https://www.bilibili.com",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
-        val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.okHttpClient)
+        val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.playbackOkHttpClient)
             .setDefaultRequestProperties(headers)
 
         val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)

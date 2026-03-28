@@ -70,7 +70,6 @@ fun AppearanceSettingsScreen(
     val restartDialogTitle = stringResource(R.string.app_language_restart_dialog_title)
     val restartDialogMessage = stringResource(R.string.app_language_restart_dialog_message)
     val restartDialogConfirm = stringResource(R.string.app_language_restart_dialog_confirm)
-
     val displayLevel = when (state.displayMode) {
         0 -> 0.35f
         1 -> 0.6f
@@ -282,6 +281,9 @@ fun AppearanceSettingsContent(
     val homeInfoGlassBadgesVisible by SettingsManager
         .getHomeInfoGlassBadgesVisible(context)
         .collectAsState(initial = true)
+    val showMd3DynamicColorControl =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val showThemeColorPicker = !state.dynamicColor
 
     LazyColumn(
         modifier = modifier
@@ -364,7 +366,7 @@ fun AppearanceSettingsContent(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // 动态取色开关
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (showMd3DynamicColorControl) {
                              IOSSwitchItem(
                                 icon = CupertinoIcons.Default.PaintbrushPointed,
                                 title = "动态取色（Material You）",
@@ -377,7 +379,7 @@ fun AppearanceSettingsContent(
 
                         // 主题色选择 (仅当动态取色关闭时显示)
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = !state.dynamicColor,
+                            visible = showThemeColorPicker,
                             enter =   androidx.compose.animation.expandVertically() +   androidx.compose.animation.fadeIn(),
                             exit =   androidx.compose.animation.shrinkVertically() +   androidx.compose.animation.fadeOut()
                         ) {

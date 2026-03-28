@@ -91,6 +91,13 @@ internal fun shouldHandlePortraitLongPressGesture(scale: Float): Boolean {
     return scale <= 1.01f
 }
 
+internal fun shouldRestorePortraitLongPressSpeed(
+    isLongPressing: Boolean,
+    isCurrentPage: Boolean
+): Boolean {
+    return isLongPressing && !isCurrentPage
+}
+
 internal fun resolvePortraitInitialProgressPosition(
     isFirstPage: Boolean,
     initialStartPositionMs: Long

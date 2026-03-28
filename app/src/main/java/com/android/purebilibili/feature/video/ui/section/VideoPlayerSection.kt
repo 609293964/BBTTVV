@@ -27,12 +27,15 @@ import com.android.purebilibili.feature.video.ui.gesture.TwoFingerSpeedGestureMo
 import com.android.purebilibili.feature.video.ui.gesture.resolveLockedTwoFingerSpeedAxis
 import com.android.purebilibili.feature.video.ui.gesture.resolveTwoFingerGesturePlaybackSpeed
 import com.android.purebilibili.feature.video.ui.gesture.resolveTwoFingerSpeedGestureMode
+import com.android.purebilibili.feature.video.playback.policy.resolveDisplayedQualityId
 import com.android.purebilibili.data.model.response.ViewPoint
 
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.LayoutInflater
+import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.media.AudioManager
 import android.provider.Settings
@@ -115,6 +118,7 @@ import com.android.purebilibili.core.ui.blur.unifiedBlur
 import com.android.purebilibili.core.ui.transition.VIDEO_SHARED_COVER_ASPECT_RATIO
 import com.android.purebilibili.core.util.FormatUtils
 import com.android.purebilibili.core.util.CardPositionManager
+import com.android.purebilibili.core.util.Logger
 import com.android.purebilibili.feature.video.subtitle.SubtitleDisplayMode
 import com.android.purebilibili.feature.video.subtitle.SubtitleAutoPreference
 import com.android.purebilibili.feature.video.subtitle.isSubtitleFeatureEnabledForUser
@@ -143,6 +147,9 @@ enum class VideoGestureMode { None, Brightness, Volume, Seek, SwipeToFullscreen 
 private const val HI_RES_AUDIO_QUALITY_ID = 30251
 private const val HI_RES_LONG_PRESS_SPEED_LIMIT = 1.5f
 private const val LONG_PRESS_SPEED_LOCK_THRESHOLD_DP = 72
+private const val FOREGROUND_SURFACE_RECOVERY_DELAY_MS = 80L
+private const val FOREGROUND_SURFACE_RECOVERY_TIMEOUT_MS = 1200L
+private const val PLAYBACK_STALL_LOG_THRESHOLD_MS = 700L
 
 internal data class LongPressSpeedStartDecision(
     val originalPlaybackParameters: PlaybackParameters,
@@ -695,6 +702,43 @@ internal fun shouldRebindPlayerSurfaceOnForeground(
     return hasPlayerView && !isInPipMode
 }
 
+internal fun shouldStartForegroundSurfaceRecovery(
+    hasPlayerView: Boolean,
+    shouldBindInlinePlayerView: Boolean,
+    isInPipMode: Boolean
+): Boolean {
+    return hasPlayerView && shouldBindInlinePlayerView && !isInPipMode
+}
+
+internal fun shouldKickPlaybackAfterSurfaceRecovery(
+    playWhenReady: Boolean,
+    isPlaying: Boolean,
+    playbackState: Int
+): Boolean {
+    return playWhenReady &&
+        !isPlaying &&
+        (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING)
+}
+
+internal fun shouldLogForegroundSurfaceRecoveryTimeout(
+    hasRenderedFirstFrameSinceRecovery: Boolean,
+    playWhenReady: Boolean,
+    playbackState: Int
+): Boolean {
+    if (hasRenderedFirstFrameSinceRecovery || !playWhenReady) return false
+    return playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING
+}
+
+internal fun shouldLogPlaybackStall(
+    bufferingDurationMs: Long,
+    playWhenReady: Boolean,
+    currentPositionMs: Long
+): Boolean {
+    return bufferingDurationMs >= PLAYBACK_STALL_LOG_THRESHOLD_MS &&
+        playWhenReady &&
+        currentPositionMs > 0L
+}
+
 internal fun shouldBindInlinePlayerViewToPlayer(
     isPortraitFullscreen: Boolean,
     hostLifecycleStarted: Boolean,
@@ -717,10 +761,26 @@ internal fun rebindPlayerSurfaceIfNeeded(
     playerView: PlayerView,
     player: Player
 ) {
+    when (val videoSurface = playerView.videoSurfaceView) {
+        is TextureView -> {
+            player.clearVideoTextureView(videoSurface)
+        }
+        is SurfaceView -> {
+            player.clearVideoSurfaceView(videoSurface)
+        }
+    }
     if (playerView.player === player) {
         playerView.player = null
     }
     playerView.player = player
+    when (val videoSurface = playerView.videoSurfaceView) {
+        is TextureView -> {
+            player.setVideoTextureView(videoSurface)
+        }
+        is SurfaceView -> {
+            player.setVideoSurfaceView(videoSurface)
+        }
+    }
 }
 
 @Composable
@@ -1039,6 +1099,11 @@ fun VideoPlayerSection(
     
     //  [新增] 缓冲状态监听
     var isBuffering by remember { mutableStateOf(false) }
+    var bufferingStartedAtMs by remember { mutableLongStateOf(0L) }
+    var foregroundRecoveryGeneration by remember { mutableIntStateOf(0) }
+    var foregroundRecoveryStartedAtMs by remember { mutableLongStateOf(0L) }
+    var foregroundRecoveryStartPositionMs by remember { mutableLongStateOf(0L) }
+    var hasRenderedFirstFrameSinceForegroundRecovery by remember { mutableStateOf(true) }
     var observedPlaybackSpeed by remember(playerState.player) {
         mutableFloatStateOf(playerState.player.playbackParameters.speed)
     }
@@ -1046,6 +1111,33 @@ fun VideoPlayerSection(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (playbackState == Player.STATE_BUFFERING) {
+                    if (bufferingStartedAtMs == 0L) {
+                        bufferingStartedAtMs = now
+                        Logger.d(
+                            "VideoPlayerSection",
+                            "🎬 Playback buffering started: pos=${playerState.player.currentPosition}, " +
+                                "buffered=${playerState.player.bufferedPosition}, playWhenReady=${playerState.player.playWhenReady}"
+                        )
+                    }
+                } else if (bufferingStartedAtMs != 0L) {
+                    val bufferingDurationMs = (now - bufferingStartedAtMs).coerceAtLeast(0L)
+                    if (shouldLogPlaybackStall(
+                            bufferingDurationMs = bufferingDurationMs,
+                            playWhenReady = playerState.player.playWhenReady,
+                            currentPositionMs = playerState.player.currentPosition
+                        )
+                    ) {
+                        Logger.w(
+                            "VideoPlayerSection",
+                            "⚠️ Playback stall recovered after ${bufferingDurationMs}ms: " +
+                                "state=$playbackState, pos=${playerState.player.currentPosition}, " +
+                                "buffered=${playerState.player.bufferedPosition}, speed=${playerState.player.playbackParameters.speed}"
+                        )
+                    }
+                    bufferingStartedAtMs = 0L
+                }
             }
 
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
@@ -1939,13 +2031,92 @@ fun VideoPlayerSection(
             if (shouldRebindSurface) {
                 playerViewRef?.let { playerView ->
                     rebindPlayerSurfaceIfNeeded(playerView = playerView, player = player)
-                    com.android.purebilibili.core.util.Logger.d(
+                    Logger.d(
                         "VideoPlayerSection",
                         "🎬 Foreground surface rebind applied to avoid audio-only resume"
                     )
                 }
             }
-            if (player.playWhenReady && !player.isPlaying && player.playbackState == Player.STATE_READY) {
+            if (shouldKickPlaybackAfterSurfaceRecovery(
+                    playWhenReady = player.playWhenReady,
+                    isPlaying = player.isPlaying,
+                    playbackState = player.playbackState
+                )
+            ) {
+                player.play()
+            }
+        }
+
+        LaunchedEffect(
+            foregroundRecoveryGeneration,
+            playerViewRef,
+            shouldBindInlinePlayerView,
+            isInPipMode
+        ) {
+            if (foregroundRecoveryGeneration <= 0) return@LaunchedEffect
+            if (!shouldStartForegroundSurfaceRecovery(
+                    hasPlayerView = playerViewRef != null,
+                    shouldBindInlinePlayerView = shouldBindInlinePlayerView,
+                    isInPipMode = isInPipMode
+                )
+            ) {
+                return@LaunchedEffect
+            }
+
+            delay(FOREGROUND_SURFACE_RECOVERY_DELAY_MS)
+            val player = playerState.player
+            playerViewRef?.let { playerView ->
+                rebindPlayerSurfaceIfNeeded(playerView = playerView, player = player)
+                Logger.d(
+                    "VideoPlayerSection",
+                    "🎬 Foreground recovery retry: surface=${playerView.videoSurfaceView?.javaClass?.simpleName}, " +
+                        "pos=${player.currentPosition}, state=${player.playbackState}, playing=${player.isPlaying}"
+                )
+            }
+            if (shouldKickPlaybackAfterSurfaceRecovery(
+                    playWhenReady = player.playWhenReady,
+                    isPlaying = player.isPlaying,
+                    playbackState = player.playbackState
+                )
+            ) {
+                player.play()
+                Logger.d(
+                    "VideoPlayerSection",
+                    "▶️ Foreground recovery kicked playback to rebuild render chain"
+                )
+            }
+
+            delay(FOREGROUND_SURFACE_RECOVERY_TIMEOUT_MS)
+            if (!shouldLogForegroundSurfaceRecoveryTimeout(
+                    hasRenderedFirstFrameSinceRecovery = hasRenderedFirstFrameSinceForegroundRecovery,
+                    playWhenReady = player.playWhenReady,
+                    playbackState = player.playbackState
+                )
+            ) {
+                return@LaunchedEffect
+            }
+
+            val elapsedMs = (android.os.SystemClock.elapsedRealtime() - foregroundRecoveryStartedAtMs)
+                .coerceAtLeast(0L)
+            val advancedPositionMs = (player.currentPosition - foregroundRecoveryStartPositionMs)
+                .coerceAtLeast(0L)
+            Logger.w(
+                "VideoPlayerSection",
+                "⚠️ Foreground recovery still missing first frame after ${elapsedMs}ms: " +
+                    "state=${player.playbackState}, playing=${player.isPlaying}, playWhenReady=${player.playWhenReady}, " +
+                    "pos=${player.currentPosition}, advanced=${advancedPositionMs}, buffered=${player.bufferedPosition}, " +
+                    "surface=${playerViewRef?.videoSurfaceView?.javaClass?.simpleName}, viewAttached=${playerViewRef?.isAttachedToWindow}"
+            )
+
+            playerViewRef?.let { playerView ->
+                rebindPlayerSurfaceIfNeeded(playerView = playerView, player = player)
+            }
+            if (shouldKickPlaybackAfterSurfaceRecovery(
+                    playWhenReady = player.playWhenReady,
+                    isPlaying = player.isPlaying,
+                    playbackState = player.playbackState
+                )
+            ) {
                 player.play()
             }
         }
@@ -2094,6 +2265,16 @@ fun VideoPlayerSection(
                         ) {
                             return@LifecycleEventObserver
                         }
+                        foregroundRecoveryGeneration += 1
+                        foregroundRecoveryStartedAtMs = android.os.SystemClock.elapsedRealtime()
+                        foregroundRecoveryStartPositionMs = player.currentPosition.coerceAtLeast(0L)
+                        hasRenderedFirstFrameSinceForegroundRecovery = false
+                        Logger.d(
+                            "VideoPlayerSection",
+                            "🌅 ON_RESUME recovery start: pos=${player.currentPosition}, buffered=${player.bufferedPosition}, " +
+                                "state=${player.playbackState}, playing=${player.isPlaying}, playWhenReady=${player.playWhenReady}, " +
+                                "surface=${playerViewRef?.videoSurfaceView?.javaClass?.simpleName}"
+                        )
                         val shouldRebindSurface = shouldRebindPlayerSurfaceOnForeground(
                             hasPlayerView = playerViewRef != null,
                             isInPipMode = isInPipMode,
@@ -2103,11 +2284,23 @@ fun VideoPlayerSection(
                         if (shouldRebindSurface) {
                             playerViewRef?.let { playerView ->
                                 rebindPlayerSurfaceIfNeeded(playerView = playerView, player = player)
-                                com.android.purebilibili.core.util.Logger.d(
+                                Logger.d(
                                     "VideoPlayerSection",
                                     "🎬 ON_RESUME surface rebind applied"
                                 )
                             }
+                        }
+                        if (shouldKickPlaybackAfterSurfaceRecovery(
+                                playWhenReady = player.playWhenReady,
+                                isPlaying = player.isPlaying,
+                                playbackState = player.playbackState
+                            )
+                        ) {
+                            player.play()
+                            Logger.d(
+                                "VideoPlayerSection",
+                                "▶️ ON_RESUME kicked playback after surface recovery"
+                            )
                         }
                     }
                     androidx.lifecycle.Lifecycle.Event.ON_DESTROY -> {
@@ -2230,6 +2423,16 @@ fun VideoPlayerSection(
             override fun onRenderedFirstFrame() {
                 android.util.Log.d("VideoPlayerCover", "🎬 onRenderedFirstFrame triggered")
                 isFirstFrameRendered = true
+                if (!hasRenderedFirstFrameSinceForegroundRecovery) {
+                    hasRenderedFirstFrameSinceForegroundRecovery = true
+                    val costMs = (android.os.SystemClock.elapsedRealtime() - foregroundRecoveryStartedAtMs)
+                        .coerceAtLeast(0L)
+                    Logger.d(
+                        "VideoPlayerSection",
+                        "✅ Foreground recovery first frame rendered in ${costMs}ms: " +
+                            "pos=${playerState.player.currentPosition}, buffered=${playerState.player.bufferedPosition}"
+                    )
+                }
             }
             
             // 兼容性：同时也监听 Events
@@ -2237,6 +2440,16 @@ fun VideoPlayerSection(
                 if (events.contains(Player.EVENT_RENDERED_FIRST_FRAME)) {
                     android.util.Log.d("VideoPlayerCover", "🎬 EVENT_RENDERED_FIRST_FRAME triggered")
                     isFirstFrameRendered = true
+                    if (!hasRenderedFirstFrameSinceForegroundRecovery) {
+                        hasRenderedFirstFrameSinceForegroundRecovery = true
+                        val costMs = (android.os.SystemClock.elapsedRealtime() - foregroundRecoveryStartedAtMs)
+                            .coerceAtLeast(0L)
+                        Logger.d(
+                            "VideoPlayerSection",
+                            "✅ Foreground recovery first frame event received in ${costMs}ms: " +
+                                "pos=${playerState.player.currentPosition}, buffered=${playerState.player.bufferedPosition}"
+                        )
+                    }
                 }
             }
 
@@ -3289,6 +3502,11 @@ fun VideoPlayerSection(
 
         if (uiState is PlayerUiState.Success && !isInPipMode) {
             val currentPageIndex = uiState.info.pages.indexOfFirst { it.cid == uiState.info.cid }.coerceAtLeast(0)
+            val displayedQualityId = resolveDisplayedQualityId(
+                currentQuality = uiState.currentQuality,
+                requestedQuality = uiState.requestedQuality,
+                isQualitySwitching = uiState.isQualitySwitching
+            )
             VideoPlayerOverlay(
                 player = playerState.player,
                 title = uiState.info.title,
@@ -3296,7 +3514,7 @@ fun VideoPlayerSection(
                 isVisible = showControls && !isPortraitFullscreen,
                 onToggleVisible = { showControls = !showControls },
                 isFullscreen = isFullscreen,
-                currentQualityLabel = uiState.qualityLabels.getOrNull(uiState.qualityIds.indexOf(uiState.currentQuality)) ?: "自动",
+                currentQualityLabel = uiState.qualityLabels.getOrNull(uiState.qualityIds.indexOf(displayedQualityId)) ?: "自动",
                 qualityLabels = uiState.qualityLabels,
                 qualityIds = uiState.qualityIds,
                 onQualitySelected = { index ->
@@ -3604,6 +3822,7 @@ fun VideoPlayerSection(
                 },
                 previewSeekPositionMs = seekTargetTime,
                 previewSeekActive = gestureMode == VideoGestureMode.Seek,
+                playbackTransitionPositionMs = uiState.pendingPlaybackTransitionPositionMs,
                 // [New] Codec & Audio
                 currentCodec = currentCodec,
                 onCodecChange = onCodecChange,

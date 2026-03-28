@@ -89,6 +89,28 @@ class PortraitPagerSwitchPolicyTest {
     }
 
     @Test
+    fun shouldRestorePortraitLongPressSpeed_restoresWhenPageStopsBeingCurrent() {
+        assertTrue(
+            shouldRestorePortraitLongPressSpeed(
+                isLongPressing = true,
+                isCurrentPage = false
+            )
+        )
+        assertFalse(
+            shouldRestorePortraitLongPressSpeed(
+                isLongPressing = false,
+                isCurrentPage = false
+            )
+        )
+        assertFalse(
+            shouldRestorePortraitLongPressSpeed(
+                isLongPressing = true,
+                isCurrentPage = true
+            )
+        )
+    }
+
+    @Test
     fun shouldApplyLoadResult_acceptsOnlyLatestGenerationForSameVideo() {
         assertTrue(
             shouldApplyLoadResult(

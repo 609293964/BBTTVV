@@ -15,6 +15,14 @@ import kotlin.reflect.KClass
 
 private const val TAG = "PluginManager"
 
+internal fun consumePendingPluginEnabledState(
+    pluginId: String,
+    storedEnabled: Boolean,
+    pendingEnabledOverrides: MutableMap<String, Boolean>
+): Boolean {
+    return pendingEnabledOverrides.remove(pluginId) ?: storedEnabled
+}
+
 /**
  *  插件管理器
  * 
@@ -24,6 +32,7 @@ private const val TAG = "PluginManager"
 object PluginManager {
     
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val pendingEnabledOverrides = mutableMapOf<String, Boolean>()
     
     /** 所有已注册插件 */
     private val _plugins = mutableStateListOf<PluginInfo>()
@@ -65,7 +74,12 @@ object PluginManager {
         }
         
         scope.launch {
-            val enabled = PluginStore.isEnabled(appContext, plugin.id)
+            val storedEnabled = PluginStore.isEnabled(appContext, plugin.id)
+            val enabled = consumePendingPluginEnabledState(
+                pluginId = plugin.id,
+                storedEnabled = storedEnabled,
+                pendingEnabledOverrides = pendingEnabledOverrides
+            )
             val info = PluginInfo(plugin, enabled)
             _plugins.add(info)
             _pluginsFlow.value = _plugins.toList()
@@ -89,7 +103,9 @@ object PluginManager {
     suspend fun setEnabled(pluginId: String, enabled: Boolean) {
         val index = _plugins.indexOfFirst { it.plugin.id == pluginId }
         if (index == -1) {
-            Logger.w(TAG, " Plugin not found: $pluginId")
+            pendingEnabledOverrides[pluginId] = enabled
+            PluginStore.setEnabled(appContext, pluginId, enabled)
+            Logger.d(TAG, " Deferring plugin enabled change until registration: $pluginId -> $enabled")
             return
         }
         

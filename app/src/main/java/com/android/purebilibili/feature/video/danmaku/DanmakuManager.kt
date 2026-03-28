@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.math.abs
 
 /**
@@ -51,7 +52,7 @@ import kotlin.math.abs
  */
 class DanmakuManager private constructor(
     private val context: Context,
-    private var scope: CoroutineScope
+    initialScope: CoroutineScope
 ) {
     companion object {
         private const val TAG = "DanmakuManager"
@@ -91,6 +92,8 @@ class DanmakuManager private constructor(
             instance?.trimCachesForBackground()
         }
     }
+
+    private var scope: CoroutineScope = createDanmakuManagerScope(initialScope)
     
     // 视图和控制器
     private var danmakuView: DanmakuView? = null
@@ -225,8 +228,10 @@ class DanmakuManager private constructor(
     }
 
     private fun updateScopeInternal(newScope: CoroutineScope) {
-        if (scope === newScope) return
-        scope = newScope
+        val currentDispatcher = scope.coroutineContext[ContinuationInterceptor]
+        val nextDispatcher = newScope.coroutineContext[ContinuationInterceptor]
+        if (currentDispatcher == nextDispatcher) return
+        scope = createDanmakuManagerScope(newScope)
         startDanmakuPluginObserver()
     }
 
@@ -1613,6 +1618,11 @@ class DanmakuManager private constructor(
         
         Log.d(TAG, " DanmakuManager fully released")
     }
+}
+
+internal fun createDanmakuManagerScope(sourceScope: CoroutineScope): CoroutineScope {
+    val dispatcher = sourceScope.coroutineContext[ContinuationInterceptor] ?: Dispatchers.Main.immediate
+    return CoroutineScope(dispatcher + Job())
 }
 
 /**

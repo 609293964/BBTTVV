@@ -41,6 +41,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.draw.clip
 import com.android.purebilibili.feature.video.subtitle.SubtitleDisplayMode
 import com.android.purebilibili.feature.video.subtitle.resolveSubtitleDisplayOptions
+import com.android.purebilibili.feature.video.playback.policy.resolveDisplayedPlaybackTransitionPosition
+import kotlin.math.abs
 
 /**
  * Bottom Control Bar Component
@@ -55,19 +57,57 @@ data class PlayerProgress(
     val buffered: Long = 0L
 )
 
+private const val VIDEO_PROGRESS_BAR_SETTLED_TOLERANCE = 0.01f
+
 internal fun resolveDisplayedPlayerProgress(
     progress: PlayerProgress,
     previewPositionMs: Long?,
-    previewActive: Boolean
+    previewActive: Boolean,
+    playbackTransitionPositionMs: Long? = null
 ): PlayerProgress {
-    if (!previewActive || previewPositionMs == null) return progress
     val safeDuration = progress.duration.coerceAtLeast(0L)
+    if (previewActive && previewPositionMs != null) {
+        val resolvedCurrent = if (safeDuration > 0L) {
+            previewPositionMs.coerceIn(0L, safeDuration)
+        } else {
+            previewPositionMs.coerceAtLeast(0L)
+        }
+        return progress.copy(current = resolvedCurrent)
+    }
+
+    val heldCurrent = resolveDisplayedPlaybackTransitionPosition(
+        playerPositionMs = progress.current,
+        transitionPositionMs = playbackTransitionPositionMs
+    )
     val resolvedCurrent = if (safeDuration > 0L) {
-        previewPositionMs.coerceIn(0L, safeDuration)
+        heldCurrent.coerceIn(0L, safeDuration)
     } else {
-        previewPositionMs.coerceAtLeast(0L)
+        heldCurrent.coerceAtLeast(0L)
     }
     return progress.copy(current = resolvedCurrent)
+}
+
+internal fun shouldHoldVideoProgressBarSettledProgress(
+    progress: Float,
+    pendingSettledProgress: Float?,
+    tolerance: Float = VIDEO_PROGRESS_BAR_SETTLED_TOLERANCE
+): Boolean {
+    val settledProgress = pendingSettledProgress ?: return false
+    return abs(progress - settledProgress) > tolerance
+}
+
+internal fun resolveVideoProgressBarDisplayProgress(
+    progress: Float,
+    dragProgress: Float,
+    isDragging: Boolean,
+    pendingSettledProgress: Float?
+): Float {
+    return when {
+        isDragging -> dragProgress
+        shouldHoldVideoProgressBarSettledProgress(progress, pendingSettledProgress) ->
+            pendingSettledProgress ?: progress
+        else -> progress
+    }.coerceIn(0f, 1f)
 }
 
 data class LandscapeDanmakuPlaceholderPolicy(
@@ -904,22 +944,29 @@ fun VideoProgressBar(
     currentChapter: String? = null,
     onChapterClick: () -> Unit = {}
 ) {
-     val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
+    val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
     val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
     var tempProgress by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var pendingSettledProgress by remember { mutableStateOf<Float?>(null) }
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     var containerWidth by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(progress) {
-        if (!isDragging) {
+    LaunchedEffect(progress, pendingSettledProgress, isDragging) {
+        if (!isDragging && !shouldHoldVideoProgressBarSettledProgress(progress, pendingSettledProgress)) {
+            pendingSettledProgress = null
             tempProgress = progress
         }
     }
-    
-    val displayProgress = if (isDragging) tempProgress else progress
+
+    val displayProgress = resolveVideoProgressBarDisplayProgress(
+        progress = progress,
+        dragProgress = tempProgress,
+        isDragging = isDragging,
+        pendingSettledProgress = pendingSettledProgress
+    )
     val primaryColor = MaterialTheme.colorScheme.primary
-    val targetPositionMs = (tempProgress * duration).toLong()
+    val targetPositionMs = (displayProgress * duration).toLong()
     val baseHeight = if (currentChapter != null) {
         layoutPolicy.baseHeightWithChapterDp.dp
     } else {
@@ -939,6 +986,8 @@ fun VideoProgressBar(
                 containerWidth = size.width.toFloat()
                 detectTapGestures { offset ->
                     val newProgress = (offset.x / size.width).coerceIn(0f, 1f)
+                    tempProgress = newProgress
+                    pendingSettledProgress = newProgress
                     onSeek((newProgress * duration).toLong())
                 }
             }
@@ -947,6 +996,7 @@ fun VideoProgressBar(
                 detectDragGestures(
                     onDragStart = { offset ->
                         isDragging = true
+                        pendingSettledProgress = null
                         tempProgress = (offset.x / size.width).coerceIn(0f, 1f)
                         dragOffsetX = offset.x
                         onScrubbingChanged(true)
@@ -958,11 +1008,13 @@ fun VideoProgressBar(
                         dragOffsetX = change.position.x
                     },
                     onDragEnd = {
+                        pendingSettledProgress = tempProgress
                         isDragging = false
                         onScrubbingChanged(false)
                         onSeek((tempProgress * duration).toLong())
                     },
                     onDragCancel = {
+                        pendingSettledProgress = null
                         isDragging = false
                         onScrubbingChanged(false)
                         tempProgress = progress

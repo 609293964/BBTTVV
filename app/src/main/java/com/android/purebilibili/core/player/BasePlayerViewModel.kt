@@ -267,7 +267,7 @@ abstract class BasePlayerViewModel : ViewModel() {
             "Referer" to referer,
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
-        val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.okHttpClient)
+        val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.playbackOkHttpClient)
             .setDefaultRequestProperties(headers)
 
         // B站分段与 DASH 常用 fMP4/m4s，需要显式 extractor 配置保证可播
