@@ -6,7 +6,7 @@ This file is a compatibility alias for tooling that looks for `llm.txt`.
 Maintained periodically, but still subject to freshness limits; reference only.
 会定期维护，但仍存在时效性限制，仅供参考。
 
-Current sync target / 当前同步目标：`2026-03-22 · v7.1.0`
+Current sync target / 当前同步目标：`2026-04-01 · v7.3.2`
 
 ## Preferred Order / 推荐阅读顺序
 

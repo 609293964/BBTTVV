@@ -32,7 +32,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.purebilibili.R
 import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.ui.adaptive.resolveDeviceUiProfile
-import com.android.purebilibili.core.ui.adaptive.resolveEffectiveMotionTier
 import com.android.purebilibili.core.store.BottomProgressBehavior
 import com.android.purebilibili.core.store.FullscreenAspectRatio
 import com.android.purebilibili.core.store.PlaybackCompletionBehavior
@@ -106,11 +105,8 @@ fun PlaybackSettingsContent(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, state.cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = state.cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
 
     LaunchedEffect(Unit) {

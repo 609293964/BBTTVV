@@ -16,9 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,8 +82,13 @@ fun PortraitBottomContainer(
     progress: Float,
     duration: Long,
     bufferProgress: Float = 0f,
+    seekPositionMs: Long = (progress * duration).toLong(),
+    isSeekScrubbing: Boolean = false,
     onSeek: (Long) -> Unit,
     onSeekStart: () -> Unit,
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -106,12 +112,17 @@ fun PortraitBottomContainer(
     ) {
          ThinWigglyProgressBar(
             progress = progress,
+            seekPositionMs = seekPositionMs,
+            isSeekScrubbing = isSeekScrubbing,
             layoutPolicy = layoutPolicy,
             onSeek = { fraction ->
                  val target = (fraction * duration).toLong()
                  onSeek(target)
             },
             onSeekStart = onSeekStart,
+            onSeekDragStart = onSeekDragStart,
+            onSeekDragUpdate = onSeekDragUpdate,
+            onSeekDragCancel = onSeekDragCancel,
             duration = duration, // 传递时长用于显示
             bufferProgress = bufferProgress
         )
@@ -126,32 +137,30 @@ fun PortraitBottomContainer(
 @Composable
 fun ThinWigglyProgressBar(
     progress: Float,
+    seekPositionMs: Long,
+    isSeekScrubbing: Boolean,
     layoutPolicy: PortraitProgressBarLayoutPolicy,
     onSeek: (Float) -> Unit,
     onSeekStart: () -> Unit,
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     duration: Long,
     bufferProgress: Float = 0f
 ) {
-    var seekState by remember { mutableStateOf(PlaybackSeekUiState()) }
-    
-    LaunchedEffect(progress, seekState.pendingSettledProgress, seekState.isScrubbing) {
-        seekState = settlePlaybackSeekSession(
-            state = seekState,
-            playbackProgress = progress,
-            tolerance = PORTRAIT_PROGRESS_SETTLED_TOLERANCE
-        )
+    val displayProgress = if (duration > 0L) {
+        seekPositionMs.toFloat() / duration.toFloat()
+    } else {
+        progress
     }
-
-    val displayProgress = resolvePortraitProgressDisplayProgress(
-        progress = progress,
-        dragProgress = seekState.dragProgress,
-        isDragging = seekState.isScrubbing,
-        pendingSettledProgress = seekState.pendingSettledProgress
-    )
+    var dragTargetPositionMs by remember { mutableLongStateOf(seekPositionMs.coerceAtLeast(0L)) }
+    LaunchedEffect(seekPositionMs) {
+        dragTargetPositionMs = seekPositionMs.coerceAtLeast(0L)
+    }
     
     // 动画状态
     val barHeight by animateDpAsState(
-        targetValue = if (seekState.isScrubbing) {
+        targetValue = if (isSeekScrubbing) {
             layoutPolicy.draggingTrackHeightDp.dp
         } else {
             layoutPolicy.idleTrackHeightDp.dp
@@ -160,7 +169,7 @@ fun ThinWigglyProgressBar(
     )
     
     val thumbSize by animateDpAsState(
-        targetValue = if (seekState.isScrubbing) layoutPolicy.draggingThumbSizeDp.dp else 0.dp,
+        targetValue = if (isSeekScrubbing) layoutPolicy.draggingThumbSizeDp.dp else 0.dp,
         label = "thumbSize"
     )
 
@@ -171,23 +180,38 @@ fun ThinWigglyProgressBar(
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        seekState = startPlaybackSeekSession(offset.x / size.width)
+                        val targetPositionMs = if (duration > 0L) {
+                            ((offset.x / size.width).coerceIn(0f, 1f) * duration).toLong()
+                        } else {
+                            0L
+                        }
+                        dragTargetPositionMs = targetPositionMs
                         onSeekStart()
+                        onSeekDragStart(targetPositionMs)
                     },
                     onDragEnd = {
-                        val result = finishPlaybackSeekSession(seekState)
-                        seekState = result.state
-                        onSeek(result.committedProgress)
+                        val committedProgress = if (duration > 0L) {
+                            dragTargetPositionMs.toFloat() / duration.toFloat()
+                        } else {
+                            0f
+                        }
+                        onSeek(committedProgress.coerceIn(0f, 1f))
                     },
                     onDragCancel = {
-                        seekState = cancelPlaybackSeekSession(seekState)
+                        onSeekDragCancel()
                     },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        seekState = updatePlaybackSeekSession(
-                            state = seekState,
-                            progress = seekState.dragProgress + dragAmount / size.width
-                        )
+                        val targetPositionMs = if (duration > 0L) {
+                            ((dragTargetPositionMs.toFloat() / duration.toFloat()) + dragAmount / size.width)
+                                .coerceIn(0f, 1f)
+                                .times(duration.toFloat())
+                                .toLong()
+                        } else {
+                            0L
+                        }
+                        dragTargetPositionMs = targetPositionMs
+                        onSeekDragUpdate(targetPositionMs)
                     }
                 )
             }
@@ -195,15 +219,25 @@ fun ThinWigglyProgressBar(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = { offset ->
-                        seekState = startPlaybackSeekSession(offset.x / size.width)
+                        val targetPositionMs = if (duration > 0L) {
+                            ((offset.x / size.width).coerceIn(0f, 1f) * duration).toLong()
+                        } else {
+                            0L
+                        }
+                        dragTargetPositionMs = targetPositionMs
                         onSeekStart()
+                        onSeekDragStart(targetPositionMs)
                         val released = tryAwaitRelease()
                         if (released) {
-                            val result = finishPlaybackSeekSession(seekState)
-                            seekState = result.state
-                            onSeek(result.committedProgress)
+                            onSeekDragUpdate(targetPositionMs)
+                            val committedProgress = if (duration > 0L) {
+                                targetPositionMs.toFloat() / duration.toFloat()
+                            } else {
+                                0f
+                            }
+                            onSeek(committedProgress.coerceIn(0f, 1f))
                         } else {
-                            seekState = cancelPlaybackSeekSession(seekState)
+                            onSeekDragCancel()
                         }
                     }
                 ) 
@@ -234,7 +268,7 @@ fun ThinWigglyProgressBar(
         )
         
         // 滑块 (Thumb) - 仅拖拽时显示
-        if (seekState.isScrubbing) {
+        if (isSeekScrubbing) {
             // 使用 Box + BiasAlignment 来定位滑块
             Box(
                 modifier = Modifier.fillMaxWidth(),

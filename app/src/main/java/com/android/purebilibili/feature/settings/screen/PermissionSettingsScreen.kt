@@ -36,7 +36,6 @@ import androidx.core.content.ContextCompat
 import com.android.purebilibili.R
 import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.ui.adaptive.resolveDeviceUiProfile
-import com.android.purebilibili.core.ui.adaptive.resolveEffectiveMotionTier
 import com.android.purebilibili.core.ui.components.*
 import com.android.purebilibili.core.ui.animation.staggeredEntrance
 import com.android.purebilibili.core.ui.rememberAppBackIcon
@@ -95,17 +94,13 @@ fun PermissionSettingsContent(
 ) {
     val context = LocalContext.current
     val windowSizeClass = LocalWindowSizeClass.current
-    val cardAnimationEnabled by SettingsManager.getCardAnimationEnabled(context).collectAsState(initial = false)
     val deviceUiProfile = remember(windowSizeClass.widthSizeClass) {
         resolveDeviceUiProfile(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
     
     //  [修复] 设置导航栏透明，确保底部手势栏沉浸式效果

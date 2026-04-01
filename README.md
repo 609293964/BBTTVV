@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-03-28 · 文档已同步至 v7.2.2（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-04-01 · 文档已同步至 v7.3.2（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.2.2-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.3.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -525,7 +525,7 @@ app/src/main/java/com/android/purebilibili
 ## 🗺️ 路线图
 
 > [!TIP]
-> 路线图最后同步于 2026-03-28（v7.2.2）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
+> 路线图最后同步于 2026-04-01（v7.3.2）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
 
 ### ✅ 已完成功能
 
@@ -570,13 +570,15 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v7.2.2 · 2026-03-28)
+### 最近更新 (v7.3.2 · 2026-04-01)
 
-- 💬 **消息中心升级**：个人页入口统一改为“消息中心”，新增回复我的、@我的、收到的赞、系统通知四类消息页，并支持从消息内容直接跳转到视频、动态、空间、直播、番剧、音乐和网页。
-- 🎬 **竖屏视频交互修复**：修复竖屏刷到下一条后点赞/收藏失效的问题，收藏改为直接打开收藏夹选择面板，当前页状态会跟随保存结果即时同步。
-- 🖼️ **横竖屏封面与 Seek 体验优化**：修复竖屏切回横屏时闪回第一页封面的问题，同时降低 seek 预览气泡的重绘频率，拖动和点击跳转更顺滑。
-- 🧭 **导航与加载策略优化**：底栏跨 Tab 快速切换不再被错误防抖拦截，个人页首屏重复加载得到抑制，空间页加载策略也更稳。
-- 🧪 **回归测试补齐**：为消息中心、消息解析、导航策略、竖屏交互、Seek 预览、个人页与空间页加载策略补充了一批策略测试。
+- ⚙️ **设置页动画独立工作**：设置首页、外观、播放、底栏、权限、提示等页面的进入动画不再跟随首页卡片动画一起消失；动画设置页也会明确说明“首页卡片动画”和“设置页动画”是两套效果。
+- 🎬 **播放器新增自动/固定清晰度模式**：自动清晰度会保留可自适应切换的 DASH 候选轨道，手动选择时则会固定到目标画质，切换行为更可预期。
+- 🧩 **清晰度失败原因更明确**：切换清晰度失败时，会直接提示需要登录、需要大会员、设备不支持、网络超时或当前视频没有这个画质等具体原因。
+- 🪵 **视频页支持失败弹窗与日志导出**：视频详情页新增清晰度切换失败弹窗，可直接开关播放器诊断日志，也可以一键导出日志，方便定位设备兼容和接口波动问题。
+- 🔁 **AV1 不稳定时自动回退**：当 AV1 在当前播放过程中表现不稳定时，后续播放会自动避开 AV1，优先使用更稳定的编码格式，减少反复重试仍然播放失败的问题。
+- 🖼️ **封面与首帧过渡更自然**：视频封面会在首帧真正显示后再平滑过渡到播放器画面；手动开始播放、返回动画或首帧未准备好时，封面也会继续保留，减少黑屏、闪一下和生硬切换。
+- 🧪 **相关测试补齐**：补充了设置页动画、清晰度切换、AV1 回退、封面显示和播放器显示逻辑相关测试。
 
 ### 历史版本
 

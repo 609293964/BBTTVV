@@ -103,6 +103,11 @@ fun PortraitFullscreenOverlay(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekStart: () -> Unit = {},
+    seekPositionMs: Long = progress.current,
+    isSeekScrubbing: Boolean = false,
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     onSpeedClick: () -> Unit,
     onQualityClick: () -> Unit,
     onRatioClick: () -> Unit,
@@ -188,8 +193,13 @@ fun PortraitFullscreenOverlay(
                     PortraitBottomContainer(
                         progress = if (progress.duration > 0) progress.current.toFloat() / progress.duration else 0f,
                         duration = progress.duration,
+                        seekPositionMs = seekPositionMs,
+                        isSeekScrubbing = isSeekScrubbing,
                         onSeek = onSeek,
-                        onSeekStart = onSeekStart
+                        onSeekStart = onSeekStart,
+                        onSeekDragStart = onSeekDragStart,
+                        onSeekDragUpdate = onSeekDragUpdate,
+                        onSeekDragCancel = onSeekDragCancel
                     )
                     
                     // 底部输入栏占位 (Input Bar Spacer)

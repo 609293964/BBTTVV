@@ -191,11 +191,8 @@ fun AppearanceSettingsContent(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, state.cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = state.cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
     val scope = rememberCoroutineScope()
     val themeSectionTitle = stringResource(R.string.appearance_theme_color_section)

@@ -68,6 +68,17 @@ data class PlayerProgress(
 
 private const val VIDEO_PROGRESS_BAR_SETTLED_TOLERANCE = 0.01f
 
+internal fun resolveSeekableDurationMs(
+    playbackDurationMs: Long,
+    fallbackDurationMs: Long
+): Long {
+    return if (playbackDurationMs > 0L) {
+        playbackDurationMs
+    } else {
+        fallbackDurationMs.coerceAtLeast(0L)
+    }
+}
+
 internal fun resolveDisplayedPlayerProgress(
     progress: PlayerProgress,
     previewPositionMs: Long?,
@@ -267,7 +278,12 @@ fun BottomControlBar(
     onPlayPauseClick: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekStart: () -> Unit = {},
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     onScrubbingChanged: (Boolean) -> Unit = {},
+    seekPositionMs: Long = progress.current,
+    isSeekScrubbing: Boolean = false,
     onSpeedClick: () -> Unit = {},
     onRatioClick: () -> Unit = {},
     onNextEpisodeClick: () -> Unit = {},
@@ -450,6 +466,8 @@ fun BottomControlBar(
         )
     }
 
+    val displayedPositionMs = seekPositionMs.coerceAtLeast(0L)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -465,11 +483,16 @@ fun BottomControlBar(
         // 1. Progress Bar (Top of controls)
         VideoProgressBar(
             currentPosition = progress.current,
+            displayPositionMs = displayedPositionMs,
             duration = progress.duration,
             bufferedPosition = progress.buffered,
+            isSeekScrubbing = isSeekScrubbing,
             layoutPolicy = progressLayoutPolicy,
             onSeek = onSeek,
             onSeekStart = onSeekStart,
+            onSeekDragStart = onSeekDragStart,
+            onSeekDragUpdate = onSeekDragUpdate,
+            onSeekDragCancel = onSeekDragCancel,
             onScrubbingChanged = onScrubbingChanged,
             videoshotData = videoshotData,
             viewPoints = viewPoints,
@@ -500,7 +523,7 @@ fun BottomControlBar(
 
             // Time
             Text(
-                text = "${FormatUtils.formatDuration((progress.current / 1000).toInt())} / ${FormatUtils.formatDuration((progress.duration / 1000).toInt())}",
+                text = "${FormatUtils.formatDuration((displayedPositionMs / 1000).toInt())} / ${FormatUtils.formatDuration((progress.duration / 1000).toInt())}",
                 color = Color.White.copy(alpha = 0.9f),
                 fontSize = layoutPolicy.timeFontSp.sp,
                 fontWeight = FontWeight.Medium
@@ -950,11 +973,16 @@ private fun MoreActionTextButton(
 @Composable
 fun VideoProgressBar(
     currentPosition: Long,
+    displayPositionMs: Long,
     duration: Long,
     bufferedPosition: Long,
+    isSeekScrubbing: Boolean,
     layoutPolicy: VideoProgressBarLayoutPolicy,
     onSeek: (Long) -> Unit,
     onSeekStart: () -> Unit = {},
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     onScrubbingChanged: (Boolean) -> Unit = {},
     videoshotData: com.android.purebilibili.data.model.response.VideoshotData? = null,
     viewPoints: List<com.android.purebilibili.data.model.response.ViewPoint> = emptyList(),
@@ -962,26 +990,18 @@ fun VideoProgressBar(
     currentChapter: String? = null,
     onChapterClick: () -> Unit = {}
 ) {
-    val progress = if (duration > 0) currentPosition.toFloat() / duration else 0f
+    val displayProgress = if (duration > 0L) {
+        displayPositionMs.toFloat() / duration.toFloat()
+    } else {
+        0f
+    }
     val bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f
-    var seekState by remember { mutableStateOf(PlaybackSeekUiState()) }
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     var containerWidth by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(progress, seekState.pendingSettledProgress, seekState.isScrubbing) {
-        seekState = settlePlaybackSeekSession(
-            state = seekState,
-            playbackProgress = progress,
-            tolerance = VIDEO_PROGRESS_BAR_SETTLED_TOLERANCE
-        )
+    var dragTargetPositionMs by remember { mutableLongStateOf(displayPositionMs.coerceAtLeast(0L)) }
+    LaunchedEffect(displayPositionMs) {
+        dragTargetPositionMs = displayPositionMs.coerceAtLeast(0L)
     }
-
-    val displayProgress = resolveVideoProgressBarDisplayProgress(
-        progress = progress,
-        dragProgress = seekState.dragProgress,
-        isDragging = seekState.isScrubbing,
-        pendingSettledProgress = seekState.pendingSettledProgress
-    )
     val primaryColor = MaterialTheme.colorScheme.primary
     val resolvedSponsorMarkers = remember(duration, sponsorMarkers) {
         resolveSponsorProgressBarMarkers(
@@ -995,7 +1015,7 @@ fun VideoProgressBar(
     } else {
         layoutPolicy.baseHeightWithoutChapterDp.dp
     }
-    val containerHeight = if (seekState.isScrubbing && videoshotData != null) {
+    val containerHeight = if (isSeekScrubbing && videoshotData != null) {
         layoutPolicy.draggingContainerHeightDp.dp
     } else {
         baseHeight
@@ -1008,45 +1028,56 @@ fun VideoProgressBar(
             .pointerInput(Unit) {
                 containerWidth = size.width.toFloat()
                 detectTapGestures { offset ->
+                    val targetPositionMs = if (duration > 0L) {
+                        ((offset.x / size.width).coerceIn(0f, 1f) * duration).toLong()
+                    } else {
+                        0L
+                    }
+                    dragTargetPositionMs = targetPositionMs
                     onSeekStart()
-                    val result = finishPlaybackSeekSession(
-                        startPlaybackSeekSession(offset.x / size.width)
-                    )
-                    seekState = result.state
-                    onSeek((result.committedProgress * duration).toLong())
+                    onSeekDragStart(targetPositionMs)
+                    onSeekDragUpdate(targetPositionMs)
+                    onSeek(targetPositionMs)
                 }
             }
             .pointerInput(Unit) {
                 containerWidth = size.width.toFloat()
                 detectDragGestures(
                     onDragStart = { offset ->
-                        seekState = startPlaybackSeekSession(offset.x / size.width)
+                        val targetPositionMs = if (duration > 0L) {
+                            ((offset.x / size.width).coerceIn(0f, 1f) * duration).toLong()
+                        } else {
+                            0L
+                        }
+                        dragTargetPositionMs = targetPositionMs
                         dragOffsetX = offset.x
                         onScrubbingChanged(true)
                         onSeekStart()
+                        onSeekDragStart(targetPositionMs)
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        seekState = updatePlaybackSeekSession(
-                            state = seekState,
-                            progress = change.position.x / size.width
-                        )
+                        val targetPositionMs = if (duration > 0L) {
+                            ((change.position.x / size.width).coerceIn(0f, 1f) * duration).toLong()
+                        } else {
+                            0L
+                        }
+                        dragTargetPositionMs = targetPositionMs
                         dragOffsetX = change.position.x
+                        onSeekDragUpdate(targetPositionMs)
                     },
                     onDragEnd = {
-                        val result = finishPlaybackSeekSession(seekState)
-                        seekState = result.state
                         onScrubbingChanged(false)
-                        onSeek((result.committedProgress * duration).toLong())
+                        onSeek(dragTargetPositionMs)
                     },
                     onDragCancel = {
-                        seekState = cancelPlaybackSeekSession(seekState)
                         onScrubbingChanged(false)
+                        onSeekDragCancel()
                     }
                 )
             }
     ) {
-         if (seekState.isScrubbing) {
+         if (isSeekScrubbing) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -1179,11 +1210,11 @@ fun VideoProgressBar(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .size(
-                                if (seekState.isScrubbing) layoutPolicy.thumbDraggingSizeDp.dp
+                                if (isSeekScrubbing) layoutPolicy.thumbDraggingSizeDp.dp
                                 else layoutPolicy.thumbIdleSizeDp.dp
                             )
                             .offset(
-                                x = if (seekState.isScrubbing) layoutPolicy.thumbDraggingOffsetDp.dp
+                                x = if (isSeekScrubbing) layoutPolicy.thumbDraggingOffsetDp.dp
                                 else layoutPolicy.thumbIdleOffsetDp.dp
                             )
                             .background(primaryColor, CircleShape)

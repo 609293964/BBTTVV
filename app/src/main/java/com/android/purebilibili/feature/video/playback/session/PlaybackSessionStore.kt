@@ -2,6 +2,7 @@ package com.android.purebilibili.feature.video.playback.session
 
 import com.android.purebilibili.feature.video.playback.loader.PlaybackRequest
 import com.android.purebilibili.feature.video.policy.ResumePlaybackSuggestion
+import com.android.purebilibili.feature.video.viewmodel.normalizeCodecFamilyKey
 import com.android.purebilibili.feature.video.viewmodel.PlaybackEndAction
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,7 @@ internal data class PlaybackSessionState(
     val currentLoadRequestToken: Long = 0L,
     val subtitleLoadToken: Long = 0L,
     val currentRequest: PlaybackRequest? = null,
+    val blockedVideoCodecs: Set<String> = emptySet(),
     val resumeSuggestion: ResumePlaybackSuggestion? = null,
     val lastCompletionAction: PlaybackEndAction? = null
 )
@@ -65,6 +67,15 @@ internal class PlaybackSessionStore(
 
     fun clearCurrentRequest() {
         setCurrentRequest(null)
+    }
+
+    fun blockVideoCodec(codec: String) {
+        val normalizedCodec = normalizeCodecFamilyKey(codec) ?: return
+        _state.update { current ->
+            current.copy(
+                blockedVideoCodecs = current.blockedVideoCodecs + normalizedCodec
+            )
+        }
     }
 
     fun setCurrentLoadRequestToken(token: Long) {

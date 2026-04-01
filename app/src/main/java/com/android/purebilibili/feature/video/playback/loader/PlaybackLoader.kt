@@ -9,6 +9,7 @@ internal data class PlaybackLoadConfig(
     val videoCodecPreference: String,
     val videoSecondCodecPreference: String,
     val playWhenReady: Boolean,
+    val isAv1Supported: Boolean,
     val isHdrSupported: Boolean,
     val isDolbyVisionSupported: Boolean
 )
@@ -43,6 +44,7 @@ internal class PlaybackLoader(
                     videoSecondCodecPreference = config.videoSecondCodecPreference,
                     audioLang = request.audioLang,
                     playWhenReady = config.playWhenReady,
+                    isAv1SupportedOverride = config.isAv1Supported,
                     isHdrSupportedOverride = config.isHdrSupported,
                     isDolbyVisionSupportedOverride = config.isDolbyVisionSupported
                 )

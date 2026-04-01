@@ -89,7 +89,7 @@ internal fun BangumiPlayerOverlayHost(
         bvid = bvid,
         cid = cid,
         videoOwnerName = title,
-        videoDuration = (player.duration / 1000L).toInt().coerceAtLeast(0),
+        videoDuration = player.duration.coerceAtLeast(0L),
         videoTitle = subtitle.ifBlank { title },
         currentAid = aid,
         currentQuality = currentQuality,

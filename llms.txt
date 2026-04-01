@@ -6,7 +6,7 @@ Canonical AI / LLM entry index for this repository.
 Maintained periodically, but still subject to freshness limits; reference only.
 会定期维护，但仍存在时效性限制，仅供参考。
 
-Current sync target / 当前同步目标：`2026-03-22 · v7.1.0`
+Current sync target / 当前同步目标：`2026-04-01 · v7.3.2`
 
 ## Preferred Entry Files / 优先入口文件
 
@@ -64,14 +64,14 @@ When sources disagree, use this order.
 
 ## Freshness Notes / 时效注记
 
-- `app/build.gradle.kts` currently declares `versionName = "7.1.0"` and `versionCode = 123`.
-- `app/build.gradle.kts` 当前声明 `versionName = "7.1.0"`、`versionCode = 123`。
-- `CHANGELOG.md` latest release entry is `v7.1.0 (2026-03-22)`.
-- `CHANGELOG.md` 最新发布段落为 `v7.1.0 (2026-03-22)`。
-- `README.md` and `README_EN.md` header text now point to `2026-03-22 / v7.1.0`.
-- `README.md` 与 `README_EN.md` 页头现已对齐为 `2026-03-22 / v7.1.0`。
-- `docs/wiki/README.md` and `docs/wiki/AI.md` have been refreshed for the current repository structure on `2026-03-22`.
-- `docs/wiki/README.md` 与 `docs/wiki/AI.md` 已于 `2026-03-22` 按当前仓库结构刷新。
+- `app/build.gradle.kts` currently declares `versionName = "7.3.2"` and `versionCode = 134`.
+- `app/build.gradle.kts` 当前声明 `versionName = "7.3.2"`、`versionCode = 134`。
+- `CHANGELOG.md` latest release entry is `v7.3.2 (2026-04-01)`.
+- `CHANGELOG.md` 最新发布段落为 `v7.3.2 (2026-04-01)`。
+- `README.md` and `README_EN.md` header text now point to `2026-04-01 / v7.3.2`.
+- `README.md` 与 `README_EN.md` 页头现已对齐为 `2026-04-01 / v7.3.2`。
+- `docs/wiki/README.md` and `docs/wiki/AI.md` have been refreshed for the current repository structure on `2026-04-01`.
+- `docs/wiki/README.md` 与 `docs/wiki/AI.md` 已于 `2026-04-01` 按当前仓库结构刷新。
 - These files are maintained periodically, but fast-moving main-branch work can still outpace them.
 - 这些文件会定期维护，但主线快速迭代时仍可能出现文档滞后。
 

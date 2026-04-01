@@ -64,7 +64,8 @@ class VideoPlayerCoverPolicyTest {
             shouldShowCoverImage(
                 isFirstFrameRendered = true,
                 forceCoverDuringReturnAnimation = false,
-                shouldKeepCoverForManualStart = false
+                shouldKeepCoverForManualStart = false,
+                hasStartedSmoothReveal = true
             )
         )
     }
@@ -75,7 +76,8 @@ class VideoPlayerCoverPolicyTest {
             shouldShowCoverImage(
                 isFirstFrameRendered = true,
                 forceCoverDuringReturnAnimation = true,
-                shouldKeepCoverForManualStart = false
+                shouldKeepCoverForManualStart = false,
+                hasStartedSmoothReveal = true
             )
         )
     }
@@ -86,7 +88,20 @@ class VideoPlayerCoverPolicyTest {
             shouldShowCoverImage(
                 isFirstFrameRendered = true,
                 forceCoverDuringReturnAnimation = false,
-                shouldKeepCoverForManualStart = true
+                shouldKeepCoverForManualStart = true,
+                hasStartedSmoothReveal = true
+            )
+        )
+    }
+
+    @Test
+    fun `first frame should keep cover visible until smooth reveal starts`() {
+        assertTrue(
+            shouldShowCoverImage(
+                isFirstFrameRendered = true,
+                forceCoverDuringReturnAnimation = false,
+                shouldKeepCoverForManualStart = false,
+                hasStartedSmoothReveal = false
             )
         )
     }
@@ -258,5 +273,45 @@ class VideoPlayerCoverPolicyTest {
                 videoHeight = 1080
             )
         )
+    }
+
+    @Test
+    fun `smooth cover reveal starts only after first frame in normal playback`() {
+        assertTrue(
+            shouldStartSmoothCoverReveal(
+                isFirstFrameRendered = true,
+                forceCoverDuringReturnAnimation = false,
+                shouldKeepCoverForManualStart = false
+            )
+        )
+        assertFalse(
+            shouldStartSmoothCoverReveal(
+                isFirstFrameRendered = false,
+                forceCoverDuringReturnAnimation = false,
+                shouldKeepCoverForManualStart = false
+            )
+        )
+        assertFalse(
+            shouldStartSmoothCoverReveal(
+                isFirstFrameRendered = true,
+                forceCoverDuringReturnAnimation = true,
+                shouldKeepCoverForManualStart = false
+            )
+        )
+        assertFalse(
+            shouldStartSmoothCoverReveal(
+                isFirstFrameRendered = true,
+                forceCoverDuringReturnAnimation = false,
+                shouldKeepCoverForManualStart = true
+            )
+        )
+    }
+
+    @Test
+    fun `smooth cover reveal hold spec should use short settle delay`() {
+        val spec = resolveVideoPlayerRevealMotionSpec()
+
+        assertEquals(96, spec.coverRevealHoldDelayMillis)
+        assertEquals(220, spec.surfaceRevealDurationMillis)
     }
 }

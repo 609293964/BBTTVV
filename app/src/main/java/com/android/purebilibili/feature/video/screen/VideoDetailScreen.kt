@@ -636,6 +636,14 @@ fun VideoDetailScreen(
     val isFavoriteFoldersLoading by viewModel.isFavoriteFoldersLoading.collectAsStateWithLifecycle()
     val selectedFavoriteFolderIds by viewModel.favoriteSelectedFolderIds.collectAsStateWithLifecycle()
     val isSavingFavoriteFolders by viewModel.isSavingFavoriteFolders.collectAsStateWithLifecycle()
+    val qualitySwitchFailureDialog by viewModel.qualitySwitchFailureDialog.collectAsStateWithLifecycle()
+    val playerDiagnosticLoggingEnabled by com.android.purebilibili.core.store.SettingsManager
+        .getPlayerDiagnosticLoggingEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = true,
+            lifecycle = lifecycleOwner.lifecycle
+        )
+    val qualitySwitchDialogScope = rememberCoroutineScope()
     
     // [Blur] Haze State
     val hazeState = rememberRecoverableHazeState()
@@ -3454,6 +3462,52 @@ fun VideoDetailScreen(
                 dismissButton = {
                     TextButton(onClick = { viewModel.dismissResumePlaybackSuggestion() }) {
                         Text("稍后")
+                    }
+                }
+            )
+        }
+
+        qualitySwitchFailureDialog?.let { dialog ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissQualitySwitchFailureDialog() },
+                title = { Text(dialog.title) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(dialog.message)
+                        TextButton(
+                            onClick = {
+                                qualitySwitchDialogScope.launch {
+                                    com.android.purebilibili.core.store.SettingsManager
+                                        .setPlayerDiagnosticLoggingEnabled(
+                                            context,
+                                            !playerDiagnosticLoggingEnabled
+                                        )
+                                }
+                            },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                if (playerDiagnosticLoggingEnabled) {
+                                    "关闭诊断日志"
+                                } else {
+                                    "开启诊断日志"
+                                }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            com.android.purebilibili.core.util.LogCollector.exportAndShare(context)
+                        }
+                    ) {
+                        Text("导出日志")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissQualitySwitchFailureDialog() }) {
+                        Text("关闭")
                     }
                 }
             )

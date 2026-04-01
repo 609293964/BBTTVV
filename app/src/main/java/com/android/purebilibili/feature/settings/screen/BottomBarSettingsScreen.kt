@@ -218,17 +218,13 @@ fun BottomBarSettingsContent(
     val windowSizeClass = LocalWindowSizeClass.current
     val scope = rememberCoroutineScope()
     var isVisible by remember { mutableStateOf(false) }
-    val cardAnimationEnabled by SettingsManager.getCardAnimationEnabled(context).collectAsState(initial = false)
     val deviceUiProfile = remember(windowSizeClass.widthSizeClass) {
         resolveDeviceUiProfile(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
     val allBottomBarTabs = remember(uiPreset) { resolveAllBottomBarTabs(uiPreset) }
     val allTopTabs = remember(uiPreset) { resolveAllTopTabs(uiPreset) }

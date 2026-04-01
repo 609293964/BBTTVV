@@ -107,6 +107,13 @@ import com.android.purebilibili.feature.video.danmaku.checkFaceOcclusionModuleSt
 import com.android.purebilibili.feature.video.danmaku.createFaceOcclusionDetector
 import com.android.purebilibili.feature.video.danmaku.detectFaceOcclusionRegions
 import com.android.purebilibili.feature.video.danmaku.rememberDanmakuManager
+import com.android.purebilibili.feature.video.playback.session.PlaybackSeekSessionState
+import com.android.purebilibili.feature.video.playback.session.cancelPlaybackSeekInteraction
+import com.android.purebilibili.feature.video.playback.session.finishPlaybackSeekInteraction
+import com.android.purebilibili.feature.video.playback.session.shouldUsePlaybackSeekSessionPosition
+import com.android.purebilibili.feature.video.playback.session.startPlaybackSeekInteraction
+import com.android.purebilibili.feature.video.playback.session.syncPlaybackSeekSession
+import com.android.purebilibili.feature.video.playback.session.updatePlaybackSeekInteraction
 import com.android.purebilibili.feature.video.ui.overlay.PlayerProgress
 import com.android.purebilibili.feature.video.ui.components.VideoAspectRatio
 import com.android.purebilibili.feature.video.ui.overlay.PortraitFullscreenOverlay
@@ -976,10 +983,14 @@ private fun VideoPageItem(
             )
         )
     }
-    var localSeekPositionMs by remember(bvid) {
-        mutableLongStateOf(initialProgressPositionMs.coerceAtLeast(0L))
+    var seekSession by remember(bvid, initialProgressPositionMs) {
+        mutableStateOf(
+            syncPlaybackSeekSession(
+                state = PlaybackSeekSessionState(),
+                playbackPositionMs = initialProgressPositionMs.coerceAtLeast(0L)
+            )
+        )
     }
-    var pendingSeekPositionMs by remember(bvid) { mutableStateOf<Long?>(null) }
     
     // 如果是当前页，监听播放器进度
     LaunchedEffect(isCurrentPage, exoPlayer, hasRenderedFirstFrame) {
@@ -997,20 +1008,12 @@ private fun VideoPageItem(
                         playerPosition
                     }
                     val realDuration = if (exoPlayer.duration > 0) exoPlayer.duration else initialDuration
-                    val holdLocalSeekPosition = shouldHoldPortraitSeekUiPosition(
-                        playerPositionMs = effectivePosition,
-                        pendingSeekPositionMs = pendingSeekPositionMs
+                    seekSession = syncPlaybackSeekSession(
+                        state = seekSession,
+                        playbackPositionMs = effectivePosition
                     )
-                    val displayedPosition = resolvePortraitDisplayedProgressPosition(
-                        playerPositionMs = effectivePosition,
-                        localSeekPositionMs = localSeekPositionMs,
-                        pendingSeekPositionMs = pendingSeekPositionMs
-                    )
-                    if (!holdLocalSeekPosition) {
-                        pendingSeekPositionMs = null
-                    }
                     progressState = PlayerProgress(
-                        current = displayedPosition,
+                        current = seekSession.sliderPositionMs,
                         duration = realDuration,
                         buffered = exoPlayer.bufferedPosition
                     )
@@ -1764,15 +1767,35 @@ private fun VideoPageItem(
                         requestedPositionMs = it,
                         durationMs = resolvedDuration
                     )
-                    localSeekPositionMs = targetPosition
-                    pendingSeekPositionMs = targetPosition
-                    progressState = progressState.copy(current = targetPosition)
-                    seekPlayerFromUserAction(exoPlayer, targetPosition)
-                    danmakuManager.seekTo(targetPosition)
+                    val commitResult = finishPlaybackSeekInteraction(
+                        updatePlaybackSeekInteraction(
+                            state = seekSession,
+                            positionMs = targetPosition
+                        )
+                    )
+                    seekSession = commitResult.state
+                    progressState = progressState.copy(current = commitResult.committedPositionMs)
+                    seekPlayerFromUserAction(exoPlayer, commitResult.committedPositionMs)
+                    danmakuManager.seekTo(commitResult.committedPositionMs)
                 }
             },
-            onSeekStart = {
-                localSeekPositionMs = progressState.current.coerceAtLeast(0L)
+            onSeekStart = { },
+            seekPositionMs = seekSession.sliderPositionMs,
+            isSeekScrubbing = seekSession.isSliderMoving,
+            onSeekDragStart = { position ->
+                seekSession = startPlaybackSeekInteraction(
+                    state = seekSession,
+                    positionMs = position
+                )
+            },
+            onSeekDragUpdate = { position ->
+                seekSession = updatePlaybackSeekInteraction(
+                    state = seekSession,
+                    positionMs = position
+                )
+            },
+            onSeekDragCancel = {
+                seekSession = cancelPlaybackSeekInteraction(seekSession)
             },
             onSpeedClick = { },
             onQualityClick = { },

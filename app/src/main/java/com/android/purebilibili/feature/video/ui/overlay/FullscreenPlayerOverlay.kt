@@ -302,9 +302,12 @@ fun FullscreenPlayerOverlay(
         while (isActive) {
             player?.let {
                 isPlaying = it.isPlaying
-                duration = it.duration.coerceAtLeast(1L)
+                duration = resolveSeekableDurationMs(
+                    playbackDurationMs = it.duration,
+                    fallbackDurationMs = miniPlayerManager.duration
+                )
                 currentPosition = it.currentPosition
-                if (gestureMode != FullscreenGestureMode.Seek) {
+                if (gestureMode != FullscreenGestureMode.Seek && duration > 0L) {
                     currentProgress = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
                 }
             }
@@ -917,7 +920,11 @@ fun FullscreenPlayerOverlay(
                                 },
                                 onValueChangeFinished = {
                                     isDragging = false
-                                    val newPosition = (dragProgress * duration).toLong()
+                                    val seekableDuration = resolveSeekableDurationMs(
+                                        playbackDurationMs = duration,
+                                        fallbackDurationMs = miniPlayerManager.duration
+                                    )
+                                    val newPosition = (dragProgress * seekableDuration).toLong()
                                     player?.let {
                                         seekPlayerFromUserAction(it, newPosition)
                                         danmakuManager.seekTo(newPosition)

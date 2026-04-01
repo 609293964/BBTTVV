@@ -5,6 +5,7 @@ import com.android.purebilibili.data.model.response.DashVideo
 import com.android.purebilibili.data.model.response.Dash
 import com.android.purebilibili.data.model.response.Durl
 import com.android.purebilibili.data.model.response.PlayUrlData
+import com.android.purebilibili.feature.video.playback.policy.PlaybackQualityMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -45,11 +46,15 @@ class VideoPlaybackUseCaseQualitySwitchTest {
             qualityId = 64,
             cachedVideos = cachedVideos,
             cachedAudios = cachedAudios,
-            currentPos = 0L
+            currentPos = 0L,
+            durationMs = 120_000L,
+            playbackQualityMode = PlaybackQualityMode.LOCKED(64)
         )
 
         assertNotNull(result)
         assertEquals(64, result?.actualQuality)
+        assertNotNull(result?.adaptiveDashSource)
+        assertEquals(listOf(64), result?.adaptiveDashSource?.videoTracks?.map { it.id })
     }
 
     @Test

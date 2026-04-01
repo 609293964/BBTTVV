@@ -906,11 +906,8 @@ private fun MobileSettingsLayout(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
     val sectionOrder = remember { resolveMobileSettingsRootSectionOrder() }
     val bottomBarVisible = LocalBottomBarVisible.current

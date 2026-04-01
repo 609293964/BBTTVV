@@ -75,14 +75,14 @@ Maintained periodically, but still subject to freshness limits; reference only.
 
 ## Document Freshness / 文档时效
 
-- `app/build.gradle.kts` currently declares `versionName = "7.1.0"` and `versionCode = 123`
-- `app/build.gradle.kts` 当前声明 `versionName = "7.1.0"`、`versionCode = 123`
-- `README.md` and `README_EN.md` header text: 2026-03-22 / v7.1.0
-- `README.md` 与 `README_EN.md` 页头：2026-03-22 / v7.1.0
-- `docs/wiki/README.md` and `docs/wiki/AI.md` refreshed: 2026-03-22
-- `docs/wiki/README.md` 与 `docs/wiki/AI.md` 最近刷新：2026-03-22
-- `CHANGELOG.md`, `README.md`, and `README_EN.md` align with `versionName = "7.1.0"` in `app/build.gradle.kts`
-- `CHANGELOG.md`、`README.md` 与 `README_EN.md` 已与 `app/build.gradle.kts` 中的 `versionName = "7.1.0"` 对齐
+- `app/build.gradle.kts` currently declares `versionName = "7.3.2"` and `versionCode = 134`
+- `app/build.gradle.kts` 当前声明 `versionName = "7.3.2"`、`versionCode = 134`
+- `README.md` and `README_EN.md` header text: 2026-04-01 / v7.3.2
+- `README.md` 与 `README_EN.md` 页头：2026-04-01 / v7.3.2
+- `docs/wiki/README.md` and `docs/wiki/AI.md` refreshed: 2026-04-01
+- `docs/wiki/README.md` 与 `docs/wiki/AI.md` 最近刷新：2026-04-01
+- `CHANGELOG.md`, `README.md`, and `README_EN.md` align with `versionName = "7.3.2"` in `app/build.gradle.kts`
+- `CHANGELOG.md`、`README.md` 与 `README_EN.md` 已与 `app/build.gradle.kts` 中的 `versionName = "7.3.2"` 对齐
 - `AI.txt` and `llm.txt` are compatibility aliases that mirror the current AI entry guidance
 - `AI.txt` 与 `llm.txt` 是当前 AI 入口说明的兼容别名
 - Use code and `CHANGELOG.md` to verify release-specific answers.

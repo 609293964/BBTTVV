@@ -238,7 +238,7 @@ fun VideoPlayerOverlay(
     cid: Long = 0L,
     videoOwnerName: String = "",
     videoOwnerFace: String = "",
-    videoDuration: Int = 0,
+    videoDuration: Long = 0L,
     videoTitle: String = "",
     currentAid: Long = 0L,
     currentQuality: Int = 80,
@@ -331,6 +331,9 @@ fun VideoPlayerOverlay(
     onPipClick: () -> Unit = {},
     //  [新增] 拖动进度条开始回调（用于清除弹幕）
     onSeekStart: () -> Unit = {},
+    onSeekDragStart: (Long) -> Unit = {},
+    onSeekDragUpdate: (Long) -> Unit = {},
+    onSeekDragCancel: () -> Unit = {},
     //  [新增] 外部可接管 seek 行为（用于同步弹幕等）
     onSeekTo: ((Long) -> Unit)? = null,
     previewSeekPositionMs: Long? = null,
@@ -396,7 +399,6 @@ fun VideoPlayerOverlay(
     //  使用传入的比例状态
     var isPlaying by remember { mutableStateOf(player.isPlaying) }
     var isProgressScrubbing by remember { mutableStateOf(false) }
-    var pendingSeekPositionMs by remember { mutableStateOf<Long?>(null) }
     var suppressCenterPlayButtonForSeekTransition by remember { mutableStateOf(false) }
     var wasPlayingWhenProgressScrubbingStarted by remember { mutableStateOf(false) }
     var lastSettledPlaybackTransitionPositionMs by remember { mutableStateOf<Long?>(null) }
@@ -677,7 +679,10 @@ fun VideoPlayerOverlay(
                 hostLifecycleStarted = hostLifecycleStarted
             )
         ) {
-            val duration = if (player.duration < 0) 0L else player.duration
+            val duration = resolveSeekableDurationMs(
+                playbackDurationMs = player.duration,
+                fallbackDurationMs = videoDuration
+            )
             value = PlayerProgress(
                 current = player.currentPosition,
                 duration = duration,
@@ -689,7 +694,10 @@ fun VideoPlayerOverlay(
         while (isActive) {
             //  [修复] 始终更新进度，不仅在播放时
             // 这样横竖屏切换后也能显示正确的进度
-            val duration = if (player.duration < 0) 0L else player.duration
+            val duration = resolveSeekableDurationMs(
+                playbackDurationMs = player.duration,
+                fallbackDurationMs = videoDuration
+            )
             value = PlayerProgress(
                 current = player.currentPosition,
                 duration = duration,
@@ -700,25 +708,18 @@ fun VideoPlayerOverlay(
             delay(delayMs)
         }
     }
-    val activePlaybackTransitionPositionMs = pendingSeekPositionMs ?: playbackTransitionPositionMs
     val displayedProgressState = remember(
         progressState,
         previewSeekPositionMs,
         previewSeekActive,
-        activePlaybackTransitionPositionMs
+        playbackTransitionPositionMs
     ) {
         resolveDisplayedPlayerProgress(
             progress = progressState,
             previewPositionMs = previewSeekPositionMs,
             previewActive = previewSeekActive,
-            playbackTransitionPositionMs = activePlaybackTransitionPositionMs
+            playbackTransitionPositionMs = playbackTransitionPositionMs
         )
-    }
-
-    LaunchedEffect(progressState.current, pendingSeekPositionMs) {
-        if (!shouldHoldPlaybackTransitionPosition(progressState.current, pendingSeekPositionMs)) {
-            pendingSeekPositionMs = null
-        }
     }
 
     LaunchedEffect(playbackTransitionPositionMs) {
@@ -799,7 +800,6 @@ fun VideoPlayerOverlay(
 
     val commitSeek: (Long) -> Unit = { position ->
         val safePosition = position.coerceAtLeast(0L)
-        pendingSeekPositionMs = safePosition
         onSeekTo?.invoke(safePosition) ?: seekPlayerFromUserAction(player, safePosition)
     }
 
@@ -940,6 +940,9 @@ fun VideoPlayerOverlay(
                     },
                     onSeek = commitSeek,
                     onSeekStart = onSeekStart,  //  拖动进度条开始时清除弹幕
+                    onSeekDragStart = onSeekDragStart,
+                    onSeekDragUpdate = onSeekDragUpdate,
+                    onSeekDragCancel = onSeekDragCancel,
                     onScrubbingChanged = { scrubbing ->
                         if (scrubbing) {
                             wasPlayingWhenProgressScrubbingStarted = isPlaying
@@ -949,6 +952,8 @@ fun VideoPlayerOverlay(
                         }
                         isProgressScrubbing = scrubbing
                     },
+                    seekPositionMs = displayedProgressState.current,
+                    isSeekScrubbing = isProgressScrubbing,
                     onSpeedClick = { showSpeedMenu = true },
                     onRatioClick = { showRatioMenu = true },
                     onNextEpisodeClick = {
@@ -1204,7 +1209,7 @@ fun VideoPlayerOverlay(
                 isFullscreen = isFullscreen,
                 isBuffering = isBuffering,
                 isScrubbing = isProgressScrubbing,
-                isSeekTransitionPending = suppressCenterPlayButtonForSeekTransition || activePlaybackTransitionPositionMs != null
+                isSeekTransitionPending = suppressCenterPlayButtonForSeekTransition || playbackTransitionPositionMs != null
             ),
             modifier = Modifier.align(Alignment.Center),
             enter = scaleIn(tween(250)) + fadeIn(tween(200)),

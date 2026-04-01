@@ -55,7 +55,9 @@ import com.android.purebilibili.feature.video.playback.loader.PlaybackRequest
 import com.android.purebilibili.feature.video.playback.loader.PlaybackLoadConfig
 import com.android.purebilibili.feature.video.playback.loader.PlaybackLoadResult
 import com.android.purebilibili.feature.video.playback.loader.PlaybackLoader
+import com.android.purebilibili.feature.video.playback.dash.AdaptiveDashPlaybackSource
 import com.android.purebilibili.feature.video.playback.policy.PlaybackPostLoadTask
+import com.android.purebilibili.feature.video.playback.policy.PlaybackQualityMode
 import com.android.purebilibili.feature.video.playback.policy.resolveOnlineCountPollingDelayMs
 import com.android.purebilibili.feature.video.playback.policy.buildPlaybackPostLoadPlan
 import com.android.purebilibili.feature.video.playback.policy.shouldHoldPlaybackTransitionPosition
@@ -139,6 +141,8 @@ sealed class PlayerUiState {
         val audioUrl: String? = null,
         val related: List<RelatedVideo> = emptyList(),
         val currentQuality: Int = 64,
+        val playbackQualityMode: PlaybackQualityMode = PlaybackQualityMode.AUTO,
+        val adaptiveDashSource: AdaptiveDashPlaybackSource? = null,
         val qualityLabels: List<String> = emptyList(),
         val qualityIds: List<Int> = emptyList(),
         val startPosition: Long = 0L,
@@ -275,6 +279,77 @@ internal fun resolveRequestedStartPositionMs(
     val safeCachedPositionMs = cachedPositionMs.coerceAtLeast(0L)
     if (safeCachedPositionMs > 0L) return safeCachedPositionMs
     return fallbackResumePositionMs.coerceAtLeast(0L)
+}
+
+internal fun resolveInitialPlaybackQualityMode(): PlaybackQualityMode = PlaybackQualityMode.AUTO
+
+internal fun resolvePlaybackQualityModeForQualitySelection(qualityId: Int): PlaybackQualityMode {
+    return PlaybackQualityMode.fromQualityId(qualityId)
+}
+
+internal data class QualitySwitchFailureDialogState(
+    val requestedQualityId: Int,
+    val requestedQualityLabel: String,
+    val title: String,
+    val message: String
+)
+
+internal fun resolveQualitySwitchFailureMessage(
+    requestedQualityLabel: String,
+    permissionResult: QualityPermissionResult? = null,
+    loadError: VideoLoadError? = null,
+    hasCachedDashTracks: Boolean = true,
+    cacheContainsRequestedQuality: Boolean = true
+): String {
+    permissionResult?.let { permission ->
+        return when (permission) {
+            is QualityPermissionResult.RequiresVip -> "$requestedQualityLabel 需要大会员，当前账号暂时不能切换到这个画质。"
+            is QualityPermissionResult.RequiresLogin -> "$requestedQualityLabel 需要先登录，登录后再试一次就好。"
+            is QualityPermissionResult.UnsupportedByDevice -> "$requestedQualityLabel 需要当前设备支持对应的显示能力或解码能力。"
+            is QualityPermissionResult.Permitted -> ""
+        }
+    }
+
+    loadError?.let { error ->
+        return when (error) {
+            is VideoLoadError.Timeout -> "请求 $requestedQualityLabel 超时了，网络或 CDN 可能正在抖动。"
+            is VideoLoadError.NetworkError -> "请求 $requestedQualityLabel 失败，当前网络连接不稳定。"
+            is VideoLoadError.VipRequired -> "$requestedQualityLabel 需要大会员，服务端没有返回可播放地址。"
+            is VideoLoadError.RegionRestricted -> "$requestedQualityLabel 在当前地区不可用。"
+            is VideoLoadError.PlayUrlEmpty -> "服务端没有返回 $requestedQualityLabel 的可播放地址，可能是接口临时降档。"
+            else -> error.toUserMessage()
+        }
+    }
+
+    if (!hasCachedDashTracks) {
+        return "当前页面没有缓存到可切换轨道，重新请求目标画质时也没有拿到结果。"
+    }
+    if (!cacheContainsRequestedQuality) {
+        return "当前视频没有返回 $requestedQualityLabel 的可播放轨道，可能是该分P暂不支持或接口临时降档。"
+    }
+    return "$requestedQualityLabel 的轨道已经找到，但播放器没能完成切换。"
+}
+
+internal fun buildQualitySwitchFailureDialogState(
+    requestedQualityId: Int,
+    requestedQualityLabel: String,
+    permissionResult: QualityPermissionResult? = null,
+    loadError: VideoLoadError? = null,
+    hasCachedDashTracks: Boolean = true,
+    cacheContainsRequestedQuality: Boolean = true
+): QualitySwitchFailureDialogState {
+    return QualitySwitchFailureDialogState(
+        requestedQualityId = requestedQualityId,
+        requestedQualityLabel = requestedQualityLabel,
+        title = "切换到 $requestedQualityLabel 失败",
+        message = resolveQualitySwitchFailureMessage(
+            requestedQualityLabel = requestedQualityLabel,
+            permissionResult = permissionResult,
+            loadError = loadError,
+            hasCachedDashTracks = hasCachedDashTracks,
+            cacheContainsRequestedQuality = cacheContainsRequestedQuality
+        )
+    )
 }
 
 internal fun shouldApplyPlayerInfoResult(
@@ -574,6 +649,8 @@ class PlayerViewModel : ViewModel() {
     
     private val _toastEvent = Channel<PlayerToastMessage>()
     val toastEvent = _toastEvent.receiveAsFlow()
+    private val _qualitySwitchFailureDialog = MutableStateFlow<QualitySwitchFailureDialogState?>(null)
+    internal val qualitySwitchFailureDialog = _qualitySwitchFailureDialog.asStateFlow()
 
     val resumePlaybackSuggestion = playbackSessionStore.state
         .map { session -> session.resumeSuggestion }
@@ -647,6 +724,10 @@ class PlayerViewModel : ViewModel() {
 
     fun dismissCoinDialog() {
         _coinDialogVisible.value = false
+    }
+
+    fun dismissQualitySwitchFailureDialog() {
+        _qualitySwitchFailureDialog.value = null
     }
     
     //  SponsorBlock (via Plugin)
@@ -1925,17 +2006,26 @@ class PlayerViewModel : ViewModel() {
                 } ?: -1
                 val settingsCodecPreference = appContext?.let {
                     com.android.purebilibili.core.store.SettingsManager.getVideoCodecSync(it)
-                } ?: "hev1"
-                val videoCodecPreference = playbackRequest.videoCodecOverride ?: settingsCodecPreference
+                } ?: HEVC_CODEC_KEY
+                val sessionBlockedCodecs = playbackSessionStore.state.value.blockedVideoCodecs
+                val videoCodecPreference = resolveEffectiveVideoCodecPreference(
+                    requestCodecOverride = playbackRequest.videoCodecOverride,
+                    settingsCodecPreference = settingsCodecPreference,
+                    sessionBlockedCodecs = sessionBlockedCodecs
+                )
                 val videoSecondCodecPreference = appContext?.let {
                     com.android.purebilibili.core.store.SettingsManager.getVideoSecondCodecSync(it)
-                } ?: "avc1"
+                } ?: AVC_CODEC_KEY
                 val isHdrSupported = appContext?.let {
                     com.android.purebilibili.core.util.MediaUtils.isHdrSupported(it)
                 } ?: com.android.purebilibili.core.util.MediaUtils.isHdrSupported()
                 val isDolbyVisionSupported = appContext?.let {
                     com.android.purebilibili.core.util.MediaUtils.isDolbyVisionSupported(it)
                 } ?: com.android.purebilibili.core.util.MediaUtils.isDolbyVisionSupported()
+                val isAv1Supported = resolveEffectiveAv1Support(
+                    deviceSupportsAv1 = com.android.purebilibili.core.util.MediaUtils.isAv1Supported(),
+                    sessionBlockedCodecs = sessionBlockedCodecs
+                )
                 
                 // [Added] Determine auto-play behavior
                 // If autoPlay arg is present, use it. Otherwise reset to "Click to Play" setting
@@ -1945,7 +2035,7 @@ class PlayerViewModel : ViewModel() {
                 
                 Logger.d(
                     "PlayerViewModel",
-                    "⏯️ AutoPlay Decision: arg=${playbackRequest.autoPlay}, setting=${shouldAutoPlay}, Final=$shouldAutoPlay, codec=$videoCodecPreference"
+                    "⏯️ AutoPlay Decision: arg=${playbackRequest.autoPlay}, setting=${shouldAutoPlay}, Final=$shouldAutoPlay, codec=$videoCodecPreference, blocked=$sessionBlockedCodecs"
                 )
             
             // 📉 [省流量] 省流量模式逻辑：
@@ -1976,6 +2066,7 @@ class PlayerViewModel : ViewModel() {
                     videoCodecPreference = videoCodecPreference,
                     videoSecondCodecPreference = videoSecondCodecPreference,
                     playWhenReady = shouldAutoPlay,
+                    isAv1Supported = isAv1Supported,
                     isHdrSupported = isHdrSupported,
                     isDolbyVisionSupported = isDolbyVisionSupported
                 )
@@ -2021,11 +2112,13 @@ class PlayerViewModel : ViewModel() {
 
                         // Play video
                         if (!shouldSkipPlayerPrepare) {
-                            if (result.audioUrl != null) {
-                                playbackUseCase.playDashVideo(result.playUrl, result.audioUrl, startPos, playWhenReady = shouldAutoPlay)
-                            } else {
-                                playbackUseCase.playVideo(result.playUrl, startPos, playWhenReady = shouldAutoPlay)
-                            }
+                            playResolvedPlayback(
+                                videoUrl = result.playUrl,
+                                audioUrl = result.audioUrl,
+                                adaptiveDashSource = result.adaptiveDashSource,
+                                startPositionMs = startPos,
+                                playWhenReady = shouldAutoPlay
+                            )
                         } else {
                              // 🎯 Skip preparing player, but ensure it's playing if needed
                              Logger.d("PlayerVM", "🎯 Skipping player preparation (already playing)")
@@ -2063,6 +2156,8 @@ class PlayerViewModel : ViewModel() {
                             audioUrl = result.audioUrl,
                             related = result.related,
                             currentQuality = result.quality,
+                            playbackQualityMode = resolveInitialPlaybackQualityMode(),
+                            adaptiveDashSource = result.adaptiveDashSource,
                             qualityIds = result.qualityIds,
                             qualityLabels = result.qualityLabels,
                             cachedDashVideos = result.cachedDashVideos,
@@ -2363,6 +2458,7 @@ class PlayerViewModel : ViewModel() {
         }
 
         val bvid = current.info.bvid.takeIf { it.isNotBlank() } ?: return
+        playbackSessionStore.blockVideoCodec(AV1_CODEC_KEY)
         PlaybackCooldownManager.clearForVideo(bvid)
         PlayUrlCache.invalidate(bvid, current.info.cid)
         playbackSessionStore.clearCurrentMedia()
@@ -2373,7 +2469,7 @@ class PlayerViewModel : ViewModel() {
             force = true,
             autoPlay = true,
             audioLang = current.currentAudioLang,
-            videoCodecOverride = "avc"
+            videoCodecOverride = AVC_CODEC_KEY
         )
     }
     
@@ -2406,16 +2502,18 @@ class PlayerViewModel : ViewModel() {
             Logger.d("PlayerVM", "📡 切换线路: ${current.currentCdnIndex + 1} → ${nextIndex + 1}")
             
             // 使用新的 URL 播放
-            if (nextAudioUrl != null) {
-                playbackUseCase.playDashVideo(nextVideoUrl, nextAudioUrl, currentPos)
-            } else {
-                playbackUseCase.playVideo(nextVideoUrl, currentPos)
-            }
+            playResolvedPlayback(
+                videoUrl = nextVideoUrl,
+                audioUrl = nextAudioUrl,
+                adaptiveDashSource = null,
+                startPositionMs = currentPos
+            )
             
             // 更新状态
             _uiState.value = current.copy(
                 playUrl = nextVideoUrl,
                 audioUrl = nextAudioUrl,
+                adaptiveDashSource = null,
                 currentCdnIndex = nextIndex
             )
             
@@ -2443,15 +2541,17 @@ class PlayerViewModel : ViewModel() {
         viewModelScope.launch {
             Logger.d("PlayerVM", "📡 切换到线路: ${index + 1}")
             
-            if (nextAudioUrl != null) {
-                playbackUseCase.playDashVideo(nextVideoUrl, nextAudioUrl, currentPos)
-            } else {
-                playbackUseCase.playVideo(nextVideoUrl, currentPos)
-            }
+            playResolvedPlayback(
+                videoUrl = nextVideoUrl,
+                audioUrl = nextAudioUrl,
+                adaptiveDashSource = null,
+                startPositionMs = currentPos
+            )
             
             _uiState.value = current.copy(
                 playUrl = nextVideoUrl,
                 audioUrl = nextAudioUrl,
+                adaptiveDashSource = null,
                 currentCdnIndex = index
             )
             
@@ -4655,7 +4755,10 @@ class PlayerViewModel : ViewModel() {
         
         when (permissionResult) {
             is QualityPermissionResult.RequiresVip -> {
-                toast("${permissionResult.qualityLabel} 需要大会员", PlayerToastPresentation.CenteredHighlight)
+                showQualitySwitchFailureDialog(
+                    requestedQualityId = qualityId,
+                    permissionResult = permissionResult
+                )
                 // 自动降级到最高可用画质
                 val fallbackQuality = qualityManager.getMaxAvailableQuality(
                     availableQualities = current.qualityIds,
@@ -4670,11 +4773,17 @@ class PlayerViewModel : ViewModel() {
                 return
             }
             is QualityPermissionResult.RequiresLogin -> {
-                toast("${permissionResult.qualityLabel} 需要登录", PlayerToastPresentation.CenteredHighlight)
+                showQualitySwitchFailureDialog(
+                    requestedQualityId = qualityId,
+                    permissionResult = permissionResult
+                )
                 return
             }
             is QualityPermissionResult.UnsupportedByDevice -> {
-                toast("${permissionResult.qualityLabel} 当前设备不支持", PlayerToastPresentation.CenteredHighlight)
+                showQualitySwitchFailureDialog(
+                    requestedQualityId = qualityId,
+                    permissionResult = permissionResult
+                )
                 val fallbackQuality = qualityManager.getMaxAvailableQuality(
                     availableQualities = current.qualityIds,
                     isLoggedIn = current.isLoggedIn,
@@ -4693,76 +4802,111 @@ class PlayerViewModel : ViewModel() {
         }
         
         val transitionPositionMs = currentPos.coerceAtLeast(0L)
+        val playbackQualityMode = resolvePlaybackQualityModeForQualitySelection(qualityId)
+        _qualitySwitchFailureDialog.value = null
         _uiState.value = current.copy(
             isQualitySwitching = true,
             requestedQuality = qualityId,
+            playbackQualityMode = playbackQualityMode,
             pendingPlaybackTransitionPositionMs = transitionPositionMs
         )
         
         viewModelScope.launch {
-            // [新增] 获取当前音频偏好
-            val audioPref = appContext?.let { 
-                com.android.purebilibili.core.store.SettingsManager.getAudioQualitySync(it) 
-            } ?: -1
-            val videoCodecPreference = _videoCodecPreference.value
-            val videoSecondCodecPreference = _videoSecondCodecPreference.value
-            val isHevcSupported = com.android.purebilibili.core.util.MediaUtils.isHevcSupported()
-            val isAv1Supported = com.android.purebilibili.core.util.MediaUtils.isAv1Supported()
-            
-            val result = playbackUseCase.changeQualityFromCache(
-                qualityId = qualityId,
-                cachedVideos = current.cachedDashVideos,
-                cachedAudios = current.cachedDashAudios,
-                currentPos = currentPos,
-                audioQualityPreference = audioPref,
-                videoCodecPreference = videoCodecPreference,
-                videoSecondCodecPreference = videoSecondCodecPreference,
-                isHevcSupported = isHevcSupported,
-                isAv1Supported = isAv1Supported
-            ) ?: playbackUseCase.changeQualityFromApi(
-                bvid = currentBvid,
-                cid = currentCid,
-                qualityId = qualityId,
-                currentPos = currentPos,
-                audioQualityPreference = audioPref,
-                videoCodecPreference = videoCodecPreference,
-                videoSecondCodecPreference = videoSecondCodecPreference,
-                isHevcSupported = isHevcSupported,
-                isAv1Supported = isAv1Supported
-            )
-            
-            if (result != null) {
-                _uiState.value = current.copy(
-                    playUrl = result.videoUrl, audioUrl = result.audioUrl,
-                    currentQuality = result.actualQuality, isQualitySwitching = false, requestedQuality = null,
-                    pendingPlaybackTransitionPositionMs = transitionPositionMs,
-                    qualityIds = result.qualityIds.ifEmpty { current.qualityIds },
-                    qualityLabels = result.qualityLabels.ifEmpty { current.qualityLabels },
-                    //  [修复] 更新缓存的DASH流，否则后续画质切换可能失败
-                    cachedDashVideos = result.cachedDashVideos.ifEmpty { current.cachedDashVideos },
-                    cachedDashAudios = result.cachedDashAudios.ifEmpty { current.cachedDashAudios }
+            try {
+                // [新增] 获取当前音频偏好
+                val audioPref = appContext?.let { 
+                    com.android.purebilibili.core.store.SettingsManager.getAudioQualitySync(it) 
+                } ?: -1
+                val sessionBlockedCodecs = playbackSessionStore.state.value.blockedVideoCodecs
+                val videoCodecPreference = resolveEffectiveVideoCodecPreference(
+                    requestCodecOverride = null,
+                    settingsCodecPreference = _videoCodecPreference.value,
+                    sessionBlockedCodecs = sessionBlockedCodecs
                 )
-                monitorPlaybackTransitionPosition(transitionPositionMs)
-                val label = current.qualityLabels.getOrNull(
-                    current.qualityIds.indexOf(result.actualQuality)
-                ) ?: qualityManager.getQualityLabel(result.actualQuality)
-                toast(
-                    if (result.wasFallback) {
-                        "目标清晰度不可用，已切换至 $label"
-                    } else {
-                        "✓ 已切换至 $label"
-                    },
-                    PlayerToastPresentation.CenteredHighlight
+                val videoSecondCodecPreference = _videoSecondCodecPreference.value
+                val isHevcSupported = com.android.purebilibili.core.util.MediaUtils.isHevcSupported()
+                val isAv1Supported = resolveEffectiveAv1Support(
+                    deviceSupportsAv1 = com.android.purebilibili.core.util.MediaUtils.isAv1Supported(),
+                    sessionBlockedCodecs = sessionBlockedCodecs
                 )
-                //  记录画质切换事件
-                AnalyticsHelper.logQualityChange(currentBvid, current.currentQuality, result.actualQuality)
-            } else {
+                val hasCachedDashTracks = current.cachedDashVideos.isNotEmpty()
+                val cacheContainsRequestedQuality = current.cachedDashVideos.any { it.id == qualityId }
+
+                val result = playbackUseCase.changeQualityFromCache(
+                    qualityId = qualityId,
+                    cachedVideos = current.cachedDashVideos,
+                    cachedAudios = current.cachedDashAudios,
+                    currentPos = currentPos,
+                    durationMs = current.videoDurationMs,
+                    playbackQualityMode = playbackQualityMode,
+                    audioQualityPreference = audioPref,
+                    videoCodecPreference = videoCodecPreference,
+                    videoSecondCodecPreference = videoSecondCodecPreference,
+                    isHevcSupported = isHevcSupported,
+                    isAv1Supported = isAv1Supported
+                ) ?: playbackUseCase.changeQualityFromApi(
+                    bvid = currentBvid,
+                    cid = currentCid,
+                    qualityId = qualityId,
+                    currentPos = currentPos,
+                    playbackQualityMode = playbackQualityMode,
+                    audioQualityPreference = audioPref,
+                    videoCodecPreference = videoCodecPreference,
+                    videoSecondCodecPreference = videoSecondCodecPreference,
+                    isHevcSupported = isHevcSupported,
+                    isAv1Supported = isAv1Supported
+                )
+                
+                if (result != null) {
+                    _qualitySwitchFailureDialog.value = null
+                    _uiState.value = current.copy(
+                        playUrl = result.videoUrl, audioUrl = result.audioUrl,
+                        currentQuality = result.actualQuality, isQualitySwitching = false, requestedQuality = null,
+                        playbackQualityMode = playbackQualityMode,
+                        adaptiveDashSource = result.adaptiveDashSource,
+                        pendingPlaybackTransitionPositionMs = transitionPositionMs,
+                        qualityIds = result.qualityIds.ifEmpty { current.qualityIds },
+                        qualityLabels = result.qualityLabels.ifEmpty { current.qualityLabels },
+                        //  [修复] 更新缓存的DASH流，否则后续画质切换可能失败
+                        cachedDashVideos = result.cachedDashVideos.ifEmpty { current.cachedDashVideos },
+                        cachedDashAudios = result.cachedDashAudios.ifEmpty { current.cachedDashAudios }
+                    )
+                    monitorPlaybackTransitionPosition(transitionPositionMs)
+                    val label = current.qualityLabels.getOrNull(
+                        current.qualityIds.indexOf(result.actualQuality)
+                    ) ?: qualityManager.getQualityLabel(result.actualQuality)
+                    toast(
+                        if (result.wasFallback) {
+                            "目标清晰度不可用，已切换至 $label"
+                        } else {
+                            "✓ 已切换至 $label"
+                        },
+                        PlayerToastPresentation.CenteredHighlight
+                    )
+                    //  记录画质切换事件
+                    AnalyticsHelper.logQualityChange(currentBvid, current.currentQuality, result.actualQuality)
+                } else {
+                    _uiState.value = current.copy(
+                        isQualitySwitching = false,
+                        requestedQuality = null,
+                        pendingPlaybackTransitionPositionMs = null
+                    )
+                    showQualitySwitchFailureDialog(
+                        requestedQualityId = qualityId,
+                        hasCachedDashTracks = hasCachedDashTracks,
+                        cacheContainsRequestedQuality = cacheContainsRequestedQuality
+                    )
+                }
+            } catch (e: Exception) {
                 _uiState.value = current.copy(
                     isQualitySwitching = false,
                     requestedQuality = null,
                     pendingPlaybackTransitionPositionMs = null
                 )
-                toast("清晰度切换失败", PlayerToastPresentation.CenteredHighlight)
+                showQualitySwitchFailureDialog(
+                    requestedQualityId = qualityId,
+                    loadError = VideoLoadError.fromException(e)
+                )
             }
         }
     }
@@ -4791,18 +4935,27 @@ class PlayerViewModel : ViewModel() {
                 val playUrlData = VideoRepository.getPlayUrlData(currentBvid, page.cid, current.currentQuality)
                 if (playUrlData != null) {
                     //  [新增] 获取音频/视频偏好
-                    val videoCodecPreference = appContext?.let { 
+                    val settingsCodecPreference = appContext?.let { 
                         com.android.purebilibili.core.store.SettingsManager.getVideoCodecSync(it) 
-                    } ?: "hev1"
+                    } ?: HEVC_CODEC_KEY
+                    val sessionBlockedCodecs = playbackSessionStore.state.value.blockedVideoCodecs
+                    val videoCodecPreference = resolveEffectiveVideoCodecPreference(
+                        requestCodecOverride = null,
+                        settingsCodecPreference = settingsCodecPreference,
+                        sessionBlockedCodecs = sessionBlockedCodecs
+                    )
                     val videoSecondCodecPreference = appContext?.let {
                         com.android.purebilibili.core.store.SettingsManager.getVideoSecondCodecSync(it)
-                    } ?: "avc1"
+                    } ?: AVC_CODEC_KEY
                     val audioQualityPreference = appContext?.let { 
                         com.android.purebilibili.core.store.SettingsManager.getAudioQualitySync(it) 
                     } ?: -1
                     
                     val isHevcSupported = com.android.purebilibili.core.util.MediaUtils.isHevcSupported()
-                    val isAv1Supported = com.android.purebilibili.core.util.MediaUtils.isAv1Supported()
+                    val isAv1Supported = resolveEffectiveAv1Support(
+                        deviceSupportsAv1 = com.android.purebilibili.core.util.MediaUtils.isAv1Supported(),
+                        sessionBlockedCodecs = sessionBlockedCodecs
+                    )
                     
                     val selection = playbackUseCase.resolvePlaybackSelection(
                         playUrlData = playUrlData,
@@ -4810,6 +4963,7 @@ class PlayerViewModel : ViewModel() {
                         audioQualityPreference = audioQualityPreference,
                         videoCodecPreference = videoCodecPreference,
                         videoSecondCodecPreference = videoSecondCodecPreference,
+                        playbackQualityMode = current.playbackQualityMode,
                         isHevcSupported = isHevcSupported,
                         isAv1Supported = isAv1Supported
                     )
@@ -4820,13 +4974,18 @@ class PlayerViewModel : ViewModel() {
                     }
                     
                     if (selection != null) {
-                        if (selection.isDashPlayback) playbackUseCase.playDashVideo(selection.videoUrl, selection.audioUrl, restoredPosition)
-                        else playbackUseCase.playVideo(selection.videoUrl, restoredPosition)
+                        playResolvedPlayback(
+                            videoUrl = selection.videoUrl,
+                            audioUrl = selection.audioUrl,
+                            adaptiveDashSource = selection.adaptiveDashSource,
+                            startPositionMs = restoredPosition
+                        )
                         
                         _uiState.value = subtitleClearedState.copy(
                             info = current.info.copy(cid = page.cid), playUrl = selection.videoUrl, audioUrl = selection.audioUrl,
                             startPosition = restoredPosition, isQualitySwitching = false,
                             pendingPlaybackTransitionPositionMs = restoredPosition.coerceAtLeast(0L),
+                            adaptiveDashSource = selection.adaptiveDashSource,
                             qualityIds = selection.qualityIds,
                             qualityLabels = selection.qualityLabels,
                             cachedDashVideos = selection.cachedDashVideos,
@@ -4948,18 +5107,27 @@ class PlayerViewModel : ViewModel() {
                 audioLang = current.currentAudioLang
             ) ?: return false
 
-            val videoCodecPreference = appContext?.let {
+            val settingsCodecPreference = appContext?.let {
                 com.android.purebilibili.core.store.SettingsManager.getVideoCodecSync(it)
-            } ?: "hev1"
+            } ?: HEVC_CODEC_KEY
+            val sessionBlockedCodecs = playbackSessionStore.state.value.blockedVideoCodecs
+            val videoCodecPreference = resolveEffectiveVideoCodecPreference(
+                requestCodecOverride = null,
+                settingsCodecPreference = settingsCodecPreference,
+                sessionBlockedCodecs = sessionBlockedCodecs
+            )
             val videoSecondCodecPreference = appContext?.let {
                 com.android.purebilibili.core.store.SettingsManager.getVideoSecondCodecSync(it)
-            } ?: "avc1"
+            } ?: AVC_CODEC_KEY
             val audioQualityPreference = appContext?.let {
                 com.android.purebilibili.core.store.SettingsManager.getAudioQualitySync(it)
             } ?: -1
 
             val isHevcSupported = com.android.purebilibili.core.util.MediaUtils.isHevcSupported()
-            val isAv1Supported = com.android.purebilibili.core.util.MediaUtils.isAv1Supported()
+            val isAv1Supported = resolveEffectiveAv1Support(
+                deviceSupportsAv1 = com.android.purebilibili.core.util.MediaUtils.isAv1Supported(),
+                sessionBlockedCodecs = sessionBlockedCodecs
+            )
 
             val selection = playbackUseCase.resolvePlaybackSelection(
                 playUrlData = playUrlData,
@@ -4967,15 +5135,17 @@ class PlayerViewModel : ViewModel() {
                 audioQualityPreference = audioQualityPreference,
                 videoCodecPreference = videoCodecPreference,
                 videoSecondCodecPreference = videoSecondCodecPreference,
+                playbackQualityMode = current.playbackQualityMode,
                 isHevcSupported = isHevcSupported,
                 isAv1Supported = isAv1Supported
             ) ?: return false
 
-            if (selection.isDashPlayback) {
-                playbackUseCase.playDashVideo(selection.videoUrl, selection.audioUrl, 0L)
-            } else {
-                playbackUseCase.playVideo(selection.videoUrl, 0L)
-            }
+            playResolvedPlayback(
+                videoUrl = selection.videoUrl,
+                audioUrl = selection.audioUrl,
+                adaptiveDashSource = selection.adaptiveDashSource,
+                startPositionMs = 0L
+            )
 
             currentCid = targetCid
             subtitleLoadToken += 1
@@ -4984,6 +5154,7 @@ class PlayerViewModel : ViewModel() {
                 playUrl = selection.videoUrl,
                 audioUrl = selection.audioUrl,
                 startPosition = 0L,
+                adaptiveDashSource = selection.adaptiveDashSource,
                 videoDurationMs = playUrlData.timelength.coerceAtLeast(0L),
                 qualityIds = selection.qualityIds,
                 qualityLabels = selection.qualityLabels,
@@ -5212,6 +5383,55 @@ class PlayerViewModel : ViewModel() {
     fun getPlayerCurrentPosition() = playbackUseCase.getCurrentPosition()
     fun getPlayerDuration() = playbackUseCase.getDuration()
     fun saveCurrentPosition() { playbackUseCase.savePosition(currentBvid, currentCid) }
+
+    private fun playResolvedPlayback(
+        videoUrl: String,
+        audioUrl: String?,
+        adaptiveDashSource: AdaptiveDashPlaybackSource?,
+        startPositionMs: Long,
+        playWhenReady: Boolean = true
+    ) {
+        if (adaptiveDashSource != null || audioUrl != null) {
+            playbackUseCase.playDashVideo(
+                videoUrl = videoUrl,
+                audioUrl = audioUrl,
+                adaptiveDashSource = adaptiveDashSource,
+                seekTo = startPositionMs,
+                playWhenReady = playWhenReady
+            )
+        } else {
+            playbackUseCase.playVideo(videoUrl, startPositionMs, playWhenReady = playWhenReady)
+        }
+    }
+
+    private fun showQualitySwitchFailureDialog(
+        requestedQualityId: Int,
+        permissionResult: QualityPermissionResult? = null,
+        loadError: VideoLoadError? = null,
+        hasCachedDashTracks: Boolean = true,
+        cacheContainsRequestedQuality: Boolean = true
+    ) {
+        val requestedQualityLabel = if (requestedQualityId > 0) {
+            qualityManager.getQualityLabel(requestedQualityId)
+        } else {
+            "自动"
+        }
+        val dialogState = buildQualitySwitchFailureDialogState(
+            requestedQualityId = requestedQualityId,
+            requestedQualityLabel = requestedQualityLabel,
+            permissionResult = permissionResult,
+            loadError = loadError,
+            hasCachedDashTracks = hasCachedDashTracks,
+            cacheContainsRequestedQuality = cacheContainsRequestedQuality
+        )
+        Logger.w(
+            "PlayerVM",
+            "QUALITY_SWITCH_FAILURE requested=$requestedQualityId label=$requestedQualityLabel " +
+                "permission=$permissionResult error=$loadError hasCache=$hasCachedDashTracks " +
+                "containsRequested=$cacheContainsRequestedQuality message=${dialogState.message}"
+        )
+        _qualitySwitchFailureDialog.value = dialogState
+    }
     
     fun restoreFromCache(cachedState: PlayerUiState.Success, startPosition: Long = -1L) {
         currentBvid = cachedState.info.bvid

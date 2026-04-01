@@ -1,8 +1,113 @@
 package com.android.purebilibili.feature.video.playback.session
 
+import com.android.purebilibili.feature.video.playback.policy.shouldHoldPlaybackTransitionPosition
 import kotlin.math.abs
 
 private const val DEFAULT_PLAYBACK_SEEK_SETTLED_TOLERANCE = 0.01f
+private const val DEFAULT_PLAYBACK_SEEK_PENDING_TOLERANCE_MS = 500L
+
+internal data class PlaybackSeekSessionState(
+    val playbackPositionMs: Long = 0L,
+    val sliderPositionMs: Long = 0L,
+    val sliderTempPositionMs: Long = 0L,
+    val isSliderMoving: Boolean = false,
+    val pendingSeekPositionMs: Long? = null
+)
+
+internal data class PlaybackSeekSessionCommitResult(
+    val state: PlaybackSeekSessionState,
+    val committedPositionMs: Long
+)
+
+internal fun syncPlaybackSeekSession(
+    state: PlaybackSeekSessionState,
+    playbackPositionMs: Long,
+    toleranceMs: Long = DEFAULT_PLAYBACK_SEEK_PENDING_TOLERANCE_MS
+): PlaybackSeekSessionState {
+    val safePlaybackPositionMs = playbackPositionMs.coerceAtLeast(0L)
+    val syncedState = state.copy(playbackPositionMs = safePlaybackPositionMs)
+    if (syncedState.isSliderMoving) {
+        return syncedState
+    }
+    if (
+        shouldHoldPlaybackTransitionPosition(
+            playerPositionMs = safePlaybackPositionMs,
+            transitionPositionMs = syncedState.pendingSeekPositionMs,
+            toleranceMs = toleranceMs
+        )
+    ) {
+        return syncedState
+    }
+    return syncedState.copy(
+        sliderPositionMs = safePlaybackPositionMs,
+        sliderTempPositionMs = safePlaybackPositionMs,
+        pendingSeekPositionMs = null
+    )
+}
+
+internal fun startPlaybackSeekInteraction(
+    state: PlaybackSeekSessionState,
+    positionMs: Long = state.sliderPositionMs
+): PlaybackSeekSessionState {
+    val safePositionMs = positionMs.coerceAtLeast(0L)
+    return state.copy(
+        sliderPositionMs = safePositionMs,
+        sliderTempPositionMs = safePositionMs,
+        isSliderMoving = true,
+        pendingSeekPositionMs = null
+    )
+}
+
+internal fun updatePlaybackSeekInteraction(
+    state: PlaybackSeekSessionState,
+    positionMs: Long
+): PlaybackSeekSessionState {
+    val safePositionMs = positionMs.coerceAtLeast(0L)
+    return state.copy(
+        sliderPositionMs = safePositionMs,
+        sliderTempPositionMs = safePositionMs,
+        isSliderMoving = true
+    )
+}
+
+internal fun finishPlaybackSeekInteraction(
+    state: PlaybackSeekSessionState
+): PlaybackSeekSessionCommitResult {
+    val committedPositionMs = state.sliderPositionMs.coerceAtLeast(0L)
+    return PlaybackSeekSessionCommitResult(
+        state = state.copy(
+            sliderPositionMs = committedPositionMs,
+            sliderTempPositionMs = committedPositionMs,
+            isSliderMoving = false,
+            pendingSeekPositionMs = committedPositionMs
+        ),
+        committedPositionMs = committedPositionMs
+    )
+}
+
+internal fun cancelPlaybackSeekInteraction(
+    state: PlaybackSeekSessionState
+): PlaybackSeekSessionState {
+    val restoredPositionMs = state.playbackPositionMs.coerceAtLeast(0L)
+    return state.copy(
+        sliderPositionMs = restoredPositionMs,
+        sliderTempPositionMs = restoredPositionMs,
+        isSliderMoving = false,
+        pendingSeekPositionMs = null
+    )
+}
+
+internal fun shouldUsePlaybackSeekSessionPosition(
+    state: PlaybackSeekSessionState,
+    toleranceMs: Long = DEFAULT_PLAYBACK_SEEK_PENDING_TOLERANCE_MS
+): Boolean {
+    return state.isSliderMoving ||
+        shouldHoldPlaybackTransitionPosition(
+            playerPositionMs = state.playbackPositionMs,
+            transitionPositionMs = state.pendingSeekPositionMs,
+            toleranceMs = toleranceMs
+        )
+}
 
 internal data class PlaybackSeekUiState(
     val isScrubbing: Boolean = false,

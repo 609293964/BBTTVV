@@ -5,6 +5,7 @@ import com.android.purebilibili.feature.video.policy.ResumePlaybackSuggestion
 import com.android.purebilibili.feature.video.viewmodel.PlaybackEndAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContains
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -130,5 +131,14 @@ class PlaybackSessionStoreTest {
         store.clearCurrentRequest()
 
         assertNull(store.state.value.currentRequest)
+    }
+
+    @Test
+    fun `blockVideoCodec should normalize codec key and persist in session state`() {
+        val store = PlaybackSessionStore()
+
+        store.blockVideoCodec(" av01.0.08M.08 ")
+
+        assertContains(store.state.value.blockedVideoCodecs, "av01")
     }
 }

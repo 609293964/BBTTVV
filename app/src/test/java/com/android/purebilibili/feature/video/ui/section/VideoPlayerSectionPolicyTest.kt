@@ -9,6 +9,41 @@ import kotlin.test.assertTrue
 class VideoPlayerSectionPolicyTest {
 
     @Test
+    fun dragStart_ignoresBottomControlZone() {
+        assertTrue(
+            shouldIgnoreVideoPlayerDragStart(
+                offsetY = 940f,
+                containerHeightPx = 1_000f,
+                edgeSafeZonePx = 48f,
+                bottomGestureExclusionPx = 120f
+            )
+        )
+    }
+
+    @Test
+    fun dragStart_allowsCenterZoneAboveBottomControls() {
+        assertFalse(
+            shouldIgnoreVideoPlayerDragStart(
+                offsetY = 700f,
+                containerHeightPx = 1_000f,
+                edgeSafeZonePx = 48f,
+                bottomGestureExclusionPx = 120f
+            )
+        )
+    }
+
+    @Test
+    fun gestureSeekDuration_usesFallbackWhenPlayerDurationIsUnset() {
+        assertEquals(
+            120_000L,
+            resolveGestureSeekableDurationMs(
+                playbackDurationMs = 0L,
+                fallbackDurationMs = 120_000L
+            )
+        )
+    }
+
+    @Test
     fun danmakuLayerTopOffset_keepsInlinePortraitDanmakuAnchoredToViewportTop() {
         assertEquals(
             0,

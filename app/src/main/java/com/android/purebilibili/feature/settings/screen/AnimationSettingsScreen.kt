@@ -29,7 +29,6 @@ import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.store.resolveEffectiveLiquidGlassEnabled
 import com.android.purebilibili.core.ui.adaptive.MotionTier
 import com.android.purebilibili.core.ui.adaptive.resolveDeviceUiProfile
-import com.android.purebilibili.core.ui.adaptive.resolveEffectiveMotionTier
 import com.android.purebilibili.core.ui.rememberAppBackIcon
 import com.android.purebilibili.core.util.LocalWindowSizeClass
 import com.android.purebilibili.feature.home.components.LiquidGlassTuning
@@ -109,19 +108,22 @@ fun AnimationSettingsContent(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = resolveEffectiveMotionTier(
+    val settingsEntranceMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
+    }
+    val cardMotionTier = resolveAnimationSettingsCardMotionTier(
         baseTier = deviceUiProfile.motionTier,
-        animationEnabled = state.cardAnimationEnabled
+        cardAnimationEnabled = state.cardAnimationEnabled
     )
-    val motionTierLabel = remember(effectiveMotionTier) {
-        when (effectiveMotionTier) {
+    val motionTierLabel = remember(cardMotionTier) {
+        when (cardMotionTier) {
             MotionTier.Reduced -> "低动效"
             MotionTier.Normal -> "标准"
             MotionTier.Enhanced -> "增强"
         }
     }
-    val motionTierHint = remember(effectiveMotionTier) {
-        when (effectiveMotionTier) {
+    val motionTierHint = remember(cardMotionTier) {
+        when (cardMotionTier) {
             MotionTier.Reduced -> "更短延迟与更弱位移，优先稳定和性能"
             MotionTier.Normal -> "平衡性能与动效，适合大多数设备"
             MotionTier.Enhanced -> "更明显的层级与动势，适合大屏展示"
@@ -166,12 +168,12 @@ fun AnimationSettingsContent(
             //  卡片动画
             //  卡片动画
             item {
-                Box(modifier = Modifier.staggeredEntrance(0, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(0, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSSectionTitle("卡片动画")
                 }
             }
             item {
-                Box(modifier = Modifier.staggeredEntrance(1, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(1, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSGroup {
                         IOSSwitchItem(
                             icon = CupertinoIcons.Default.WandAndStars,
@@ -211,7 +213,7 @@ fun AnimationSettingsContent(
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             Text(
-                                text = "当前有效动画档位",
+                                text = "首页卡片动画档位",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -228,6 +230,12 @@ fun AnimationSettingsContent(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "设置页使用独立轻量入场动效，不跟随此开关关闭。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -235,12 +243,12 @@ fun AnimationSettingsContent(
             
             // ✨ 视觉效果
             item {
-                Box(modifier = Modifier.staggeredEntrance(2, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(2, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSSectionTitle("视觉效果")
                 }
             }
             item {
-                Box(modifier = Modifier.staggeredEntrance(3, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(3, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSGroup {
                         // Android 13+ 显示液态玻璃
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -370,12 +378,12 @@ fun AnimationSettingsContent(
             // 📐 底栏样式
             // 📐 底栏样式
             item {
-                Box(modifier = Modifier.staggeredEntrance(4, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(4, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSSectionTitle("底栏样式")
                 }
             }
             item {
-                Box(modifier = Modifier.staggeredEntrance(5, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(5, isVisible, motionTier = settingsEntranceMotionTier)) {
                     IOSGroup {
                         IOSSwitchItem(
                             icon = CupertinoIcons.Default.RectangleStack,
@@ -392,7 +400,7 @@ fun AnimationSettingsContent(
             //  提示
             //  提示
             item {
-                Box(modifier = Modifier.staggeredEntrance(6, isVisible, motionTier = effectiveMotionTier)) {
+                Box(modifier = Modifier.staggeredEntrance(6, isVisible, motionTier = settingsEntranceMotionTier)) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()

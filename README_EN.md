@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <sub>Last updated: 2026-03-28 · Synced to v7.2.2 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
+  <sub>Last updated: 2026-04-01 · Synced to v7.3.2 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.2.2-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.3.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -386,7 +386,7 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 ## 🗺️ Roadmap
 
 > [!TIP]
-> Roadmap last refreshed on 2026-03-28 (v7.2.2). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
+> Roadmap last refreshed on 2026-04-01 (v7.3.2). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
 
 ### ✅ Completed
 
@@ -428,13 +428,15 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 See full changelog: [CHANGELOG.md](CHANGELOG.md)
 
-### Latest (v7.2.2 · 2026-03-28)
+### Latest (v7.3.2 · 2026-04-01)
 
-- 💬 **Message Center upgrade**: the profile entry is now unified as Message Center, with dedicated pages for replies, mentions, likes, and system notices, plus direct routing from message content into video, dynamic, space, live, bangumi, music, and web destinations.
-- 🎬 **Portrait video interaction fixes**: like/favorite actions no longer get stuck after swiping to the next portrait video, and favorites now open the folder picker instead of silently writing into a default target.
-- 🖼️ **Landscape handoff and seek polish**: fixed the brief flash of the first portrait cover when returning to landscape, and reduced seek-preview redraw frequency so drag and tap seeking feel smoother.
-- 🧭 **Navigation and load-state polish**: cross-tab bottom-bar switching is no longer blocked by the wrong debounce window, repeated profile first-load requests are suppressed, and space-page loading is more stable.
-- 🧪 **Regression coverage expanded**: added strategy tests for message parsing, message-center policies, navigation rules, portrait interactions, seek preview, profile loading, and space loading.
+- ⚙️ **Settings-page motion now works independently**: the settings home, appearance, playback, bottom-bar, permissions, and tips pages keep their own entrance transition even when home-card animation is disabled, and the animation page now clearly explains that home-card motion and settings-page motion are separate effects.
+- 🎬 **New automatic and fixed quality modes**: automatic quality keeps adaptive DASH candidate tracks available, while manual selection locks playback to the chosen target quality for more predictable switching.
+- 🧩 **Clearer reasons when quality switching fails**: failures now explain concrete causes such as login requirements, VIP-only quality, unsupported device capability, network timeout, or the requested quality not existing for the current video.
+- 🪵 **Failure dialog and log export on the video page**: the quality-switch failure dialog can now toggle player diagnostic logging and export logs directly, making codec and API troubleshooting much easier.
+- 🔁 **Automatic fallback when AV1 becomes unstable**: if AV1 behaves unreliably during the current playback session, later playback requests avoid AV1 and prefer a more stable codec combination instead of repeatedly retrying the same failing path.
+- 🖼️ **Smoother cover-to-player transition**: the cover now stays visible until the first frame is actually ready, then transitions more smoothly to the player surface; manual play starts, back-navigation animation, and not-yet-ready first-frame states continue to keep the cover in place.
+- 🧪 **Related tests have been expanded**: added or strengthened tests around settings-page motion, quality switching, AV1 fallback, cover visibility, and player-surface display logic.
 
 ---
 

@@ -25,7 +25,6 @@ import com.android.purebilibili.core.theme.iOSTeal
 import com.android.purebilibili.core.store.SettingsManager
 import com.android.purebilibili.core.ui.resolveBottomSafeAreaPadding
 import com.android.purebilibili.core.ui.adaptive.resolveDeviceUiProfile
-import com.android.purebilibili.core.ui.adaptive.resolveEffectiveMotionTier
 import com.android.purebilibili.core.ui.animation.staggeredEntrance
 import com.android.purebilibili.core.ui.components.rememberAdaptiveSemanticIconTint
 import com.android.purebilibili.core.ui.components.IOSSectionTitle
@@ -55,17 +54,13 @@ fun TipsSettingsScreen(
     val screenTitle = stringResource(R.string.tips_title)
     val backLabel = stringResource(R.string.common_back)
     val windowSizeClass = LocalWindowSizeClass.current
-    val cardAnimationEnabled by SettingsManager.getCardAnimationEnabled(context).collectAsState(initial = false)
     val deviceUiProfile = remember(windowSizeClass.widthSizeClass) {
         resolveDeviceUiProfile(
             widthSizeClass = windowSizeClass.widthSizeClass
         )
     }
-    val effectiveMotionTier = remember(deviceUiProfile.motionTier, cardAnimationEnabled) {
-        resolveEffectiveMotionTier(
-            baseTier = deviceUiProfile.motionTier,
-            animationEnabled = cardAnimationEnabled
-        )
+    val effectiveMotionTier = remember(deviceUiProfile.motionTier) {
+        resolveSettingsEntranceMotionTier(deviceUiProfile.motionTier)
     }
     val contentBottomPadding = resolveBottomSafeAreaPadding(
         navigationBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),

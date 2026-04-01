@@ -25,6 +25,7 @@ class PlaybackLoaderTest {
             videoCodecPreference = "hev1",
             videoSecondCodecPreference = "avc1",
             playWhenReady = true,
+            isAv1Supported = true,
             isHdrSupported = true,
             isDolbyVisionSupported = false
         )
@@ -77,6 +78,7 @@ class PlaybackLoaderTest {
             videoCodecPreference = "hev1",
             videoSecondCodecPreference = "avc1",
             playWhenReady = false,
+            isAv1Supported = true,
             isHdrSupported = false,
             isDolbyVisionSupported = false
         )
