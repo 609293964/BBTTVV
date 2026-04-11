@@ -94,12 +94,15 @@ internal fun resolveTopTabContentScale(
 
 internal fun resolveMd3TopTabVisualSpec(
     isFloatingStyle: Boolean,
-    androidNativeVariant: AndroidNativeVariant = AndroidNativeVariant.MATERIAL3
+    androidNativeVariant: AndroidNativeVariant = AndroidNativeVariant.MATERIAL3,
+    labelMode: Int = 2
 ): Md3TopTabVisualSpec {
+    val normalizedLabelMode = normalizeTopTabLabelMode(labelMode)
+    val showIconAndText = normalizedLabelMode == 0
     if (androidNativeVariant == AndroidNativeVariant.MIUIX) {
         return if (isFloatingStyle) {
             Md3TopTabVisualSpec(
-                rowHeight = 50.dp,
+                rowHeight = if (showIconAndText) 54.dp else 50.dp,
                 selectedCapsuleHeight = 30.dp,
                 selectedCapsuleCornerRadius = 15.dp,
                 selectedCapsuleTonalElevation = 0.dp,
@@ -112,7 +115,7 @@ internal fun resolveMd3TopTabVisualSpec(
             )
         } else {
             Md3TopTabVisualSpec(
-                rowHeight = 44.dp,
+                rowHeight = if (showIconAndText) 50.dp else 44.dp,
                 selectedCapsuleHeight = 30.dp,
                 selectedCapsuleCornerRadius = 15.dp,
                 selectedCapsuleTonalElevation = 0.dp,
@@ -128,29 +131,29 @@ internal fun resolveMd3TopTabVisualSpec(
 
     return if (isFloatingStyle) {
         Md3TopTabVisualSpec(
-            rowHeight = 48.dp,
+            rowHeight = if (showIconAndText) 56.dp else 48.dp,
             selectedCapsuleHeight = 2.dp,
             selectedCapsuleCornerRadius = 1.dp,
             selectedCapsuleTonalElevation = 0.dp,
             selectedCapsuleShadowElevation = 0.dp,
-            itemHorizontalPadding = 14.dp,
+            itemHorizontalPadding = if (showIconAndText) 8.dp else 14.dp,
             iconSize = 18.dp,
             labelTextSize = 13.sp,
             labelLineHeight = 18.sp,
-            iconLabelSpacing = 0.dp
+            iconLabelSpacing = if (showIconAndText) 1.dp else 0.dp
         )
     } else {
         Md3TopTabVisualSpec(
-            rowHeight = 44.dp,
+            rowHeight = if (showIconAndText) 52.dp else 44.dp,
             selectedCapsuleHeight = 2.dp,
             selectedCapsuleCornerRadius = 1.dp,
             selectedCapsuleTonalElevation = 0.dp,
             selectedCapsuleShadowElevation = 0.dp,
-            itemHorizontalPadding = 12.dp,
+            itemHorizontalPadding = if (showIconAndText) 8.dp else 12.dp,
             iconSize = 16.dp,
             labelTextSize = 13.sp,
             labelLineHeight = 18.sp,
-            iconLabelSpacing = 0.dp
+            iconLabelSpacing = if (showIconAndText) 1.dp else 0.dp
         )
     }
 }
@@ -221,7 +224,7 @@ internal fun resolveTopTabIndicatorStyle(uiPreset: UiPreset): TopTabIndicatorSty
 fun resolveTopTabLabelTextSizeSp(labelMode: Int): Float {
     val tuning = resolveTopTabVisualTuning()
     return when (normalizeTopTabLabelMode(labelMode)) {
-        0 -> resolveMd3TopTabVisualSpec(isFloatingStyle = false).labelTextSize.value
+        0 -> resolveMd3TopTabVisualSpec(isFloatingStyle = false, labelMode = labelMode).labelTextSize.value
         2 -> tuning.tabTextSizeSp + 0.2f
         else -> tuning.tabTextSizeSp
     }
@@ -229,7 +232,7 @@ fun resolveTopTabLabelTextSizeSp(labelMode: Int): Float {
 
 fun resolveTopTabLabelLineHeightSp(labelMode: Int): Float {
     return when (normalizeTopTabLabelMode(labelMode)) {
-        0 -> resolveMd3TopTabVisualSpec(isFloatingStyle = false).labelLineHeight.value
+        0 -> resolveMd3TopTabVisualSpec(isFloatingStyle = false, labelMode = labelMode).labelLineHeight.value
         else -> {
             val tuning = resolveTopTabVisualTuning()
             val textSize = resolveTopTabLabelTextSizeSp(labelMode)

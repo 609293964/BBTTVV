@@ -176,6 +176,19 @@ class TopTabStylePolicyTest {
     }
 
     @Test
+    fun `md3 icon plus text top tabs reserve enough height`() {
+        val spec = resolveMd3TopTabVisualSpec(
+            isFloatingStyle = false,
+            labelMode = 0
+        )
+
+        assertEquals(52.dp, spec.rowHeight)
+        assertEquals(8.dp, spec.itemHorizontalPadding)
+        assertEquals(1.dp, spec.iconLabelSpacing)
+        assertTrue(spec.labelLineHeight >= spec.labelTextSize)
+    }
+
+    @Test
     fun `android native miuix top tabs should promote capsule selection styling`() {
         val spec = resolveMd3TopTabVisualSpec(
             isFloatingStyle = false,

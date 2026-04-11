@@ -348,13 +348,24 @@ internal fun resolveHomeHeaderScrollLayout(
 internal fun resolveHomeTopTabRowHeight(
     isTabFloating: Boolean,
     uiPreset: UiPreset = UiPreset.IOS,
-    androidNativeVariant: AndroidNativeVariant = AndroidNativeVariant.MATERIAL3
+    androidNativeVariant: AndroidNativeVariant = AndroidNativeVariant.MATERIAL3,
+    labelMode: Int = com.android.purebilibili.core.store.SettingsManager.TopTabLabelMode.TEXT_ONLY
 ): Dp {
+    val showIconAndText = normalizeTopTabLabelMode(labelMode) ==
+        com.android.purebilibili.core.store.SettingsManager.TopTabLabelMode.ICON_AND_TEXT
     if (uiPreset == UiPreset.MD3) {
         if (androidNativeVariant == AndroidNativeVariant.MIUIX) {
-            return if (isTabFloating) 50.dp else 46.dp
+            return if (showIconAndText) {
+                if (isTabFloating) 54.dp else 50.dp
+            } else {
+                if (isTabFloating) 50.dp else 46.dp
+            }
         }
-        return if (isTabFloating) 48.dp else 44.dp
+        return if (showIconAndText) {
+            if (isTabFloating) 56.dp else 52.dp
+        } else {
+            if (isTabFloating) 48.dp else 44.dp
+        }
     }
     return if (isTabFloating) 56.dp else 46.dp
 }
@@ -1382,7 +1393,9 @@ fun iOSHomeHeader(
     val tabRowHeightDp = resolveHomeTopTabRowHeight(
         isTabFloating = isTabFloating,
         uiPreset = uiPreset,
-        androidNativeVariant = androidNativeVariant
+        androidNativeVariant = androidNativeVariant,
+        labelMode = homeSettings?.topTabLabelMode
+            ?: com.android.purebilibili.core.store.SettingsManager.TopTabLabelMode.TEXT_ONLY
     )
     val searchCollapseDistanceDp = resolveHomeTopSearchCollapseDistance(
         searchBarHeight = searchBarHeightDp,

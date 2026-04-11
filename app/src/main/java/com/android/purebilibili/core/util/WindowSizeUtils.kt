@@ -13,7 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 
 /**
  * 🖥️ 窗口宽度尺寸类型
@@ -238,18 +240,22 @@ fun rememberResponsiveSpacing(): ResponsiveSpacing {
  */
 @Composable
 fun rememberResponsiveFontSize(
-    compactSize: androidx.compose.ui.unit.TextUnit,
+    compactSize: TextUnit,
     mediumScale: Float = 1.1f,
     expandedScale: Float = 1.2f
-): androidx.compose.ui.unit.TextUnit {
+): TextUnit {
     val windowSizeClass = LocalWindowSizeClass.current
     return remember(windowSizeClass.widthSizeClass, compactSize) {
         when (windowSizeClass.widthSizeClass) {
             WindowWidthSizeClass.Compact -> compactSize
-            WindowWidthSizeClass.Medium -> compactSize * mediumScale
-            WindowWidthSizeClass.Expanded -> compactSize * expandedScale
+            WindowWidthSizeClass.Medium -> compactSize.scaledIfSpecified(mediumScale)
+            WindowWidthSizeClass.Expanded -> compactSize.scaledIfSpecified(expandedScale)
         }
     }
+}
+
+internal fun TextUnit.scaledIfSpecified(scale: Float): TextUnit {
+    return if (isSpecified) this * scale else this
 }
 
 /**

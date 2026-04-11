@@ -63,7 +63,7 @@ class HomeVideoNavigationPolicyTest {
         val route = resolveHomeVideoRoute(request)
 
         assertEquals(
-            "video/BV1route?cid=88&cover=https%3A%2F%2Fimg.test.com%2Fa+b.jpg&startAudio=false&autoPortrait=true&resumePositionMs=0",
+            "video/BV1route?cid=88&cover=https%3A%2F%2Fimg.test.com%2Fa+b.jpg&startAudio=false&autoPortrait=true&resumePositionMs=0&commentRootRpid=0",
             route
         )
     }
@@ -96,7 +96,7 @@ class HomeVideoNavigationPolicyTest {
 
         assertTrue(target is HomeNavigationTarget.Video)
         assertEquals(
-            "video/BV1route?cid=88&cover=https%3A%2F%2Fimg.test.com%2Fa+b.jpg&startAudio=false&autoPortrait=true&resumePositionMs=0",
+            "video/BV1route?cid=88&cover=https%3A%2F%2Fimg.test.com%2Fa+b.jpg&startAudio=false&autoPortrait=true&resumePositionMs=0&commentRootRpid=0",
             (target as HomeNavigationTarget.Video).route
         )
     }

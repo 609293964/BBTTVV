@@ -401,6 +401,17 @@ class BackgroundPlaybackPolicyTest {
     }
 
     @Test
+    fun backgroundEntryDoesNotPauseReadyPlaybackIntent() {
+        assertFalse(
+            shouldPauseBackgroundBuffering(
+                isPlaying = false,
+                playWhenReady = true,
+                playbackState = Player.STATE_READY
+            )
+        )
+    }
+
+    @Test
     fun foregroundEntryKicksPlaybackWhenVideoTrackReturnsFromBackgroundAudio() {
         assertTrue(
             shouldKickPlaybackAfterForegroundTrackRestore(

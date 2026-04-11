@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <sub>Last updated: 2026-04-09 · Synced to v7.5.1 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
+  <sub>Last updated: 2026-04-11 · Synced to v7.6.1 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.5.1-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.6.1-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -388,7 +388,7 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 ## 🗺️ Roadmap
 
 > [!TIP]
-> Roadmap last refreshed on 2026-04-09 (v7.5.1). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
+> Roadmap last refreshed on 2026-04-11 (v7.6.1). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
 
 ### ✅ Completed
 
@@ -430,13 +430,13 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 See full changelog: [CHANGELOG.md](CHANGELOG.md)
 
-### Latest (v7.5.1 · 2026-04-09)
+### Latest (v7.6.1 · 2026-04-11)
 
-- 🎨 **Theme and shell behavior were tightened up again**: dynamic color, static MD3 palettes, AMOLED surfaces, preset descriptions, and the MD3 bottom bar default now align more cleanly.
-- 🔎 **New searches now jump back to the top**: changing the query or search type no longer reuses the previous result scroll offset.
-- 🎬 **Three playback stability issues were fixed**: playlist episode switching no longer leaves false `NO_RESPONSE` diagnostics, portrait recommendation paging avoids `SnapshotStateList` concurrent modification crashes, and foreground resume is less likely to stall in `BUFFERING`.
-- 💬 **Danmaku settings and portrait detail flows were refined**: the panel adapts better across fullscreen, inline, and tablet layouts, and portrait/shared-player handoff is smoother.
-- 💾 **Offline playback and cleanup behavior were tightened**: cache routing, cleanup coverage, fullscreen defaults for landscape offline videos, and post-ended seek recovery all behave more predictably.
+- 🎬 **Playback resume fix**: dragging the progress bar no longer causes playback to stay paused after backgrounding and returning to the app.
+- 🫧 **Bottom-bar blur routing**: floating bottom bars now separate liquid glass, Haze blur, and plain surface paths more reliably.
+- 🧭 **Home tab sizing**: icon + text tabs get content-aware row height and spacing to reduce cramped Miuix / MD3 layouts.
+- 💬 **Sub-reply conversations**: reply `parent` / `dialog` fields are parsed so the detail view can filter a single conversation chain.
+- 🧪 **Regression coverage**: lifecycle, background playback, text scaling, bottom-bar, and comment presentation policies gained focused tests.
 
 ---
 

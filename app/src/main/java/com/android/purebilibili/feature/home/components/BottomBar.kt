@@ -358,6 +358,28 @@ internal fun resolveAndroidNativeBottomBarContainerColor(
     }
 }
 
+internal fun resolveAndroidNativeFloatingBottomBarContainerColor(
+    surfaceColor: Color,
+    tuning: AndroidNativeBottomBarTuning,
+    glassEnabled: Boolean,
+    blurEnabled: Boolean,
+    blurIntensity: com.android.purebilibili.core.ui.blur.BlurIntensity
+): Color {
+    return if (glassEnabled) {
+        resolveAndroidNativeBottomBarContainerColor(
+            surfaceColor = surfaceColor,
+            tuning = tuning,
+            glassEnabled = true
+        )
+    } else {
+        resolveBottomBarSurfaceColor(
+            surfaceColor = surfaceColor,
+            blurEnabled = blurEnabled,
+            blurIntensity = blurIntensity
+        )
+    }
+}
+
 internal fun resolveMiuixFloatingBottomBarTuning(
     darkTheme: Boolean,
     glassEnabled: Boolean
@@ -376,6 +398,12 @@ internal fun resolveAndroidNativeBottomBarGlassEnabled(
     liquidGlassEnabled: Boolean,
     blurEnabled: Boolean
 ): Boolean = liquidGlassEnabled && !blurEnabled
+
+internal fun shouldUseAndroidNativeFloatingHazeBlur(
+    blurEnabled: Boolean,
+    glassEnabled: Boolean,
+    hasHazeState: Boolean
+): Boolean = blurEnabled && !glassEnabled && hasHazeState
 
 internal fun resolveAndroidNativeIndicatorSpec(
     isMoving: Boolean
@@ -1290,20 +1318,22 @@ private fun MaterialBottomBar(
         blurEnabled = blurEnabled
     )
     val androidNativeTuning = resolveAndroidNativeBottomBarTuning(
-        blurEnabled = glassEnabled,
+        blurEnabled = glassEnabled || blurEnabled,
         darkTheme = isSystemInDarkTheme()
     )
     val blurIntensity = currentUnifiedBlurIntensity()
     val baseSurfaceColor = if (isFloating) {
-        MiuixTheme.colorScheme.surfaceContainer
+        MaterialTheme.colorScheme.surfaceContainer
     } else {
         MaterialTheme.colorScheme.surface
     }
     val containerColor = if (isFloating) {
-        resolveAndroidNativeBottomBarContainerColor(
+        resolveAndroidNativeFloatingBottomBarContainerColor(
             surfaceColor = baseSurfaceColor,
             tuning = androidNativeTuning,
-            glassEnabled = glassEnabled
+            glassEnabled = glassEnabled,
+            blurEnabled = blurEnabled,
+            blurIntensity = blurIntensity
         )
     } else {
         resolveBottomBarSurfaceColor(
@@ -1473,10 +1503,12 @@ private fun MiuixBottomBar(
         MiuixTheme.colorScheme.surface
     }
     val containerColor = if (isFloating) {
-        resolveAndroidNativeBottomBarContainerColor(
+        resolveAndroidNativeFloatingBottomBarContainerColor(
             surfaceColor = baseSurfaceColor,
             tuning = tuning,
-            glassEnabled = glassEnabled
+            glassEnabled = glassEnabled,
+            blurEnabled = blurEnabled,
+            blurIntensity = blurIntensity
         )
     } else {
         resolveBottomBarSurfaceColor(
@@ -1896,6 +1928,11 @@ private fun KernelSuAlignedBottomBar(
             val shellHeight = 64.dp
             val indicatorWidth = (maxWidth - (tuning.innerHorizontalPaddingDp.dp * 2)) / totalItems
             val itemWidthPx = with(density) { indicatorWidth.toPx() }.coerceAtLeast(1f)
+            val useHazeBlur = shouldUseAndroidNativeFloatingHazeBlur(
+                blurEnabled = blurEnabled,
+                glassEnabled = glassEnabled,
+                hasHazeState = hazeState != null
+            )
 
             val exportPanelOffsetPx by remember(density, itemWidthPx) {
                 derivedStateOf {
@@ -1921,9 +1958,10 @@ private fun KernelSuAlignedBottomBar(
                     .fillMaxWidth()
                     .height(shellHeight)
                     .then(
-                        if (blurEnabled && !glassEnabled && backdrop == null && hazeState != null) {
+                        if (useHazeBlur && hazeState != null) {
                             Modifier.unifiedBlur(
                                 hazeState = hazeState,
+                                shape = shellShape,
                                 surfaceType = BlurSurfaceType.BOTTOM_BAR,
                                 motionTier = motionTier,
                                 isScrolling = false,
@@ -1941,19 +1979,27 @@ private fun KernelSuAlignedBottomBar(
                         scaleY = bumpScale
                     }
                     .run {
-                        if (backdrop != null) {
+                        if (backdrop != null && !useHazeBlur) {
                             drawBackdrop(
                                 backdrop = backdrop,
                                 shape = { shellShape },
-	                                effects = {
-	                                    if (glassEnabled || blurEnabled) {
-	                                        vibrancy()
-	                                        blur(tuning.shellBlurRadiusDp.dp.toPx())
-	                                    }
-	                                },
-	                                highlight = {
-	                                    Highlight.Default.copy(alpha = if (glassEnabled) 1f else if (blurEnabled) 0.18f else 0f)
-	                                },
+                                effects = {
+                                    if (glassEnabled || (blurEnabled && !useHazeBlur)) {
+                                        vibrancy()
+                                        blur(tuning.shellBlurRadiusDp.dp.toPx())
+                                    }
+                                },
+                                highlight = {
+                                    Highlight.Default.copy(
+                                        alpha = if (glassEnabled) {
+                                            1f
+                                        } else if (blurEnabled && !useHazeBlur) {
+                                            0.18f
+                                        } else {
+                                            0f
+                                        }
+                                    )
+                                },
                                 shadow = {
                                     Shadow.Default.copy(
                                         color = Color.Black.copy(alpha = tuning.shellShadowElevationDp)

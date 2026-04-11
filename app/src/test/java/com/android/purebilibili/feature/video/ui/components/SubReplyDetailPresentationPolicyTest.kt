@@ -17,6 +17,11 @@ class SubReplyDetailPresentationPolicyTest {
     }
 
     @Test
+    fun `conversation section title should include filtered reply count`() {
+        assertEquals("对话共2条", resolveSubReplyConversationSectionTitle(replyCount = 2))
+    }
+
+    @Test
     fun `conversation action should only show for directed reply text`() {
         assertTrue(
             shouldShowSubReplyConversationAction(
@@ -27,6 +32,67 @@ class SubReplyDetailPresentationPolicyTest {
             shouldShowSubReplyConversationAction(
                 buildReply(message = "又又又又更新？？？？")
             )
+        )
+    }
+
+    @Test
+    fun `conversation action should not reuse reply composer when handler is missing`() {
+        val directedReply = buildReply(message = "回复 @前进四放映室：没错")
+
+        assertFalse(
+            shouldRenderSubReplyConversationAction(
+                item = directedReply,
+                hasConversationHandler = false
+            )
+        )
+        assertTrue(
+            shouldRenderSubReplyConversationAction(
+                item = directedReply,
+                hasConversationHandler = true
+            )
+        )
+    }
+
+    @Test
+    fun `conversation items should filter by dialog id`() {
+        val first = buildReply(
+            rpid = 10,
+            message = "回复 @甲：第一条",
+            dialog = 100
+        )
+        val second = buildReply(
+            rpid = 11,
+            message = "回复 @乙：第二条",
+            dialog = 100
+        )
+        val other = buildReply(
+            rpid = 12,
+            message = "回复 @丙：无关",
+            dialog = 200
+        )
+
+        assertEquals(
+            listOf(10L, 11L),
+            resolveSubReplyConversationItems(
+                anchorReply = first,
+                subReplies = listOf(first, second, other)
+            ).map { it.rpid }
+        )
+    }
+
+    @Test
+    fun `conversation items should fallback to clicked reply when dialog is unavailable`() {
+        val clicked = buildReply(
+            rpid = 10,
+            message = "回复 @甲：第一条"
+        )
+
+        assertEquals(
+            listOf(10L),
+            resolveSubReplyConversationItems(
+                anchorReply = clicked,
+                subReplies = emptyList()
+            ).map { it.rpid }
         )
     }
 
@@ -95,11 +161,16 @@ class SubReplyDetailPresentationPolicyTest {
     }
 
     private fun buildReply(
+        rpid: Long = 200L,
         message: String,
-        garbCardNumber: String = ""
+        garbCardNumber: String = "",
+        parent: Long = 0L,
+        dialog: Long = 0L
     ): ReplyItem {
         return ReplyItem(
-            rpid = 200L,
+            rpid = rpid,
+            parent = parent,
+            dialog = dialog,
             member = ReplyMember(
                 mid = "12",
                 uname = "ReplyUser",

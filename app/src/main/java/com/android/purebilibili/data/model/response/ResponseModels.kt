@@ -175,7 +175,11 @@ data class ReplyItem(
     
     // [新增] 评论控制信息（IP属地等）
     @SerialName("reply_control")
-    val replyControl: ReplyControl? = null
+    val replyControl: ReplyControl? = null,
+
+    // 二级评论对话归属，用于“查看对话”筛选同一段回复链。
+    val parent: Long = 0,
+    val dialog: Long = 0
 )
 
 //  UP主操作信息

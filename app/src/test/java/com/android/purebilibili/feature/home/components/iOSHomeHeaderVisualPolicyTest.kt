@@ -166,6 +166,26 @@ class iOSHomeHeaderVisualPolicyTest {
     }
 
     @Test
+    fun `md3 home header expands top tab row for icon plus text`() {
+        assertEquals(
+            52.dp,
+            resolveHomeTopTabRowHeight(
+                isTabFloating = false,
+                uiPreset = UiPreset.MD3,
+                labelMode = 0
+            )
+        )
+        assertEquals(
+            56.dp,
+            resolveHomeTopTabRowHeight(
+                isTabFloating = true,
+                uiPreset = UiPreset.MD3,
+                labelMode = 0
+            )
+        )
+    }
+
+    @Test
     fun `header scroll hides search row while keeping top tabs pinned`() {
         val layout = resolveHomeHeaderScrollLayout(
             headerOffsetPx = -96f,
@@ -636,14 +656,14 @@ class iOSHomeHeaderVisualPolicyTest {
     }
 
     @Test
-    fun `home top links md3 material shell to docked bottom bar appearance`() {
+    fun `home top keeps md3 material shell floating with ordinary blur`() {
         val appearance = resolveHomeTopLinkedBottomBarAppearance(
             homeSettings = HomeSettings(),
             uiPreset = UiPreset.MD3,
             androidNativeVariant = AndroidNativeVariant.MATERIAL3
         )
 
-        assertFalse(appearance.isFloating)
+        assertTrue(appearance.isFloating)
         assertTrue(appearance.blurEnabled)
         assertFalse(appearance.liquidGlassEnabled)
     }

@@ -925,7 +925,8 @@ fun HomeScreen(
     val searchBarHeightDp = resolveHomeTopSearchBarHeight(uiPreset)
     val tabRowHeightDp = resolveHomeTopTabRowHeight(
         isTabFloating = topTabStyle.floating,
-        uiPreset = uiPreset
+        uiPreset = uiPreset,
+        labelMode = homeSettings.topTabLabelMode
     )
     val searchCollapseDistanceDp = resolveHomeTopSearchCollapseDistance(
         searchBarHeight = searchBarHeightDp,

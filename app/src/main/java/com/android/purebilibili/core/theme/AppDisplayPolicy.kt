@@ -3,6 +3,8 @@ package com.android.purebilibili.core.theme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.theme.TextStyles
 
@@ -120,10 +122,14 @@ fun buildDisplayMetricsSnapshot(
 
 private fun TextStyle.scaled(multiplier: Float): TextStyle {
     return copy(
-        fontSize = fontSize * multiplier,
-        lineHeight = lineHeight * multiplier,
-        letterSpacing = letterSpacing * multiplier
+        fontSize = fontSize.scaled(multiplier),
+        lineHeight = lineHeight.scaled(multiplier),
+        letterSpacing = letterSpacing.scaled(multiplier)
     )
+}
+
+private fun TextUnit.scaled(multiplier: Float): TextUnit {
+    return if (isSpecified) this * multiplier else this
 }
 
 fun Typography.scaled(multiplier: Float): Typography {

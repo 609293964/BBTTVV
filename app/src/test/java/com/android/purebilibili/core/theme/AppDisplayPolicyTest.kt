@@ -1,9 +1,11 @@
 package com.android.purebilibili.core.theme
 
+import androidx.compose.ui.unit.isUnspecified
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
 
 class AppDisplayPolicyTest {
 
@@ -60,5 +62,14 @@ class AppDisplayPolicyTest {
 
         assertEquals(393, snapshot.effectiveSmallestWidthDp)
         assertFalse(snapshot.isNarrowWidth)
+    }
+
+    @Test
+    fun `miuix text styles keep unspecified units when scaled`() {
+        val scaled = defaultTextStyles().scaled(AppFontSizePreset.LARGER.multiplier)
+
+        assertEquals(17f * AppFontSizePreset.LARGER.multiplier, scaled.main.fontSize.value, 0.0001f)
+        assertTrue(scaled.main.lineHeight.isUnspecified)
+        assertTrue(scaled.main.letterSpacing.isUnspecified)
     }
 }

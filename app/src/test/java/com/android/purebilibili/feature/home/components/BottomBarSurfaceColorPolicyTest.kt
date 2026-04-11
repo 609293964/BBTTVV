@@ -86,6 +86,41 @@ class BottomBarSurfaceColorPolicyTest {
     }
 
     @Test
+    fun `android native floating shell is translucent when ordinary blur is enabled`() {
+        val tuning = resolveAndroidNativeBottomBarTuning(
+            blurEnabled = true,
+            darkTheme = false
+        )
+        val color = resolveAndroidNativeFloatingBottomBarContainerColor(
+            surfaceColor = Color.White,
+            tuning = tuning,
+            glassEnabled = false,
+            blurEnabled = true,
+            blurIntensity = BlurIntensity.THIN
+        )
+
+        assertEquals(0.4f, tuning.shellSurfaceAlpha, 0.001f)
+        assertEquals(0.4f, color.alpha, 0.001f)
+    }
+
+    @Test
+    fun `android native floating shell follows ordinary blur intensity when glass is off`() {
+        val tuning = resolveAndroidNativeBottomBarTuning(
+            blurEnabled = true,
+            darkTheme = false
+        )
+        val color = resolveAndroidNativeFloatingBottomBarContainerColor(
+            surfaceColor = Color.White,
+            tuning = tuning,
+            glassEnabled = false,
+            blurEnabled = true,
+            blurIntensity = BlurIntensity.THICK
+        )
+
+        assertEquals(0.6f, color.alpha, 0.001f)
+    }
+
+    @Test
     fun `android native glass stays enabled when liquid glass is on even if blur toggle is off`() {
         assertTrue(
             resolveAndroidNativeBottomBarGlassEnabled(
@@ -105,8 +140,32 @@ class BottomBarSurfaceColorPolicyTest {
     fun `android native blur disables liquid glass surface treatment`() {
         assertFalse(
             resolveAndroidNativeBottomBarGlassEnabled(
+                liquidGlassEnabled = false,
+                blurEnabled = true
+            )
+        )
+        assertFalse(
+            resolveAndroidNativeBottomBarGlassEnabled(
                 liquidGlassEnabled = true,
                 blurEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun `android native floating blur uses haze when available`() {
+        assertTrue(
+            shouldUseAndroidNativeFloatingHazeBlur(
+                blurEnabled = true,
+                glassEnabled = false,
+                hasHazeState = true
+            )
+        )
+        assertFalse(
+            shouldUseAndroidNativeFloatingHazeBlur(
+                blurEnabled = true,
+                glassEnabled = true,
+                hasHazeState = true
             )
         )
     }

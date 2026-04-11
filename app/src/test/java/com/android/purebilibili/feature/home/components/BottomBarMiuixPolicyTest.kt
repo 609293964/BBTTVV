@@ -71,6 +71,14 @@ class BottomBarMiuixPolicyTest {
         )
     }
 
+    @Test
+    fun `android native ordinary blur does not redraw raw backdrop over haze`() {
+        val source = loadSource("app/src/main/java/com/android/purebilibili/feature/home/components/BottomBar.kt")
+
+        assertTrue(source.contains("if (backdrop != null && !useHazeBlur)"))
+        assertTrue(source.contains("Modifier.unifiedBlur("))
+    }
+
     private fun loadSource(path: String): String {
         val normalizedPath = path.removePrefix("app/")
         val sourceFile = listOf(

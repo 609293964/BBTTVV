@@ -1,5 +1,26 @@
 # Changelog
 
+## v7.6.1 (2026-04-11)
+
+### 版本信息
+- 版本号从 `7.6.0` 升级到 `7.6.1`，`versionCode` 升级到 `145`。
+- 本次为一版“播放器拖动进度条后前后台恢复修复 + Miuix 细节补强 + 二级评论对话体验优化”的维护更新。
+
+### 播放器稳定性
+- 修复拖动进度条后进入后台、再切回前台会稳定停在暂停态的问题。
+- 根因是生命周期采样只把 `isPlaying=true` 或 `playWhenReady=true && BUFFERING` 视为播放活跃，漏掉了 ExoPlayer 在 seek 和 surface 恢复中常见的 `playWhenReady=true && READY && !isPlaying` 瞬态，导致 `ON_PAUSE` 丢失恢复意图。
+- 后台缓冲暂停策略复用新的播放活跃判定，不再在 READY 播放意图仍存在时误暂停播放器。
+- 补充播放器生命周期与后台策略回归测试，覆盖 READY 播放意图、ENDED 非活跃和 seek 后前后台恢复相关边界。
+
+### Miuix 与 Android Native 细节
+- 首页顶部分段控件按“图标 + 文字”标签模式调整行高、间距和胶囊尺寸，减少 Miuix / MD3 下图标文字被挤压的问题。
+- 浮动底栏区分液态玻璃、Haze 模糊和普通 surface 路径，避免开启模糊后仍误走玻璃外观或 backdrop 重复处理。
+- Miuix / 大屏文本缩放处理 `TextUnit.Unspecified`，避免响应式字体或 typography 缩放遇到未指定单位时产生异常。
+
+### 评论与文档
+- 二级评论模型补充 `parent` / `dialog` 字段，并新增“查看对话”筛选链路，用于聚合同一段回复上下文。
+- 新增 Miuix 对齐记录和验证故障处理说明，方便后续 UI 对齐与 Gradle/Kotlin 环境问题排查。
+
 ## v7.6.0 (2026-04-11)
 
 ### 版本信息

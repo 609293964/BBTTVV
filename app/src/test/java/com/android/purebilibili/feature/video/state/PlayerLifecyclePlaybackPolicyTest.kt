@@ -19,6 +19,17 @@ class PlayerLifecyclePlaybackPolicyTest {
     }
 
     @Test
+    fun readyWithPlayWhenReadyIsTreatedAsActivePlayback() {
+        assertTrue(
+            isPlaybackActiveForLifecycle(
+                isPlaying = false,
+                playWhenReady = true,
+                playbackState = Player.STATE_READY
+            )
+        )
+    }
+
+    @Test
     fun pausedReadyStateIsNotActivePlayback() {
         assertFalse(
             isPlaybackActiveForLifecycle(
@@ -30,12 +41,35 @@ class PlayerLifecyclePlaybackPolicyTest {
     }
 
     @Test
+    fun endedWithPlayWhenReadyIsNotActivePlayback() {
+        assertFalse(
+            isPlaybackActiveForLifecycle(
+                isPlaying = false,
+                playWhenReady = true,
+                playbackState = Player.STATE_ENDED
+            )
+        )
+    }
+
+    @Test
     fun resumeNeededWhenWasActiveButNowInactive() {
         assertTrue(
             shouldResumeAfterLifecyclePause(
                 wasPlaybackActive = true,
                 isPlaying = false,
                 playWhenReady = false,
+                playbackState = Player.STATE_READY
+            )
+        )
+    }
+
+    @Test
+    fun resumeNotNeededWhenReadyPlaybackIntentStillExists() {
+        assertFalse(
+            shouldResumeAfterLifecyclePause(
+                wasPlaybackActive = true,
+                isPlaying = false,
+                playWhenReady = true,
                 playbackState = Player.STATE_READY
             )
         )

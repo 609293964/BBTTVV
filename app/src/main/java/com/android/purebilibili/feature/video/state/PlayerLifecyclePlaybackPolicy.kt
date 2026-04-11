@@ -7,7 +7,11 @@ internal fun isPlaybackActiveForLifecycle(
     playWhenReady: Boolean,
     playbackState: Int
 ): Boolean {
-    return isPlaying || (playWhenReady && playbackState == Player.STATE_BUFFERING)
+    return isPlaying || when (playbackState) {
+        Player.STATE_READY,
+        Player.STATE_BUFFERING -> playWhenReady
+        else -> false
+    }
 }
 
 internal fun shouldResumeAfterLifecyclePause(

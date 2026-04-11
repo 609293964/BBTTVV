@@ -33,7 +33,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +94,10 @@ internal fun resolveSubReplyDetailSectionTitle(replyCount: Int): String {
     return "相关回复共${replyCount.coerceAtLeast(0)}条"
 }
 
+internal fun resolveSubReplyConversationSectionTitle(replyCount: Int): String {
+    return "对话共${replyCount.coerceAtLeast(0)}条"
+}
+
 internal fun resolveSubReplyDetailAppearance(
     surfaceColor: Color,
     surfaceVariantColor: Color,
@@ -116,6 +122,35 @@ internal fun resolveSubReplyDetailAppearance(
 
 internal fun shouldShowSubReplyConversationAction(item: ReplyItem): Boolean {
     return SUB_REPLY_DIRECTED_MESSAGE_PATTERN.containsMatchIn(item.content.message)
+}
+
+internal fun shouldRenderSubReplyConversationAction(
+    item: ReplyItem,
+    hasConversationHandler: Boolean
+): Boolean {
+    return hasConversationHandler && shouldShowSubReplyConversationAction(item)
+}
+
+internal fun resolveSubReplyConversationItems(
+    anchorReply: ReplyItem,
+    subReplies: List<ReplyItem>
+): List<ReplyItem> {
+    val dialogId = anchorReply.dialog
+    val parentId = anchorReply.parent
+    val anchorId = anchorReply.rpid
+    val filtered = subReplies.filter { candidate ->
+        candidate.rpid == anchorId ||
+            (dialogId > 0 && (
+                candidate.dialog == dialogId ||
+                    candidate.rpid == dialogId ||
+                    candidate.parent == dialogId
+                )) ||
+            (parentId > 0 && (
+                candidate.rpid == parentId ||
+                    candidate.parent == parentId
+                ))
+    }
+    return filtered.ifEmpty { listOf(anchorReply) }.distinctBy { it.rpid }
 }
 
 internal fun resolveSubReplyAuxiliaryLabel(item: ReplyItem): String? {
@@ -148,6 +183,7 @@ internal fun SubReplyDetailContent(
     showUpFlag: Boolean = false,
     onImagePreview: ((List<String>, Int, Rect?, ImagePreviewTextContent?) -> Unit)? = null,
     onReplyClick: ((ReplyItem) -> Unit)? = null,
+    onConversationClick: ((ReplyItem) -> Unit)? = null,
     dissolvingIds: Set<Long> = emptySet(),
     currentMid: Long = 0,
     onDissolveStart: ((Long) -> Unit)? = null,
@@ -163,11 +199,27 @@ internal fun SubReplyDetailContent(
     val appearance = rememberVideoCommentAppearance()
     val unusedShowUpFlag = showUpFlag
     val listState = rememberLazyListState()
+    var conversationAnchor by remember(rootReply.rpid) { mutableStateOf<ReplyItem?>(null) }
+    val visibleReplies = remember(subReplies, conversationAnchor) {
+        val anchor = conversationAnchor
+        if (anchor == null) {
+            subReplies
+        } else {
+            resolveSubReplyConversationItems(
+                anchorReply = anchor,
+                subReplies = subReplies
+            )
+        }
+    }
+    val isConversationMode = conversationAnchor != null
     val shouldLoadMore by remember {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= layoutInfo.totalItemsCount - 2 && !isLoading && !isEnd
+            !isConversationMode &&
+                lastVisible >= layoutInfo.totalItemsCount - 2 &&
+                !isLoading &&
+                !isEnd
         }
     }
     LaunchedEffect(shouldLoadMore) {
@@ -187,7 +239,7 @@ internal fun SubReplyDetailContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "评论详情",
+                text = if (isConversationMode) "对话详情" else "评论详情",
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp,
                 color = appearance.primaryTextColor
@@ -234,6 +286,7 @@ internal fun SubReplyDetailContent(
                         onUrlClick = onUrlClick,
                         onAvatarClick = { onAvatarClick?.invoke(it) ?: Unit },
                         showConversationAction = false,
+                        onConversationClick = null,
                         auxiliaryLabel = null,
                         showTrailingDivider = false
                     )
@@ -247,29 +300,45 @@ internal fun SubReplyDetailContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = resolveSubReplyDetailSectionTitle(replyCount = subReplies.size),
+                        text = if (isConversationMode) {
+                            resolveSubReplyConversationSectionTitle(replyCount = visibleReplies.size)
+                        } else {
+                            resolveSubReplyDetailSectionTitle(replyCount = subReplies.size)
+                        },
                         fontSize = 14.sp,
                         color = appearance.primaryTextColor,
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    Row(
-                        modifier = Modifier.testTag(SUB_REPLY_DETAIL_SORT_TAG),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.Sort,
-                            contentDescription = "Sort",
-                            tint = appearance.sortTint,
-                            modifier = Modifier.size(16.dp)
-                        )
+                    if (isConversationMode) {
                         Text(
-                            text = "按时间",
+                            text = "返回全部回复",
                             fontSize = 14.sp,
                             color = appearance.sortTint,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickable { conversationAnchor = null }
+                                .padding(horizontal = 4.dp, vertical = 6.dp)
                         )
+                    } else {
+                        Row(
+                            modifier = Modifier.testTag(SUB_REPLY_DETAIL_SORT_TAG),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Sort,
+                                contentDescription = "Sort",
+                                tint = appearance.sortTint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "按时间",
+                                fontSize = 14.sp,
+                                color = appearance.sortTint,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
                 HorizontalDivider(
@@ -279,7 +348,7 @@ internal fun SubReplyDetailContent(
             }
 
             itemsIndexed(
-                items = subReplies,
+                items = visibleReplies,
                 key = { _, item -> item.rpid }
             ) { index, item ->
                 MaybeDissolvableVideoCard(
@@ -305,7 +374,17 @@ internal fun SubReplyDetailContent(
                         isLiked = item.action == 1 || item.rpid in likedComments,
                         onUrlClick = onUrlClick,
                         onAvatarClick = { onAvatarClick?.invoke(it) ?: Unit },
-                        showConversationAction = shouldShowSubReplyConversationAction(item),
+                        showConversationAction = shouldRenderSubReplyConversationAction(
+                            item = item,
+                            hasConversationHandler = true
+                        ),
+                        onConversationClick = {
+                            if (onConversationClick != null) {
+                                onConversationClick(item)
+                            } else {
+                                conversationAnchor = item
+                            }
+                        },
                         auxiliaryLabel = resolveSubReplyAuxiliaryLabel(item),
                         showTrailingDivider = true
                     )
@@ -350,6 +429,7 @@ private fun SubReplyDetailItem(
     onUrlClick: ((String) -> Unit)?,
     onAvatarClick: (String) -> Unit,
     showConversationAction: Boolean,
+    onConversationClick: (() -> Unit)?,
     auxiliaryLabel: String?,
     showTrailingDivider: Boolean
 ) {
@@ -525,7 +605,9 @@ private fun SubReplyDetailItem(
                             color = appearance.actionTint,
                             modifier = Modifier
                                 .testTag("$SUB_REPLY_DETAIL_CONVERSATION_TAG_PREFIX${item.rpid}")
-                                .clickable { onReplyClick() }
+                                .clickable(enabled = onConversationClick != null) {
+                                    onConversationClick?.invoke()
+                                }
                         )
                     }
 

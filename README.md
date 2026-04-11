@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-04-11 · 文档已同步至 v7.6.0（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-04-11 · 文档已同步至 v7.6.1（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.6.0-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.6.1-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -527,7 +527,7 @@ app/src/main/java/com/android/purebilibili
 ## 🗺️ 路线图
 
 > [!TIP]
-> 路线图最后同步于 2026-04-11（v7.6.0）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
+> 路线图最后同步于 2026-04-11（v7.6.1）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
 
 ### ✅ 已完成功能
 
@@ -572,13 +572,13 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v7.6.0 · 2026-04-11)
+### 最近更新 (v7.6.1 · 2026-04-11)
 
-- 🎨 **Miuix 视觉增强**：Android Native 新增更完整的 `Material 3 / Miuix` 变体差异，首页顶部、底栏、设置列表、弹窗和 Sheet 都有更明确的 Miuix 容器与行密度。
-- 🫧 **模糊与液态玻璃修复**：首页顶部搜索/分类区域不再被不透明主题色盖住，Miuix 底栏开启模糊时也会优先走模糊外观。
-- 🎬 **视频设置面板升级**：视频设置底部面板改用更贴近 Miuix 的行组件、分组间距、选项胶囊和分隔线。
-- 🔎 **搜索页对齐首页样式**：搜索框、历史记录、筛选项和搜索结果卡片统一到 Miuix 容器与圆角节奏。
-- 💬 **动态与消息列表调整**：动态卡片、消息分类卡、私信会话和消息通知卡片统一 Miuix row density、分隔和置顶态容器色。
+- 🎬 **播放器恢复修复**：修复拖动进度条后进入后台、再切回前台会稳定暂停的问题，READY 播放意图现在会被正确保留。
+- 🫧 **底栏模糊路径补强**：浮动底栏区分液态玻璃、Haze 模糊和普通 surface，减少 Miuix/MD3 下的外观串路。
+- 🧭 **首页顶部分段控件优化**：图标 + 文字模式会按实际内容调整行高和间距，降低挤压和抖动。
+- 💬 **二级评论对话**：补充 `parent` / `dialog` 字段解析与“查看对话”筛选链路。
+- 🧪 **回归覆盖**：新增播放器生命周期、后台策略、文本缩放、底栏和评论展示策略测试。
 
 ### 历史版本
 

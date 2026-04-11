@@ -888,10 +888,11 @@ private fun Md3CategoryTabRow(
         return
     }
 
-    val visualSpec = remember(isFloatingStyle, androidNativeVariant) {
+    val visualSpec = remember(isFloatingStyle, androidNativeVariant, normalizedLabelMode) {
         resolveMd3TopTabVisualSpec(
             isFloatingStyle = isFloatingStyle,
-            androidNativeVariant = androidNativeVariant
+            androidNativeVariant = androidNativeVariant,
+            labelMode = normalizedLabelMode
         )
     }
     val isMiuixChrome = androidNativeVariant == AndroidNativeVariant.MIUIX
@@ -1040,8 +1041,8 @@ private fun Md3CategoryTabRow(
                                     .padding(
                                         start = visualSpec.itemHorizontalPadding,
                                         end = visualSpec.itemHorizontalPadding,
-                                        top = if (isMiuixChrome) 0.dp else 2.dp,
-                                        bottom = if (isMiuixChrome) 0.dp else 8.dp
+                                        top = if (showIcon && showText) 0.dp else if (isMiuixChrome) 0.dp else 2.dp,
+                                        bottom = if (showIcon && showText) 2.dp else if (isMiuixChrome) 0.dp else 8.dp
                                     ),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center

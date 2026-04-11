@@ -65,6 +65,12 @@ Use extra verification when the task touches these areas:
   `scripts/mobile_perf_collect.sh`
   or `scripts/tablet_perf_collect.sh`
 
+## Verification hygiene
+
+- Treat Kotlin daemon, incremental compilation backup, temp-file, or configuration-cache infrastructure errors as build-environment failures first, not product regressions.
+- If a Gradle/Kotlin task hits daemon or incremental-compilation file-state errors, stop passive polling immediately and switch to a deterministic fallback such as `--no-daemon` or another clean one-shot verification path.
+- Do not keep spinning on long terminal polls once the failure mode is clearly infrastructure-related; report that distinction explicitly and choose the next verification step with the lowest ambiguity.
+
 ## ADB and local device flow
 
 - Confirm a device first: `adb devices`

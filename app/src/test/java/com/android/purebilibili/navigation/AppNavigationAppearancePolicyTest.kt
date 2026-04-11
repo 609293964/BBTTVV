@@ -41,13 +41,13 @@ class AppNavigationAppearancePolicyTest {
     }
 
     @Test
-    fun md3Preset_usesDockedBottomBarWhenShellSettingsAreStillDefault() {
+    fun md3Preset_keepsFloatingBottomBarWhenShellSettingsAreStillDefault() {
         val appearance = resolveAppNavigationAppearance(
             homeSettings = HomeSettings(),
             uiPreset = UiPreset.MD3
         )
 
-        assertFalse(appearance.bottomBarFloating)
+        assertTrue(appearance.bottomBarFloating)
         assertTrue(appearance.bottomBarBlurEnabled)
         assertEquals(0, appearance.bottomBarLabelMode)
     }

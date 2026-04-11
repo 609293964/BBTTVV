@@ -17,7 +17,7 @@ class VideoRoutePolicyTest {
         )
 
         assertEquals(
-            "video/BV1abc?cid=233&cover=https%3A%2F%2Fimg&startAudio=true&autoPortrait=false&resumePositionMs=0",
+            "video/BV1abc?cid=233&cover=https%3A%2F%2Fimg&startAudio=true&autoPortrait=false&resumePositionMs=0&commentRootRpid=0",
             route
         )
     }
@@ -34,7 +34,7 @@ class VideoRoutePolicyTest {
         )
 
         assertEquals(
-            "video/BV9xyz?cid=0&cover=&startAudio=false&autoPortrait=true&resumePositionMs=0",
+            "video/BV9xyz?cid=0&cover=&startAudio=false&autoPortrait=true&resumePositionMs=0&commentRootRpid=0",
             route
         )
     }
@@ -42,7 +42,7 @@ class VideoRoutePolicyTest {
     @Test
     fun standardVideoRoute_disablesAutoPortraitByDefault() {
         assertEquals(
-            "video/BV1std?cid=77&cover=https%3A%2F%2Fimg.test%2Fcover.jpg&startAudio=false&autoPortrait=false&resumePositionMs=0",
+            "video/BV1std?cid=77&cover=https%3A%2F%2Fimg.test%2Fcover.jpg&startAudio=false&autoPortrait=false&resumePositionMs=0&commentRootRpid=0",
             resolveStandardVideoRoute(
                 bvid = "BV1std",
                 cid = 77L,
@@ -54,7 +54,7 @@ class VideoRoutePolicyTest {
     @Test
     fun standardVideoRoute_keepsAudioModeWithoutAutoPortrait() {
         assertEquals(
-            "video/BV1audio?cid=9&cover=&startAudio=true&autoPortrait=false&resumePositionMs=0",
+            "video/BV1audio?cid=9&cover=&startAudio=true&autoPortrait=false&resumePositionMs=0&commentRootRpid=0",
             resolveStandardVideoRoute(
                 bvid = "BV1audio",
                 cid = 9L,
@@ -76,7 +76,7 @@ class VideoRoutePolicyTest {
         )
 
         assertEquals(
-            "video/BV1resume?cid=4455&cover=&startAudio=false&autoPortrait=false&resumePositionMs=98000",
+            "video/BV1resume?cid=4455&cover=&startAudio=false&autoPortrait=false&resumePositionMs=98000&commentRootRpid=0",
             route
         )
     }
