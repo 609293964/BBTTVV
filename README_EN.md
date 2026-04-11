@@ -433,10 +433,10 @@ See full changelog: [CHANGELOG.md](CHANGELOG.md)
 ### Latest (v7.6.1 · 2026-04-11)
 
 - 🎬 **Playback resume fix**: dragging the progress bar no longer causes playback to stay paused after backgrounding and returning to the app.
+- 🛠️ **Crash fix**: Miuix / large-screen responsive font scaling no longer crashes when it receives `TextUnit.Unspecified`.
 - 🫧 **Bottom-bar blur routing**: floating bottom bars now separate liquid glass, Haze blur, and plain surface paths more reliably.
 - 🧭 **Home tab sizing**: icon + text tabs get content-aware row height and spacing to reduce cramped Miuix / MD3 layouts.
 - 💬 **Sub-reply conversations**: reply `parent` / `dialog` fields are parsed so the detail view can filter a single conversation chain.
-- 🧪 **Regression coverage**: lifecycle, background playback, text scaling, bottom-bar, and comment presentation policies gained focused tests.
 
 ---
 
