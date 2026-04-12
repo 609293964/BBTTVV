@@ -663,44 +663,14 @@ class MainActivity : AppCompatActivity() {
                 splashExitCallbackTriggered = true
                 runCatching {
                     val splashView = splashScreenViewProvider.view
-                    val systemIconView = splashScreenViewProvider.iconView
-                    if (systemIconView == null) {
-                        Logger.w(TAG, "⚠️ Splash system iconView unavailable, attempting fallback icon")
-                    }
-                    val fallbackIconView = if (systemIconView == null) {
-                        (splashView as? android.view.ViewGroup)?.let { container ->
-                            val sizePx = (112f * resources.displayMetrics.density).toInt()
-                            ImageView(this).apply {
-                                scaleType = ImageView.ScaleType.FIT_CENTER
-                                setImageResource(splashFlyoutIconResId)
-                                if (container is android.widget.FrameLayout) {
-                                    container.addView(
-                                        this,
-                                        android.widget.FrameLayout.LayoutParams(
-                                            sizePx,
-                                            sizePx,
-                                            android.view.Gravity.CENTER
-                                        )
-                                    )
-                                } else {
-                                    container.addView(
-                                        this,
-                                        android.view.ViewGroup.LayoutParams(sizePx, sizePx)
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        null
-                    }
-                    val animatedTarget = systemIconView ?: fallbackIconView ?: splashView
+                    val animatedTarget = splashScreenViewProvider.iconView
                     val targetType = resolveSplashFlyoutTargetType(
-                        hasSystemIcon = systemIconView != null,
-                        hasFallbackIcon = fallbackIconView != null
+                        hasSystemIcon = true,
+                        hasFallbackIcon = false
                     )
                     Logger.d(
                         TAG,
-                        "🚀 Splash exit animation start. targetType=$targetType, hasSystemIcon=${systemIconView != null}, hasFallbackIcon=${fallbackIconView != null}"
+                        "🚀 Splash exit animation start. targetType=$targetType, hasSystemIcon=true, hasFallbackIcon=false"
                     )
                     if (targetType == SplashFlyoutTargetType.SPLASH_ROOT) {
                         Logger.w(

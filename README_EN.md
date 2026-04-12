@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <sub>Last updated: 2026-04-12 · Synced to v7.7.1 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
+  <sub>Last updated: 2026-04-13 · Synced to v7.7.2 (source of truth: <a href="CHANGELOG.md">CHANGELOG</a> + code)</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.7.1-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.7.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -388,7 +388,7 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 ## 🗺️ Roadmap
 
 > [!TIP]
-> Roadmap last refreshed on 2026-04-12 (v7.7.1). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
+> Roadmap last refreshed on 2026-04-13 (v7.7.2). For current behavior, prefer the latest release notes, `CHANGELOG.md`, and code.
 
 ### ✅ Completed
 
@@ -430,13 +430,12 @@ A lightweight plugin format requiring **no coding**, just a simple JSON file to 
 
 See full changelog: [CHANGELOG.md](CHANGELOG.md)
 
-### Latest (v7.7.1 · 2026-04-12)
+### Latest (v7.7.2 · 2026-04-13)
 
-- 🏷️ **UP badge toggle**: Appearance settings can now show or hide UP badges in home cards, Today Watch, related videos, and video detail lists.
-- 🌊 **Bottom bar drag**: drag release uses real pixel velocity, and the liquid-glass moving indicator keeps refraction and tint more stable after release.
-- 🔗 **Comment links**: video, search, and space links in comments now prefer in-app navigation; search links open the search screen with the keyword filled in.
-- 💬 **Wide-screen comment threads**: sub replies open inside the right-side comment pane on tablet and wide layouts instead of covering the player.
-- 🙏 **Acknowledgements**: README now credits PiliPlus, Miuix, BilibiliSponsorBlock, AndroidLiquidGlass, and related projects.
+- 🔧 **Dynamic is being rewritten**: the feed is being split into All / Uploads / Bangumi / Articles / UP tabs with direct Bangumi routing, but this area still has defects and instability, and some dynamic types may behave incorrectly.
+- 🎲 **Portrait feed randomization**: vertical swipe recommendations now mix in home-feed candidates first and filter near-duplicate content instead of chaining similar related videos.
+- 💬 **Sub-replies without hiding video**: secondary comment threads in phone video detail now prefer the space below the player instead of always taking over the whole screen.
+- 📍 **Comment fallback**: comment reads now fall back to REST when gRPC payloads miss location metadata, reducing incomplete comment rendering.
 
 ---
 

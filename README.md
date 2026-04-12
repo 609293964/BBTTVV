@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <sub>最后更新：2026-04-12 · 文档已同步至 v7.7.1（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
+  <sub>最后更新：2026-04-13 · 文档已同步至 v7.7.2（以 <a href="CHANGELOG.md">CHANGELOG</a> 与源码为准）</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-7.7.1-fb7299?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-7.7.2-fb7299?style=flat-square" alt="Version">
   <img src="https://img.shields.io/github/stars/jay3-yy/BiliPai?style=flat-square&color=yellow" alt="Stars">
   <img src="https://img.shields.io/github/forks/jay3-yy/BiliPai?style=flat-square&color=green" alt="Forks">
   <img src="https://img.shields.io/github/last-commit/jay3-yy/BiliPai?style=flat-square&color=purple" alt="Last Commit">
@@ -527,7 +527,7 @@ app/src/main/java/com/android/purebilibili
 ## 🗺️ 路线图
 
 > [!TIP]
-> 路线图最后同步于 2026-04-12（v7.7.1）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
+> 路线图最后同步于 2026-04-13（v7.7.2）。功能以最新 Release、`CHANGELOG.md` 与主分支代码为准。
 
 ### ✅ 已完成功能
 
@@ -572,13 +572,12 @@ app/src/main/java/com/android/purebilibili
 
 查看完整更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-### 最近更新 (v7.7.1 · 2026-04-12)
+### 最近更新 (v7.7.2 · 2026-04-13)
 
-- 🏷️ **UP 标识开关**：外观设置新增“UP主标识”，可控制首页、今日推荐单、相关推荐和视频详情列表中的 UP 标识显示。
-- 🌊 **底栏拖动优化**：底栏拖动释放按真实像素速度计算目标位置，液态玻璃移动指示器在拖动结束后保持更稳定的折射和可见性。
-- 🔗 **评论链接跳转**：评论里的视频、搜索、空间链接优先在应用内打开，搜索链接会直接进入搜索页并填入关键词。
-- 💬 **宽屏楼中楼**：宽屏/平板右侧评论区点击楼中楼后在右侧展开，不再遮挡视频播放区域。
-- 🙏 **致谢补充**：README 补充 PiliPlus、Miuix、BilibiliSponsorBlock、AndroidLiquidGlass 等项目。
+- 🔧 **动态页重写中**：动态页开始拆成“全部 / 投稿 / 番剧 / 专栏 / UP”多分栏，并补上番剧跳转；但这一部分仍有功能缺陷和不稳定情况，部分动态类型的展示、筛选和交互可能异常。
+- 🎲 **竖屏推荐随机化**：竖屏连滑不再只盯着相关推荐，而是优先混入首页推荐并做近重复内容过滤，减少同类视频连着刷到。
+- 💬 **二级评论边看边刷**：手机视频详情里的楼中楼评论改成优先占据播放器下方区域，不再默认整页全屏盖住视频。
+- 📍 **评论读取补强**：当 gRPC 评论返回缺少位置信息时会自动回退 REST，降低评论信息不完整的问题。
 
 ### 历史版本
 
