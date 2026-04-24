@@ -1,4 +1,3 @@
-// 根目录 build.gradle.kts
 buildscript {
     repositories {
         google()
@@ -7,21 +6,34 @@ buildscript {
 }
 
 plugins {
-    // 1. Android 插件 (版本号要固定)
-    id("com.android.application") version "8.13.2" apply false
-    id("com.android.library") version "8.13.2" apply false
-    id("com.android.test") version "8.13.2" apply false
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ksp) apply false
+}
 
-    id("com.google.devtools.ksp") version "2.3.4" apply false
+tasks.register("tvBuild") {
+    group = "build"
+    description = "Assembles the release build for the TV app."
+    dependsOn(":app:assembleRelease")
+}
 
-    // 2. Kotlin 全家桶
-    id("org.jetbrains.kotlin.android") version "2.3.10" apply false
-    // Compose 编译器插件
-    id("org.jetbrains.kotlin.plugin.compose") version "2.3.10" apply false
-    // 序列化插件
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.10" apply false
-    
-    // 3. Firebase 相关插件
-    id("com.google.gms.google-services") version "4.4.2" apply false
-    id("com.google.firebase.crashlytics") version "3.0.2" apply false
+tasks.register("tvInstall") {
+    group = "install"
+    description = "Installs the release build for the TV app on a connected device."
+    dependsOn(":app:installRelease")
+}
+
+tasks.register("tvVerification") {
+    group = "verification"
+    description = "Runs lint, unit tests, and a release assemble for the TV app."
+    dependsOn(":app:lintDebug", ":app:testDebugUnitTest", ":app:assembleRelease")
+}
+
+tasks.register("tvUiRegression") {
+    group = "verification"
+    description = "Runs connected TV UI smoke tests on an attached emulator or device."
+    dependsOn(":app:connectedDebugAndroidTest")
 }

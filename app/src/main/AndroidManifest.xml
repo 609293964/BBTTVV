@@ -1,434 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.android.purebilibili">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- 🔋 WakeLock 权限 (防止息屏时 CPU 休眠导致音频停止) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- 🔐 存储权限 (仅 Android 9 及以下需要，用于保存图片到相册) -->
-    <uses-permission 
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-    <!-- 📺 DLNA 投屏所需网络权限 -->
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
-    <!-- Android 12+ 本地网络发现需要的权限 -->
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" 
-        android:usesPermissionFlags="neverForLocation"
-        tools:targetApi="s" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- TV Specific Features -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
     <application
-        android:name=".app.PureApplication"
+        android:name=".app.BbtvApplication"
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher_bilipai"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_bilipai_round"
+        android:banner="@drawable/tv_banner"
+        android:icon="@mipmap/ic_launcher"
+        android:label="BBTTVV"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PureBiliBili"
-        android:usesCleartextTraffic="true"
-        android:localeConfig="@xml/locales_config"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density"
-        android:enableOnBackInvokedCallback="true"
-        tools:targetApi="31">
-
-        <!-- 📺 DLNA Cling Service (JitPack/Cling)
-             通过 manifestPlaceholders 支持发布时快速回滚到主进程 -->
-        <service
-            android:name="org.fourthline.cling.android.AndroidUpnpServiceImpl"
-            android:process="${castServiceProcess}" />
-
-        <service
-            android:name=".feature.cast.CastBridgeService"
-            android:exported="false"
-            android:process="${castServiceProcess}" />
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:enabled="true"
-            android:theme="@style/Theme.PureBiliBili"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|smallestScreenSize|uiMode"
-            android:supportsPictureInPicture="true">
-            <!-- 🔗 Deep Link: Video (/video/) -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="www.bilibili.com" android:pathPrefix="/video/" />
-                <data android:scheme="https" android:host="bilibili.com" android:pathPrefix="/video/" />
-                <data android:scheme="https" android:host="m.bilibili.com" android:pathPrefix="/video/" />
-                <data android:scheme="http" android:host="www.bilibili.com" android:pathPrefix="/video/" />
-                <data android:scheme="http" android:host="bilibili.com" android:pathPrefix="/video/" />
-                <data android:scheme="http" android:host="m.bilibili.com" android:pathPrefix="/video/" />
-            </intent-filter>
-
-            <!-- 🔗 Deep Link: Live -->
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
             <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="live.bilibili.com" />
-                <data android:scheme="http" android:host="live.bilibili.com" />
-            </intent-filter>
-
-            <!-- 🔗 Deep Link: Space -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="space.bilibili.com" />
-                <data android:scheme="http" android:host="space.bilibili.com" />
-            </intent-filter>
-
-            <!-- 🔗 Deep Link: Dynamic -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="t.bilibili.com" />
-                <data android:scheme="http" android:host="t.bilibili.com" />
-            </intent-filter>
-            
-            <!-- 🔗 Deep Link: Generic (Catch-all for homepage etc) -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="www.bilibili.com" />
-                <data android:scheme="https" android:host="bilibili.com" />
-                <data android:scheme="https" android:host="m.bilibili.com" />
-                <data android:scheme="http" android:host="www.bilibili.com" />
-                <data android:scheme="http" android:host="bilibili.com" />
-                <data android:scheme="http" android:host="m.bilibili.com" />
-            </intent-filter>
-            
-            <!-- 🔗 Deep Link: b23.tv 短链接 -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="b23.tv" />
-                <data android:scheme="http" android:host="b23.tv" />
-            </intent-filter>
-
-            <!-- 🔗 Deep Link: bilibili:// 与 bili://（用于“打开方式”选择） -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="bilibili" />
-                <data android:scheme="bili" />
-            </intent-filter>
-            
-            <!-- 📤 分享文本意图 (用户分享链接文本到 BiliPai) -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            
-            <!-- 🚀 App Shortcuts Deep Links -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="bilipai" />
-            </intent-filter>
-
-            <!-- 🔌 Plugin Install Links -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="https" android:host="bilipai.app" android:pathPrefix="/plugins/install" />
-                <data android:scheme="https" android:host="www.bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="https" android:host="www.bilipai.app" android:pathPrefix="/plugins/install" />
-                <data android:scheme="https" android:host="plugins.bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="https" android:host="plugins.bilipai.app" android:pathPrefix="/plugins/install" />
-                <data android:scheme="http" android:host="bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="http" android:host="bilipai.app" android:pathPrefix="/plugins/install" />
-                <data android:scheme="http" android:host="www.bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="http" android:host="www.bilipai.app" android:pathPrefix="/plugins/install" />
-                <data android:scheme="http" android:host="plugins.bilipai.app" android:pathPrefix="/plugin/install" />
-                <data android:scheme="http" android:host="plugins.bilipai.app" android:pathPrefix="/plugins/install" />
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Yuki 比心少女 (可在设置中切换) -->
-        <activity-alias
-            android:name=".MainActivityAliasYuki"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
-        </activity-alias>
-
-        <!-- Anime Girl (蓝发少女) -->
-        <activity-alias
-            android:name=".MainActivityAliasAnime"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_anime"
-            android:roundIcon="@mipmap/ic_launcher_anime"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
-        </activity-alias>
-
-        <!-- Headphone Girl (耳机少女) -->
-        <activity-alias
-            android:name=".MainActivityAliasHeadphone"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_headphone"
-            android:roundIcon="@mipmap/ic_launcher_headphone"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 3D Launcher (默认图标入口) -->
-        <activity-alias
-            android:name=".MainActivityAlias3DLauncher"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_3d"
-            android:roundIcon="@mipmap/ic_launcher_3d_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-        <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <!-- 🚀 App Shortcuts -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-        </activity-alias>
-
-        <!-- 兼容入口：保留旧版默认桌面组件。默认关闭；升级保留旧启用状态时仍可作为兜底入口。 -->
-        <activity-alias
-            android:name=".MainActivityAlias3D"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_3d"
-            android:roundIcon="@mipmap/ic_launcher_3d_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasBlue"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_blue"
-            android:roundIcon="@mipmap/ic_launcher_blue_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasBiliPai"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_bilipai"
-            android:roundIcon="@mipmap/ic_launcher_bilipai_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasFlat"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_flat"
-            android:roundIcon="@mipmap/ic_launcher_flat_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasNeon"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_neon"
-            android:roundIcon="@mipmap/ic_launcher_neon_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-
-        <!-- Telegram Style Aliases -->
-        <activity-alias
-            android:name=".MainActivityAliasTelegramBlue"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_blue"
-            android:roundIcon="@mipmap/ic_launcher_telegram_blue_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasTelegramBlueCoin"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_blue_coin"
-            android:roundIcon="@mipmap/ic_launcher_telegram_blue_coin_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasPink"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_pink"
-            android:roundIcon="@mipmap/ic_launcher_telegram_pink_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        
-        <activity-alias
-            android:name=".MainActivityAliasPurple"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_purple"
-            android:roundIcon="@mipmap/ic_launcher_telegram_purple_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasGreen"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_green"
-            android:roundIcon="@mipmap/ic_launcher_telegram_green_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".MainActivityAliasDark"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_telegram_dark"
-            android:roundIcon="@mipmap/ic_launcher_telegram_dark_round"
-            android:label="@string/app_name"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:priority="1">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
         <activity
-            android:name=".feature.video.VideoActivity"
-            android:exported="true"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|uiMode"
-            android:supportsPictureInPicture="true"
-            android:launchMode="singleTop"
-            android:theme="@style/Theme.PureBiliBili" />
-
-        <service
-            android:name=".feature.video.player.PlaybackService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
-        
-        <!-- 📋 FileProvider for log export sharing -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:name=".ui.detail.DetailActivity"
             android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
-
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
 
     </application>
-
 </manifest>
