@@ -1,8 +1,11 @@
 package com.bbttvv.app.ui.home
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +15,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -120,39 +127,61 @@ internal fun HomeContentDispatcher(
                         }
                     }
                 } else {
-                    VideoCardRecyclerGrid(
-                        videos = uiState.videos,
-                        modifier = Modifier.fillMaxSize(),
-                        gridColumnCount = 4,
-                        contentPadding = PaddingValues(
-                            start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                            end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                            top = AppTopBarDefaults.HeaderContentTopPadding,
-                            bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
-                        ),
-                        focusState = recommendGridFocusState,
-                        focusCoordinator = focusCoordinator,
-                        focusTab = AppTopLevelTab.RECOMMEND,
-                        canLoadMore = { uiState.videos.size > 4 && !uiState.isLoading },
-                        onLoadMore = viewModel::loadMore,
-                        onMenuRefresh = viewModel::refresh,
-                        onVideoFocused = { video, _ ->
-                            viewModel.prefetchVideoDetail(video)
-                        },
-                        onFocusedRowChanged = focusCoordinator::onContentRowFocused,
-                        onTopRowDpadUp = { focusCoordinator.handleContentWantsTopBar() },
-                        onBackToTopBar = {
-                            focusCoordinator.handleContentWantsTopBar()
-                        },
-                        onVideoLongClick = { video ->
-                            suppressRecommendMenuConfirmKeyUp = true
-                            pendingRecommendMenuVideo = video
-                        },
-                        onVideoClick = { video, key ->
-                            viewModel.primeVideoDetail(video)
-                            onRecommendVideoClick(key, video.bvid)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        VideoCardRecyclerGrid(
+                            videos = uiState.videos,
+                            modifier = Modifier.fillMaxSize(),
+                            gridColumnCount = 4,
+                            contentPadding = PaddingValues(
+                                start = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                                end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                                top = AppTopBarDefaults.HeaderContentTopPadding,
+                                bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
+                            ),
+                            focusState = recommendGridFocusState,
+                            focusCoordinator = focusCoordinator,
+                            focusTab = AppTopLevelTab.RECOMMEND,
+                            canLoadMore = { uiState.hasMore && !uiState.isLoading },
+                            onLoadMore = viewModel::loadMore,
+                            onMenuRefresh = viewModel::refresh,
+                            onVideoFocused = { video, _ ->
+                                viewModel.prefetchVideoDetail(video)
+                            },
+                            onFocusedRowChanged = focusCoordinator::onContentRowFocused,
+                            onTopRowDpadUp = { focusCoordinator.handleContentWantsTopBar() },
+                            onBackToTopBar = {
+                                focusCoordinator.handleContentWantsTopBar()
+                            },
+                            onVideoLongClick = { video ->
+                                suppressRecommendMenuConfirmKeyUp = true
+                                pendingRecommendMenuVideo = video
+                            },
+                            onVideoClick = { video, key ->
+                                viewModel.primeVideoDetail(video)
+                                onRecommendVideoClick(key, video.bvid)
+                            }
+                        )
+                        uiState.refreshErrorMessage?.let { message ->
+                            Text(
+                                text = "刷新失败：$message",
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(
+                                        top = AppTopBarDefaults.HeaderContentTopPadding,
+                                        end = AppTopBarDefaults.HeaderContentHorizontalPadding
+                                    )
+                                    .background(
+                                        color = Color(0xCC2A1515),
+                                        shape = RoundedCornerShape(999.dp)
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
                         }
-                    )
+                    }
                 }
             }
 

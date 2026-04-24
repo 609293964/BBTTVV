@@ -113,7 +113,7 @@ class DynamicViewModel : ViewModel() {
     private fun loadDynamicVideos(refresh: Boolean, showLoading: Boolean) {
         if (refresh) {
             hasMoreVideos = true
-            videoFeed.reset()
+            videoFeed.resetPaging()
         } else {
             val snapshot = videoFeed.snapshot()
             if (snapshot.isLoading || snapshot.endReached) return

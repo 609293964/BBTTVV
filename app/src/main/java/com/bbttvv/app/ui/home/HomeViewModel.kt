@@ -45,8 +45,9 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val isError: Boolean = false,
     val videos: List<VideoItem> = emptyList(),
-    val currentIdx: Long = 0L,
+    val hasMore: Boolean = true,
     val errorMsg: String? = null,
+    val refreshErrorMessage: String? = null,
     val todayWatchEnabled: Boolean = false,
     val todayWatchConfig: TodayWatchPluginConfig = TodayWatchPluginConfig(),
     val todayWatchMode: TodayWatchMode = TodayWatchMode.RELAX,
@@ -131,7 +132,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 isLoading = true,
                 isError = false,
-                errorMsg = null
+                errorMsg = null,
+                refreshErrorMessage = null
             )
         }
 
@@ -161,7 +163,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     currentState.copy(
                         isLoading = false,
                         videos = recommendFeed.visibleSnapshot(),
-                        currentIdx = recommendFeed.snapshot().nextKey.toLong(),
+                        hasMore = !recommendFeed.snapshot().endReached,
                         isError = false,
                         errorMsg = null
                     )
@@ -182,12 +184,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun refresh() {
-        recommendFeed.reset()
+        recommendFeed.resetPaging()
         _uiState.update {
             it.copy(
                 isLoading = true,
                 isError = false,
-                errorMsg = null
+                hasMore = true,
+                errorMsg = null,
+                refreshErrorMessage = null
             )
         }
         viewModelScope.launch {
@@ -217,8 +221,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = false,
                         isError = false,
                         errorMsg = null,
+                        refreshErrorMessage = null,
                         videos = recommendFeed.visibleSnapshot(),
-                        currentIdx = recommendFeed.snapshot().nextKey.toLong()
+                        hasMore = !recommendFeed.snapshot().endReached
                     )
                 }
                 requestTodayWatchRebuild(forceReloadHistory = false)
@@ -230,7 +235,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         isLoading = false,
                         isError = true,
-                        errorMsg = error.message ?: "未知错误"
+                        errorMsg = error.message ?: "未知错误",
+                        refreshErrorMessage = if (it.videos.isNotEmpty()) {
+                            error.message ?: "刷新失败"
+                        } else {
+                            null
+                        }
                     )
                 }
             }

@@ -133,7 +133,7 @@ class PopularViewModel : ViewModel() {
         val category = defaultPopularCategories.getOrNull(index) ?: return
         val feed = feedForCategory(index)
         if (refresh) {
-            feed.reset()
+            feed.resetPaging()
         } else {
             val snapshot = feed.snapshot()
             if (snapshot.isLoading || snapshot.endReached) return

@@ -156,12 +156,12 @@ fun AppNavigation() {
                     navController.navigate(ScreenRoutes.Settings.route)
                 },
                 onProfileVideoClick = { tab, focusKey, video ->
-                    if (tab == AppTopLevelTab.WATCH_LATER) {
-                        navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
-                    } else {
-                        navigationState.clearDetailCommentFocusRestore()
-                    }
                     if (video.view_at > 0L) {
+                        if (tab == AppTopLevelTab.WATCH_LATER) {
+                            navigationState.prepareForInternalHomeTabPlayerOpen(tab, focusKey)
+                        } else {
+                            navigationState.clearDetailCommentFocusRestore()
+                        }
                         navController.navigate(
                             ScreenRoutes.VideoPlayer.createRoute(
                                 bvid = video.bvid,
@@ -174,6 +174,11 @@ fun AppNavigation() {
                             )
                         )
                     } else {
+                        if (tab == AppTopLevelTab.WATCH_LATER) {
+                            navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
+                        } else {
+                            navigationState.clearDetailCommentFocusRestore()
+                        }
                         context.startVideoDetailActivity(video.bvid)
                     }
                 },
