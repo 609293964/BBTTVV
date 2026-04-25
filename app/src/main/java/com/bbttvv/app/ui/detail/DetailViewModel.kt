@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val DetailCommentPageSize = 10
-private const val DetailSupportingContentDelayMs = 320L
 private const val DetailCommentsDelayMs = 900L
 private const val DetailInteractionStatusDelayMs = 260L
 private const val DetailRelatedPrefetchDelayMs = 240L
@@ -117,7 +116,10 @@ class DetailViewModel : ViewModel() {
                 isRelatedLoading = cachedRelated.isEmpty(),
                 creatorFollowerCount = cachedCreatorStats?.followerCount,
                 accountCoinBalance = cachedAccountCoinBalance,
-                comments = DetailCommentsState(totalCount = cachedInfo?.stat?.reply ?: 0)
+                comments = DetailCommentsState(
+                    totalCount = cachedInfo?.stat?.reply ?: 0,
+                    isLoading = loadCommentsEnabled
+                )
             )
         }
 
@@ -368,7 +370,6 @@ class DetailViewModel : ViewModel() {
         supportingContentJob?.cancel()
         deferredCommentsJob?.cancel()
         supportingContentJob = viewModelScope.launch {
-            delay(DetailSupportingContentDelayMs)
             if (currentBvid != requestBvid) return@launch
             loadRelatedVideos(requestBvid)
             loadAuxiliaryState(requestBvid, viewInfo)
@@ -469,7 +470,6 @@ class DetailViewModel : ViewModel() {
         _uiState.update { it.copy(isRelatedLoading = true) }
         relatedLoadJob?.cancel()
         relatedLoadJob = viewModelScope.launch {
-            delay(120L)
             if (currentBvid != requestBvid) return@launch
             val relatedVideos = VideoDetailRepository.getRelatedVideos(requestBvid)
             if (currentBvid == requestBvid) {
@@ -490,7 +490,17 @@ class DetailViewModel : ViewModel() {
         sortMode: DetailCommentSortMode,
         fallbackTotalCount: Int
     ) {
-        if (aid <= 0L) return
+        if (aid <= 0L) {
+            _uiState.update { state ->
+                state.copy(
+                    comments = state.comments.copy(
+                        isLoading = false,
+                        totalCount = maxOf(state.comments.totalCount, fallbackTotalCount)
+                    )
+                )
+            }
+            return
+        }
         deferredCommentsJob?.cancel()
         commentsJob?.cancel()
 

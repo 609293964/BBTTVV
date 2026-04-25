@@ -53,6 +53,10 @@ internal fun AppTopBar(
                 override fun hasFocus(): Boolean {
                     return controller.hasFocus()
                 }
+
+                override fun hasFocusOnRequestedTarget(): Boolean {
+                    return controller.hasFocus(latestFocusTargetTab)
+                }
             }
         )
         onDispose {
@@ -108,6 +112,7 @@ internal fun AppTopBar(
                 onTopBarFocusChanged = latestOnTopBarFocusChanged
             )
             controller.adapter?.submitTabs(tabs, selectedTab)
+            focusCoordinator?.drainPendingFocus()
         }
     )
 }
@@ -140,10 +145,17 @@ private class AppTopBarController {
         return false
     }
 
-    fun hasFocus(): Boolean {
+    fun hasFocus(tab: AppTopLevelTab? = null): Boolean {
         val recycler = recyclerView ?: return false
         val focused = recycler.rootView?.findFocus() ?: return false
-        return focused === recycler || focused.isSameOrDescendantOf(recycler)
+        if (tab == null) {
+            return focused === recycler || focused.isSameOrDescendantOf(recycler)
+        }
+        val topBarAdapter = adapter ?: return false
+        val position = topBarAdapter.positionOf(tab).takeIf { it != RecyclerView.NO_POSITION }
+            ?: return false
+        val holder = recycler.findViewHolderForAdapterPosition(position) ?: return false
+        return focused === holder.itemView || focused.isSameOrDescendantOf(holder.itemView)
     }
 }
 

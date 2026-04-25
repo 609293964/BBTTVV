@@ -51,6 +51,30 @@ class HomeFocusStrategyTest {
     }
 
     @Test
+    fun `initial recommend enter does not reset after content already has focus`() {
+        assertFalse(
+            HomeFocusStrategy.shouldResetRecommendScroll(
+                scene = HomeFocusScene.InitialEnter,
+                selectedHomeTab = AppTopLevelTab.RECOMMEND,
+                isRestoringBackReturnFocus = false,
+                hasContentFocus = true,
+            )
+        )
+    }
+
+    @Test
+    fun `initial recommend enter does not reset after grid remembered focus`() {
+        assertFalse(
+            HomeFocusStrategy.shouldResetRecommendScroll(
+                scene = HomeFocusScene.InitialEnter,
+                selectedHomeTab = AppTopLevelTab.RECOMMEND,
+                isRestoringBackReturnFocus = false,
+                hasRememberedGridFocus = true,
+            )
+        )
+    }
+
+    @Test
     fun `back return restores video focus only when key and position are valid`() {
         assertTrue(
             HomeFocusStrategy.shouldRestoreBackReturnVideoFocus(

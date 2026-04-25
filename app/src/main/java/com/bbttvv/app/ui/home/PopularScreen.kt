@@ -20,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.HomeSecondaryTabRow
@@ -27,7 +28,7 @@ import com.bbttvv.app.ui.components.HomeSecondaryTabRow
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun PopularScreen(
-    onVideoClick: (String) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
     onContentRowFocused: (Int) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator,
     gridColumnCount: Int = 4,
@@ -141,7 +142,7 @@ internal fun PopularScreen(
                 onBackToTopBar = { focusCoordinator.handleContentWantsTopBar() },
                 onVideoClick = { video, _ ->
                     viewModel.primeVideoDetail(video)
-                    onVideoClick(video.bvid)
+                    onVideoClick(video)
                 }
             )
         }

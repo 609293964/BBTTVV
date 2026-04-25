@@ -15,6 +15,15 @@ val signingProperties = Properties().apply {
         propertiesFile.inputStream().use { load(it) }
     }
 }
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val missingReleaseSigningKeys = releaseSigningKeys.filter { signingProperties.getProperty(it).isNullOrBlank() }
+val hasReleaseKeystore = missingReleaseSigningKeys.isEmpty()
+
+gradle.taskGraph.whenReady {
+    if (!hasReleaseKeystore && allTasks.any { it.name.contains("Release", ignoreCase = true) }) {
+        error("Missing keystore.properties for release signing: ${missingReleaseSigningKeys.joinToString()}")
+    }
+}
 
 android {
     namespace = "com.bbttvv.app"
@@ -30,18 +39,16 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86", "x86_64")
-        }
     }
 
     signingConfigs {
         create("release") {
-            val fallbackDebugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
-            storeFile = file(signingProperties.getProperty("storeFile") ?: fallbackDebugKeystore.absolutePath)
-            storePassword = signingProperties.getProperty("storePassword") ?: "android"
-            keyAlias = signingProperties.getProperty("keyAlias") ?: "androiddebugkey"
-            keyPassword = signingProperties.getProperty("keyPassword") ?: "android"
+            if (hasReleaseKeystore) {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -52,6 +59,9 @@ android {
             isShrinkResources = true
             isDebuggable = false
             isProfileable = false 
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -62,6 +72,9 @@ android {
             versionNameSuffix = "-debug"
             isMinifyEnabled = false
             isShrinkResources = false
+            ndk {
+                abiFilters += listOf("arm64-v8a", "x86", "x86_64")
+            }
         }
     }
 

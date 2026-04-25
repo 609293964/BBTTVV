@@ -43,6 +43,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.PublisherRepository
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.home.HomeRecommendGridFocusState
@@ -57,7 +58,7 @@ fun PublisherScreen(
     mid: Long,
     initialName: String? = null,
     initialFace: String? = null,
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (VideoItem) -> Unit,
     viewModel: PublisherViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -183,7 +184,7 @@ fun PublisherScreen(
                             },
                             onVideoClick = { video, _ ->
                                 viewModel.primeVideoDetail(video)
-                                onOpenVideo(video.bvid)
+                                onOpenVideo(video)
                             }
                         )
 

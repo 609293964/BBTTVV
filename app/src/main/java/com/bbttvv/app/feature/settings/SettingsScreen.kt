@@ -133,8 +133,6 @@ fun TvSettingsList(
         )
     val updateContentOnTabFocusEnabled by SettingsManager.getUpdateContentOnTabFocusEnabled(context)
         .collectAsStateWithLifecycle(initialValue = true)
-    val keepAliveTransientTabsEnabled by SettingsManager.getKeepAliveTransientTabsEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
@@ -309,22 +307,6 @@ fun TvSettingsList(
                         SettingsManager.setUpdateContentOnTabFocusEnabled(
                             context,
                             !updateContentOnTabFocusEnabled
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "缓存重型页面 (搜索/我的)",
-                subtitle = "开启后，搜索和我的页面退出后将继续保存在内存中。",
-                value = onOff(keepAliveTransientTabsEnabled),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setKeepAliveTransientTabsEnabled(
-                            context,
-                            !keepAliveTransientTabsEnabled
                         )
                     }
                 }

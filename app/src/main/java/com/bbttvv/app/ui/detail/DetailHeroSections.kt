@@ -93,11 +93,6 @@ internal fun DetailCoverBackdrop(model: ImageRequest) {
                 )
             )
     )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DetailBackdropExtraScrimColor)
-    )
 }
 
 @Composable

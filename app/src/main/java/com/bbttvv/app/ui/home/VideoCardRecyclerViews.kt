@@ -199,6 +199,25 @@ internal fun VideoCardRecyclerGrid(
                     if (next === this) {
                         return focused
                     }
+                    if (direction == View.FOCUS_DOWN) {
+                        val currentPosition = focused
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?.takeIf { it != NO_POSITION }
+                        val nextPosition = next
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?.takeIf { it != NO_POSITION }
+                        val itemCount = adapter?.itemCount ?: 0
+                        val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
+                        if (
+                            currentPosition != null &&
+                            ((spanCount != null && currentPosition + spanCount >= itemCount) ||
+                                (nextPosition != null && nextPosition <= currentPosition))
+                        ) {
+                            return focused
+                        }
+                    }
                     if (direction == View.FOCUS_UP) {
                         val currentPosition = focused
                             ?.let(::findContainingViewHolder)
@@ -237,9 +256,7 @@ internal fun VideoCardRecyclerGrid(
                 setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
                 layoutManager = GridLayoutManager(context, gridColumnCount)
                 setOnFocusChangeListener { _, hasFocus ->
-                    if (hasFocus) {
-                        focusState.enqueueRecyclerChildFocusRecoveryIfNeeded()
-                    }
+                    focusState.onRecyclerFocusChanged(hasFocus)
                 }
 
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -259,7 +276,6 @@ internal fun VideoCardRecyclerGrid(
                 })
 
                 adapter = HomeVideoCardAdapter(
-                    gridColumnCount = gridColumnCount,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     showDanmakuCount = showDanmakuCount,
                     onItemClick = { item ->
@@ -267,7 +283,7 @@ internal fun VideoCardRecyclerGrid(
                     },
                     onItemFocused = { item, position ->
                         dpadGridController.onItemFocused(position = position)
-                        focusState.onItemFocused(item.key)
+                        focusState.onItemFocused(item.key, position)
                         latestOnFocusedRowChanged(position / gridColumnCount.coerceAtLeast(1))
                         latestOnVideoFocused(item.video, item.key)
                     },
@@ -278,6 +294,7 @@ internal fun VideoCardRecyclerGrid(
                         { item -> latestOnVideoLongClick?.invoke(item.video) }
                     },
                     onItemKeyEvent = { itemView, _, position, keyCode, event ->
+                        focusState.noteUserNavigation(keyCode, event)
                         dpadGridController.handleItemKeyEvent(
                             itemView = itemView,
                             position = position,
@@ -315,14 +332,12 @@ internal fun VideoCardRecyclerGrid(
             }
             (recyclerView.adapter as? HomeVideoCardAdapter)?.let { adapter ->
                 adapter.updateLayoutOptions(
-                    gridColumnCount = gridColumnCount,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     showDanmakuCount = showDanmakuCount,
                     fixedItemWidthPx = null,
                 )
                 if (adapter.currentList != items && !dpadGridController.hasPendingLoadMoreFocus()) {
-                    dpadGridController.prepareForDataSetChange()
-                    focusState.prepareForDataSetChange()
+                    focusState.prepareForDataSetChange(items)
                 }
                 adapter.submitList(items) {
                     dpadGridController.onItemsCommitted()
@@ -356,12 +371,44 @@ internal fun VideoCardRecyclerRow(
     val latestOnVideoFocused by rememberUpdatedState(onVideoFocused)
     val latestOnVideoClick by rememberUpdatedState(onVideoClick)
     val latestItemCount by rememberUpdatedState(items.size)
+    val latestHorizontalContainerWidth by rememberUpdatedState(horizontalContainerWidth)
 
     AndroidView(
         modifier = modifier.focusGroup(),
         factory = { rawContext ->
             val context = ContextThemeWrapper(rawContext, R.style.Theme_BBTTVV)
             object : RecyclerView(context) {
+                override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                    if (
+                        event.action == KeyEvent.ACTION_DOWN &&
+                        (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                            event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+                    ) {
+                        latestOnHorizontalRailFocusChanged(latestHorizontalContainerWidth)
+                        val position = rootView
+                            ?.findFocus()
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?.takeIf { it != NO_POSITION }
+                            ?: return super.dispatchKeyEvent(event)
+                        val targetPosition = when (event.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_LEFT -> position - 1
+                            KeyEvent.KEYCODE_DPAD_RIGHT -> position + 1
+                            else -> position
+                        }
+                        if (targetPosition !in 0 until latestItemCount) return true
+                        findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { target ->
+                            if (target.requestFocus()) return true
+                        }
+                        scrollToPosition(targetPosition)
+                        post {
+                            findViewHolderForAdapterPosition(targetPosition)?.itemView?.requestFocus()
+                        }
+                        return true
+                    }
+                    return super.dispatchKeyEvent(event)
+                }
+
                 override fun focusSearch(focused: View?, direction: Int): View? {
                     val position = focused?.let(::findContainingViewHolder)
                         ?.bindingAdapterPosition
@@ -410,7 +457,6 @@ internal fun VideoCardRecyclerRow(
                 }
 
                 adapter = HomeVideoCardAdapter(
-                    gridColumnCount = 0,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     fixedItemWidthPx = fixedItemWidthPx,
                     onItemClick = { item ->
@@ -445,7 +491,6 @@ internal fun VideoCardRecyclerRow(
             recyclerView.setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
             (recyclerView.adapter as? HomeVideoCardAdapter)?.let { adapter ->
                 adapter.updateLayoutOptions(
-                    gridColumnCount = 0,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     fixedItemWidthPx = fixedItemWidthPx,
                 )

@@ -57,6 +57,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.SearchType
+import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
@@ -65,7 +66,7 @@ import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 fun SearchScreen(
     onBack: () -> Unit,
     onRequestTopBarFocus: () -> Unit = {},
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit = {},
     viewModel: SearchViewModel = viewModel()
 ) {
@@ -179,7 +180,7 @@ fun SearchScreen(
                     },
                     onVideoClick = { video, _ ->
                         viewModel.primeVideoDetail(video)
-                        onOpenVideo(video.bvid)
+                        onOpenVideo(video)
                     }
                 )
             } else {

@@ -5,6 +5,8 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 
 object WbiSigner {
+    private val illegalCharsRegex = Regex("[!'()*]")
+    private val hexChars = "0123456789abcdef".toCharArray()
     private val mixinKeyEncTab = intArrayOf(
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
         33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
@@ -33,7 +35,7 @@ object WbiSigner {
             .joinToString("&") { key -> "$key=${encodeURIComponent(rawParams.getValue(key))}" }
         rawParams["w_rid"] = md5(query + mixinKey)
 
-        Logger.d("WbiUtils", " w_rid: ${rawParams["w_rid"]}, params count: ${rawParams.size}")
+        Logger.d("WbiUtils") { " w_rid: ${rawParams["w_rid"]}, params count: ${rawParams.size}" }
         return rawParams
     }
 
@@ -46,7 +48,7 @@ object WbiSigner {
     }
 
     private fun filterIllegalChars(value: String): String {
-        return value.replace(Regex("[!'()*]"), "")
+        return value.replace(illegalCharsRegex, "")
     }
 
     private fun encodeURIComponent(value: String): String {
@@ -64,8 +66,14 @@ object WbiSigner {
     }
 
     private fun md5(input: String): String {
-        return MessageDigest.getInstance("MD5")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
+        val bytes = MessageDigest.getInstance("MD5").digest(input.toByteArray())
+        val chars = CharArray(bytes.size * 2)
+        var offset = 0
+        for (byte in bytes) {
+            val value = byte.toInt() and 0xFF
+            chars[offset++] = hexChars[value ushr 4]
+            chars[offset++] = hexChars[value and 0x0F]
+        }
+        return String(chars)
     }
 }

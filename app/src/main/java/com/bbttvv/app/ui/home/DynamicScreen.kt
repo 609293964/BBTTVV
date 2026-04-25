@@ -69,7 +69,7 @@ private val LiveTagShape = RoundedCornerShape(4.dp)
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun DynamicScreen(
-    onVideoClick: (String) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
     onLiveClick: (Long) -> Unit = {},
     viewModel: DynamicViewModel,
     onContentRowFocused: (Int) -> Unit = {},
@@ -266,7 +266,7 @@ internal fun DynamicScreen(
                     onBackToTopBar = { focusCoordinator.handleContentWantsTopBar() },
                     onVideoClick = { videoItem, _ ->
                         viewModel.primeVideoDetail(videoItem)
-                        videoItem.bvid.let { onVideoClick(it) }
+                        onVideoClick(videoItem)
                     }
                 )
             }

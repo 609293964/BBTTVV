@@ -42,8 +42,6 @@ import kotlinx.coroutines.delay
 
 private const val DetailBackgroundCoverWidthPx = 320
 private const val DetailBackgroundCoverHeightPx = 180
-private const val DetailBackdropDelayMs = 320L
-private const val DetailDeferredSectionsDelayMs = 320L
 private val DetailBottomPaddingWithoutComments = 320.dp
 
 @OptIn(
@@ -151,12 +149,6 @@ fun DetailScreen(
                 var relatedVideosRailHasFocus by remember(viewInfo.bvid) {
                     mutableStateOf(false)
                 }
-                var showDeferredSections by rememberSaveable(viewInfo.bvid) {
-                    mutableStateOf(false)
-                }
-                var showBackdrop by rememberSaveable(viewInfo.bvid) {
-                    mutableStateOf(false)
-                }
                 val hasRestoreCommentFocusTarget = restoreCommentFocusRpid?.let { targetRpid ->
                     uiState.comments.items.any { comment -> comment.rpid == targetRpid }
                 } ?: false
@@ -202,18 +194,6 @@ fun DetailScreen(
                     }
                 }
 
-                LaunchedEffect(viewInfo.bvid) {
-                    showDeferredSections = false
-                    delay(DetailDeferredSectionsDelayMs)
-                    showDeferredSections = true
-                }
-
-                LaunchedEffect(viewInfo.bvid) {
-                    showBackdrop = false
-                    delay(DetailBackdropDelayMs)
-                    showBackdrop = true
-                }
-
                 LaunchedEffect(heroActionRowHasFocus) {
                     if (heroActionRowHasFocus) {
                         activeHorizontalFocusRailWidth = null
@@ -228,13 +208,11 @@ fun DetailScreen(
                 LaunchedEffect(
                     relatedVideosRailHasFocus,
                     videoDetailCommentsEnabled,
-                    showDeferredSections,
                     uiState.relatedVideos.size
                 ) {
                     if (
                         relatedVideosRailHasFocus &&
                         !videoDetailCommentsEnabled &&
-                        showDeferredSections &&
                         uiState.relatedVideos.isNotEmpty()
                     ) {
                         withFrameNanos { }
@@ -257,17 +235,15 @@ fun DetailScreen(
                     }
                 }
 
-                if (showBackdrop) {
-                    val backgroundCoverModel = remember(context, viewInfo.pic) {
-                        buildSizedImageRequest(
-                            context,
-                            viewInfo.pic,
-                            DetailBackgroundCoverWidthPx,
-                            DetailBackgroundCoverHeightPx
-                        )
-                    }
-                    DetailCoverBackdrop(model = backgroundCoverModel)
+                val backgroundCoverModel = remember(context, viewInfo.pic) {
+                    buildSizedImageRequest(
+                        context,
+                        viewInfo.pic,
+                        DetailBackgroundCoverWidthPx,
+                        DetailBackgroundCoverHeightPx
+                    )
                 }
+                DetailCoverBackdrop(model = backgroundCoverModel)
 
                 DetailInitialFocusScrollScope(
                     disableTvFocusPivot = (
@@ -335,48 +311,42 @@ fun DetailScreen(
                             )
                         }
 
-                        if (showDeferredSections) {
-                            item(key = "related") {
-                                RelatedVideosSection(
-                                    videos = uiState.relatedVideos,
-                                    isLoading = uiState.isRelatedLoading,
-                                    onRailFocusChanged = { hasFocus ->
-                                        relatedVideosRailHasFocus = hasFocus
-                                    },
-                                    onHorizontalRailFocusChanged = { width ->
-                                        activeHorizontalFocusRailWidth = width
-                                    },
-                                    onVideoFocus = { },
-                                    onVideoClick = { related ->
-                                        if (related.bvid.isNotBlank()) {
-                                            viewModel.prefetchDetail(related)
-                                            onRelatedVideoClick(related.bvid)
-                                        }
+                        item(key = "related") {
+                            RelatedVideosSection(
+                                videos = uiState.relatedVideos,
+                                isLoading = uiState.isRelatedLoading,
+                                onRailFocusChanged = { hasFocus ->
+                                    relatedVideosRailHasFocus = hasFocus
+                                },
+                                onHorizontalRailFocusChanged = { width ->
+                                    activeHorizontalFocusRailWidth = width
+                                },
+                                onVideoFocus = { },
+                                onVideoClick = { related ->
+                                    if (related.bvid.isNotBlank()) {
+                                        viewModel.prefetchDetail(related)
+                                        onRelatedVideoClick(related.bvid)
                                     }
-                                )
-                            }
+                                }
+                            )
+                        }
 
-                            if (videoDetailCommentsEnabled) {
-                                detailCommentsSection(
-                                    commentsState = uiState.comments,
-                                    focusCoordinator = detailFocusCoordinator,
-                                    onSortSelected = viewModel::changeCommentSort,
-                                    onRetry = {
-                                        viewModel.goToCommentPage(uiState.comments.currentPage)
-                                    },
-                                    onOpenReplies = onOpenCommentReplies,
-                                    onPreviousPage = {
-                                        viewModel.goToCommentPage(uiState.comments.currentPage - 1)
-                                    },
-                                    onNextPage = {
-                                        viewModel.goToCommentPage(uiState.comments.currentPage + 1)
-                                    }
-                                )
-                            }
-                        } else {
-                            item(key = "deferred_sections_loading") {
-                                DetailMessageCard(text = "正在准备更多内容...")
-                            }
+                        if (videoDetailCommentsEnabled) {
+                            detailCommentsSection(
+                                commentsState = uiState.comments,
+                                focusCoordinator = detailFocusCoordinator,
+                                onSortSelected = viewModel::changeCommentSort,
+                                onRetry = {
+                                    viewModel.goToCommentPage(uiState.comments.currentPage)
+                                },
+                                onOpenReplies = onOpenCommentReplies,
+                                onPreviousPage = {
+                                    viewModel.goToCommentPage(uiState.comments.currentPage - 1)
+                                },
+                                onNextPage = {
+                                    viewModel.goToCommentPage(uiState.comments.currentPage + 1)
+                                }
+                            )
                         }
                     }
                 }

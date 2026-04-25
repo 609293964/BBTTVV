@@ -25,13 +25,11 @@ import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
 private val avatarCircleCropTransformation = CircleCropTransformation()
 
 internal class HomeVideoCardAdapter(
-    private var gridColumnCount: Int,
     private var showHistoryProgressOnly: Boolean = false,
     private var showDanmakuCount: Boolean = true,
     private var fixedItemWidthPx: Int? = null,
     private val onItemClick: (HomeRecommendVideoCardItem) -> Unit,
     private val onItemFocused: (HomeRecommendVideoCardItem, Int) -> Unit,
-    private val onTopRowDpadUp: (() -> Boolean)? = null,
     private val onItemMenu: ((HomeRecommendVideoCardItem) -> Unit)? = null,
     private val onItemLongClick: ((HomeRecommendVideoCardItem) -> Unit)? = null,
     private val onItemKeyEvent: ((View, HomeRecommendVideoCardItem, Int, Int, KeyEvent) -> Boolean)? = null,
@@ -80,7 +78,6 @@ internal class HomeVideoCardAdapter(
     }
 
     fun updateLayoutOptions(
-        gridColumnCount: Int,
         showHistoryProgressOnly: Boolean,
         showDanmakuCount: Boolean = true,
         fixedItemWidthPx: Int?,
@@ -88,7 +85,6 @@ internal class HomeVideoCardAdapter(
         val shouldRebind = this.showHistoryProgressOnly != showHistoryProgressOnly ||
             this.showDanmakuCount != showDanmakuCount ||
             this.fixedItemWidthPx != fixedItemWidthPx
-        this.gridColumnCount = gridColumnCount
         this.showHistoryProgressOnly = showHistoryProgressOnly
         this.showDanmakuCount = showDanmakuCount
         this.fixedItemWidthPx = fixedItemWidthPx
@@ -168,7 +164,6 @@ internal class HomeVideoCardAdapter(
                 binding.root.isSelected = hasFocus
                 if (hasFocus) {
                     val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return@setOnFocusChangeListener
-                    updateDpadUpTarget(position)
                     currentItem()?.let { onItemFocused(it, position) }
                 }
             }
@@ -205,31 +200,6 @@ internal class HomeVideoCardAdapter(
                     if (item != null && menuHandler != null) {
                         menuHandler(item)
                         return@setOnKeyListener true
-                    }
-                }
-
-                if (
-                    event.action == KeyEvent.ACTION_DOWN &&
-                    keyCode == KeyEvent.KEYCODE_DPAD_UP
-                ) {
-                    val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
-                        ?: return@setOnKeyListener false
-                    if (position >= gridColumnCount) {
-                        val targetPosition = position - gridColumnCount
-                        val recyclerView = binding.root.findParentRecyclerView()
-                        recyclerView?.findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { target ->
-                            if (target.requestFocus()) {
-                                return@setOnKeyListener true
-                            }
-                        }
-                        recyclerView?.scrollToPosition(targetPosition)
-                        recyclerView?.post {
-                            recyclerView.findViewHolderForAdapterPosition(targetPosition)?.itemView?.requestFocus()
-                        }
-                        return@setOnKeyListener recyclerView != null
-                    }
-                    if (position in 0 until gridColumnCount) {
-                        return@setOnKeyListener onTopRowDpadUp?.invoke() == true
                     }
                 }
                 false
@@ -304,26 +274,6 @@ internal class HomeVideoCardAdapter(
             return currentList.getOrNull(position)
         }
 
-        private fun updateDpadUpTarget(position: Int) {
-            if (position < gridColumnCount) {
-                binding.root.nextFocusUpId = View.NO_ID
-                return
-            }
-            val recyclerView = binding.root.findParentRecyclerView()
-            val targetPosition = position - gridColumnCount
-            val targetView = recyclerView
-                ?.findViewHolderForAdapterPosition(targetPosition)
-                ?.itemView
-            if (targetView != null) {
-                if (targetView.id == View.NO_ID) {
-                    targetView.id = View.generateViewId()
-                }
-                binding.root.nextFocusUpId = targetView.id
-            } else {
-                binding.root.nextFocusUpId = View.NO_ID
-            }
-        }
-
         private fun applyFixedItemWidth() {
             val width = fixedItemWidthPx ?: return
             val params = binding.root.layoutParams
@@ -376,15 +326,6 @@ private fun ImageView.loadIfUrlChanged(
     }
 
     load(url, builder = builder)
-}
-
-private fun View.findParentRecyclerView(): RecyclerView? {
-    var currentParent = parent
-    while (currentParent is View) {
-        if (currentParent is RecyclerView) return currentParent
-        currentParent = currentParent.parent
-    }
-    return null
 }
 
 private fun isVideoCardBackKey(keyCode: Int): Boolean {

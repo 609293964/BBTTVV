@@ -78,7 +78,6 @@ object SettingsManager {
     private const val CACHE_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
     private const val CACHE_VIDEO_DETAIL_COMMENTS_ENABLED = "video_detail_comments_enabled"
     private const val CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
-    private const val CACHE_KEEP_ALIVE_TRANSIENT_TABS = "keep_alive_transient_tabs"
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
 
     private val keyPrivacyMode = booleanPreferencesKey(CACHE_PRIVACY_MODE)
@@ -103,7 +102,6 @@ object SettingsManager {
     private val keyPlayerAutoResumeEnabled = booleanPreferencesKey(CACHE_PLAYER_AUTO_RESUME_ENABLED)
     private val keyVideoDetailCommentsEnabled = booleanPreferencesKey(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED)
     private val keyUpdateContentOnTabFocusEnabled = booleanPreferencesKey(CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
-    private val keyKeepAliveTransientTabs = booleanPreferencesKey(CACHE_KEEP_ALIVE_TRANSIENT_TABS)
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
 
     fun getWatchLaterInTopTabsEnabled(context: Context): Flow<Boolean> {
@@ -117,19 +115,6 @@ object SettingsManager {
             preferences[keyWatchLaterInTopTabs] = enabled
         }
         updateSyncCache(context) { putBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, enabled) }
-    }
-
-    fun getKeepAliveTransientTabsEnabled(context: Context): Flow<Boolean> {
-        return context.settingsDataStore.data.map { preferences ->
-            preferences[keyKeepAliveTransientTabs] ?: false
-        }
-    }
-
-    suspend fun setKeepAliveTransientTabsEnabled(context: Context, enabled: Boolean) {
-        updatePreference(context) { preferences ->
-            preferences[keyKeepAliveTransientTabs] = enabled
-        }
-        updateSyncCache(context) { putBoolean(CACHE_KEEP_ALIVE_TRANSIENT_TABS, enabled) }
     }
 
     fun observeAppNavigationSettings(context: Context): Flow<AppNavigationSettings> {
@@ -477,10 +462,6 @@ object SettingsManager {
 
     fun getVideoDetailCommentsEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED, false)
-    }
-
-    fun getKeepAliveTransientTabsEnabledSync(context: Context): Boolean {
-        return context.syncPrefs().getBoolean(CACHE_KEEP_ALIVE_TRANSIENT_TABS, false)
     }
 
     fun getWatchLaterInTopTabsEnabledSync(context: Context): Boolean {

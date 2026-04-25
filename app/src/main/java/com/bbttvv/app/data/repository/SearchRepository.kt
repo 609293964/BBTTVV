@@ -9,11 +9,13 @@ import com.bbttvv.app.data.model.response.SearchUpItem
 import com.bbttvv.app.data.model.response.LiveRoomSearchItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 
 object SearchRepository {
     private val api = NetworkModule.searchApi
     private val navApi = NetworkModule.api
+    private val fallbackJson = Json { ignoreUnknownKeys = true }
 
     //  [新增] 搜索分页信息
     data class SearchPageInfo(
@@ -175,7 +177,7 @@ object SearchRepository {
             response.data?.result?.forEach { wrapper ->
                 if (wrapper.result_type == "bili_user" && wrapper.data != null) {
                     val elements = wrapper.data
-                    val decodedList = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromJsonElement<List<SearchUpItem>>(elements)
+                    val decodedList = fallbackJson.decodeFromJsonElement<List<SearchUpItem>>(elements)
                     upItems.addAll(decodedList.map { it.cleanupFields() })
                     foundResultCount += decodedList.size
                 }
@@ -503,7 +505,7 @@ object SearchRepository {
                     ?.data
                     
                 val parsedList = if (rawData != null) {
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromJsonElement<List<com.bbttvv.app.data.model.response.SearchVideoItem>>(rawData)
+                    fallbackJson.decodeFromJsonElement<List<com.bbttvv.app.data.model.response.SearchVideoItem>>(rawData)
                 } else emptyList()
 
                 val videos = parsedList.map { it.toVideoItem() }

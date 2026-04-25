@@ -1,22 +1,29 @@
 package com.bbttvv.app.ui.components
 
-import android.view.View
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,24 +32,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Glow
+import androidx.tv.material3.Icon
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import java.lang.ref.WeakReference
 
 @Immutable
 internal data class TvContextMenuAction(
@@ -50,6 +64,7 @@ internal data class TvContextMenuAction(
     val onClick: () -> Unit,
 )
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TvContextMenu(
     actions: List<TvContextMenuAction>,
@@ -61,72 +76,109 @@ internal fun TvContextMenu(
     if (actions.isEmpty()) return
 
     val firstFocusRequester = remember { FocusRequester() }
-    val ownerView = LocalView.current
-    val focusReturn = remember(ownerView) { ContextMenuFocusReturn() }
+    val dialogFocusRequester = rememberTvDialogFocusTrap()
 
     BackHandler {
         onDismissRequest()
     }
 
-    DisposableEffect(ownerView) {
-        val ownerRoot = ownerView.rootView ?: ownerView
-        focusReturn.capture(ownerRoot.findFocus())
-        onDispose {
-            focusReturn.restoreAndClear(fallback = ownerView)
+    LaunchedEffect(actions.size) {
+        withFrameNanos { }
+        if (!runCatching { firstFocusRequester.requestFocus() }.getOrDefault(false)) {
+            runCatching { dialogFocusRequester.requestFocus() }
         }
     }
 
-    LaunchedEffect(actions.size) {
-        withFrameNanos { }
-        runCatching { firstFocusRequester.requestFocus() }
-    }
-
-    Column(
-        modifier = modifier
-            .widthIn(min = 126.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.Black.copy(alpha = 0.76f))
-            .focusGroup()
-            .onPreviewKeyEvent { keyEvent ->
-                val event = keyEvent.nativeKeyEvent
-                if (isTvConfirmKey(event.keyCode) && suppressConfirmKey) {
-                    if (event.action == AndroidKeyEvent.ACTION_UP) {
-                        onSuppressConfirmKeyConsumed()
-                    }
-                    return@onPreviewKeyEvent true
-                }
-
-                if (event.action != AndroidKeyEvent.ACTION_DOWN) {
-                    return@onPreviewKeyEvent false
-                }
-
-                when (event.keyCode) {
-                    AndroidKeyEvent.KEYCODE_BACK,
-                    AndroidKeyEvent.KEYCODE_ESCAPE,
-                    AndroidKeyEvent.KEYCODE_MENU,
-                    AndroidKeyEvent.KEYCODE_BUTTON_B,
-                    -> {
-                        onDismissRequest()
-                        true
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x99000000))
+                .onPreviewKeyEvent { keyEvent ->
+                    val event = keyEvent.nativeKeyEvent
+                    if (isTvConfirmKey(event.keyCode) && suppressConfirmKey) {
+                        if (event.action == AndroidKeyEvent.ACTION_UP) {
+                            onSuppressConfirmKeyConsumed()
+                        }
+                        return@onPreviewKeyEvent true
                     }
 
-                    else -> false
+                    if (event.action != AndroidKeyEvent.ACTION_DOWN) {
+                        return@onPreviewKeyEvent false
+                    }
+
+                    when (event.keyCode) {
+                        AndroidKeyEvent.KEYCODE_BACK,
+                        AndroidKeyEvent.KEYCODE_ESCAPE,
+                        AndroidKeyEvent.KEYCODE_MENU,
+                        AndroidKeyEvent.KEYCODE_BUTTON_B,
+                        -> {
+                            onDismissRequest()
+                            true
+                        }
+
+                        else -> false
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = modifier
+                    .fillMaxWidth(0.42f)
+                    .widthIn(min = 320.dp, max = 420.dp)
+                    .focusRequester(dialogFocusRequester)
+                    .focusGroup()
+                    .focusProperties {
+                        onExit = { cancelFocusChange() }
+                    }
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xF21A2028))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                        shape = RoundedCornerShape(24.dp),
+                    )
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        text = "更多操作",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "选择对当前视频的处理方式",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    actions.forEachIndexed { index, action ->
+                        TvContextMenuButton(
+                            text = action.text,
+                            icon = action.icon(),
+                            onClick = action.onClick,
+                            modifier = if (index == 0) {
+                                Modifier.focusRequester(firstFocusRequester)
+                            } else {
+                                Modifier
+                            },
+                        )
+                    }
                 }
             }
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        actions.forEachIndexed { index, action ->
-            TvContextMenuButton(
-                text = action.text,
-                onClick = action.onClick,
-                modifier = if (index == 0) {
-                    Modifier.focusRequester(firstFocusRequester)
-                } else {
-                    Modifier
-                },
-            )
         }
     }
 }
@@ -137,69 +189,43 @@ private fun isTvConfirmKey(keyCode: Int): Boolean {
         keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
 }
 
-private class ContextMenuFocusReturn {
-    private var targetRef: WeakReference<View>? = null
-
-    fun capture(view: View?) {
-        targetRef = view?.let(::WeakReference)
+private fun TvContextMenuAction.icon(): ImageVector {
+    return when {
+        text.contains("稍后") -> Icons.Outlined.DateRange
+        else -> Icons.Outlined.Info
     }
-
-    fun restoreAndClear(fallback: View? = null): Boolean {
-        val desired = targetRef?.get()
-        targetRef = null
-        return restore(desired = desired, fallback = fallback)
-    }
-
-    private fun restore(
-        desired: View?,
-        fallback: View?,
-    ): Boolean {
-        val candidates = buildList {
-            desired?.let(::add)
-            fallback?.takeIf { it !== desired }?.let(::add)
-        }
-        for (candidate in candidates) {
-            if (!candidate.isRestorableContextMenuFocusTarget()) continue
-            if (candidate.requestFocus()) return true
-        }
-        for (candidate in candidates) {
-            if (!candidate.isRestorableContextMenuFocusTarget()) continue
-            candidate.post {
-                if (candidate.isRestorableContextMenuFocusTarget()) {
-                    candidate.requestFocus()
-                }
-            }
-            return true
-        }
-        return false
-    }
-}
-
-private fun View.isRestorableContextMenuFocusTarget(): Boolean {
-    return isAttachedToWindow && isShown && isEnabled && isFocusable
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TvContextMenuButton(
     text: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(999.dp)
+    val shape = RoundedCornerShape(16.dp)
     val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.16f),
+        targetValue = if (isFocused) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            Color.White.copy(alpha = 0.08f)
+        },
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonBackground",
     )
     val textColor by animateColorAsState(
-        targetValue = if (isFocused) Color(0xFF111418) else Color.White.copy(alpha = 0.88f),
+        targetValue = if (isFocused) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonText",
     )
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.04f else 1f,
+        targetValue = if (isFocused) 1.035f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonScale",
     )
@@ -220,20 +246,53 @@ private fun TvContextMenuButton(
             focusedContainerColor = Color.Transparent,
             pressedContainerColor = Color.Transparent,
         ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                shape = shape,
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White.copy(alpha = 0.86f)),
+                shape = shape,
+            ),
+        ),
         glow = ClickableSurfaceDefaults.glow(Glow.None, Glow.None, Glow.None),
     ) {
-        Box(
+        Row(
             modifier = Modifier
+                .height(52.dp)
                 .background(backgroundColor, shape)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-            contentAlignment = Alignment.Center,
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (isFocused) {
+                            Color.White.copy(alpha = 0.20f)
+                        } else {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = textColor,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
             Text(
                 text = text,
                 color = textColor,
-                fontSize = 13.sp,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

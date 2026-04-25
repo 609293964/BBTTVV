@@ -118,6 +118,7 @@ internal fun buildLiveDebugSnapshot(
     )
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun resolveFormatBitrate(format: Format): Int {
     return format.averageBitrate.takeIf { it > 0 }
         ?: format.bitrate.takeIf { it > 0 }

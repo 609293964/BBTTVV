@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.bbttvv.app.core.performance.AppPerformanceTracker
+import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBar
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
@@ -38,10 +39,10 @@ fun HomeScreen(
     restoreVideoFocusTab: AppTopLevelTab? = null,
     hasPendingVideoFocusRestore: Boolean = restoreVideoFocusKey != null,
     onVideoFocusRestored: (String) -> Unit = {},
-    onVideoClick: (String) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
     onLiveClick: (Long, String?) -> Unit,
     onTabSelected: (AppTopLevelTab) -> Unit,
-    onRecommendVideoClick: (String, String) -> Unit = { _, bvid -> onVideoClick(bvid) },
+    onRecommendVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, com.bbttvv.app.data.model.response.VideoItem) -> Unit = { _, _, _ -> },
     onOpenUp: (Long) -> Unit = {}
@@ -118,17 +119,24 @@ fun HomeScreen(
     }
 
     LaunchedEffect(selectedHomeTab, effectiveFocusScene, isVideoFocusRestorePending, recommendHasVideos) {
-        if (
-            recommendHasVideos &&
-            HomeFocusStrategy.shouldResetRecommendScroll(
+        fun shouldResetRecommendScrollNow(): Boolean {
+            return HomeFocusStrategy.shouldResetRecommendScroll(
                 scene = effectiveFocusScene,
                 selectedHomeTab = selectedHomeTab,
                 isRestoringBackReturnFocus = isVideoFocusRestorePending &&
                     restoreTargetTab == AppTopLevelTab.RECOMMEND,
+                hasContentFocus = focusCoordinator.isContentFocused ||
+                    recommendGridFocusState.hasFocusInside(),
+                hasRememberedGridFocus = recommendGridFocusState.hasRememberedFocus(),
             )
-        ) {
+        }
+
+        if (recommendHasVideos && shouldResetRecommendScrollNow()) {
             withFrameNanos { }
-            recommendGridFocusState.requestScrollToTop()
+            // First cold load can finish while the user is already moving through the grid.
+            if (shouldResetRecommendScrollNow()) {
+                recommendGridFocusState.requestScrollToTop()
+            }
         }
     }
 

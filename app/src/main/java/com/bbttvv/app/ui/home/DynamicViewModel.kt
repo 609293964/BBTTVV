@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-private const val DynamicFocusSummaryPrefetchDelayMs = 240L
+private const val DynamicFocusSummaryPrefetchDelayMs = 300L
 
 data class DynamicUiState(
     val liveUsers: List<FollowedLiveRoom> = emptyList(),
@@ -113,7 +113,7 @@ class DynamicViewModel : ViewModel() {
     private fun loadDynamicVideos(refresh: Boolean, showLoading: Boolean) {
         if (refresh) {
             hasMoreVideos = true
-            videoFeed.reset()
+            videoFeed.resetPageCursor()
         } else {
             val snapshot = videoFeed.snapshot()
             if (snapshot.isLoading || snapshot.endReached) return

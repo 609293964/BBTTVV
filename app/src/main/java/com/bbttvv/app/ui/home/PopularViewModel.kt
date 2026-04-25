@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val PopularFocusSummaryPrefetchDelayMs = 240L
+private const val PopularFocusSummaryPrefetchDelayMs = 300L
 
 data class PopularCategory(
     val label: String,
@@ -133,7 +133,7 @@ class PopularViewModel : ViewModel() {
         val category = defaultPopularCategories.getOrNull(index) ?: return
         val feed = feedForCategory(index)
         if (refresh) {
-            feed.reset()
+            feed.resetPageCursor()
         } else {
             val snapshot = feed.snapshot()
             if (snapshot.isLoading || snapshot.endReached) return

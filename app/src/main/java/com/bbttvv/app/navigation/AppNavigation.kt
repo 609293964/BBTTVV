@@ -136,9 +136,9 @@ fun AppNavigation() {
                 onTabSelected = { targetTab ->
                     navigationState.switchHomeTab(targetTab.index)
                 },
-                onVideoClick = { bvid ->
+                onVideoClick = { video ->
                     navigationState.prepareForDirectDetailOpen()
-                    context.startVideoDetailActivity(bvid)
+                    context.startVideoDetailActivity(video)
                 },
                 onLiveClick = { roomId, focusKey ->
                     if (focusKey == null) {
@@ -148,20 +148,20 @@ fun AppNavigation() {
                     }
                     navController.navigate(ScreenRoutes.LivePlayer.createRoute(roomId))
                 },
-                onRecommendVideoClick = { focusKey, bvid ->
+                onRecommendVideoClick = { focusKey, video ->
                     navigationState.prepareForRecommendDetailOpen(focusKey)
-                    context.startVideoDetailActivity(bvid)
+                    context.startVideoDetailActivity(video)
                 },
                 onOpenSettings = {
                     navController.navigate(ScreenRoutes.Settings.route)
                 },
                 onProfileVideoClick = { tab, focusKey, video ->
-                    if (tab == AppTopLevelTab.WATCH_LATER) {
-                        navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
-                    } else {
-                        navigationState.clearDetailCommentFocusRestore()
-                    }
                     if (video.view_at > 0L) {
+                        if (tab == AppTopLevelTab.WATCH_LATER) {
+                            navigationState.prepareForInternalHomeTabPlayerOpen(tab, focusKey)
+                        } else {
+                            navigationState.clearDetailCommentFocusRestore()
+                        }
                         navController.navigate(
                             ScreenRoutes.VideoPlayer.createRoute(
                                 bvid = video.bvid,
@@ -174,7 +174,12 @@ fun AppNavigation() {
                             )
                         )
                     } else {
-                        context.startVideoDetailActivity(video.bvid)
+                        if (tab == AppTopLevelTab.WATCH_LATER) {
+                            navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
+                        } else {
+                            navigationState.clearDetailCommentFocusRestore()
+                        }
+                        context.startVideoDetailActivity(video)
                     }
                 },
                 onOpenUp = { mid ->
@@ -288,9 +293,9 @@ fun AppNavigation() {
                 mid = mid,
                 initialName = previousEntryState?.remove<String>(PublisherPreviewNameSavedStateKey),
                 initialFace = previousEntryState?.remove<String>(PublisherPreviewFaceSavedStateKey),
-                onOpenVideo = { publisherBvid ->
+                onOpenVideo = { publisherVideo ->
                     navigationState.clearDetailCommentFocusRestore()
-                    context.startVideoDetailActivity(publisherBvid)
+                    context.startVideoDetailActivity(publisherVideo)
                 }
             )
         }

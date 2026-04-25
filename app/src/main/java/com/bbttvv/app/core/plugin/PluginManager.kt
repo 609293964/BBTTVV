@@ -82,14 +82,17 @@ object PluginManager {
      * 内置插件在 Application 中注册
      */
     fun register(plugin: Plugin) {
-        if (_plugins.any { it.plugin.id == plugin.id }) {
-            Logger.w(TAG, " Plugin already registered: ${plugin.id}")
-            return
-        }
-        
         scope.launch {
+            if (_plugins.any { it.plugin.id == plugin.id }) {
+                Logger.w(TAG, " Plugin already registered: ${plugin.id}")
+                return@launch
+            }
             val storedEnabled = withContext(Dispatchers.IO) {
                 PluginStore.isEnabled(appContext, plugin.id)
+            }
+            if (_plugins.any { it.plugin.id == plugin.id }) {
+                Logger.w(TAG, " Plugin already registered: ${plugin.id}")
+                return@launch
             }
             val enabled = consumePendingPluginEnabledState(
                 pluginId = plugin.id,
@@ -171,7 +174,7 @@ object PluginManager {
      */
     @Suppress("UNCHECKED_CAST")
     fun <T : Plugin> getEnabledPlugins(type: KClass<T>): List<T> {
-        return _plugins.toList()
+        return _pluginsFlow.value
             .filter { it.enabled && type.isInstance(it.plugin) }
             .map { it.plugin as T }
     }
@@ -195,7 +198,7 @@ object PluginManager {
      * 使用所有启用的 FeedPlugin 判断单个视频是否可见
      */
     fun shouldShowFeedItem(item: com.bbttvv.app.data.model.response.VideoItem): Boolean {
-        val feedPlugins = getEnabledFeedPlugins()
+        val feedPlugins = enabledFeedPluginsSnapshot()
         if (feedPlugins.isEmpty()) return true
 
         return feedPlugins.all { plugin ->
@@ -213,7 +216,32 @@ object PluginManager {
      * 用于首页推荐和搜索结果
      */
     fun filterFeedItems(items: List<com.bbttvv.app.data.model.response.VideoItem>): List<com.bbttvv.app.data.model.response.VideoItem> {
-        return items.filter(::shouldShowFeedItem)
+        val feedPlugins = enabledFeedPluginsSnapshot()
+        if (feedPlugins.isEmpty()) return items
+
+        val visibleItems = ArrayList<com.bbttvv.app.data.model.response.VideoItem>(items.size)
+        for (item in items) {
+            var shouldShow = true
+            for (plugin in feedPlugins) {
+                shouldShow = try {
+                    plugin.shouldShowItem(item)
+                } catch (e: Exception) {
+                    Logger.e(TAG, " Feed plugin failed: ${plugin.name}", e)
+                    true
+                }
+                if (!shouldShow) break
+            }
+            if (shouldShow) {
+                visibleItems.add(item)
+            }
+        }
+        return visibleItems
+    }
+
+    private fun enabledFeedPluginsSnapshot(): List<FeedPlugin> {
+        return _pluginsFlow.value.mapNotNull { info ->
+            if (info.enabled) info.plugin as? FeedPlugin else null
+        }
     }
     
     /**

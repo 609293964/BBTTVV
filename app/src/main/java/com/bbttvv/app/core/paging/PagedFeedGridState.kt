@@ -22,8 +22,14 @@ class PagedFeedGridState<K, SourceItem, VisibleItem>(
 
     fun snapshot(): PagedGridStateMachine.State<K> = paging.snapshot()
 
-    fun reset() {
+    fun resetPageCursor() {
         paging.reset()
+    }
+
+    fun clearItemsAndResetCursor() {
+        paging.reset()
+        sourceItems.clear()
+        visibleItems.clear()
     }
 
     fun sourceSnapshot(): List<SourceItem> = sourceItems.toList()

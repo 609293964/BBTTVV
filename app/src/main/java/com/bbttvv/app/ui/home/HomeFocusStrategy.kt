@@ -15,9 +15,12 @@ internal object HomeFocusStrategy {
         scene: HomeFocusScene,
         selectedHomeTab: AppTopLevelTab,
         isRestoringBackReturnFocus: Boolean,
+        hasContentFocus: Boolean = false,
+        hasRememberedGridFocus: Boolean = false,
     ): Boolean {
         if (selectedHomeTab != AppTopLevelTab.RECOMMEND) return false
         if (isRestoringBackReturnFocus) return false
+        if (hasContentFocus || hasRememberedGridFocus) return false
         return scene == HomeFocusScene.InitialEnter
     }
 

@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.home
 
-import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.View
 import androidx.recyclerview.widget.GridLayoutManager
@@ -32,7 +31,6 @@ internal class DpadGridController(
     )
 
     private var recyclerView: RecyclerView? = null
-    private var focusProtectionHandle: RecyclerViewFocusProtectionHandle? = null
     private var callbacks: Callbacks = Callbacks()
     private var lastKnownFocusedPosition: Int = RecyclerView.NO_POSITION
     private var lastKnownFocusedColumn: Int = RecyclerView.NO_POSITION
@@ -55,12 +53,9 @@ internal class DpadGridController(
         detach()
         this.recyclerView = recyclerView
         recyclerView.setOnKeyListener(recyclerKeyListener)
-        focusProtectionHandle = recyclerView.installChildFocusParkingOnDetach()
     }
 
     fun detach() {
-        focusProtectionHandle?.dispose()
-        focusProtectionHandle = null
         recyclerView?.setOnKeyListener(null)
         recyclerView = null
         lastKnownFocusedPosition = RecyclerView.NO_POSITION
@@ -88,19 +83,6 @@ internal class DpadGridController(
 
     fun hasPendingLoadMoreFocus(): Boolean {
         return pendingLoadMoreFocus != null
-    }
-
-    fun prepareForDataSetChange(): Boolean {
-        if (pendingLoadMoreFocus != null) return false
-        val recycler = recyclerView ?: return false
-        val currentFocused = recycler.rootView?.findFocus()
-        val focusInsideRecycler = currentFocused === recycler ||
-            currentFocused?.isSameOrDescendantOf(recycler) == true
-        return if (focusInsideRecycler) {
-            recycler.parkFocusForDataSetReset()
-        } else {
-            false
-        }
     }
 
     fun handleItemKeyEvent(
@@ -213,26 +195,30 @@ internal class DpadGridController(
         edge: DpadGridEdge,
     ): Boolean {
         val currentItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
-        if (currentItem != null) {
-            val next = FocusFinder.getInstance().findNextFocus(
-                recycler,
-                currentItem,
-                View.FOCUS_DOWN,
-            )
-            if (next != null && next.isSameOrDescendantOf(recycler)) {
-                next.requestFocus()
-                return true
-            }
-        }
-
         val nextPosition = position + spanCount
         if (nextPosition in 0 until itemCount) {
+            val targetItem = recycler.findViewHolderForAdapterPosition(nextPosition)?.itemView
+            if (targetItem != null && targetItem.isValidFocusTarget() && targetItem.requestFocus()) {
+                return true
+            }
             val requestToken = ++focusRequestToken
-            if (currentItem != null && recycler.canScrollVertically(1)) {
-                val dy = (currentItem.height * config.scrollOnDownEdgeFactor)
-                    .toInt()
-                    .coerceAtLeast(1)
-                recycler.scrollBy(0, dy)
+            if (currentItem != null && !isPositionVisible(recycler, nextPosition)) {
+                val targetOffset = (recycler.layoutManager as? GridLayoutManager)
+                    ?.getDecoratedTop(currentItem)
+                    ?: currentItem.top
+                (recycler.layoutManager as? GridLayoutManager)
+                    ?.scrollToPositionWithOffset(nextPosition, targetOffset)
+                    ?: recycler.scrollToPosition(nextPosition)
+                recycler.post {
+                    if (this.recyclerView === recycler && focusRequestToken == requestToken) {
+                        tryFocusAtPosition(
+                            recycler = recycler,
+                            position = nextPosition,
+                            requestToken = requestToken,
+                        )
+                    }
+                }
+                return true
             }
             tryFocusAtPosition(
                 recycler = recycler,
@@ -240,6 +226,24 @@ internal class DpadGridController(
                 requestToken = requestToken,
             )
             return true
+        }
+
+        if (edge.isBottom) {
+            if (callbacks.onBottomEdge(position)) return true
+            if (callbacks.canLoadMore()) {
+                prepareLoadMoreFocus(
+                    anchorPosition = position,
+                    anchorOffsetPx = currentItem?.let { focusedItem ->
+                        (recycler.layoutManager as? GridLayoutManager)?.getDecoratedTop(focusedItem)
+                            ?: focusedItem.top
+                    },
+                    oldItemCount = itemCount,
+                    spanCount = spanCount,
+                )
+                callbacks.loadMore()
+                return true
+            }
+            return config.consumeDownAtBottomEdge
         }
 
         if (recycler.canScrollVertically(1)) {
@@ -262,33 +266,21 @@ internal class DpadGridController(
             return true
         }
 
-        if (!edge.isBottom) return true
-        if (callbacks.onBottomEdge(position)) return true
-        if (callbacks.canLoadMore()) {
-            prepareLoadMoreFocus(
-                recycler = recycler,
-                anchorPosition = position,
-                oldItemCount = itemCount,
-                spanCount = spanCount,
-            )
-            callbacks.loadMore()
-            return true
-        }
-        return config.consumeDownAtBottomEdge
+        return true
     }
 
     private fun prepareLoadMoreFocus(
-        recycler: RecyclerView,
         anchorPosition: Int,
+        anchorOffsetPx: Int?,
         oldItemCount: Int,
         spanCount: Int,
     ): Boolean {
         pendingLoadMoreFocus = LoadMoreFocusPolicy.create(
             anchorPosition = anchorPosition,
+            anchorOffsetPx = anchorOffsetPx,
             oldItemCount = oldItemCount,
             spanCount = spanCount,
         )
-        recycler.parkFocusForDataSetReset()
         return pendingLoadMoreFocus != null
     }
 
@@ -307,8 +299,13 @@ internal class DpadGridController(
             currentFocused.isValidFocusTarget() &&
             currentFocused.isSameOrDescendantOf(recycler)
         ) {
-            pendingLoadMoreFocus = null
-            return true
+            val focusedPosition = recycler.findContainingViewHolder(currentFocused)
+                ?.bindingAdapterPosition
+                ?.takeIf { it != RecyclerView.NO_POSITION }
+            if (focusedPosition != pending.anchorPosition) {
+                pendingLoadMoreFocus = null
+                return true
+            }
         }
 
         val requestToken = ++focusRequestToken
@@ -323,6 +320,7 @@ internal class DpadGridController(
             recycler = recycler,
             position = targetPosition,
             requestToken = requestToken,
+            scrollOffsetPx = pending.anchorOffsetPx,
             onFocused = {
                 pendingLoadMoreFocus = null
             },
@@ -390,6 +388,7 @@ internal class DpadGridController(
         recycler: RecyclerView,
         position: Int,
         requestToken: Int = ++focusRequestToken,
+        scrollOffsetPx: Int? = null,
         onFocused: (() -> Unit)? = null,
     ): Boolean {
         if (focusRequestToken != requestToken) return false
@@ -404,7 +403,13 @@ internal class DpadGridController(
         }
 
         if (!isPositionVisible(recycler, position)) {
-            recycler.scrollToPosition(position)
+            if (scrollOffsetPx != null) {
+                (recycler.layoutManager as? GridLayoutManager)
+                    ?.scrollToPositionWithOffset(position, scrollOffsetPx)
+                    ?: recycler.scrollToPosition(position)
+            } else {
+                recycler.scrollToPosition(position)
+            }
         }
 
         recycler.post {
@@ -413,6 +418,7 @@ internal class DpadGridController(
                     recycler = recycler,
                     position = position,
                     requestToken = requestToken,
+                    scrollOffsetPx = scrollOffsetPx,
                     onFocused = onFocused,
                 )
             }
@@ -513,6 +519,7 @@ internal data class PendingLoadMoreFocus(
     val anchorPosition: Int,
     val anchorColumn: Int,
     val oldItemCount: Int,
+    val anchorOffsetPx: Int?,
 )
 
 internal object LoadMoreFocusPolicy {
@@ -520,6 +527,7 @@ internal object LoadMoreFocusPolicy {
         anchorPosition: Int,
         oldItemCount: Int,
         spanCount: Int,
+        anchorOffsetPx: Int? = null,
     ): PendingLoadMoreFocus? {
         if (oldItemCount <= 0 || spanCount <= 0 || anchorPosition !in 0 until oldItemCount) {
             return null
@@ -528,6 +536,7 @@ internal object LoadMoreFocusPolicy {
             anchorPosition = anchorPosition,
             anchorColumn = anchorPosition % spanCount,
             oldItemCount = oldItemCount,
+            anchorOffsetPx = anchorOffsetPx,
         )
     }
 

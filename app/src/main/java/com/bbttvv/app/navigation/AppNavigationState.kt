@@ -171,6 +171,15 @@ class AppNavigationState internal constructor(
         clearDetailCommentFocusRestore()
     }
 
+    fun prepareForInternalHomeTabPlayerOpen(tab: AppTopLevelTab, focusKey: String) {
+        prepareHomeVideoFocusRestore(
+            tab = tab,
+            focusKey = focusKey,
+            waitForHostActivityReturn = false,
+        )
+        clearDetailCommentFocusRestore()
+    }
+
     fun prepareForLivePlayerOpen(focusKey: String) {
         prepareHomeVideoFocusRestore(
             tab = AppTopLevelTab.LIVE,

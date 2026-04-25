@@ -1,0 +1,46 @@
+# Gradle / Android build output
+.gradle/
+.kotlin/
+build/
+**/build/
+captures/
+
+# Local Android SDK and IDE state
+local.properties
+.idea/caches/
+.idea/shelf/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries/
+.idea/libraries/
+
+# VS Code local state
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Signing credentials and private release config
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Logs, diagnostics, and temporary dumps
+logs/
+*.log
+*.logcat
+*logcat*.txt
+build_log.txt
+focus_repro_*.txt
+focus-repro-*.txt
+focus-refactor-*.txt
+window_dump*.xml
+*.hprof
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

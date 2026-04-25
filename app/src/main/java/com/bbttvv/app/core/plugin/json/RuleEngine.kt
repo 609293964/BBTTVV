@@ -6,9 +6,20 @@ import com.bbttvv.app.core.plugin.DanmakuStyle
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
 import androidx.compose.ui.graphics.Color
+import java.util.LinkedHashMap
+import java.util.WeakHashMap
 import kotlinx.serialization.json.*
 
 private const val TAG = "RuleEngine"
+private const val RULE_REGEX_CACHE_SIZE = 96
+private val conditionCacheLock = Any()
+private val conditionCache = WeakHashMap<Rule, Condition?>()
+private val regexCacheLock = Any()
+private val regexCache = object : LinkedHashMap<String, Regex?>(RULE_REGEX_CACHE_SIZE, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>?): Boolean {
+        return size > RULE_REGEX_CACHE_SIZE
+    }
+}
 
 /**
  * 🔧 规则引擎
@@ -25,9 +36,9 @@ object RuleEngine {
         for (rule in rules) {
             if (rule.action != RuleAction.HIDE) continue
             
-            val condition = rule.toCondition() ?: continue
+            val condition = rule.cachedCondition() ?: continue
             if (evaluateCondition(condition) { field -> getVideoFieldValue(video, field) }) {
-                Logger.d(TAG, "🚫 隐藏视频: ${video.title} (规则匹配)")
+                Logger.d(TAG) { "🚫 隐藏视频: ${video.title} (规则匹配)" }
                 return false
             }
         }
@@ -41,7 +52,7 @@ object RuleEngine {
         for (rule in rules) {
             if (rule.action != RuleAction.HIDE) continue
             
-            val condition = rule.toCondition() ?: continue
+            val condition = rule.cachedCondition() ?: continue
             if (evaluateCondition(condition) { field -> getDanmakuFieldValue(danmaku, field) }) {
                 return false
             }
@@ -56,7 +67,7 @@ object RuleEngine {
         for (rule in rules) {
             if (rule.action != RuleAction.HIGHLIGHT) continue
             
-            val condition = rule.toCondition() ?: continue
+            val condition = rule.cachedCondition() ?: continue
             if (evaluateCondition(condition) { field -> getDanmakuFieldValue(danmaku, field) }) {
                 return rule.style?.toDanmakuStyle()
             }
@@ -145,11 +156,7 @@ object RuleEngine {
             RuleOperator.STARTS_WITH -> fieldValue.toString().startsWith(ruleValue.jsonPrimitive.content, ignoreCase = true)
             RuleOperator.ENDS_WITH -> fieldValue.toString().endsWith(ruleValue.jsonPrimitive.content, ignoreCase = true)
             RuleOperator.REGEX -> {
-                try {
-                    Regex(ruleValue.jsonPrimitive.content).containsMatchIn(fieldValue.toString())
-                } catch (e: Exception) {
-                    false
-                }
+                cachedRegex(ruleValue.jsonPrimitive.content)?.containsMatchIn(fieldValue.toString()) == true
             }
             RuleOperator.IN -> {
                 if (ruleValue is JsonArray) {
@@ -181,6 +188,26 @@ object RuleEngine {
         }
         val b = ruleValue.jsonPrimitive.doubleOrNull ?: return false
         return comparator(a, b)
+    }
+
+    private fun Rule.cachedCondition(): Condition? {
+        return synchronized(conditionCacheLock) {
+            if (conditionCache.containsKey(this)) {
+                conditionCache[this]
+            } else {
+                toCondition().also { conditionCache[this] = it }
+            }
+        }
+    }
+
+    private fun cachedRegex(pattern: String): Regex? {
+        return synchronized(regexCacheLock) {
+            if (regexCache.containsKey(pattern)) {
+                regexCache[pattern]
+            } else {
+                runCatching { Regex(pattern) }.getOrNull().also { regexCache[pattern] = it }
+            }
+        }
     }
     
     /**

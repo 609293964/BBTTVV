@@ -1,16 +1,18 @@
 package com.bbttvv.app.ui.home
 
-import android.view.View
+import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 internal class HomeRecommendGridFocusState {
     private var recyclerView: RecyclerView? = null
     private var lastFocusedKey: String? = null
+    private var lastFocusedPosition: Int = RecyclerView.NO_POSITION
     private var pendingScrollToTop: Boolean = false
-    private var pendingDataSetFocus: PendingDataSetFocus? = null
-    private var suppressRecyclerFocusRecovery: Boolean = false
+    private var pendingDataSetFocus: PendingGridFocus? = null
     private var focusRequestToken: Int = 0
+    private var lastUserNavigationUptimeMs: Long = 0L
     private var onFocusTargetAvailabilityChanged: (() -> Unit)? = null
 
     fun attach(recyclerView: RecyclerView) {
@@ -25,7 +27,6 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun onItemsCommitted() {
-        suppressRecyclerFocusRecovery = false
         applyPendingAfterItemsAvailable()
     }
 
@@ -33,30 +34,82 @@ internal class HomeRecommendGridFocusState {
         onFocusTargetAvailabilityChanged = callback
     }
 
-    private fun applyPendingAfterItemsAvailable() {
-        applyPendingScrollToTop()
-        applyPendingDataSetFocus()
-        enqueueRecyclerChildFocusRecoveryIfNeeded()
-    }
-
-    fun prepareForDataSetChange(): Boolean {
-        val recycler = attachedRecyclerView() ?: return false
-        val currentFocused = recycler.rootView?.findFocus()
-        val focusInsideRecycler = currentFocused === recycler ||
-            currentFocused?.isSameOrDescendantOf(recycler) == true
-        return if (focusInsideRecycler) {
-            pendingDataSetFocus = captureCurrentFocus(recycler, currentFocused)
-            suppressRecyclerFocusRecovery = true
-            pendingDataSetFocus != null
-        } else {
-            false
+    fun onRecyclerFocusChanged(hasFocus: Boolean) {
+        if (hasFocus) {
+            restoreChildFocusIfRecyclerOwnsFocus()
         }
     }
 
-    fun onItemFocused(key: String) {
-        focusRequestToken++
+    fun noteUserNavigation(keyCode: Int, event: KeyEvent) {
+        if (event.action == KeyEvent.ACTION_DOWN && keyCode in DirectionalKeyCodes) {
+            lastUserNavigationUptimeMs = SystemClock.uptimeMillis()
+        }
+    }
+
+    fun prepareForDataSetChange(nextItems: List<HomeRecommendVideoCardItem>): Boolean {
+        val recycler = currentRecyclerView() ?: return false
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
+        val currentFocused = recycler.rootView?.findFocus()
+        val focusInsideRecycler = currentFocused === recycler ||
+            currentFocused?.isSameOrDescendantOf(recycler) == true
+        if (!focusInsideRecycler) return false
+
+        val focusedPosition = findFocusedAdapterPosition(
+            recycler = recycler,
+            focusedView = currentFocused,
+            itemCount = adapter.itemCount,
+        )
+        val focusedKey = focusedPosition?.let(adapter::keyAt) ?: lastFocusedKey
+        val nextPositionForKey = focusedKey?.let { key ->
+            nextItems.indexOfFirst { it.key == key }.takeIf { it >= 0 }
+        }
+
+        if (
+            HomeGridDataSetFocusPolicy.shouldKeepFocusedChild(
+                focusIsRecyclerContainer = currentFocused === recycler,
+                focusedKey = focusedKey,
+                nextPositionForKey = nextPositionForKey,
+            )
+        ) {
+            lastFocusedKey = focusedKey
+            lastFocusedPosition = nextPositionForKey ?: RecyclerView.NO_POSITION
+            pendingDataSetFocus = null
+            return false
+        }
+
+        pendingDataSetFocus = PendingGridFocus(
+            key = focusedKey?.takeIf { nextPositionForKey != null },
+            position = HomeGridDataSetFocusPolicy.pendingPosition(
+                nextItemCount = nextItems.size,
+                nextPositionForKey = nextPositionForKey,
+                focusedPosition = focusedPosition,
+                rememberedPosition = lastFocusedPosition,
+                firstVisiblePosition = firstVisiblePosition(recycler),
+            ),
+        )
+
+        if (currentFocused === recycler) {
+            schedulePendingFocusAfterLayout()
+            return true
+        }
+
+        val parked = recycler.parkFocusForDataSetReset()
+        if (parked) {
+            schedulePendingFocusAfterLayout()
+        }
+        return parked
+    }
+
+    fun onItemFocused(key: String, position: Int) {
         lastFocusedKey = key
-        pendingDataSetFocus = null
+        lastFocusedPosition = position
+
+        val pending = pendingDataSetFocus ?: return
+        when {
+            pending.matches(key = key, position = position) -> pendingDataSetFocus = null
+            isRecentUserNavigation() -> pendingDataSetFocus = null
+            else -> schedulePendingFocusAfterLayout()
+        }
     }
 
     fun hasRememberedFocus(): Boolean {
@@ -64,7 +117,7 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun hasFocusInside(): Boolean {
-        val recycler = attachedRecyclerView() ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val currentFocused = recycler.rootView?.findFocus() ?: return false
         return currentFocused === recycler || currentFocused.isSameOrDescendantOf(recycler)
     }
@@ -72,17 +125,27 @@ internal class HomeRecommendGridFocusState {
     fun requestScrollToTop() {
         pendingScrollToTop = true
         pendingDataSetFocus = null
-        prepareForDataSetChange()
+        val recycler = currentRecyclerView()
+        val currentFocused = recycler?.rootView?.findFocus()
+        if (
+            recycler != null &&
+            currentFocused != null &&
+            (currentFocused === recycler || currentFocused.isSameOrDescendantOf(recycler))
+        ) {
+            pendingDataSetFocus = PendingGridFocus(key = null, position = 0)
+            recycler.parkFocusForDataSetReset()
+        }
         applyPendingScrollToTop()
     }
 
     fun resetRememberedFocusToTop() {
         lastFocusedKey = null
+        lastFocusedPosition = RecyclerView.NO_POSITION
         requestScrollToTop()
     }
 
     fun tryFocusVisibleItem(): Boolean {
-        val recycler = attachedRecyclerView() ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
         if (adapter.itemCount <= 0) return false
 
@@ -110,42 +173,16 @@ internal class HomeRecommendGridFocusState {
         )
     }
 
-    fun enqueueRecyclerChildFocusRecoveryIfNeeded() {
-        if (suppressRecyclerFocusRecovery) return
-        val recycler = attachedRecyclerView() ?: return
-        if (recycler.rootView?.findFocus() !== recycler) return
-        val requestToken = ++focusRequestToken
-        recycler.post {
-            if (
-                !suppressRecyclerFocusRecovery &&
-                focusRequestToken == requestToken &&
-                this.recyclerView === recycler &&
-                recycler.isValidFocusTarget() &&
-                recycler.rootView?.findFocus() === recycler
-            ) {
-                tryFocusInVisibleWindow(recycler, requestToken)
-            }
-        }
-    }
-
     fun clearVisibleFocusVisualState(): Boolean {
-        val recycler = attachedRecyclerView() ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
         adapter.clearVisibleFocusVisualState(recycler)
         return true
     }
 
-    private fun applyPendingScrollToTop() {
-        if (!pendingScrollToTop) return
-        val recycler = attachedRecyclerView() ?: return
-        if ((recycler.adapter?.itemCount ?: 0) <= 0) return
-        pendingScrollToTop = false
-        recycler.scrollToPosition(0)
-    }
-
     fun tryFocusKey(key: String): Boolean {
         pendingDataSetFocus = null
-        val recycler = attachedRecyclerView() ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
         val position = adapter.positionOfKey(key)
         if (position !in 0 until adapter.itemCount) return false
@@ -157,17 +194,16 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun tryFocusPreviousRow(): Boolean {
-        val recycler = attachedRecyclerView() ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
         val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
         val spanCount = layoutManager.spanCount.takeIf { it > 0 } ?: return false
         val currentFocused = recycler.rootView?.findFocus() ?: return false
-        val currentPosition = currentFocused
-            .takeUnless { it === recycler }
-            ?.let(recycler::findContainingViewHolder)
-            ?.bindingAdapterPosition
-            ?.takeIf { it in 0 until adapter.itemCount }
-            ?: return false
+        val currentPosition = findFocusedAdapterPosition(
+            recycler = recycler,
+            focusedView = currentFocused,
+            itemCount = adapter.itemCount,
+        ) ?: return false
         if (currentPosition < spanCount) return false
         val targetPosition = currentPosition - spanCount
         return tryFocusPosition(
@@ -177,163 +213,156 @@ internal class HomeRecommendGridFocusState {
         )
     }
 
-    private fun captureCurrentFocus(
-        recycler: RecyclerView,
-        currentFocused: View?,
-    ): PendingDataSetFocus? {
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return null
-        val directPosition = currentFocused
-            ?.takeUnless { it === recycler }
-            ?.let(recycler::findContainingViewHolder)
-            ?.bindingAdapterPosition
-            ?.takeIf { it in 0 until adapter.itemCount }
-        val keyedPosition = lastFocusedKey
-            ?.let(adapter::positionOfKey)
-            ?.takeIf { it in 0 until adapter.itemCount }
-        val position = directPosition ?: keyedPosition ?: return null
-        val key = adapter.keyAt(position) ?: return null
-        return PendingDataSetFocus(key = key, position = position)
+    private fun applyPendingAfterItemsAvailable() {
+        applyPendingScrollToTop()
+        if (!applyPendingDataSetFocus()) {
+            restoreChildFocusIfRecyclerOwnsFocus()
+        }
     }
 
-    private fun tryFocusInVisibleWindow(
-        recycler: RecyclerView,
-        requestToken: Int = ++focusRequestToken,
-    ): Boolean {
+    private fun applyPendingScrollToTop() {
+        if (!pendingScrollToTop) return
+        val recycler = currentRecyclerView() ?: return
+        if ((recycler.adapter?.itemCount ?: 0) <= 0) return
+        pendingScrollToTop = false
+        recycler.scrollToPosition(0)
+        schedulePendingFocusAfterLayout()
+    }
+
+    private fun restoreChildFocusIfRecyclerOwnsFocus(): Boolean {
+        val recycler = currentRecyclerView() ?: return false
+        if (recycler.rootView?.findFocus() !== recycler) return false
+        if (pendingDataSetFocus == null) {
+            val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
+            if (adapter.itemCount <= 0) return false
+            pendingDataSetFocus = PendingGridFocus(
+                key = lastFocusedKey?.takeIf { adapter.positionOfKey(it) in 0 until adapter.itemCount },
+                position = lastFocusedKey
+                    ?.let(adapter::positionOfKey)
+                    ?.takeIf { it in 0 until adapter.itemCount }
+                    ?: firstVisiblePosition(recycler).takeIf { it in 0 until adapter.itemCount }
+                    ?: 0,
+            )
+        }
+        return applyPendingDataSetFocus()
+    }
+
+    private fun applyPendingDataSetFocus(): Boolean {
+        val pending = pendingDataSetFocus ?: return false
+        val recycler = currentRecyclerView() ?: return false
         val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
         val itemCount = adapter.itemCount
         if (itemCount <= 0) return false
-        val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
-        val firstVisible = layoutManager.findFirstVisibleItemPosition()
-            .takeIf { it != RecyclerView.NO_POSITION }
-            ?: return false
-        val lastVisible = layoutManager.findLastVisibleItemPosition()
-            .takeIf { it != RecyclerView.NO_POSITION }
-            ?: firstVisible
-        val lastFocusedPosition = lastFocusedKey
-            ?.let(adapter::positionOfKey)
-            ?.takeIf { it in 0 until itemCount }
-        val spanCount = layoutManager.spanCount.takeIf { it > 0 } ?: 1
-        val targetPosition = when {
-            lastFocusedPosition != null && lastFocusedPosition in firstVisible..lastVisible -> {
-                lastFocusedPosition
-            }
-            lastFocusedPosition != null -> {
-                val targetColumn = lastFocusedPosition % spanCount
-                val visiblePositions = firstVisible..lastVisible
-                if (lastFocusedPosition < firstVisible) {
-                    visiblePositions.reversed()
-                } else {
-                    visiblePositions
-                }.firstOrNull { it in 0 until itemCount && it % spanCount == targetColumn }
-            }
-            else -> null
-        } ?: firstVisible.coerceIn(0, itemCount - 1)
 
+        val targetPosition = HomeGridDataSetFocusPolicy.resolvePendingTarget(
+            itemCount = itemCount,
+            keyPosition = pending.key?.let(adapter::positionOfKey),
+            fallbackPosition = pending.position,
+        )
+        if (targetPosition == RecyclerView.NO_POSITION) return false
         return tryFocusPosition(
             recycler = recycler,
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
-            requestToken = requestToken,
+            onFocused = {
+                pendingDataSetFocus = null
+            },
+            retryCount = PendingFocusRetryCount,
         )
+    }
+
+    private fun schedulePendingFocusAfterLayout() {
+        val recycler = currentRecyclerView() ?: return
+        if (pendingDataSetFocus == null) return
+        val requestToken = nextFocusRequestToken()
+        recycler.postOnAnimation {
+            if (recyclerView === recycler && isFocusRequestTokenCurrent(requestToken)) {
+                applyPendingDataSetFocus()
+            }
+        }
+        onFocusTargetAvailabilityChanged?.invoke()
     }
 
     private fun tryFocusPosition(
         recycler: RecyclerView,
         position: Int,
         expectedKey: String?,
-        onSuccess: (() -> Unit)? = null,
-        requestToken: Int = ++focusRequestToken,
+        onFocused: (() -> Unit)? = null,
+        requestToken: Int = nextFocusRequestToken(),
+        retryCount: Int = DefaultFocusRetryCount,
     ): Boolean {
-        if (focusRequestToken != requestToken) return false
+        if (!isFocusRequestTokenCurrent(requestToken)) return false
         if (!recycler.isValidFocusTarget()) return false
         val adapter = recycler.adapter ?: return false
         if (position !in 0 until adapter.itemCount) return false
 
-        if (!isPositionVisible(recycler, position)) {
-            recycler.scrollToPosition(position)
-            notifyFocusTargetAvailabilityAfterLayout(recycler)
-            return false
-        }
-
         val holder = recycler.findViewHolderForAdapterPosition(position)
         val itemView = holder?.itemView
         if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
-            if (expectedKey != null) onItemFocused(expectedKey)
-            onSuccess?.invoke()
+            if (expectedKey != null) onItemFocused(expectedKey, position)
+            onFocused?.invoke()
             return true
         }
 
-        notifyFocusTargetAvailabilityAfterLayout(recycler)
+        if (!isPositionVisible(recycler, position)) {
+            recycler.scrollToPosition(position)
+        }
+
+        if (retryCount > 0) {
+            recycler.postOnAnimation {
+                if (recyclerView === recycler && isFocusRequestTokenCurrent(requestToken)) {
+                    tryFocusPosition(
+                        recycler = recycler,
+                        position = position,
+                        expectedKey = expectedKey,
+                        onFocused = onFocused,
+                        requestToken = requestToken,
+                        retryCount = retryCount - 1,
+                    )
+                }
+            }
+        } else {
+            onFocusTargetAvailabilityChanged?.invoke()
+        }
+
         return false
     }
 
-    private fun applyPendingDataSetFocus(): Boolean {
-        val pending = pendingDataSetFocus ?: return false
-        val recycler = attachedRecyclerView() ?: return false
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
-        val itemCount = adapter.itemCount
-        if (itemCount <= 0) {
-            pendingDataSetFocus = null
-            return false
-        }
+    private fun currentRecyclerView(): RecyclerView? {
+        return attachedRecyclerView(recyclerView)
+    }
 
-        val currentFocused = recycler.rootView?.findFocus()
+    private fun nextFocusRequestToken(): Int {
+        focusRequestToken++
+        return focusRequestToken
+    }
 
-        if (
-            currentFocused != null &&
-            currentFocused !== recycler &&
-            currentFocused.isValidFocusTarget() &&
-            currentFocused.isSameOrDescendantOf(recycler)
-        ) {
-            pendingDataSetFocus = null
-            return true
-        }
+    private fun isFocusRequestTokenCurrent(requestToken: Int): Boolean {
+        return focusRequestToken == requestToken
+    }
 
-        val targetPosition = adapter.positionOfKey(pending.key)
-            .takeIf { it in 0 until itemCount }
-            ?: pending.position.takeIf { it in 0 until itemCount }
-            ?: pending.position.coerceIn(0, itemCount - 1)
+    private fun isRecentUserNavigation(): Boolean {
+        return SystemClock.uptimeMillis() - lastUserNavigationUptimeMs <= UserNavigationFocusWindowMs
+    }
 
-        return tryFocusPosition(
-            recycler = recycler,
-            position = targetPosition,
-            expectedKey = adapter.keyAt(targetPosition),
-            onSuccess = {
-                pendingDataSetFocus = null
-            }
+    private companion object {
+        private const val UserNavigationFocusWindowMs = 250L
+        private const val DefaultFocusRetryCount = 2
+        private const val PendingFocusRetryCount = 4
+        private val DirectionalKeyCodes = setOf(
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
         )
-    }
-
-    private fun attachedRecyclerView(): RecyclerView? {
-        return recyclerView?.takeIf { it.isValidFocusTarget() }
-    }
-
-    private fun firstVisiblePosition(recycler: RecyclerView): Int {
-        return (recycler.layoutManager as? GridLayoutManager)
-            ?.findFirstVisibleItemPosition()
-            ?.takeIf { it != RecyclerView.NO_POSITION }
-            ?: RecyclerView.NO_POSITION
-    }
-
-    private fun isPositionVisible(recycler: RecyclerView, position: Int): Boolean {
-        val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
-        val first = layoutManager.findFirstVisibleItemPosition()
-        val last = layoutManager.findLastVisibleItemPosition()
-        return first != RecyclerView.NO_POSITION &&
-            last != RecyclerView.NO_POSITION &&
-            position in first..last
-    }
-
-    private fun notifyFocusTargetAvailabilityAfterLayout(recycler: RecyclerView) {
-        recycler.post {
-            if (this.recyclerView === recycler && recycler.isValidFocusTarget()) {
-                onFocusTargetAvailabilityChanged?.invoke()
-            }
-        }
     }
 }
 
-private data class PendingDataSetFocus(
-    val key: String,
+private data class PendingGridFocus(
+    val key: String?,
     val position: Int,
-)
+) {
+    fun matches(key: String, position: Int): Boolean {
+        return this.key == key || (this.key == null && this.position == position)
+    }
+}

@@ -39,11 +39,10 @@ import coil.size.Precision
 import com.bbttvv.app.core.util.FormatUtils
 import java.util.Locale
 
-internal val DetailBackdropExtraScrimColor = Color(0x33000000)
 internal val DetailBackdropGradientColors = listOf(
-    Color(0xD8141414),
-    Color(0xB8141414),
-    Color(0xE0141414)
+    Color(0xE00F0F0F),
+    Color(0xC60F0F0F),
+    Color(0xE6101010)
 )
 internal val DetailPrimaryPillColor = Color(0xFFF4F6F8)
 internal val DetailPrimaryTextColor = Color(0xFF121212)

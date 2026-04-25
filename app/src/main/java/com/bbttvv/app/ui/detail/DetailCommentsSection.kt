@@ -2,13 +2,19 @@ package com.bbttvv.app.ui.detail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -78,7 +84,7 @@ internal fun LazyListScope.detailCommentsSection(
     when {
         commentsState.isLoading && commentsState.items.isEmpty() -> {
             item(key = "comments_loading") {
-                DetailMessageCard(text = "正在加载评论...")
+                DetailCommentsSkeleton()
             }
         }
 
@@ -144,6 +150,67 @@ internal fun LazyListScope.detailCommentsSection(
             commentsState = commentsState,
             onPrevious = onPreviousPage,
             onNext = onNextPage
+        )
+    }
+}
+
+@Composable
+private fun DetailCommentsSkeleton() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(DetailCardColor)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        repeat(2) { index ->
+            DetailCommentSkeletonItem(isCompact = index == 1)
+        }
+    }
+}
+
+@Composable
+private fun DetailCommentSkeletonItem(isCompact: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f))
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (isCompact) 0.22f else 0.28f)
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.White.copy(alpha = 0.10f))
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (isCompact) 0.16f else 0.20f)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.White.copy(alpha = 0.07f))
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(if (isCompact) 0.70f else 0.86f)
+                .height(13.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.09f))
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(if (isCompact) 0.48f else 0.62f)
+                .height(13.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.07f))
         )
     }
 }

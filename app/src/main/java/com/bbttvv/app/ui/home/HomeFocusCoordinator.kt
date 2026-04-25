@@ -33,6 +33,8 @@ internal interface HomeFocusTarget {
 
     fun hasFocus(): Boolean = false
 
+    fun hasFocusOnRequestedTarget(): Boolean = hasFocus()
+
     fun hasRememberedFocus(): Boolean = false
 
     fun clearFocusVisualState(): Boolean = false
@@ -88,7 +90,11 @@ internal class HomeFocusCoordinator(
         isTopBarVisible = true
         isContentFocused = false
         if (pendingIntent == HomeFocusIntent.FocusTopBar) {
-            pendingIntent = null
+            if (topBarTarget?.hasFocusOnRequestedTarget() == true) {
+                pendingIntent = null
+            } else {
+                drainPendingFocus()
+            }
         }
     }
 
