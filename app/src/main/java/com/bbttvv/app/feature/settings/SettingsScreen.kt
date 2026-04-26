@@ -161,7 +161,7 @@ fun TvSettingsList(
         item {
             SettingsRow(
                 title = "仅加载最高分辨率",
-                subtitle = "控制应用整体配色，支持跟随系统、深色和浅色。",
+                subtitle = "播放时优先请求接口返回的最高画质，关闭后按默认画质策略选择。",
                 value = onOff(autoHighestQuality),
                 compact = compact,
                 onClick = {
@@ -190,7 +190,7 @@ fun TvSettingsList(
         item {
             SettingsRow(
                 title = "在线观看人数",
-                subtitle = "控制应用整体配色，支持跟随系统、深色和浅色。",
+                subtitle = "控制播放页右上角是否显示当前视频的在线观看人数。",
                 value = onOff(showOnlineCount),
                 compact = compact,
                 onClick = {

@@ -9,11 +9,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.bbttvv.app.core.coroutines.AppScope
+import com.bbttvv.app.core.util.Logger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
@@ -23,8 +28,19 @@ object TokenManager {
     private val BUVID3_KEY = stringPreferencesKey("buvid3")
     private val buvid3Lock = Any()
     private val dataStoreObserverLock = Any()
+    private val warmupLock = Any()
+
+    @Volatile
+    private var appContext: Context? = null
+
     @Volatile
     private var dataStoreObserverJob: Job? = null
+
+    @Volatile
+    private var warmupSignal: CompletableDeferred<Unit>? = null
+
+    @Volatile
+    private var warmupCompleted = false
 
     //  [新增] SharedPreferences 备份，解决冷启动时 DataStore 异步加载慢导致 ApiClient 无 Cookie 的问题
     private const val SP_NAME = "token_backup_sp"
@@ -74,8 +90,104 @@ object TokenManager {
         private set
 
     fun init(context: Context) {
-        val appContext = context.applicationContext
-        // 1.  同步读取 SP 备份，确保主线程立即有数据
+        appContext = context.applicationContext
+        Logger.d("TokenManager", " init: lightweight context ready")
+    }
+
+    fun warmup(context: Context? = null) {
+        val claim = claimWarmup(context) ?: return
+        if (claim.shouldRun) {
+            runWarmup(claim)
+        } else {
+            runBlocking {
+                claim.signal.await()
+            }
+        }
+    }
+
+    suspend fun awaitWarmup(context: Context? = null) {
+        if (warmupCompleted) return
+        val claim = claimWarmup(context) ?: return
+        if (claim.shouldRun) {
+            withContext(Dispatchers.IO) {
+                runWarmup(claim)
+            }
+        } else {
+            claim.signal.await()
+        }
+    }
+
+    fun awaitWarmupBlocking(context: Context? = null) {
+        if (warmupCompleted) return
+        val claim = claimWarmup(context) ?: return
+        if (claim.shouldRun) {
+            runWarmup(claim)
+        } else {
+            runBlocking {
+                claim.signal.await()
+            }
+        }
+    }
+
+    private data class WarmupClaim(
+        val context: Context,
+        val signal: CompletableDeferred<Unit>,
+        val shouldRun: Boolean
+    )
+
+    private fun claimWarmup(context: Context?): WarmupClaim? {
+        val resolvedContext = resolveAppContext(context) ?: return null
+        synchronized(warmupLock) {
+            if (warmupCompleted) {
+                return WarmupClaim(
+                    context = resolvedContext,
+                    signal = CompletableDeferred(Unit),
+                    shouldRun = false
+                )
+            }
+
+            val activeSignal = warmupSignal
+            if (activeSignal != null) {
+                return WarmupClaim(
+                    context = resolvedContext,
+                    signal = activeSignal,
+                    shouldRun = false
+                )
+            }
+
+            val newSignal = CompletableDeferred<Unit>()
+            warmupSignal = newSignal
+            return WarmupClaim(
+                context = resolvedContext,
+                signal = newSignal,
+                shouldRun = true
+            )
+        }
+    }
+
+    private fun resolveAppContext(context: Context?): Context? {
+        val resolved = context?.applicationContext ?: appContext
+        if (resolved != null && appContext == null) {
+            appContext = resolved
+        }
+        return resolved
+    }
+
+    private fun runWarmup(claim: WarmupClaim) {
+        runCatching {
+            performWarmup(claim.context)
+        }.onFailure { error ->
+            Logger.e("TokenManager", " token warmup failed", error)
+        }
+
+        synchronized(warmupLock) {
+            warmupCompleted = true
+            warmupSignal = null
+        }
+        claim.signal.complete(Unit)
+    }
+
+    private fun performWarmup(appContext: Context) {
         val sp = appContext.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
         sessDataCache = sp.getString(SP_KEY_SESS, null)
         buvid3Cache = sp.getString(SP_KEY_BUVID, null)
@@ -83,10 +195,8 @@ object TokenManager {
         midCache = sp.getLong(SP_KEY_MID, 0L).takeIf { it > 0 }  //  读取 MID
         accessTokenCache = sp.getString(SP_KEY_ACCESS_TOKEN, null)  //  读取 access_token
         refreshTokenCache = sp.getString(SP_KEY_REFRESH_TOKEN, null)  //  读取 refresh_token
-        
-        com.bbttvv.app.core.util.Logger.d("TokenManager", " init: sessData=${sessDataCache?.take(10)}..., accessToken=${accessTokenCache?.take(10)}..., mid=$midCache")
 
-        // 2. 启动 DataStore 监听 (主要数据源)
+        Logger.d("TokenManager", " warmup: sessData=${sessDataCache?.take(10)}..., accessToken=${accessTokenCache?.take(10)}..., mid=$midCache")
         startDataStoreObserver(appContext, sp)
     }
 
@@ -145,7 +255,7 @@ object TokenManager {
         csrfCache = csrf
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putString(SP_KEY_CSRF, csrf).apply()
-        com.bbttvv.app.core.util.Logger.d("TokenManager", " saveCsrf: ${csrf.take(10)}...")
+        Logger.d("TokenManager", " saveCsrf: ${csrf.take(10)}...")
     }
     
     //  [新增] 保存用户 MID
@@ -153,7 +263,7 @@ object TokenManager {
         midCache = mid
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putLong(SP_KEY_MID, mid).apply()
-        com.bbttvv.app.core.util.Logger.d("TokenManager", " saveMid: $mid")
+        Logger.d("TokenManager", " saveMid: $mid")
     }
     
     //  [新增] 保存 APP access_token 和 refresh_token - 高画质鉴权登录后调用
@@ -165,7 +275,7 @@ object TokenManager {
             .putString(SP_KEY_ACCESS_TOKEN, accessToken)
             .putString(SP_KEY_REFRESH_TOKEN, refreshToken)
             .apply()
-        com.bbttvv.app.core.util.Logger.d("TokenManager", " saveAccessToken: ${accessToken.take(10)}..., refreshToken: ${refreshToken.take(10)}...")
+        Logger.d("TokenManager", " saveAccessToken: ${accessToken.take(10)}..., refreshToken: ${refreshToken.take(10)}...")
     }
 
     fun saveVipStatus(isVip: Boolean) {
@@ -174,7 +284,7 @@ object TokenManager {
 
     suspend fun saveCookies(context: Context, sessData: String) {
         sessDataCache = sessData
-        com.bbttvv.app.core.util.Logger.d("TokenManager", " saveCookies: ${sessData.take(10)}..., cache updated to: ${sessDataCache?.take(10)}...")
+        Logger.d("TokenManager", " saveCookies: ${sessData.take(10)}..., cache updated to: ${sessDataCache?.take(10)}...")
         
         // 1. 存入 SP (同步/快速)
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)

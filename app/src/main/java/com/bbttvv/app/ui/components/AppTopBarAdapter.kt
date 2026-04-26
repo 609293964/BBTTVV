@@ -77,6 +77,14 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
         return tabs.indexOf(tab).takeIf { it >= 0 } ?: RecyclerView.NO_POSITION
     }
 
+    fun currentSelectedTab(): AppTopLevelTab? = selectedTab
+
+    fun focusTargetOrFallback(tab: AppTopLevelTab?): AppTopLevelTab? {
+        return tab?.takeIf { it in tabs }
+            ?: selectedTab?.takeIf { it in tabs }
+            ?: tabs.firstOrNull()
+    }
+
     private fun select(tab: AppTopLevelTab) {
         if (selectedTab == tab) {
             onSelectedTabConfirmed(tab)

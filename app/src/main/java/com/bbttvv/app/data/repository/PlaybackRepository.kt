@@ -134,6 +134,7 @@ object PlaybackRepository {
         audioLang: String? = null
     ): Result<Pair<ViewInfo, PlayUrlData>> = withContext(Dispatchers.IO) {
         try {
+            TokenManager.awaitWarmup()
             val lookup = resolveVideoInfoLookupInput(rawBvid = bvid, aid = aid)
                 ?: throw Exception("无效的视频标识: bvid=$bvid, aid=$aid")
             val viewResp = if (lookup.bvid.isNotEmpty()) {

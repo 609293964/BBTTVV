@@ -7,8 +7,11 @@ import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.CommentFraudStatus
 import com.bbttvv.app.data.model.response.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -26,6 +29,16 @@ object CommentRepository {
     private val api = NetworkModule.api
     private val guestApi = NetworkModule.guestApi
     private val commentJson = Json { ignoreUnknownKeys = true }
+    private const val EMOTE_MAP_CACHE_TTL_MS = 24L * 60 * 60 * 1000
+
+    private data class EmoteMapCache(
+        val fetchedAtMs: Long,
+        val map: Map<String, String>
+    )
+
+    @Volatile
+    private var emoteMapCache: EmoteMapCache? = null
+    private val emoteMapLock = Mutex()
 
     // WBI Key 缓存
     private var wbiKeysCache: Pair<String, String>? = null
@@ -379,21 +392,50 @@ object CommentRepository {
      * 获取表情包映射
      */
     suspend fun getEmoteMap(): Map<String, String> = withContext(Dispatchers.IO) {
-        val map = mutableMapOf<String, String>()
-        // 默认表情
-        map["[doge]"] = "http://i0.hdslb.com/bfs/emote/6f8743c3c13009f4705307b2750e32f5068225e3.png"
-        map["[笑哭]"] = "http://i0.hdslb.com/bfs/emote/500b63b2f293309a909403a746566fdd6104d498.png"
-        map["[妙啊]"] = "http://i0.hdslb.com/bfs/emote/03c39c8eb009f63568971032b49c716259c72441.png"
+        val now = System.currentTimeMillis()
+        getFreshEmoteMapCache(now)?.let { return@withContext it }
+        emoteMapLock.withLock {
+            getFreshEmoteMapCache(now)?.let { return@withLock it }
+            fetchReplyEmoteMap().also { map ->
+                emoteMapCache = EmoteMapCache(fetchedAtMs = System.currentTimeMillis(), map = map)
+            }
+        }
+    }
+
+    suspend fun warmupEmoteMap(): Int = withContext(Dispatchers.IO) {
+        getEmoteMap().size
+    }
+
+    private fun getFreshEmoteMapCache(now: Long): Map<String, String>? {
+        val cached = emoteMapCache ?: return null
+        if (now - cached.fetchedAtMs > EMOTE_MAP_CACHE_TTL_MS) return null
+        return cached.map
+    }
+
+    private suspend fun fetchReplyEmoteMap(): Map<String, String> {
+        val map = defaultReplyEmoteMap().toMutableMap()
         try {
             val params = mutableMapOf("business" to "reply")
-            
+
             val response = api.getEmotes(params)
             val packages = response.data?.packages ?: response.data?.all_packages
             packages?.forEach { pkg ->
                 pkg.emote?.forEach { emote -> map[emote.text] = emote.url }
             }
-        } catch (e: Exception) { e.printStackTrace() }
-        map
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Logger.w("CommentRepo", "getEmoteMap failed, using defaults: ${error.message}")
+        }
+        return map.toMap()
+    }
+
+    private fun defaultReplyEmoteMap(): Map<String, String> {
+        return mapOf(
+            "[doge]" to "http://i0.hdslb.com/bfs/emote/6f8743c3c13009f4705307b2750e32f5068225e3.png",
+            "[笑哭]" to "http://i0.hdslb.com/bfs/emote/500b63b2f293309a909403a746566fdd6104d498.png",
+            "[妙啊]" to "http://i0.hdslb.com/bfs/emote/03c39c8eb009f63568971032b49c716259c72441.png"
+        )
     }
 
     /**

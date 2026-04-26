@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class HomeUiState(
@@ -38,7 +39,7 @@ data class HomeUiState(
 private fun resolveTabStorePolicy(context: Context): TabStorePolicy {
     val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     return if (activityManager?.isLowRamDevice == true) {
-        TabStorePolicy.KeepSelectedOnly
+        TabStorePolicy.KeepSelectedOnlyAfterIdle()
     } else {
         TabStorePolicy.KeepRecentTwo
     }
@@ -61,6 +62,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var todayWatchPlugin: TodayWatchPlugin? = null
     private var selectedHomeTab: AppTopLevelTab = AppTopLevelTab.RECOMMEND
     private var pendingTodayWatchRebuildForceReload = false
+    private var tabStoreIdleTrimJob: Job? = null
 
     init {
         observeFeedPluginUpdates()
@@ -71,13 +73,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         detailPrefetcher.clear()
+        tabStoreIdleTrimJob?.cancel()
         tabStoreOwner.clearAll()
     }
 
     fun tabViewModelStore(tab: AppTopLevelTab) = tabStoreOwner.getOrCreate(tab)
 
     fun trimTabViewModelStores(selectedTab: AppTopLevelTab) {
-        tabStoreOwner.trimForSelected(selectedTab)
+        selectedHomeTab = selectedTab
+        scheduleIdleTabStoreTrim(tabStoreOwner.trimForSelected(selectedTab))
     }
 
     fun onHomeTabVisible(tab: AppTopLevelTab) {
@@ -93,6 +97,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val forceReload = pendingTodayWatchRebuildForceReload
             pendingTodayWatchRebuildForceReload = false
             requestTodayWatchRebuild(forceReloadHistory = forceReload)
+        }
+    }
+
+    private fun scheduleIdleTabStoreTrim(delayMs: Long?) {
+        tabStoreIdleTrimJob?.cancel()
+        if (delayMs == null) {
+            tabStoreIdleTrimJob = null
+            return
+        }
+        tabStoreIdleTrimJob = viewModelScope.launch {
+            var nextDelayMs: Long? = delayMs
+            while (nextDelayMs != null) {
+                delay(nextDelayMs.coerceAtLeast(1L))
+                nextDelayMs = tabStoreOwner.trimForSelected(selectedHomeTab)
+            }
         }
     }
 
@@ -396,4 +415,3 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
-

@@ -5,6 +5,9 @@ import android.util.Log
 import com.bbttvv.app.app.startup.AppStartupTask
 
 private const val APP_PERF_TAG = "AppPerf"
+private const val NANOS_PER_MICRO = 1_000L
+private const val MICROS_PER_MILLI = 1_000L
+private const val NANOS_PER_MILLI = 1_000_000L
 
 object AppPerformanceTracker {
     private val lock = Any()
@@ -31,27 +34,24 @@ object AppPerformanceTracker {
         task: AppStartupTask,
         block: () -> T
     ): T {
-        val start = SystemClock.elapsedRealtime()
+        val startNs = SystemClock.elapsedRealtimeNanos()
         return try {
             block()
         } finally {
-            val durationMs = (SystemClock.elapsedRealtime() - start).coerceAtLeast(0L)
-            Log.i(
-                APP_PERF_TAG,
-                buildString {
-                    append("APP_PERF startup_task=")
-                    append(task.id)
-                    append(" phase=")
-                    append(task.phase)
-                    append(" thread=")
-                    append(task.thread)
-                    append(" duration=")
-                    append(durationMs)
-                    append("ms sinceApp=")
-                    append(sinceAppStartMs())
-                    append("ms")
-                }
+            val durationNs = (SystemClock.elapsedRealtimeNanos() - startNs).coerceAtLeast(0L)
+            val isOverBudget = task.coldStartBudgetMs?.let { budgetMs ->
+                durationNs > (budgetMs * NANOS_PER_MILLI).toLong()
+            } ?: false
+            val message = buildStartupTaskLogMessage(
+                task = task,
+                durationNs = durationNs,
+                isOverBudget = isOverBudget
             )
+            if (isOverBudget) {
+                Log.w(APP_PERF_TAG, message)
+            } else {
+                Log.i(APP_PERF_TAG, message)
+            }
         }
     }
 
@@ -123,5 +123,41 @@ object AppPerformanceTracker {
     private fun sinceAppStartMs(now: Long = SystemClock.elapsedRealtime()): Long {
         val appCreatedAt = synchronized(lock) { appCreatedAtElapsedMs }
         return if (appCreatedAt == null) 0L else (now - appCreatedAt).coerceAtLeast(0L)
+    }
+
+    private fun buildStartupTaskLogMessage(
+        task: AppStartupTask,
+        durationNs: Long,
+        isOverBudget: Boolean
+    ): String {
+        return buildString {
+            append("APP_PERF startup_task=")
+            append(task.id)
+            append(" phase=")
+            append(task.phase)
+            append(" thread=")
+            append(task.thread)
+            append(" duration=")
+            append(formatDurationMs(durationNs))
+            append("ms")
+            task.coldStartBudgetMs?.let { budgetMs ->
+                append(" budget=")
+                append(budgetMs)
+                append("ms overBudget=")
+                append(isOverBudget)
+            }
+            append(" sinceApp=")
+            append(sinceAppStartMs())
+            append("ms")
+        }
+    }
+
+    private fun formatDurationMs(durationNs: Long): String {
+        val durationMicros = durationNs / NANOS_PER_MICRO
+        val wholeMs = durationMicros / MICROS_PER_MILLI
+        val fractionalMicros = (durationMicros % MICROS_PER_MILLI)
+            .toString()
+            .padStart(length = 3, padChar = '0')
+        return "$wholeMs.$fractionalMicros"
     }
 }

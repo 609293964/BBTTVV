@@ -48,10 +48,53 @@ class HomeFocusCoordinatorTest {
         assertEquals(0, gridTarget.focusRequests)
 
         gridTarget.rememberedFocus = true
+        coordinator.onContentRegionFocused(AppTopLevelTab.POPULAR, HomeFocusRegion.Grid)
         coordinator.requestSelectedContentFocus()
 
         assertEquals(1, tabsTarget.focusRequests)
         assertEquals(1, gridTarget.focusRequests)
+    }
+
+    @Test
+    fun `top bar dpad down can enter search input`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.SEARCH)
+        val searchInputTarget = FakeFocusTarget(canFocus = true)
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.SEARCH,
+            region = HomeFocusRegion.SearchInput,
+            target = searchInputTarget,
+        )
+
+        assertTrue(coordinator.handleTopBarDpadDown())
+
+        assertEquals(1, searchInputTarget.focusRequests)
+        assertTrue(coordinator.isContentFocused)
+    }
+
+    @Test
+    fun `selected content focus restores remembered profile region`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.PROFILE)
+        val sidebarTarget = FakeFocusTarget(canFocus = true)
+        val contentTarget = FakeFocusTarget(canFocus = true)
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.PROFILE,
+            region = HomeFocusRegion.ProfileSidebar,
+            target = sidebarTarget,
+        )
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.PROFILE,
+            region = HomeFocusRegion.ProfileContent,
+            target = contentTarget,
+        )
+
+        coordinator.onContentRegionFocused(AppTopLevelTab.PROFILE, HomeFocusRegion.ProfileContent)
+        coordinator.requestSelectedContentFocus()
+
+        assertEquals(0, sidebarTarget.focusRequests)
+        assertEquals(1, contentTarget.focusRequests)
+        assertTrue(coordinator.isContentFocused)
     }
 
     @Test
@@ -99,6 +142,55 @@ class HomeFocusCoordinatorTest {
 
         assertEquals(1, tabsTarget.focusRequests)
         assertEquals(2, topBarTarget.focusRequests)
+        assertFalse(coordinator.isContentFocused)
+        assertTrue(coordinator.isTopBarVisible)
+    }
+
+    @Test
+    fun `escape recovery restores remembered content before top bar when content was active`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.POPULAR)
+        val topBarTarget = FakeFocusTarget(canFocus = true)
+        val tabsTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(canFocus = true, rememberedFocus = true)
+
+        coordinator.registerTopBarTarget(topBarTarget)
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.POPULAR,
+            region = HomeFocusRegion.ContentTabs,
+            target = tabsTarget,
+        )
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.POPULAR,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+        coordinator.prepareForContentFocus()
+
+        assertTrue(coordinator.recoverFocusAfterEscape())
+
+        assertEquals(1, gridTarget.focusRequests)
+        assertEquals(0, tabsTarget.focusRequests)
+        assertEquals(1, topBarTarget.focusRequests)
+        assertTrue(coordinator.isContentFocused)
+    }
+
+    @Test
+    fun `escape recovery restores top bar first when top bar was active`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val topBarTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(canFocus = true, rememberedFocus = true)
+
+        coordinator.registerTopBarTarget(topBarTarget)
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        assertTrue(coordinator.recoverFocusAfterEscape())
+
+        assertEquals(2, topBarTarget.focusRequests)
+        assertEquals(0, gridTarget.focusRequests)
         assertFalse(coordinator.isContentFocused)
         assertTrue(coordinator.isTopBarVisible)
     }

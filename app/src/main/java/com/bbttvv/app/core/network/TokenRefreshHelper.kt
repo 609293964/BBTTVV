@@ -22,6 +22,7 @@ object TokenRefreshHelper {
      */
     suspend fun refresh(context: Context): Boolean = mutex.withLock {
         try {
+            TokenManager.awaitWarmup(context)
             val refreshToken = TokenManager.refreshTokenCache
             if (refreshToken.isNullOrEmpty()) {
                 Logger.d(TAG, "Refresh failed: No refresh_token available")

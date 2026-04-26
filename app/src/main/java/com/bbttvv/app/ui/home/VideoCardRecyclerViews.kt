@@ -38,6 +38,7 @@ internal fun VideoCardRecyclerGrid(
     focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     scrollResetKey: Any? = null,
     showHistoryProgressOnly: Boolean = false,
     showDanmakuCount: Boolean = true,
@@ -72,6 +73,8 @@ internal fun VideoCardRecyclerGrid(
     val latestSupportingText by rememberUpdatedState(supportingText)
     val latestOnVideoClick by rememberUpdatedState(onVideoClick)
     val latestFocusCoordinator by rememberUpdatedState(focusCoordinator)
+    val latestFocusTab by rememberUpdatedState(focusTab)
+    val latestFocusRegion by rememberUpdatedState(focusRegion)
     val dpadGridController = remember { DpadGridController() }
     val recyclerViewRef = remember { RecyclerViewRef() }
 
@@ -100,6 +103,9 @@ internal fun VideoCardRecyclerGrid(
                         rowCount = rowCount,
                     )
                 },
+                parkFocusForScroll = { targetPosition ->
+                    focusState.parkFocusForDirectionalScroll(targetPosition)
+                },
                 onMenu = {
                     latestOnMenuRefresh?.invoke()
                     latestOnMenuRefresh != null
@@ -119,14 +125,14 @@ internal fun VideoCardRecyclerGrid(
         }
     }
 
-    DisposableEffect(focusCoordinator, focusTab, focusState) {
+    DisposableEffect(focusCoordinator, focusTab, focusRegion, focusState) {
         focusState.setOnFocusTargetAvailabilityChanged {
             focusCoordinator?.drainPendingFocus()
         }
         val registration = if (focusCoordinator != null && focusTab != null) {
             focusCoordinator.registerContentTarget(
                 tab = focusTab,
-                region = HomeFocusRegion.Grid,
+                region = focusRegion,
                 target = object : HomeFocusTarget {
                     override fun tryRequestFocus(): Boolean {
                         return focusState.tryFocusVisibleItem()
@@ -170,23 +176,38 @@ internal fun VideoCardRecyclerGrid(
             val context = ContextThemeWrapper(rawContext, R.style.Theme_BBTTVV)
             object : RecyclerView(context) {
                 override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                    if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in GridNavigationKeyCodes) {
                         val focusedView = rootView?.findFocus()
                         val currentPosition = focusedView
                             ?.let(::findContainingViewHolder)
                             ?.bindingAdapterPosition
                             ?.takeIf { it != NO_POSITION }
-                        val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
-                        if (currentPosition != null && spanCount != null && currentPosition >= spanCount) {
-                            val targetPosition = currentPosition - spanCount
-                            findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { target ->
-                                if (target.requestFocus()) {
-                                    return true
-                                }
+                        if (currentPosition != null && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                            focusState.noteUserNavigation(event.keyCode, event)
+                            if (dpadGridController.handleItemKeyEvent(
+                                    itemView = focusedView,
+                                    position = currentPosition,
+                                    keyCode = event.keyCode,
+                                    event = event,
+                                )
+                            ) {
+                                return true
                             }
-                            scrollToPosition(targetPosition)
-                            post {
-                                findViewHolderForAdapterPosition(targetPosition)?.itemView?.requestFocus()
+                        }
+                        if (
+                            currentPosition == null &&
+                            focusedView != null &&
+                            focusedView.isSameOrDescendantOf(this)
+                        ) {
+                            focusState.noteUserNavigation(event.keyCode, event)
+                            if (dpadGridController.handleItemKeyEvent(
+                                    itemView = focusedView,
+                                    position = NO_POSITION,
+                                    keyCode = event.keyCode,
+                                    event = event,
+                                )
+                            ) {
+                                return true
                             }
                             return true
                         }
@@ -251,8 +272,8 @@ internal fun VideoCardRecyclerGrid(
                 focusState.attach(this)
                 dpadGridController.attach(this)
                 configureVideoCardRecycler()
-                clipToPadding = true
-                clipChildren = true
+                clipToPadding = false
+                clipChildren = false
                 setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
                 layoutManager = GridLayoutManager(context, gridColumnCount)
                 setOnFocusChangeListener { _, hasFocus ->
@@ -284,6 +305,9 @@ internal fun VideoCardRecyclerGrid(
                     onItemFocused = { item, position ->
                         dpadGridController.onItemFocused(position = position)
                         focusState.onItemFocused(item.key, position)
+                        latestFocusTab?.let { tab ->
+                            latestFocusCoordinator?.onContentRegionFocused(tab, latestFocusRegion)
+                        }
                         latestOnFocusedRowChanged(position / gridColumnCount.coerceAtLeast(1))
                         latestOnVideoFocused(item.video, item.key)
                     },
@@ -321,8 +345,8 @@ internal fun VideoCardRecyclerGrid(
             recyclerViewRef.value = recyclerView
             focusState.attach(recyclerView)
             dpadGridController.attach(recyclerView)
-            recyclerView.clipToPadding = true
-            recyclerView.clipChildren = true
+            recyclerView.clipToPadding = false
+            recyclerView.clipChildren = false
             recyclerView.setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
             val manager = recyclerView.layoutManager as? GridLayoutManager
             if (manager == null) {
@@ -532,6 +556,13 @@ private fun RecyclerView.configureVideoCardRecycler() {
     itemAnimator = null
     installChildFocusParkingOnDetach()
 }
+
+private val GridNavigationKeyCodes = setOf(
+    KeyEvent.KEYCODE_DPAD_UP,
+    KeyEvent.KEYCODE_DPAD_DOWN,
+    KeyEvent.KEYCODE_DPAD_LEFT,
+    KeyEvent.KEYCODE_DPAD_RIGHT,
+)
 
 private data class RecyclerPaddingPx(
     val start: Int,

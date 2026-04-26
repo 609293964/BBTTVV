@@ -80,6 +80,10 @@ object LiveRepository {
         }
     }
 
+    suspend fun warmupLiveMetadata(): Int {
+        return getLiveAreas(forceRefresh = false).getOrNull()?.size ?: 0
+    }
+
     /**
      * 获取直播间详情信息。
      */

@@ -4,9 +4,9 @@ import android.net.Uri
 
 sealed class ScreenRoutes(val route: String) {
     data object Home : ScreenRoutes("home")
-    data object Search : ScreenRoutes("search")
     data object Settings : ScreenRoutes("settings")
-    data object Profile : ScreenRoutes("profile")
+
+    // Search and Profile are Home top-level tabs, not independent navigation routes.
 
     data object VideoDetail : ScreenRoutes("video/{bvid}") {
         fun createRoute(bvid: String): String {

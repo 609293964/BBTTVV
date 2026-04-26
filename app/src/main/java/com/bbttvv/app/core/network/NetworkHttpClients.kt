@@ -54,6 +54,7 @@ internal object NetworkHttpClients {
             .dns(buildApiDns(appContext))
             .cookieJar(appSessionCookieJar)
             .addInterceptor { chain ->
+                TokenManager.awaitWarmupBlocking(appContext())
                 val original = chain.request()
                 val url = original.url
                 var referer = "https://www.bilibili.com"

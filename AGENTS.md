@@ -250,10 +250,8 @@ Release 应保持：
 - 在 Composable 热路径做 Feed 过滤；
 - 用无限重试或长延迟解决焦点问题；
 - 在 release 构建中打开 debug overlay；
-- 引入全局单例持有 Activity / View / Context；
 - 在主线程做网络、数据库、文件 IO；
 - 把临时测试 URL、账号 Cookie、token、签名密钥提交到仓库；
-- 添加与第三方平台合规风险相关的宣传、绕过或攻击性功能。
 
 ## 提交前检查清单
 

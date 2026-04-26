@@ -18,17 +18,8 @@ enum class HomeBackPressResult {
 }
 
 @Stable
-class AppNavigationState internal constructor(
+class HomeNavState internal constructor(
     private val homeTabIndexState: MutableIntState,
-    private val homeVideoFocusRestoreKeyState: MutableState<String?>,
-    private val homeVideoFocusRestoreTabIndexState: MutableState<Int?>,
-    private val homeVideoFocusRestoreReadyState: MutableState<Boolean>,
-    private val homeVideoFocusRestoreSawPauseState: MutableState<Boolean>,
-
-    private val detailCommentFocusRestoreRpidState: MutableState<Long?>,
-    private val detailCommentFocusRestoreBvidState: MutableState<String?>,
-    private val lastBackPressedAtState: MutableLongState,
-    private val previousRouteState: MutableState<String?>,
 ) {
     var homeTabIndex: Int
         get() = homeTabIndexState.intValue
@@ -36,6 +27,38 @@ class AppNavigationState internal constructor(
             homeTabIndexState.intValue = AppTopLevelTab.homeContentFromIndex(value).index
         }
 
+    fun safeHomeTab(visibleTabs: List<AppTopLevelTab>): AppTopLevelTab {
+        return AppTopLevelTab.resolveVisibleHomeTab(
+            index = homeTabIndex,
+            visibleTabs = visibleTabs
+        )
+    }
+
+    fun normalizeHomeTabIfNeeded(visibleTabs: List<AppTopLevelTab>) {
+        val safeTab = safeHomeTab(visibleTabs)
+        if (safeTab.index != homeTabIndex) {
+            homeTabIndex = safeTab.index
+        }
+    }
+
+    fun isOnHome(currentRoute: String?): Boolean {
+        return currentRoute == ScreenRoutes.Home.route
+    }
+
+    fun switchHomeTab(targetTabIndex: Int) {
+        homeTabIndex = targetTabIndex
+    }
+}
+
+@Stable
+class DetailReturnState internal constructor(
+    private val homeVideoFocusRestoreKeyState: MutableState<String?>,
+    private val homeVideoFocusRestoreTabIndexState: MutableState<Int?>,
+    private val homeVideoFocusRestoreReadyState: MutableState<Boolean>,
+    private val homeVideoFocusRestoreSawPauseState: MutableState<Boolean>,
+    private val detailCommentFocusRestoreRpidState: MutableState<Long?>,
+    private val detailCommentFocusRestoreBvidState: MutableState<String?>,
+) {
     var homeVideoFocusRestoreKey: String?
         get() = homeVideoFocusRestoreKeyState.value
         private set(value) {
@@ -72,57 +95,20 @@ class AppNavigationState internal constructor(
             detailCommentFocusRestoreBvidState.value = value
         }
 
-    private var lastBackPressedAt: Long
-        get() = lastBackPressedAtState.longValue
-        set(value) {
-            lastBackPressedAtState.longValue = value
-        }
-
-    private var previousRoute: String?
-        get() = previousRouteState.value
-        set(value) {
-            previousRouteState.value = value
-        }
-
-    fun safeHomeTab(visibleTabs: List<AppTopLevelTab>): AppTopLevelTab {
-        return AppTopLevelTab.resolveVisibleHomeTab(
-            index = homeTabIndex,
-            visibleTabs = visibleTabs
-        )
-    }
-
-    fun normalizeHomeTabIfNeeded(visibleTabs: List<AppTopLevelTab>) {
-        val safeTab = safeHomeTab(visibleTabs)
-        if (safeTab.index != homeTabIndex) {
-            homeTabIndex = safeTab.index
-        }
-    }
-
-    fun isOnHome(currentRoute: String?): Boolean {
-        return currentRoute == ScreenRoutes.Home.route
-    }
-
-    fun restoreVideoFocusKey(currentRoute: String?): String? {
+    fun restoreVideoFocusKey(isOnHome: Boolean): String? {
         return homeVideoFocusRestoreKey.takeIf {
-            isOnHome(currentRoute) && homeVideoFocusRestoreReady && it != null
+            isOnHome && homeVideoFocusRestoreReady && it != null
         }
     }
 
-    fun restoreVideoFocusTab(currentRoute: String?): AppTopLevelTab? {
-        if (restoreVideoFocusKey(currentRoute) == null) return null
+    fun restoreVideoFocusTab(isOnHome: Boolean): AppTopLevelTab? {
+        if (restoreVideoFocusKey(isOnHome) == null) return null
         val tabIndex = homeVideoFocusRestoreTabIndex ?: AppTopLevelTab.RECOMMEND.index
         return AppTopLevelTab.homeContentFromIndex(tabIndex)
     }
 
-    fun hasReadyHomeVideoFocusRestore(currentRoute: String?): Boolean {
-        return restoreVideoFocusKey(currentRoute) != null
-    }
-
-    fun onRouteChanged(currentRoute: String?) {
-        if (!isOnHome(currentRoute)) {
-            lastBackPressedAt = 0L
-        }
-        previousRoute = currentRoute
+    fun hasReadyHomeVideoFocusRestore(isOnHome: Boolean): Boolean {
+        return restoreVideoFocusKey(isOnHome) != null
     }
 
     fun onHostActivityPaused() {
@@ -142,10 +128,6 @@ class AppNavigationState internal constructor(
         if (restoredKey == homeVideoFocusRestoreKey) {
             clearHomeVideoFocusRestore()
         }
-    }
-
-    fun switchHomeTab(targetTabIndex: Int) {
-        homeTabIndex = targetTabIndex
     }
 
     fun prepareForDirectDetailOpen() {
@@ -226,12 +208,134 @@ class AppNavigationState internal constructor(
             clearDetailCommentFocusRestore()
         }
     }
+}
+
+@Stable
+class BackPressExitState internal constructor(
+    private val lastBackPressedAtState: MutableLongState,
+) {
+    private var lastBackPressedAt: Long
+        get() = lastBackPressedAtState.longValue
+        set(value) {
+            lastBackPressedAtState.longValue = value
+        }
+
+    fun onRouteChanged(isOnHome: Boolean) {
+        if (!isOnHome) {
+            lastBackPressedAt = 0L
+        }
+    }
+
+    fun handleBackPressedOnDefaultTab(now: Long): HomeBackPressResult {
+        return if (now - lastBackPressedAt <= 2000L) {
+            HomeBackPressResult.Exit
+        } else {
+            lastBackPressedAt = now
+            HomeBackPressResult.ShowExitHint
+        }
+    }
+}
+
+@Stable
+class AppNavigationState internal constructor(
+    private val homeNavState: HomeNavState,
+    private val detailReturnState: DetailReturnState,
+    private val backPressExitState: BackPressExitState,
+) {
+    var homeTabIndex: Int
+        get() = homeNavState.homeTabIndex
+        set(value) {
+            homeNavState.homeTabIndex = value
+        }
+
+    val homeVideoFocusRestoreKey: String?
+        get() = detailReturnState.homeVideoFocusRestoreKey
+
+    fun safeHomeTab(visibleTabs: List<AppTopLevelTab>): AppTopLevelTab {
+        return homeNavState.safeHomeTab(visibleTabs)
+    }
+
+    fun normalizeHomeTabIfNeeded(visibleTabs: List<AppTopLevelTab>) {
+        homeNavState.normalizeHomeTabIfNeeded(visibleTabs)
+    }
+
+    fun isOnHome(currentRoute: String?): Boolean {
+        return homeNavState.isOnHome(currentRoute)
+    }
+
+    fun restoreVideoFocusKey(currentRoute: String?): String? {
+        return detailReturnState.restoreVideoFocusKey(isOnHome(currentRoute))
+    }
+
+    fun restoreVideoFocusTab(currentRoute: String?): AppTopLevelTab? {
+        return detailReturnState.restoreVideoFocusTab(isOnHome(currentRoute))
+    }
+
+    fun hasReadyHomeVideoFocusRestore(currentRoute: String?): Boolean {
+        return detailReturnState.hasReadyHomeVideoFocusRestore(isOnHome(currentRoute))
+    }
+
+    fun onRouteChanged(currentRoute: String?) {
+        backPressExitState.onRouteChanged(isOnHome(currentRoute))
+    }
+
+    fun onHostActivityPaused() {
+        detailReturnState.onHostActivityPaused()
+    }
+
+    fun onHostActivityResumed() {
+        detailReturnState.onHostActivityResumed()
+    }
+
+    fun markHomeVideoFocusRestored(restoredKey: String) {
+        detailReturnState.markHomeVideoFocusRestored(restoredKey)
+    }
+
+    fun switchHomeTab(targetTabIndex: Int) {
+        homeNavState.switchHomeTab(targetTabIndex)
+    }
+
+    fun prepareForDirectDetailOpen() {
+        detailReturnState.prepareForDirectDetailOpen()
+    }
+
+    fun prepareForRecommendDetailOpen(focusKey: String) {
+        detailReturnState.prepareForRecommendDetailOpen(focusKey)
+    }
+
+    fun prepareForHomeTabDetailOpen(tab: AppTopLevelTab, focusKey: String) {
+        detailReturnState.prepareForHomeTabDetailOpen(tab, focusKey)
+    }
+
+    fun prepareForInternalHomeTabPlayerOpen(tab: AppTopLevelTab, focusKey: String) {
+        detailReturnState.prepareForInternalHomeTabPlayerOpen(tab, focusKey)
+    }
+
+    fun prepareForLivePlayerOpen(focusKey: String) {
+        detailReturnState.prepareForLivePlayerOpen(focusKey)
+    }
+
+    fun clearDetailCommentFocusRestore() {
+        detailReturnState.clearDetailCommentFocusRestore()
+    }
+
+    fun setDetailCommentFocusRestore(bvid: String, rpid: Long) {
+        detailReturnState.setDetailCommentFocusRestore(bvid, rpid)
+    }
+
+    fun restoreCommentFocusRpidFor(bvid: String): Long? {
+        return detailReturnState.restoreCommentFocusRpidFor(bvid)
+    }
+
+    fun markCommentFocusRestored(bvid: String, restoredRpid: Long) {
+        detailReturnState.markCommentFocusRestored(bvid, restoredRpid)
+    }
 
     fun handleHomeBackPressed(
         now: Long,
         visibleTabs: List<AppTopLevelTab>
     ): HomeBackPressResult {
-        val safeTab = safeHomeTab(visibleTabs)
+        val safeTab = homeNavState.safeHomeTab(visibleTabs)
         if (safeTab.index != homeTabIndex) {
             homeTabIndex = safeTab.index
         }
@@ -240,12 +344,7 @@ class AppNavigationState internal constructor(
             homeTabIndex = AppTopLevelTab.RECOMMEND.index
             return HomeBackPressResult.Consumed
         }
-        return if (now - lastBackPressedAt <= 2000L) {
-            HomeBackPressResult.Exit
-        } else {
-            lastBackPressedAt = now
-            HomeBackPressResult.ShowExitHint
-        }
+        return backPressExitState.handleBackPressedOnDefaultTab(now)
     }
 }
 
@@ -259,28 +358,40 @@ fun rememberAppNavigationState(): AppNavigationState {
     val detailCommentFocusRestoreRpidState = rememberSaveable { mutableStateOf<Long?>(null) }
     val detailCommentFocusRestoreBvidState = rememberSaveable { mutableStateOf<String?>(null) }
     val lastBackPressedAtState = remember { mutableLongStateOf(0L) }
-    val previousRouteState = remember { mutableStateOf<String?>(null) }
-    return remember(
-        homeTabIndexState,
+
+    val homeNavState = remember(homeTabIndexState) {
+        HomeNavState(homeTabIndexState = homeTabIndexState)
+    }
+    val detailReturnState = remember(
         homeVideoFocusRestoreKeyState,
         homeVideoFocusRestoreTabIndexState,
         homeVideoFocusRestoreReadyState,
         homeVideoFocusRestoreSawPauseState,
         detailCommentFocusRestoreRpidState,
         detailCommentFocusRestoreBvidState,
-        lastBackPressedAtState,
-        previousRouteState,
     ) {
-        AppNavigationState(
-            homeTabIndexState = homeTabIndexState,
+        DetailReturnState(
             homeVideoFocusRestoreKeyState = homeVideoFocusRestoreKeyState,
             homeVideoFocusRestoreTabIndexState = homeVideoFocusRestoreTabIndexState,
             homeVideoFocusRestoreReadyState = homeVideoFocusRestoreReadyState,
             homeVideoFocusRestoreSawPauseState = homeVideoFocusRestoreSawPauseState,
             detailCommentFocusRestoreRpidState = detailCommentFocusRestoreRpidState,
             detailCommentFocusRestoreBvidState = detailCommentFocusRestoreBvidState,
-            lastBackPressedAtState = lastBackPressedAtState,
-            previousRouteState = previousRouteState,
+        )
+    }
+    val backPressExitState = remember(lastBackPressedAtState) {
+        BackPressExitState(lastBackPressedAtState = lastBackPressedAtState)
+    }
+
+    return remember(
+        homeNavState,
+        detailReturnState,
+        backPressExitState,
+    ) {
+        AppNavigationState(
+            homeNavState = homeNavState,
+            detailReturnState = detailReturnState,
+            backPressExitState = backPressExitState,
         )
     }
 }

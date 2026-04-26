@@ -155,6 +155,7 @@ object FeedRepository {
 
     private suspend fun fetchMobileFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
         return try {
+            TokenManager.awaitWarmup()
             val accessToken = TokenManager.accessTokenCache
             if (accessToken.isNullOrEmpty()) {
                 return Result.failure(Exception("需要登录才能使用移动端推荐流"))

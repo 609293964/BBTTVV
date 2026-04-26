@@ -29,6 +29,7 @@ internal object PlayUrlResolver {
         requestKind: PlayUrlRequestKind
     ): PlayUrlFetchResult? {
         PlaybackSessionManager.ensureBuvid3()
+        TokenManager.awaitWarmup()
 
         val hasSessionCookie = !TokenManager.sessDataCache.isNullOrEmpty()
         val hasAccessToken = !TokenManager.accessTokenCache.isNullOrEmpty()
@@ -281,6 +282,7 @@ internal object PlayUrlResolver {
         allowRetry: Boolean = true,
         audioLang: String? = null
     ): PlaybackSourceResult {
+        TokenManager.awaitWarmup()
         val accessToken = TokenManager.accessTokenCache
         if (accessToken.isNullOrEmpty()) {
             com.bbttvv.app.core.util.Logger.d(TAG, "No access_token available, fallback to Web API")

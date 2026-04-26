@@ -16,6 +16,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
@@ -33,6 +36,8 @@ import androidx.tv.material3.Text
 fun LoginQrPanel(
     onLoginSuccess: () -> Unit,
     modifier: Modifier = Modifier,
+    refreshFocusRequester: FocusRequester? = null,
+    onRefreshFocused: () -> Unit = {},
     viewModel: TvLoginViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,6 +124,17 @@ fun LoginQrPanel(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Surface(
                     onClick = { viewModel.loadQrCode() },
+                    modifier = Modifier
+                        .then(
+                            refreshFocusRequester?.let { requester ->
+                                Modifier.focusRequester(requester)
+                            } ?: Modifier
+                        )
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                onRefreshFocused()
+                            }
+                        },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = Color(0xFFFB7299),

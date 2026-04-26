@@ -1,5 +1,6 @@
 package com.bbttvv.app.ui.home
 
+import android.graphics.Rect
 import android.view.KeyEvent
 import android.view.View
 import androidx.recyclerview.widget.GridLayoutManager
@@ -26,6 +27,7 @@ internal class DpadGridController(
         val canLoadMore: () -> Boolean = { false },
         val loadMore: () -> Unit = {},
         val preloadRowsAhead: (RecyclerView, Int, Int, Int) -> Unit = { _, _, _, _ -> },
+        val parkFocusForScroll: (Int) -> Boolean = { _ -> false },
         val onMenu: () -> Boolean = { false },
         val onBack: () -> Boolean = { false },
     )
@@ -172,18 +174,60 @@ internal class DpadGridController(
         val targetPosition = position - spanCount
         if (targetPosition < 0) return false
 
-        recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { target ->
-            if (target.requestFocus()) {
+        val currentItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
+        val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
+        if (targetItem != null && targetItem.isValidFocusTarget()) {
+            if (isItemFullyVisible(recycler, targetItem) && targetItem.requestFocus()) {
+                return true
+            }
+            val requestToken = ++focusRequestToken
+            val scrollDistance = scrollDistanceToPreviousRow(
+                recycler = recycler,
+                currentItem = currentItem,
+                targetItem = targetItem,
+            )
+            if (scrollDistance < 0 && recycler.canScrollVertically(-1)) {
+                return smoothScrollThen(
+                    recycler = recycler,
+                    dyPx = scrollDistance,
+                    requestToken = requestToken,
+                    targetPosition = targetPosition,
+                ) {
+                    tryFocusAtPosition(
+                        recycler = recycler,
+                        position = targetPosition,
+                        requestToken = requestToken,
+                    )
+                }
+            }
+            if (targetItem.requestFocus()) {
                 return true
             }
         }
 
-        recycler.scrollToPosition(targetPosition)
         val requestToken = ++focusRequestToken
-        recycler.post {
-            if (focusRequestToken != requestToken) return@post
-            recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView?.requestFocus()
+        if (currentItem != null && !isPositionVisible(recycler, targetPosition)) {
+            val scrollDistance = -estimatedRowScrollDistance(recycler, currentItem)
+            if (recycler.canScrollVertically(-1)) {
+                return smoothScrollThen(
+                    recycler = recycler,
+                    dyPx = scrollDistance,
+                    requestToken = requestToken,
+                    targetPosition = targetPosition,
+                ) {
+                    tryFocusAtPosition(
+                        recycler = recycler,
+                        position = targetPosition,
+                        requestToken = requestToken,
+                    )
+                }
+            }
         }
+        tryFocusAtPosition(
+            recycler = recycler,
+            position = targetPosition,
+            requestToken = requestToken,
+        )
         return true
     }
 
@@ -198,19 +242,23 @@ internal class DpadGridController(
         val nextPosition = position + spanCount
         if (nextPosition in 0 until itemCount) {
             val targetItem = recycler.findViewHolderForAdapterPosition(nextPosition)?.itemView
-            if (targetItem != null && targetItem.isValidFocusTarget() && targetItem.requestFocus()) {
-                return true
-            }
-            val requestToken = ++focusRequestToken
-            if (currentItem != null && !isPositionVisible(recycler, nextPosition)) {
-                val targetOffset = (recycler.layoutManager as? GridLayoutManager)
-                    ?.getDecoratedTop(currentItem)
-                    ?: currentItem.top
-                (recycler.layoutManager as? GridLayoutManager)
-                    ?.scrollToPositionWithOffset(nextPosition, targetOffset)
-                    ?: recycler.scrollToPosition(nextPosition)
-                recycler.post {
-                    if (this.recyclerView === recycler && focusRequestToken == requestToken) {
+            if (targetItem != null && targetItem.isValidFocusTarget()) {
+                if (isItemFullyVisible(recycler, targetItem) && targetItem.requestFocus()) {
+                    return true
+                }
+                val requestToken = ++focusRequestToken
+                val scrollDistance = scrollDistanceToNextRow(
+                    recycler = recycler,
+                    currentItem = currentItem,
+                    targetItem = targetItem,
+                )
+                if (scrollDistance > 0 && recycler.canScrollVertically(1)) {
+                    return smoothScrollThen(
+                        recycler = recycler,
+                        dyPx = scrollDistance,
+                        requestToken = requestToken,
+                        targetPosition = nextPosition,
+                    ) {
                         tryFocusAtPosition(
                             recycler = recycler,
                             position = nextPosition,
@@ -218,7 +266,27 @@ internal class DpadGridController(
                         )
                     }
                 }
-                return true
+                if (targetItem.requestFocus()) {
+                    return true
+                }
+            }
+            val requestToken = ++focusRequestToken
+            if (currentItem != null && !isPositionVisible(recycler, nextPosition)) {
+                val scrollDistance = estimatedRowScrollDistance(recycler, currentItem)
+                if (scrollDistance > 0 && recycler.canScrollVertically(1)) {
+                    return smoothScrollThen(
+                        recycler = recycler,
+                        dyPx = scrollDistance,
+                        requestToken = requestToken,
+                        targetPosition = nextPosition,
+                    ) {
+                        tryFocusAtPosition(
+                            recycler = recycler,
+                            position = nextPosition,
+                            requestToken = requestToken,
+                        )
+                    }
+                }
             }
             tryFocusAtPosition(
                 recycler = recycler,
@@ -251,8 +319,12 @@ internal class DpadGridController(
             val dy = ((currentItem?.height ?: recycler.height / 2) * config.scrollOnDownEdgeFactor)
                 .toInt()
                 .coerceAtLeast(1)
-            recycler.scrollBy(0, dy)
-            recycler.post {
+            smoothScrollThen(
+                recycler = recycler,
+                dyPx = dy,
+                requestToken = requestToken,
+                targetPosition = RecyclerView.NO_POSITION,
+            ) {
                 if (this.recyclerView === recycler && focusRequestToken == requestToken) {
                     focusVisibleColumnCandidate(
                         recycler = recycler,
@@ -315,6 +387,55 @@ internal class DpadGridController(
             itemCount = itemCount,
         )
         if (targetPosition !in 0 until itemCount) return false
+
+        val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
+        if (targetItem != null && targetItem.isValidFocusTarget()) {
+            if (isItemFullyVisible(recycler, targetItem) && targetItem.requestFocus()) {
+                pendingLoadMoreFocus = null
+                return true
+            }
+            val anchorItem = recycler.findViewHolderForAdapterPosition(pending.anchorPosition)?.itemView
+            val scrollDistance = anchorItem?.let { estimatedRowScrollDistance(recycler, it) } ?: 0
+            if (scrollDistance > 0 && recycler.canScrollVertically(1)) {
+                return smoothScrollThen(
+                    recycler = recycler,
+                    dyPx = scrollDistance,
+                    requestToken = requestToken,
+                    targetPosition = targetPosition,
+                ) {
+                    tryFocusAtPosition(
+                        recycler = recycler,
+                        position = targetPosition,
+                        requestToken = requestToken,
+                        scrollOffsetPx = pending.anchorOffsetPx,
+                        onFocused = {
+                            pendingLoadMoreFocus = null
+                        },
+                    )
+                }
+            }
+        } else {
+            val anchorItem = recycler.findViewHolderForAdapterPosition(pending.anchorPosition)?.itemView
+            val scrollDistance = anchorItem?.let { estimatedRowScrollDistance(recycler, it) } ?: 0
+            if (scrollDistance > 0 && recycler.canScrollVertically(1)) {
+                return smoothScrollThen(
+                    recycler = recycler,
+                    dyPx = scrollDistance,
+                    requestToken = requestToken,
+                    targetPosition = targetPosition,
+                ) {
+                    tryFocusAtPosition(
+                        recycler = recycler,
+                        position = targetPosition,
+                        requestToken = requestToken,
+                        scrollOffsetPx = pending.anchorOffsetPx,
+                        onFocused = {
+                            pendingLoadMoreFocus = null
+                        },
+                    )
+                }
+            }
+        }
 
         return tryFocusAtPosition(
             recycler = recycler,
@@ -427,6 +548,72 @@ internal class DpadGridController(
         return false
     }
 
+    private fun smoothScrollThen(
+        recycler: RecyclerView,
+        dyPx: Int,
+        requestToken: Int,
+        targetPosition: Int,
+        onSettled: () -> Unit,
+    ): Boolean {
+        if (dyPx == 0) {
+            if (this.recyclerView === recycler && focusRequestToken == requestToken) {
+                onSettled()
+            }
+            return true
+        }
+
+        lateinit var listener: RecyclerView.OnScrollListener
+        var completed = false
+
+        fun finish() {
+            if (completed) return
+            completed = true
+            recycler.removeOnScrollListener(listener)
+            if (this.recyclerView === recycler && focusRequestToken == requestToken) {
+                onSettled()
+            }
+        }
+
+        fun cancelIfStale(): Boolean {
+            if (this.recyclerView === recycler && focusRequestToken == requestToken) return false
+            if (!completed) {
+                completed = true
+                recycler.removeOnScrollListener(listener)
+            }
+            return true
+        }
+
+        listener = object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (recyclerView !== recycler) return
+                if (cancelIfStale()) return
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    finish()
+                }
+            }
+        }
+
+        callbacks.parkFocusForScroll(targetPosition)
+        recycler.addOnScrollListener(listener)
+        recycler.smoothScrollBy(0, dyPx)
+        recycler.postOnAnimation {
+            if (cancelIfStale()) return@postOnAnimation
+            if (recycler.scrollState == RecyclerView.SCROLL_STATE_IDLE) {
+                finish()
+            }
+        }
+        recycler.postDelayed(
+            {
+                if (cancelIfStale()) return@postDelayed
+                if (recycler.scrollState == RecyclerView.SCROLL_STATE_IDLE) {
+                    finish()
+                }
+            },
+            SmoothFocusFallbackMs,
+        )
+        return true
+    }
+
     private fun resolveFocusablePosition(
         candidatePosition: Int,
         itemCount: Int,
@@ -460,7 +647,77 @@ internal class DpadGridController(
             position in first..last
     }
 
+    private fun isItemFullyVisible(recycler: RecyclerView, itemView: View): Boolean {
+        val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
+        val bounds = Rect()
+        layoutManager.getDecoratedBoundsWithMargins(itemView, bounds)
+        val topLimit = recycler.paddingTop
+        val bottomLimit = recycler.height - recycler.paddingBottom
+        return bounds.top >= topLimit && bounds.bottom <= bottomLimit
+    }
+
+    private fun scrollDistanceToNextRow(
+        recycler: RecyclerView,
+        currentItem: View?,
+        targetItem: View,
+    ): Int {
+        val layoutManager = recycler.layoutManager as? GridLayoutManager
+        if (layoutManager != null && currentItem != null) {
+            val currentBounds = Rect()
+            val targetBounds = Rect()
+            layoutManager.getDecoratedBoundsWithMargins(currentItem, currentBounds)
+            layoutManager.getDecoratedBoundsWithMargins(targetItem, targetBounds)
+            val rowDistance = targetBounds.top - currentBounds.top
+            if (rowDistance > 0) return rowDistance
+        }
+
+        val bottomLimit = recycler.height - recycler.paddingBottom
+        val targetBounds = Rect()
+        if (layoutManager != null) {
+            layoutManager.getDecoratedBoundsWithMargins(targetItem, targetBounds)
+        } else {
+            targetBounds.set(targetItem.left, targetItem.top, targetItem.right, targetItem.bottom)
+        }
+        return (targetBounds.bottom - bottomLimit).coerceAtLeast(0)
+    }
+
+    private fun scrollDistanceToPreviousRow(
+        recycler: RecyclerView,
+        currentItem: View?,
+        targetItem: View,
+    ): Int {
+        val layoutManager = recycler.layoutManager as? GridLayoutManager
+        if (layoutManager != null && currentItem != null) {
+            val currentBounds = Rect()
+            val targetBounds = Rect()
+            layoutManager.getDecoratedBoundsWithMargins(currentItem, currentBounds)
+            layoutManager.getDecoratedBoundsWithMargins(targetItem, targetBounds)
+            val rowDistance = targetBounds.top - currentBounds.top
+            if (rowDistance < 0) return rowDistance
+        }
+
+        val topLimit = recycler.paddingTop
+        val targetBounds = Rect()
+        if (layoutManager != null) {
+            layoutManager.getDecoratedBoundsWithMargins(targetItem, targetBounds)
+        } else {
+            targetBounds.set(targetItem.left, targetItem.top, targetItem.right, targetItem.bottom)
+        }
+        return (targetBounds.top - topLimit).coerceAtMost(0)
+    }
+
+    private fun estimatedRowScrollDistance(recycler: RecyclerView, itemView: View): Int {
+        val layoutManager = recycler.layoutManager as? GridLayoutManager
+        if (layoutManager != null) {
+            val bounds = Rect()
+            layoutManager.getDecoratedBoundsWithMargins(itemView, bounds)
+            return bounds.height().coerceAtLeast(1)
+        }
+        return itemView.height.coerceAtLeast(1)
+    }
+
     private companion object {
+        private const val SmoothFocusFallbackMs = 360L
         val CenterKeyCodes = setOf(
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,

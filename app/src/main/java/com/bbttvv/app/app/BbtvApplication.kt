@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import com.bbttvv.app.app.startup.AppStartupOrchestrator
 import com.bbttvv.app.app.startup.AppStartupTask
+import com.bbttvv.app.app.startup.BackgroundWarmupCoordinator
 import com.bbttvv.app.app.startup.HomeBootstrapper
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.lifecycle.BackgroundManager
@@ -95,7 +96,9 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                 "video_repository_init" -> com.bbttvv.app.data.repository.PlaybackRepository.init(this)
                 "background_manager_init" -> BackgroundManager.init()
                 "player_settings_cache_init" -> PlayerSettingsCache.init(this)
+                "token_manager_warmup" -> TokenManager.warmup(this)
                 "home_feed_preload" -> HomeBootstrapper.preload()
+                "background_warmup" -> BackgroundWarmupCoordinator.warmup(this)
                 "crash_reporter_init" -> {
                     CrashReporter.init(this)
                     CrashReporter.installGlobalExceptionHandler()

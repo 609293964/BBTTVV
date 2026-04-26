@@ -41,6 +41,7 @@ class DynamicViewModel : ViewModel() {
     private var pendingPrefetchBvid: String? = null
     private var lastPrefetchedBvid: String? = null
     private var liveUsersRequestGeneration: Long = 0L
+    private var handledRefreshRequestId: Int = 0
 
     fun onEnter() {
         if (!initialLoadStarted) {
@@ -48,8 +49,11 @@ class DynamicViewModel : ViewModel() {
             loadInitial()
             return
         }
-        refreshLiveUsers(showLoading = false)
-        if (_uiState.value.dynamicVideos.isEmpty()) {
+        val state = _uiState.value
+        if (!state.isLoadingLive) {
+            refreshLiveUsers(showLoading = false)
+        }
+        if (state.dynamicVideos.isEmpty() && !state.isLoadingVideos) {
             refreshDynamicVideos(showLoading = false)
         }
     }
@@ -68,8 +72,15 @@ class DynamicViewModel : ViewModel() {
     }
 
     fun refresh() {
+        initialLoadStarted = true
         refreshLiveUsers(showLoading = true)
         refreshDynamicVideos(showLoading = true)
+    }
+
+    fun consumeRefreshRequest(requestId: Int) {
+        if (requestId <= 0 || requestId <= handledRefreshRequestId) return
+        handledRefreshRequestId = requestId
+        refresh()
     }
 
     fun refreshLiveUsers(showLoading: Boolean = false) {

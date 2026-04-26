@@ -10,6 +10,10 @@ internal enum class HomeFocusRegion {
     ContentTabs,
     Grid,
     DynamicLiveUsers,
+    SearchInput,
+    SearchCategory,
+    ProfileSidebar,
+    ProfileContent,
 }
 
 internal sealed class HomeFocusIntent {
@@ -62,6 +66,7 @@ internal class HomeFocusCoordinator(
     private var pendingIntent: HomeFocusIntent? = HomeFocusIntent.FocusTopBar
     private var pendingRestoreCallback: ((String) -> Unit)? = null
     private var topBarTarget: HomeFocusTarget? = null
+    private val lastContentRegionByTab = mutableMapOf<AppTopLevelTab, HomeFocusRegion>()
     private val contentTargets =
         LinkedHashMap<AppTopLevelTab, LinkedHashMap<HomeFocusRegion, HomeFocusTarget>>()
 
@@ -105,6 +110,15 @@ internal class HomeFocusCoordinator(
     fun onContentRowFocused(rowIndex: Int) {
         isContentFocused = true
         isTopBarVisible = rowIndex <= 0
+    }
+
+    fun onContentRegionFocused(
+        tab: AppTopLevelTab,
+        region: HomeFocusRegion,
+    ) {
+        if (tab != selectedHomeTab) return
+        lastContentRegionByTab[tab] = region
+        isContentFocused = true
     }
 
     fun requestTopBarFocus(scene: HomeFocusScene = HomeFocusScene.BackToTopBar) {
@@ -218,6 +232,7 @@ internal class HomeFocusCoordinator(
                 iterator.remove()
             }
         }
+        lastContentRegionByTab.keys.removeAll { tab -> tab !in visibleTabs }
     }
 
     fun enqueueFocusIntent(intent: HomeFocusIntent) {
@@ -240,6 +255,16 @@ internal class HomeFocusCoordinator(
             pendingIntent = null
         }
         return focused
+    }
+
+    fun recoverFocusAfterEscape(): Boolean {
+        if (drainPendingFocus()) return true
+        val preferContent = isContentFocused || !isTopBarVisible
+        return if (preferContent) {
+            tryRequestSelectedContentFocus(selectedHomeTab) || tryRequestTopBarFocus()
+        } else {
+            tryRequestTopBarFocus() || tryRequestSelectedContentFocus(selectedHomeTab)
+        }
     }
 
     fun clearSelectedContentVisualState(): Boolean {
@@ -269,7 +294,7 @@ internal class HomeFocusCoordinator(
     ): Boolean {
         val target = contentTargets[tab]?.get(region) ?: return false
         if (!target.tryRequestFocus()) return false
-        markContentFocusRequested()
+        markContentFocusRequested(tab, region)
         return true
     }
 
@@ -277,15 +302,21 @@ internal class HomeFocusCoordinator(
         if (intent.tab != selectedHomeTab) return false
         val targets = contentTargets[intent.tab] ?: return false
         val orderedTargets = listOfNotNull(
-            targets[HomeFocusRegion.Grid],
-            targets[HomeFocusRegion.DynamicLiveUsers],
-            targets[HomeFocusRegion.ContentTabs],
+            targets[HomeFocusRegion.Grid]?.let { HomeFocusRegion.Grid to it },
+            targets[HomeFocusRegion.ProfileContent]?.let { HomeFocusRegion.ProfileContent to it },
+            targets[HomeFocusRegion.DynamicLiveUsers]?.let { HomeFocusRegion.DynamicLiveUsers to it },
+            targets[HomeFocusRegion.ContentTabs]?.let { HomeFocusRegion.ContentTabs to it },
         )
-        val restored = orderedTargets.any { target ->
-            target.tryRequestFocusKey(intent.key)
+        var restoredRegion: HomeFocusRegion? = null
+        val restored = orderedTargets.any { (region, target) ->
+            val restored = target.tryRequestFocusKey(intent.key)
+            if (restored) {
+                restoredRegion = region
+            }
+            restored
         }
         if (!restored) return false
-        markContentFocusRequested()
+        markContentFocusRequested(intent.tab, restoredRegion)
         pendingRestoreCallback?.invoke(intent.key)
         pendingRestoreCallback = null
         return true
@@ -299,20 +330,26 @@ internal class HomeFocusCoordinator(
         for (region in regions) {
             val target = targets[region] ?: continue
             if (target.tryRequestFocus()) {
-                markContentFocusRequested()
+                markContentFocusRequested(tab, region)
                 return true
             }
         }
         return false
     }
 
-    private fun markContentFocusRequested() {
+    private fun markContentFocusRequested(
+        tab: AppTopLevelTab,
+        region: HomeFocusRegion?,
+    ) {
+        if (tab == selectedHomeTab && region != null) {
+            lastContentRegionByTab[tab] = region
+        }
         isContentFocused = true
     }
 
     private fun contentFocusPriority(tab: AppTopLevelTab): List<HomeFocusRegion> {
         val targets = contentTargets[tab] ?: return emptyList()
-        return when (tab) {
+        val fallback = when (tab) {
             AppTopLevelTab.RECOMMEND -> listOf(HomeFocusRegion.Grid)
             AppTopLevelTab.POPULAR,
             AppTopLevelTab.LIVE,
@@ -327,16 +364,30 @@ internal class HomeFocusCoordinator(
             }
             AppTopLevelTab.DYNAMIC -> listOf(HomeFocusRegion.DynamicLiveUsers, HomeFocusRegion.Grid)
             AppTopLevelTab.WATCH_LATER -> listOf(HomeFocusRegion.Grid)
-            else -> emptyList()
+            AppTopLevelTab.SEARCH -> listOf(
+                HomeFocusRegion.SearchInput,
+                HomeFocusRegion.SearchCategory,
+                HomeFocusRegion.Grid,
+            )
+            AppTopLevelTab.PROFILE -> listOf(
+                HomeFocusRegion.ProfileSidebar,
+                HomeFocusRegion.ProfileContent,
+            )
         }
+        val remembered = lastContentRegionByTab[tab]
+            ?.takeIf { region -> targets.containsKey(region) }
+            ?: return fallback
+        return listOf(remembered) + fallback.filterNot { region -> region == remembered }
     }
 
     private fun canCoordinateContent(tab: AppTopLevelTab): Boolean {
         return tab == AppTopLevelTab.RECOMMEND ||
+            tab == AppTopLevelTab.SEARCH ||
             tab == AppTopLevelTab.POPULAR ||
             tab == AppTopLevelTab.LIVE ||
             tab == AppTopLevelTab.DYNAMIC ||
             tab == AppTopLevelTab.WATCH_LATER ||
-            tab == AppTopLevelTab.TODAY_WATCH
+            tab == AppTopLevelTab.TODAY_WATCH ||
+            tab == AppTopLevelTab.PROFILE
     }
 }

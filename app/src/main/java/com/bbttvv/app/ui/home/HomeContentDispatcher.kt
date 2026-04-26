@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.VideoItem
@@ -77,7 +78,7 @@ internal fun HomeContentDispatcher(
     selectedHomeTab: AppTopLevelTab,
     uiState: HomeUiState,
     viewModel: HomeViewModel,
-    dynamicViewModel: DynamicViewModel,
+    dynamicRefreshRequestId: Int,
     tabGridFocusStates: HomeTabGridFocusStates,
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
@@ -168,10 +169,12 @@ internal fun HomeContentDispatcher(
             }
 
             AppTopLevelTab.DYNAMIC -> {
-                DynamicScreen(
+                DynamicTabContent(
+                    selectedHomeTab = selectedHomeTab,
+                    viewModel = viewModel,
                     onVideoClick = onVideoClick,
                     onLiveClick = { roomId -> onLiveClick(roomId, null) },
-                    viewModel = dynamicViewModel,
+                    dynamicRefreshRequestId = dynamicRefreshRequestId,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
                     gridColumnCount = 4,
@@ -210,6 +213,35 @@ internal fun HomeContentDispatcher(
 }
 
 @Composable
+private fun DynamicTabContent(
+    selectedHomeTab: AppTopLevelTab,
+    viewModel: HomeViewModel,
+    onVideoClick: (VideoItem) -> Unit,
+    onLiveClick: (Long) -> Unit,
+    dynamicRefreshRequestId: Int,
+    onContentRowFocused: (Int) -> Unit,
+    focusCoordinator: HomeFocusCoordinator,
+    gridColumnCount: Int,
+    focusState: HomeRecommendGridFocusState
+) {
+    TabViewModelScope(selectedHomeTab, viewModel) {
+        val dynamicViewModel: DynamicViewModel = composeViewModel()
+        LaunchedEffect(dynamicRefreshRequestId) {
+            dynamicViewModel.consumeRefreshRequest(dynamicRefreshRequestId)
+        }
+        DynamicScreen(
+            onVideoClick = onVideoClick,
+            onLiveClick = onLiveClick,
+            viewModel = dynamicViewModel,
+            onContentRowFocused = onContentRowFocused,
+            focusCoordinator = focusCoordinator,
+            gridColumnCount = gridColumnCount,
+            focusState = focusState
+        )
+    }
+}
+
+@Composable
 private fun SearchTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
@@ -223,7 +255,9 @@ private fun SearchTabContent(
             onBack = { onTabSelected(AppTopLevelTab.RECOMMEND) },
             onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
             onOpenVideo = onVideoClick,
-            onOpenUp = onOpenUp
+            onOpenUp = onOpenUp,
+            focusCoordinator = focusCoordinator,
+            focusTab = selectedHomeTab
         )
     }
 }
@@ -345,7 +379,9 @@ private fun ProfileTabContent(
             onOpenVideo = { video ->
                 onProfileVideoClick(AppTopLevelTab.PROFILE, video.bvid.ifBlank { video.aid.toString() }, video)
             },
-            onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() }
+            onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+            focusCoordinator = focusCoordinator,
+            focusTab = selectedHomeTab
         )
     }
 }

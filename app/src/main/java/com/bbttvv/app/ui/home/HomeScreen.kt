@@ -1,5 +1,6 @@
 package com.bbttvv.app.ui.home
 
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,13 +14,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.data.model.response.VideoItem
@@ -27,6 +30,9 @@ import com.bbttvv.app.ui.components.AppTopBar
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.stableVideoItemKeys
+import com.bbttvv.app.ui.focus.LocalTvFocusEscapeGuard
+import com.bbttvv.app.ui.focus.TvFocusEscapeReason
+import com.bbttvv.app.ui.focus.TvFocusEscapeTarget
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -48,7 +54,7 @@ fun HomeScreen(
     onOpenUp: (Long) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val dynamicViewModel: DynamicViewModel = composeViewModel()
+    val dynamicRefreshRequest = remember { mutableIntStateOf(0) }
     val tabGridFocusStates = remember { HomeTabGridFocusStates() }
     val recommendGridFocusState = tabGridFocusStates.stateFor(AppTopLevelTab.RECOMMEND)
     val homeTabs = remember(visibleTabs) { visibleTabs.filter(AppTopLevelTab::isHomeContent) }
@@ -62,6 +68,7 @@ fun HomeScreen(
         visibleTabs = visibleTabs
     )
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
+    RegisterHomeFocusEscapeGuard(focusCoordinator)
     val restoreTargetTab = restoreVideoFocusTab ?: AppTopLevelTab.RECOMMEND
     LaunchedEffect(visibleTabs) {
         tabGridFocusStates.retainVisibleTabs(visibleTabs.toSet())
@@ -178,7 +185,7 @@ fun HomeScreen(
     fun refreshSelectedTopBarTab(tab: AppTopLevelTab) {
         when (tab) {
             AppTopLevelTab.RECOMMEND -> viewModel.refresh()
-            AppTopLevelTab.DYNAMIC -> dynamicViewModel.refresh()
+            AppTopLevelTab.DYNAMIC -> dynamicRefreshRequest.intValue += 1
             else -> Unit
         }
     }
@@ -259,7 +266,7 @@ fun HomeScreen(
                 selectedHomeTab = selectedHomeTab,
                 uiState = uiState,
                 viewModel = viewModel,
-                dynamicViewModel = dynamicViewModel,
+                dynamicRefreshRequestId = dynamicRefreshRequest.intValue,
                 tabGridFocusStates = tabGridFocusStates,
                 recommendGridFocusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
@@ -273,6 +280,34 @@ fun HomeScreen(
                 onProfileVideoClick = onProfileVideoClick,
                 onOpenUp = onOpenUp
             )
+        }
+    }
+}
+
+@Composable
+private fun RegisterHomeFocusEscapeGuard(focusCoordinator: HomeFocusCoordinator) {
+    val guard = LocalTvFocusEscapeGuard.current ?: return
+    val hostView = LocalView.current
+    DisposableEffect(guard, focusCoordinator, hostView) {
+        val registration = guard.registerTarget(
+            key = "home",
+            target = object : TvFocusEscapeTarget {
+                override fun acceptsFocus(focusedView: View): Boolean {
+                    return focusedView.isSameOrDescendantOf(hostView)
+                }
+
+                override fun shouldRecoverEscapedFocus(focusedView: View): Boolean {
+                    return focusedView.rootView === hostView.rootView &&
+                        !focusedView.isSameOrDescendantOf(hostView)
+                }
+
+                override fun recoverFocus(reason: TvFocusEscapeReason): Boolean {
+                    return focusCoordinator.recoverFocusAfterEscape()
+                }
+            },
+        )
+        onDispose {
+            registration.unregister()
         }
     }
 }

@@ -29,6 +29,7 @@ internal class AppSessionCookieJar : CookieJar {
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        TokenManager.awaitWarmupBlocking()
         val cookies = mutableListOf<Cookie>()
 
         synchronized(cookieLock) {

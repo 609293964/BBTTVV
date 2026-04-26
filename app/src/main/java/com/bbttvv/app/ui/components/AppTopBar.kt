@@ -122,6 +122,7 @@ private class AppTopBarController {
         private set
     var adapter: AppTopBarAdapter? = null
         private set
+    private var focusRequestToken: Int = 0
 
     fun attach(recyclerView: RecyclerView, adapter: AppTopBarAdapter) {
         this.recyclerView = recyclerView
@@ -131,18 +132,85 @@ private class AppTopBarController {
     fun tryRequestFocus(tab: AppTopLevelTab?): Boolean {
         val recycler = recyclerView ?: return false
         val topBarAdapter = adapter ?: return false
-        val position = topBarAdapter.positionOf(tab).takeIf { it != RecyclerView.NO_POSITION }
-            ?: 0.takeIf { topBarAdapter.itemCount > 0 }
+        val targetTab = topBarAdapter.focusTargetOrFallback(tab) ?: return false
+        val expectedSelectedTab = topBarAdapter.currentSelectedTab()
+        val requestToken = ++focusRequestToken
+        return requestFocus(
+            recycler = recycler,
+            topBarAdapter = topBarAdapter,
+            targetTab = targetTab,
+            expectedSelectedTab = expectedSelectedTab,
+            requestToken = requestToken
+        )
+    }
+
+    private fun requestFocus(
+        recycler: RecyclerView,
+        topBarAdapter: AppTopBarAdapter,
+        targetTab: AppTopLevelTab,
+        expectedSelectedTab: AppTopLevelTab?,
+        requestToken: Int
+    ): Boolean {
+        val position = topBarAdapter.positionOf(targetTab).takeIf { it != RecyclerView.NO_POSITION }
             ?: return false
         val holder = recycler.findViewHolderForAdapterPosition(position)
         if (holder?.itemView?.requestFocus() == true) {
             return true
         }
-        recycler.scrollToPosition(position)
+        scrollToFocusablePosition(recycler, position)
         recycler.post {
-            recycler.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
+            if (focusRequestToken != requestToken) return@post
+            if (recyclerView !== recycler || adapter !== topBarAdapter) return@post
+            if (topBarAdapter.currentSelectedTab() != expectedSelectedTab) return@post
+            val latestTargetTab = topBarAdapter.focusTargetOrFallback(targetTab) ?: return@post
+            val latestPosition = topBarAdapter.positionOf(latestTargetTab)
+                .takeIf { it != RecyclerView.NO_POSITION }
+                ?: return@post
+            if (latestPosition != position) {
+                scrollToFocusablePosition(recycler, latestPosition)
+            }
+            recycler.findViewHolderForAdapterPosition(latestPosition)?.itemView?.requestFocus()
         }
         return false
+    }
+
+    private fun scrollToFocusablePosition(recycler: RecyclerView, position: Int) {
+        val layoutManager = recycler.layoutManager as? LinearLayoutManager
+        if (layoutManager == null) {
+            recycler.scrollToPosition(position)
+            return
+        }
+        layoutManager.scrollToPositionWithOffset(
+            position,
+            centeredTabOffset(recycler, position)
+        )
+    }
+
+    private fun centeredTabOffset(recycler: RecyclerView, position: Int): Int {
+        val itemCount = recycler.adapter?.itemCount ?: 0
+        val availableWidth = recycler.width - recycler.paddingLeft - recycler.paddingRight
+        if (itemCount <= 1 || availableWidth <= 0) return 0
+        val childWidth = measuredChildWidth(recycler, position)
+            ?: (availableWidth / 3).takeIf { it > 0 }
+            ?: return 0
+        return when {
+            position <= 0 -> 0
+            position >= itemCount - 1 -> (availableWidth - childWidth).coerceAtLeast(0)
+            else -> ((availableWidth - childWidth) / 2).coerceAtLeast(0)
+        }
+    }
+
+    private fun measuredChildWidth(recycler: RecyclerView, position: Int): Int? {
+        recycler.findViewHolderForAdapterPosition(position)
+            ?.itemView
+            ?.width
+            ?.takeIf { it > 0 }
+            ?.let { return it }
+        for (index in 0 until recycler.childCount) {
+            val width = recycler.getChildAt(index).width
+            if (width > 0) return width
+        }
+        return null
     }
 
     fun hasFocus(tab: AppTopLevelTab? = null): Boolean {

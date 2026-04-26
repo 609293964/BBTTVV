@@ -30,10 +30,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,20 +61,114 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.SearchType
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBarDefaults
+import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvTextInput
+import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusRegion
+import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 
 @Composable
-fun SearchScreen(
+internal fun SearchScreen(
     onBack: () -> Unit,
     onRequestTopBarFocus: () -> Unit = {},
     onOpenVideo: (VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit = {},
+    focusCoordinator: HomeFocusCoordinator? = null,
+    focusTab: AppTopLevelTab? = null,
     viewModel: SearchViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val searchBarFocusRequester = remember { FocusRequester() }
-    val categoriesFocusRequester = remember { FocusRequester() }
+    val visibleSearchTypes = remember { listOf(SearchType.VIDEO, SearchType.UP) }
+    val categoryFocusRequesters = remember {
+        List(visibleSearchTypes.size) { FocusRequester() }
+    }
+    val searchResultsMode = uiState.hasSubmittedQuery || uiState.query.isNotBlank()
+    var searchInputHasFocus by remember { mutableStateOf(false) }
+    var searchCategoryHasFocus by remember { mutableStateOf(false) }
+    val latestSearchInputHasFocus by rememberUpdatedState(searchInputHasFocus)
+    val latestSearchCategoryHasFocus by rememberUpdatedState(searchCategoryHasFocus)
+    val hotColumnCount = 2
+
+    fun noteSearchRegionFocused(region: HomeFocusRegion) {
+        val tab = focusTab ?: return
+        focusCoordinator?.onContentRegionFocused(tab, region)
+        focusCoordinator?.onContentRowFocused(0)
+    }
+
+    fun requestSearchInputFocus(): Boolean {
+        return runCatching {
+            val focused = searchBarFocusRequester.requestFocus()
+            if (focused) {
+                noteSearchRegionFocused(HomeFocusRegion.SearchInput)
+            }
+            focused
+        }.getOrDefault(false)
+    }
+
+    fun requestSearchCategoryFocus(): Boolean {
+        if (!searchResultsMode) return false
+        val selectedIndex = visibleSearchTypes.indexOf(uiState.searchType)
+            .takeIf { index -> index >= 0 }
+            ?: 0
+        val requester = categoryFocusRequesters.getOrNull(selectedIndex) ?: return false
+        return runCatching {
+            val focused = requester.requestFocus()
+            if (focused) {
+                noteSearchRegionFocused(HomeFocusRegion.SearchCategory)
+            }
+            focused
+        }.getOrDefault(false)
+    }
+
+    DisposableEffect(focusCoordinator, focusTab, searchBarFocusRequester) {
+        val tab = focusTab
+        val registration = if (focusCoordinator != null && tab != null) {
+            focusCoordinator.registerContentTarget(
+                tab = tab,
+                region = HomeFocusRegion.SearchInput,
+                target = object : HomeFocusTarget {
+                    override fun tryRequestFocus(): Boolean {
+                        return requestSearchInputFocus()
+                    }
+
+                    override fun hasFocus(): Boolean {
+                        return latestSearchInputHasFocus
+                    }
+                }
+            )
+        } else {
+            null
+        }
+        onDispose {
+            registration?.unregister()
+        }
+    }
+
+    DisposableEffect(focusCoordinator, focusTab, searchResultsMode, uiState.searchType) {
+        val tab = focusTab
+        val registration = if (focusCoordinator != null && tab != null && searchResultsMode) {
+            focusCoordinator.registerContentTarget(
+                tab = tab,
+                region = HomeFocusRegion.SearchCategory,
+                target = object : HomeFocusTarget {
+                    override fun tryRequestFocus(): Boolean {
+                        return requestSearchCategoryFocus()
+                    }
+
+                    override fun hasFocus(): Boolean {
+                        return latestSearchCategoryHasFocus
+                    }
+                }
+            )
+        } else {
+            null
+        }
+        onDispose {
+            registration?.unregister()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -92,7 +188,15 @@ fun SearchScreen(
                 onValueChange = viewModel::onQueryChange,
                 onSubmit = viewModel::search,
                 onRequestTopBarFocus = onRequestTopBarFocus,
-                modifier = Modifier.focusRequester(searchBarFocusRequester).width(400.dp)
+                modifier = Modifier
+                    .focusRequester(searchBarFocusRequester)
+                    .onFocusChanged { focusState ->
+                        searchInputHasFocus = focusState.isFocused
+                        if (focusState.isFocused) {
+                            noteSearchRegionFocused(HomeFocusRegion.SearchInput)
+                        }
+                    }
+                    .width(400.dp)
             )
         }
 
@@ -107,7 +211,7 @@ fun SearchScreen(
                     modifier = Modifier.padding(horizontal = AppTopBarDefaults.HeaderContentHorizontalPadding, vertical = 12.dp)
                 )
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(hotColumnCount),
                     contentPadding = PaddingValues(
                         start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                         end = AppTopBarDefaults.HeaderContentHorizontalPadding,
@@ -123,9 +227,8 @@ fun SearchScreen(
                             rank = index + 1,
                             onClick = { viewModel.applyKeyword(hot.show_name.ifBlank { hot.keyword }) },
                             onFocusUp = {
-                                if (index < 4) {
-                                    searchBarFocusRequester.requestFocus()
-                                    true
+                                if (index < hotColumnCount) {
+                                    requestSearchInputFocus()
                                 } else {
                                     false
                                 }
@@ -145,8 +248,15 @@ fun SearchScreen(
                 SearchCategoryTabs(
                     selected = uiState.searchType,
                     onSelect = viewModel::setSearchType,
-                    modifier = Modifier.focusRequester(categoriesFocusRequester),
-                    onFocusUp = { searchBarFocusRequester.requestFocus(); true }
+                    visibleTypes = visibleSearchTypes,
+                    focusRequesters = categoryFocusRequesters,
+                    onFocusUp = ::requestSearchInputFocus,
+                    onFocusChanged = { focused ->
+                        searchCategoryHasFocus = focused
+                        if (focused) {
+                            noteSearchRegionFocused(HomeFocusRegion.SearchCategory)
+                        }
+                    }
                 )
             }
 
@@ -169,6 +279,8 @@ fun SearchScreen(
                     modifier = Modifier.fillMaxSize(),
                     gridColumnCount = 4,
                     scrollResetKey = uiState.searchType,
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
                     canLoadMore = {
                         uiState.hasMoreResults &&
                             !uiState.isSearching &&
@@ -176,7 +288,7 @@ fun SearchScreen(
                     },
                     onLoadMore = viewModel::loadMore,
                     onTopRowDpadUp = {
-                        categoriesFocusRequester.requestFocus()
+                        requestSearchCategoryFocus()
                     },
                     onVideoClick = { video, _ ->
                         viewModel.primeVideoDetail(video)
@@ -208,8 +320,7 @@ fun SearchScreen(
                                         keyEvent.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN &&
                                         keyEvent.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP
                                     ) {
-                                        categoriesFocusRequester.requestFocus()
-                                        true
+                                        requestSearchCategoryFocus()
                                     } else {
                                         false
                                     }
@@ -285,7 +396,10 @@ private fun CapsuleSearchBar(
 private fun SearchCategoryTabs(
     selected: SearchType,
     onSelect: (SearchType) -> Unit,
+    visibleTypes: List<SearchType>,
+    focusRequesters: List<FocusRequester>,
     onFocusUp: () -> Boolean,
+    onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -293,13 +407,17 @@ private fun SearchCategoryTabs(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val visibleTypes = listOf(SearchType.VIDEO, SearchType.UP)
         visibleTypes.forEachIndexed { index, type ->
             CategoryPill(
                 label = type.displayName,
                 selected = type == selected,
                 onClick = { onSelect(type) },
-                onFocusUp = onFocusUp
+                onFocusUp = onFocusUp,
+                onFocusChanged = onFocusChanged,
+                modifier = focusRequesters
+                    .getOrNull(index)
+                    ?.let { requester -> Modifier.focusRequester(requester) }
+                    ?: Modifier
             )
             if (index < visibleTypes.lastIndex) {
                 Spacer(modifier = Modifier.width(8.dp))
@@ -313,7 +431,9 @@ private fun CategoryPill(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    onFocusUp: () -> Boolean
+    onFocusUp: () -> Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -340,13 +460,16 @@ private fun CategoryPill(
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
             .background(backgroundColor, RoundedCornerShape(999.dp))
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                onFocusChanged(it.isFocused)
+            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

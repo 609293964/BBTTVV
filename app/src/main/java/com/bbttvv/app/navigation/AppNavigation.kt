@@ -29,8 +29,6 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.feature.plugin.TodayWatchPlugin
-import com.bbttvv.app.feature.profile.ProfileScreen
-import com.bbttvv.app.feature.search.SearchScreen
 import com.bbttvv.app.feature.settings.SettingsScreen
 import com.bbttvv.app.feature.live.LivePlayerScreen
 import com.bbttvv.app.feature.publisher.PublisherScreen
