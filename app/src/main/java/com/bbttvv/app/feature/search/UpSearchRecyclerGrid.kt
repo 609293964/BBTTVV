@@ -40,7 +40,6 @@ import com.bbttvv.app.ui.home.DpadGridController
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
-import com.bbttvv.app.ui.home.focusSearchAdapterPositionDown
 import com.bbttvv.app.ui.home.installChildFocusParkingOnDetach
 import com.bbttvv.app.ui.home.parkFocusForDataSetReset
 import com.bbttvv.app.ui.home.requestFocusParking
@@ -146,11 +145,7 @@ internal fun UpSearchRecyclerGrid(
                             ?.let(::findContainingViewHolder)
                             ?.bindingAdapterPosition
                             ?.takeIf { it != NO_POSITION }
-                        if (
-                            currentPosition != null &&
-                            (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
-                                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
-                        ) {
+                        if (currentPosition != null && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                             if (dpadGridController.handleItemKeyEvent(
                                     itemView = focusedView,
                                     position = currentPosition,
@@ -182,11 +177,27 @@ internal fun UpSearchRecyclerGrid(
                 }
 
                 override fun focusSearch(focused: View?, direction: Int): View? {
-                    if (direction == View.FOCUS_DOWN) {
-                        focusSearchAdapterPositionDown(focused)?.let { return it }
-                    }
                     val next = super.focusSearch(focused, direction)
                     if (next === this) return focused
+                    if (direction == View.FOCUS_DOWN) {
+                        val currentPosition = focused
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?.takeIf { it != NO_POSITION }
+                        val nextPosition = next
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?.takeIf { it != NO_POSITION }
+                        val itemCount = adapter?.itemCount ?: 0
+                        val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
+                        if (
+                            currentPosition != null &&
+                            ((spanCount != null && currentPosition + spanCount >= itemCount) ||
+                                (nextPosition != null && nextPosition <= currentPosition))
+                        ) {
+                            return focused
+                        }
+                    }
                     if (direction == View.FOCUS_UP) {
                         val currentPosition = focused
                             ?.let(::findContainingViewHolder)
@@ -242,10 +253,11 @@ internal fun UpSearchRecyclerGrid(
                 adapter = UpSearchAdapter(
                     onItemClick = { item -> latestOnOpenUp(item.mid) },
                     onItemFocused = { item, position ->
-                        dpadGridController.onItemFocused(position = position)
-                        focusState.onItemFocused(item.searchUpKey(), position)
-                        latestFocusTab?.let { tab ->
-                            latestFocusCoordinator?.onContentRegionFocused(tab, HomeFocusRegion.Grid)
+                        if (dpadGridController.onItemFocused(position = position)) {
+                            focusState.onItemFocused(item.searchUpKey(), position)
+                            latestFocusTab?.let { tab ->
+                                latestFocusCoordinator?.onContentRegionFocused(tab, HomeFocusRegion.Grid)
+                            }
                         }
                     },
                     onItemKeyEvent = { itemView, _, position, keyCode, event ->

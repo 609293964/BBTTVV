@@ -162,9 +162,11 @@ internal class HomeVideoCardAdapter(
 
             binding.root.setOnFocusChangeListener { _, hasFocus ->
                 binding.root.isSelected = hasFocus
+                val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
+                val item = currentList.getOrNull(position ?: RecyclerView.NO_POSITION)
                 if (hasFocus) {
-                    val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return@setOnFocusChangeListener
-                    currentItem()?.let { onItemFocused(it, position) }
+                    val focusedPosition = position ?: return@setOnFocusChangeListener
+                    item?.let { onItemFocused(it, focusedPosition) }
                 }
             }
 
@@ -187,8 +189,11 @@ internal class HomeVideoCardAdapter(
 
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
                 val item = currentList.getOrNull(position ?: RecyclerView.NO_POSITION)
-                if (position != null && item != null && onItemKeyEvent?.invoke(binding.root, item, position, keyCode, event) == true) {
-                    return@setOnKeyListener true
+                if (position != null && item != null) {
+                    val controllerHandled = onItemKeyEvent?.invoke(binding.root, item, position, keyCode, event) == true
+                    if (controllerHandled) {
+                        return@setOnKeyListener true
+                    }
                 }
 
                 if (

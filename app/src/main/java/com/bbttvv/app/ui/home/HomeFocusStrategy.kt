@@ -33,17 +33,6 @@ internal object HomeFocusStrategy {
     ): Boolean {
         return scene == HomeFocusScene.BackReturn &&
             selectedHomeTab == restoreVideoFocusTab &&
-            restoreVideoFocusKey != null &&
-            (restoreVideoFocusTab != AppTopLevelTab.RECOMMEND || restoreVideoIndex >= 0)
-    }
-
-    fun shouldScrollRecommendToTopOnTopBarFocus(
-        scene: HomeFocusScene,
-        selectedHomeTab: AppTopLevelTab,
-    ): Boolean {
-        if (selectedHomeTab != AppTopLevelTab.RECOMMEND) return false
-        return scene == HomeFocusScene.BackToTopBar ||
-            scene == HomeFocusScene.BackToRecommend ||
-            scene == HomeFocusScene.BackReturn
+            restoreVideoFocusKey != null
     }
 }

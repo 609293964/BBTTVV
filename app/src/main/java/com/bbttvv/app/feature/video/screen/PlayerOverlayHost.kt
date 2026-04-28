@@ -71,6 +71,7 @@ internal fun BoxScope.PlayerOverlayHost(
             uiState = uiState,
             topRightBadges = topRightBadges,
             showOnlineCount = showOnlineCount,
+            showDebugOverlay = overlayUiState.showDebugOverlay,
         )
         PlayerControlsLayer(
             uiState = uiState,
@@ -172,6 +173,7 @@ private fun BoxScope.PlayerTopStatusBadges(
     uiState: PlayerUiState,
     topRightBadges: List<PlaybackBadge>,
     showOnlineCount: Boolean,
+    showDebugOverlay: Boolean,
 ) {
     if (showOnlineCount && uiState.onlineCountText.isNotBlank()) {
         OnlineCountPill(
@@ -185,7 +187,7 @@ private fun BoxScope.PlayerTopStatusBadges(
         )
     }
 
-    if (topRightBadges.isNotEmpty()) {
+    if (topRightBadges.isNotEmpty() && !showDebugOverlay) {
         BadgeRow(
             badges = topRightBadges,
             modifier = Modifier
@@ -331,6 +333,7 @@ private fun actionSecondaryText(
         PlayerAction.Audio -> selectedAudioActionValue(uiState)?.let(::compactActionValue)
         PlayerAction.Codec -> buildCodecActionValue(uiState)?.let(::compactActionValue)
         PlayerAction.Danmaku -> if (isDanmakuEnabled) "开启" else "关闭"
+        PlayerAction.Detail -> null
     }
 }
 

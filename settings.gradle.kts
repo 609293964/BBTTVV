@@ -27,5 +27,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "BBTTVV"
 include(":app")
+include(":baselineprofile")
 include(":settings-core")
 include(":network-core")

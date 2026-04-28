@@ -92,6 +92,7 @@ internal fun rememberBufferingOverlayText(
 internal fun BoxScope.PlayerTransientOverlayMessages(
     uiState: PlayerUiState,
     bufferingOverlayText: String?,
+    showDebugOverlay: Boolean,
     showSponsorSkipNotice: Boolean,
 ) {
     if (uiState.isLoading) {
@@ -122,7 +123,7 @@ internal fun BoxScope.PlayerTransientOverlayMessages(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(
-                    top = PlayerLayoutTokens.statusMessageTopPadding,
+                    top = if (showDebugOverlay) 210.dp else PlayerLayoutTokens.statusMessageTopPadding,
                     end = PlayerLayoutTokens.debugEdgePadding,
                 ),
         )

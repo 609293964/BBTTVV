@@ -333,7 +333,7 @@ object LogCollector {
 
             while (buffer.size > MAX_ENTRIES) {
                 if (buffer.isNotEmpty()) {
-                    buffer.pollFirst()
+                    buffer.removeFirst()
                 } else {
                     break
                 }

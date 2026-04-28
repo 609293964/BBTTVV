@@ -17,7 +17,9 @@ internal fun View.isValidFocusTarget(): Boolean {
 }
 
 internal fun RecyclerView.requestFocusParking(): Boolean {
-    if (!isValidFocusTarget()) return false
+    if (!isValidFocusTarget()) {
+        return false
+    }
     val previousDescendantFocusability = descendantFocusability
     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
     val focused = requestFocus()

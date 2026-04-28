@@ -34,8 +34,7 @@ data class ArticleViewData(
     @Serializable(with = FlexibleIntSerializer::class)
     val type: Int = 0,
     val content: String = "",
-    val opus: ArticleOpus? = null,
-    val ops: List<JsonObject> = emptyList()
+    val opus: ArticleOpus? = null
 )
 
 @Serializable

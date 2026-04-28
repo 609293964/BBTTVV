@@ -55,6 +55,24 @@ object SettingsManager {
         }
     }
 
+    enum class DynamicPageDisplayMode(
+        val value: String,
+        val label: String,
+        val showLive: Boolean,
+        val showFollowUpdates: Boolean
+    ) {
+        LIVE("live", "直播", showLive = true, showFollowUpdates = false),
+        DYNAMIC("dynamic", "动态", showLive = false, showFollowUpdates = true),
+        ALL("all", "全部开启", showLive = true, showFollowUpdates = true),
+        NONE("none", "全部关闭", showLive = false, showFollowUpdates = false);
+
+        companion object {
+            fun fromValue(value: String?): DynamicPageDisplayMode {
+                return entries.find { it.value == value } ?: ALL
+            }
+        }
+    }
+
     private const val SYNC_PREFS_NAME = "settings_sync_cache"
     private const val CACHE_PRIVACY_MODE = "privacy_mode"
     private const val CACHE_SPONSOR_BLOCK_ENABLED = "sponsor_block_enabled"
@@ -79,6 +97,7 @@ object SettingsManager {
     private const val CACHE_VIDEO_DETAIL_COMMENTS_ENABLED = "video_detail_comments_enabled"
     private const val CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
+    private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
 
     private val keyPrivacyMode = booleanPreferencesKey(CACHE_PRIVACY_MODE)
     private val keySponsorBlockEnabled = booleanPreferencesKey(CACHE_SPONSOR_BLOCK_ENABLED)
@@ -103,6 +122,7 @@ object SettingsManager {
     private val keyVideoDetailCommentsEnabled = booleanPreferencesKey(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED)
     private val keyUpdateContentOnTabFocusEnabled = booleanPreferencesKey(CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
+    private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
 
     fun getWatchLaterInTopTabsEnabled(context: Context): Flow<Boolean> {
         return context.settingsDataStore.data.map { preferences ->
@@ -115,6 +135,22 @@ object SettingsManager {
             preferences[keyWatchLaterInTopTabs] = enabled
         }
         updateSyncCache(context) { putBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, enabled) }
+    }
+
+    fun getDynamicPageDisplayMode(context: Context): Flow<DynamicPageDisplayMode> {
+        return context.settingsDataStore.data.map { preferences ->
+            DynamicPageDisplayMode.fromValue(preferences[keyDynamicPageDisplayMode])
+        }
+    }
+
+    suspend fun setDynamicPageDisplayMode(
+        context: Context,
+        mode: DynamicPageDisplayMode
+    ) {
+        updatePreference(context) { preferences ->
+            preferences[keyDynamicPageDisplayMode] = mode.value
+        }
+        updateSyncCache(context) { putString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, mode.value) }
     }
 
     fun observeAppNavigationSettings(context: Context): Flow<AppNavigationSettings> {
@@ -466,6 +502,12 @@ object SettingsManager {
 
     fun getWatchLaterInTopTabsEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, false)
+    }
+
+    fun getDynamicPageDisplayModeSync(context: Context): DynamicPageDisplayMode {
+        return DynamicPageDisplayMode.fromValue(
+            context.syncPrefs().getString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, DynamicPageDisplayMode.ALL.value)
+        )
     }
 
     internal fun mapNavigationSettingsFromPreferences(preferences: Preferences): AppNavigationSettings {

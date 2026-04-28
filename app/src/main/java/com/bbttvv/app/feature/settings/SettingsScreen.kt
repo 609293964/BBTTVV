@@ -180,6 +180,8 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(initialValue = true)
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
         .collectAsStateWithLifecycle(initialValue = false)
+    val dynamicPageDisplayMode by SettingsManager.getDynamicPageDisplayMode(context)
+        .collectAsStateWithLifecycle(initialValue = SettingsManager.DynamicPageDisplayMode.ALL)
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
@@ -318,7 +320,23 @@ fun TvSettingsList(
         item { SettingsSectionTitle("动态与首页", compact = compact) }
         item {
             SettingsRow(
-                title = "动态数据源",
+                title = "动态页显示管理",
+                subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
+                value = dynamicPageDisplayMode.label,
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setDynamicPageDisplayMode(
+                            context,
+                            nextDynamicPageDisplayMode(dynamicPageDisplayMode)
+                        )
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "推荐页数据源",
                 subtitle = resolveFeedApiTypeDescription(feedApiType),
                 value = resolveFeedApiTypeLabel(feedApiType),
                 compact = compact,
@@ -687,9 +705,31 @@ private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
 
 private fun resolveFeedApiTypeDescription(type: SettingsManager.FeedApiType): String {
     return when (type) {
-        SettingsManager.FeedApiType.WEB -> "网页端 (Web)"
-        SettingsManager.FeedApiType.MOBILE -> "移动端 (App)"
-        SettingsManager.FeedApiType.NORMAL -> "兼容模式"
+        SettingsManager.FeedApiType.WEB -> "推荐页使用网页端推荐接口。"
+        SettingsManager.FeedApiType.MOBILE -> "推荐页优先使用移动端推荐接口，失败后回退网页端。"
+        SettingsManager.FeedApiType.NORMAL -> "推荐页使用兼容模式。"
+    }
+}
+
+private fun nextDynamicPageDisplayMode(
+    mode: SettingsManager.DynamicPageDisplayMode
+): SettingsManager.DynamicPageDisplayMode {
+    return when (mode) {
+        SettingsManager.DynamicPageDisplayMode.LIVE -> SettingsManager.DynamicPageDisplayMode.DYNAMIC
+        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> SettingsManager.DynamicPageDisplayMode.ALL
+        SettingsManager.DynamicPageDisplayMode.ALL -> SettingsManager.DynamicPageDisplayMode.NONE
+        SettingsManager.DynamicPageDisplayMode.NONE -> SettingsManager.DynamicPageDisplayMode.LIVE
+    }
+}
+
+private fun resolveDynamicPageDisplayModeDescription(
+    mode: SettingsManager.DynamicPageDisplayMode
+): String {
+    return when (mode) {
+        SettingsManager.DynamicPageDisplayMode.LIVE -> "动态页仅显示关注直播横栏，隐藏关注更新横栏。"
+        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "动态页仅显示关注更新横栏，隐藏关注直播横栏。"
+        SettingsManager.DynamicPageDisplayMode.ALL -> "动态页同时显示关注直播与关注更新横栏。"
+        SettingsManager.DynamicPageDisplayMode.NONE -> "动态页隐藏关注直播与关注更新横栏，只保留视频列表。"
     }
 }
 

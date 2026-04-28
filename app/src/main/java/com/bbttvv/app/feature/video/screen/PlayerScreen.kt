@@ -3,6 +3,7 @@ package com.bbttvv.app.feature.video.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -88,10 +90,7 @@ fun PlayerScreen(
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
     val actions = remember {
-        PlayerAction.entries.filterNot { action ->
-            action == PlayerAction.Audio ||
-                action == PlayerAction.Codec
-        }
+        PlayerAction.entries.filterNot { it == PlayerAction.Audio || it == PlayerAction.Codec }
     }
     val panelOptions = remember(
         overlayUiState.activePanel,
@@ -131,6 +130,7 @@ fun PlayerScreen(
         panelOptionsCount = panelOptions.size,
     )
     val playerFocusCoordinator = remember { PlayerFocusCoordinator() }
+    var debugSnapshot by remember { mutableStateOf(PlayerDebugSnapshot()) }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     val session = remember(bvid, cid, aid, startPositionMs) {
         PlayerScreenSession(
@@ -140,12 +140,14 @@ fun PlayerScreen(
             startPositionMs = startPositionMs,
         )
     }
+    val exitTrace = remember(session) { PlayerExitTrace(session) }
 
     val handleOverlayEffect = rememberPlayerOverlayEffectHandler(
         presentationState = presentationState,
         viewModel = viewModel,
         context = context,
         scope = scope,
+        exitTrace = exitTrace,
         onExitPlayer = onBack,
     )
     val latestHandleOverlayEffect = rememberUpdatedState(handleOverlayEffect)
@@ -168,7 +170,8 @@ fun PlayerScreen(
         onEffect = handleOverlayEffect,
     )
     val useRealtimePlaybackState = overlayUiState.overlayMode == PlayerOverlayMode.FullControls ||
-        (danmakuPayload != null && isDanmakuEnabled)
+        (danmakuPayload != null && isDanmakuEnabled) ||
+        overlayUiState.showDebugOverlay
     val livePlaybackState = rememberRealtimePlaybackState(
         exoPlayer = exoPlayer,
         playbackState = playbackState,
@@ -215,6 +218,7 @@ fun PlayerScreen(
         playerFocusCoordinator = playerFocusCoordinator,
         focusBindings = focusBindings,
         handleOverlayEffect = handleOverlayEffect,
+        onDebugSnapshotChange = { debugSnapshot = it },
         args = PlayerScreenEffectArgs(
             session = session,
             uiState = uiState,
@@ -227,6 +231,7 @@ fun PlayerScreen(
             showSponsorSkipNotice = showSponsorSkipNotice,
             playerView = playerViewRef,
             exoPlayer = exoPlayer,
+            exitTrace = exitTrace,
             bufferingSpeedMeter = bufferingSpeedMeter,
             playbackSnapshotProvider = playbackSnapshotProvider,
             latestHandleOverlayEffect = latestHandleOverlayEffect,
@@ -284,9 +289,22 @@ fun PlayerScreen(
             onBackFromCommentThread = viewModel::closeCommentThread,
         )
 
+        if (overlayUiState.showDebugOverlay) {
+            PlayerDebugOverlay(
+                snapshot = debugSnapshot,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = PlayerLayoutTokens.debugTopPadding,
+                        end = PlayerLayoutTokens.debugEdgePadding,
+                    ),
+            )
+        }
+
         PlayerTransientOverlayMessages(
             uiState = uiState,
             bufferingOverlayText = bufferingOverlayText,
+            showDebugOverlay = overlayUiState.showDebugOverlay,
             showSponsorSkipNotice = showSponsorSkipNotice,
         )
     }

@@ -97,6 +97,7 @@ private fun PlayerActionButton(
 
 private fun actionButtonLabel(action: PlayerAction): String {
     return when (action) {
+        PlayerAction.Detail -> "详情"
         PlayerAction.Comments -> "评论"
         PlayerAction.Speed -> "倍速"
         PlayerAction.Quality -> "画质"
@@ -108,6 +109,7 @@ private fun actionButtonLabel(action: PlayerAction): String {
 
 private fun actionIcon(action: PlayerAction): ImageVector {
     return when (action) {
+        PlayerAction.Detail -> Icons.Outlined.Info
         PlayerAction.Comments -> Icons.Outlined.Email
         PlayerAction.Speed -> Icons.Outlined.PlayArrow
         PlayerAction.Quality -> Icons.Outlined.Settings

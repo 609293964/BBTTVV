@@ -80,21 +80,6 @@ val ThemeColors = listOf(
     Color(0xFFFF6B6B),  // 7: 珊瑚红 (Coral)
     Color(0xFF5856D6),  // 8: 靛蓝 (Indigo)
     Color(0xFF00BFA5),  // 9: 翡翠青 (Teal)
-    Color(0xFFF44336),  // 10: KSU Material Red
-    Color(0xFFE91E63),  // 11: KSU Material Pink
-    Color(0xFF9C27B0),  // 12: KSU Material Purple
-    Color(0xFF673AB7),  // 13: KSU Deep Purple
-    Color(0xFF3F51B5),  // 14: KSU Indigo
-    Color(0xFF2196F3),  // 15: KSU Material Blue
-    Color(0xFF00BCD4),  // 16: KSU Cyan
-    Color(0xFF009688),  // 17: KSU Teal
-    Color(0xFF4CAF50),  // 18: KSU Green
-    Color(0xFFFFEB3B),  // 19: KSU Yellow
-    Color(0xFFFFC107),  // 20: KSU Amber
-    Color(0xFFFF9800),  // 21: KSU Orange
-    Color(0xFF795548),  // 22: KSU Brown
-    Color(0xFF607D8F),  // 23: KSU Blue Grey
-    Color(0xFFFF9CA8),  // 24: KSU Soft Pink
 )
 
 //  主题颜色名称 (与 ThemeColors 索引对应)
@@ -108,26 +93,8 @@ val ThemeColorNames = listOf(
     "静谧蓝灰",    // 6
     "珊瑚红",      // 7
     "靛蓝",        // 8
-    "翡翠青",      // 9
-    "炽焰红",      // 10
-    "绯樱粉",      // 11
-    "星云紫",      // 12
-    "暮影紫",      // 13
-    "靛空蓝",      // 14
-    "晴空蓝",      // 15
-    "极光青",      // 16
-    "海沫绿",      // 17
-    "新叶绿",      // 18
-    "日光黄",      // 19
-    "琥珀金",      // 20
-    "暖阳橙",      // 21
-    "可可棕",      // 22
-    "雾霭蓝灰",    // 23
-    "晨曦粉"       // 24
+    "翡翠青"       // 9
 )
-
-internal fun normalizeThemeColorIndex(index: Int): Int =
-    index.coerceIn(0, ThemeColors.lastIndex)
 
 //  --- 底栏项目可选颜色调色板 ---
 /**

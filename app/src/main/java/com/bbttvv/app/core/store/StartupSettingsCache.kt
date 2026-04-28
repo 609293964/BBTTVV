@@ -11,7 +11,8 @@ internal data class StartupSettingsSnapshot(
     val playerCdnPreference: SettingsManager.PlayerCdnPreference,
     val playerAutoResumeEnabled: Boolean,
     val videoDetailCommentsEnabled: Boolean,
-    val watchLaterInTopTabsEnabled: Boolean
+    val watchLaterInTopTabsEnabled: Boolean,
+    val dynamicPageDisplayMode: SettingsManager.DynamicPageDisplayMode
 )
 
 internal object StartupSettingsCache {
@@ -29,7 +30,8 @@ internal object StartupSettingsCache {
             playerCdnPreference = SettingsManager.getPlayerCdnPreferenceSync(appContext),
             playerAutoResumeEnabled = SettingsManager.getPlayerAutoResumeEnabledSync(appContext),
             videoDetailCommentsEnabled = SettingsManager.getVideoDetailCommentsEnabledSync(appContext),
-            watchLaterInTopTabsEnabled = SettingsManager.getWatchLaterInTopTabsEnabledSync(appContext)
+            watchLaterInTopTabsEnabled = SettingsManager.getWatchLaterInTopTabsEnabledSync(appContext),
+            dynamicPageDisplayMode = SettingsManager.getDynamicPageDisplayModeSync(appContext)
         ).also { snapshot = it }
     }
 

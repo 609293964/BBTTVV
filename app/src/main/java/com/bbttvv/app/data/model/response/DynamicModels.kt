@@ -10,12 +10,15 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /**
  *  动态页面数据模型
@@ -50,6 +53,130 @@ data class DynamicDetailResponse(
 data class DynamicDetailData(
     val item: DynamicItem? = null
 )
+
+@Serializable
+data class DynamicPortalResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: DynamicPortalData? = null
+)
+
+@Serializable
+data class DynamicPortalData(
+    @Serializable(with = DynamicPortalUpListSerializer::class)
+    val up_list: DynamicPortalUpList = DynamicPortalUpList()
+)
+
+@Serializable
+data class DynamicPortalUpList(
+    val items: List<DynamicPortalUpItem> = emptyList()
+)
+
+@Serializable(with = DynamicPortalUpItemSerializer::class)
+data class DynamicPortalUpItem(
+    val mid: Long = 0L,
+    val name: String = "",
+    val face: String = "",
+    val has_update: Boolean = false
+)
+
+object DynamicPortalUpListSerializer : KSerializer<DynamicPortalUpList> {
+    override val descriptor: SerialDescriptor = DynamicPortalUpList.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): DynamicPortalUpList {
+        val jsonDecoder = decoder as? JsonDecoder ?: return DynamicPortalUpList.serializer().deserialize(decoder)
+        val element = jsonDecoder.decodeJsonElement()
+        val rawItems = when (element) {
+            is JsonArray -> element
+            is JsonObject -> element["items"] as? JsonArray ?: JsonArray(emptyList())
+            else -> JsonArray(emptyList())
+        }
+        val items = rawItems.mapNotNull { node ->
+            runCatching {
+                jsonDecoder.json.decodeFromJsonElement(DynamicPortalUpItem.serializer(), node)
+            }.getOrNull()
+        }
+        return DynamicPortalUpList(items = items)
+    }
+
+    override fun serialize(encoder: Encoder, value: DynamicPortalUpList) {
+        DynamicPortalUpList.serializer().serialize(encoder, value)
+    }
+}
+
+@Serializable
+private data class DynamicPortalUpItemSurrogate(
+    val mid: Long = 0L,
+    val name: String = "",
+    val face: String = "",
+    val has_update: Boolean = false
+)
+
+object DynamicPortalUpItemSerializer : KSerializer<DynamicPortalUpItem> {
+    override val descriptor: SerialDescriptor = DynamicPortalUpItemSurrogate.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): DynamicPortalUpItem {
+        val jsonDecoder = decoder as? JsonDecoder ?: return DynamicPortalUpItemSurrogate.serializer()
+            .deserialize(decoder)
+            .toPortalUpItem()
+        val obj = jsonDecoder.decodeJsonElement() as? JsonObject ?: return DynamicPortalUpItem()
+        return DynamicPortalUpItem(
+            mid = obj.portalLong("mid", "uid", "up_mid"),
+            name = obj.portalString("name", "uname", "nickname"),
+            face = obj.portalString("face", "avatar", "face_url"),
+            has_update = obj.portalBoolean("has_update", "hasUpdate", "has_new", "update")
+        )
+    }
+
+    override fun serialize(encoder: Encoder, value: DynamicPortalUpItem) {
+        DynamicPortalUpItemSurrogate(
+            mid = value.mid,
+            name = value.name,
+            face = value.face,
+            has_update = value.has_update
+        ).let { surrogate ->
+            DynamicPortalUpItemSurrogate.serializer().serialize(encoder, surrogate)
+        }
+    }
+
+    private fun DynamicPortalUpItemSurrogate.toPortalUpItem(): DynamicPortalUpItem {
+        return DynamicPortalUpItem(
+            mid = mid,
+            name = name,
+            face = face,
+            has_update = has_update
+        )
+    }
+}
+
+private fun JsonObject.portalLong(vararg keys: String): Long {
+    return keys.firstNotNullOfOrNull { key ->
+        val primitive = get(key) as? JsonPrimitive ?: return@firstNotNullOfOrNull null
+        primitive.longOrNull ?: primitive.contentOrNull?.toLongOrNull()
+    } ?: 0L
+}
+
+private fun JsonObject.portalString(vararg keys: String): String {
+    return keys.firstNotNullOfOrNull { key ->
+        val primitive = get(key) as? JsonPrimitive ?: return@firstNotNullOfOrNull null
+        primitive.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+    }.orEmpty()
+}
+
+private fun JsonObject.portalBoolean(vararg keys: String): Boolean {
+    return keys.firstNotNullOfOrNull { key ->
+        val primitive = get(key) as? JsonPrimitive ?: return@firstNotNullOfOrNull null
+        primitive.booleanOrNull
+            ?: primitive.intOrNull?.let { it != 0 }
+            ?: primitive.contentOrNull?.let { raw ->
+                when (raw.trim().lowercase()) {
+                    "1", "true", "yes" -> true
+                    "0", "false", "no" -> false
+                    else -> null
+                }
+            }
+    } ?: false
+}
 
 // --- 动态卡片 ---
 @Serializable

@@ -30,11 +30,3 @@
 
 # Keep Kotlin metadata used by serializers and reflective type resolution.
 -keep class kotlin.Metadata { *; }
-
-# Strip non-essential logging from release builds. Warning/error logs are kept
-# for crash and playback diagnostics.
--assumenosideeffects class android.util.Log {
-    public static int v(...);
-    public static int d(...);
-    public static int i(...);
-}

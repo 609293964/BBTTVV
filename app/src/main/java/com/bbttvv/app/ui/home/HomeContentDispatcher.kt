@@ -192,6 +192,7 @@ internal fun HomeContentDispatcher(
                     viewModel = viewModel,
                     onVideoClick = onVideoClick,
                     onLiveClick = { roomId -> onLiveClick(roomId, null) },
+                    onOpenUp = onOpenUp,
                     dynamicRefreshRequestId = dynamicRefreshRequestId,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
@@ -237,6 +238,7 @@ private fun DynamicTabContent(
     viewModel: HomeViewModel,
     onVideoClick: (VideoItem) -> Unit,
     onLiveClick: (Long) -> Unit,
+    onOpenUp: (Long) -> Unit,
     dynamicRefreshRequestId: Int,
     onContentRowFocused: (Int) -> Unit,
     focusCoordinator: HomeFocusCoordinator,
@@ -251,6 +253,7 @@ private fun DynamicTabContent(
         DynamicScreen(
             onVideoClick = onVideoClick,
             onLiveClick = onLiveClick,
+            onOpenUp = onOpenUp,
             viewModel = dynamicViewModel,
             onContentRowFocused = onContentRowFocused,
             focusCoordinator = focusCoordinator,

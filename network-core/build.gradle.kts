@@ -19,4 +19,18 @@ android {
     kotlin {
         jvmToolchain(21)
     }
+
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
+}
+
+dependencies {
+    testImplementation(libs.junit4)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.vintage.engine)
+    testImplementation(libs.kotlin.test)
 }

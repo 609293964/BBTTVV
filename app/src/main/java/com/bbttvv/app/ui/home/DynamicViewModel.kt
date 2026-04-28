@@ -7,8 +7,11 @@ import com.bbttvv.app.core.paging.appliedOrNull
 import com.bbttvv.app.data.model.response.DynamicItem
 import com.bbttvv.app.data.model.response.FollowedLiveRoom
 import com.bbttvv.app.data.model.response.VideoItem
+import com.bbttvv.app.data.repository.DynamicFollowUpdateItem
 import com.bbttvv.app.data.repository.DynamicRepository
 import com.bbttvv.app.data.repository.VideoDetailRepository
+import com.bbttvv.app.data.repository.clearDynamicFollowUpdatePrompt
+import com.bbttvv.app.data.repository.defaultDynamicFollowUpdateItems
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,11 +25,14 @@ private const val DynamicFocusSummaryPrefetchDelayMs = 300L
 
 data class DynamicUiState(
     val liveUsers: List<FollowedLiveRoom> = emptyList(),
+    val followUpdateItems: List<DynamicFollowUpdateItem> = defaultDynamicFollowUpdateItems(),
     val dynamicVideos: List<DynamicItem> = emptyList(),
     val isLoadingLive: Boolean = false,
+    val isLoadingFollowUpdates: Boolean = false,
     val isLoadingVideos: Boolean = false,
     val videoErrorMsg: String? = null,
-    val liveErrorMsg: String? = null
+    val liveErrorMsg: String? = null,
+    val followUpdatesErrorMsg: String? = null
 )
 
 class DynamicViewModel : ViewModel() {
@@ -37,10 +43,12 @@ class DynamicViewModel : ViewModel() {
     private val videoFeed = PagedFeedGridState<Int, DynamicItem, DynamicItem>(initialKey = 1)
     private var initialLoadStarted = false
     private var loadMoreJob: Job? = null
+    private var followUpdatesJob: Job? = null
     private var detailPrefetchJob: Job? = null
     private var pendingPrefetchBvid: String? = null
     private var lastPrefetchedBvid: String? = null
     private var liveUsersRequestGeneration: Long = 0L
+    private var followUpdatesRequestGeneration: Long = 0L
     private var handledRefreshRequestId: Int = 0
 
     fun onEnter() {
@@ -53,6 +61,9 @@ class DynamicViewModel : ViewModel() {
         if (!state.isLoadingLive) {
             refreshLiveUsers(showLoading = false)
         }
+        if (!state.isLoadingFollowUpdates) {
+            refreshFollowUpdates(showLoading = false)
+        }
         if (state.dynamicVideos.isEmpty() && !state.isLoadingVideos) {
             refreshDynamicVideos(showLoading = false)
         }
@@ -62,6 +73,7 @@ class DynamicViewModel : ViewModel() {
         loadMoreJob?.cancel()
         loadMoreJob = null
         refreshLiveUsers(showLoading = true)
+        refreshFollowUpdates(showLoading = true)
         refreshDynamicVideos(showLoading = true)
     }
 
@@ -74,6 +86,7 @@ class DynamicViewModel : ViewModel() {
     fun refresh() {
         initialLoadStarted = true
         refreshLiveUsers(showLoading = true)
+        refreshFollowUpdates(showLoading = true)
         refreshDynamicVideos(showLoading = true)
     }
 
@@ -113,6 +126,52 @@ class DynamicViewModel : ViewModel() {
                     )
                 }
             }
+        }
+    }
+
+    fun refreshFollowUpdates(showLoading: Boolean = false) {
+        val generation = ++followUpdatesRequestGeneration
+        followUpdatesJob?.cancel()
+        followUpdatesJob = viewModelScope.launch {
+            if (showLoading) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingFollowUpdates = true,
+                        followUpdatesErrorMsg = null
+                    )
+                }
+            }
+
+            val result = DynamicRepository.getFollowUpdateItems()
+            if (generation != followUpdatesRequestGeneration) return@launch
+            if (result.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        followUpdateItems = result.getOrDefault(emptyList()),
+                        isLoadingFollowUpdates = false,
+                        followUpdatesErrorMsg = null
+                    )
+                }
+            } else {
+                _uiState.update { state ->
+                    state.copy(
+                        isLoadingFollowUpdates = false,
+                        followUpdatesErrorMsg = result.exceptionOrNull()?.message ?: state.followUpdatesErrorMsg
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeFollowUpdatePrompt(mid: Long) {
+        if (mid <= 0L) return
+        _uiState.update { state ->
+            state.copy(
+                followUpdateItems = clearDynamicFollowUpdatePrompt(state.followUpdateItems, mid)
+            )
+        }
+        viewModelScope.launch {
+            DynamicRepository.consumeFollowUpdatePrompt(mid)
         }
     }
 

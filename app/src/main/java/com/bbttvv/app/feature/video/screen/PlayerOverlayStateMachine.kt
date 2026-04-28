@@ -21,6 +21,7 @@ internal data class SimpleSeekState(
 )
 
 internal enum class PlayerAction(val label: String, val symbol: String) {
+    Detail("视频详细信息", "i"),
     Comments("视频评论", "评"),
     Speed("播放速度", "倍"),
     Quality("画质选择", "清"),
@@ -58,6 +59,7 @@ internal data class PlayerOverlayUiState(
     val selectedActionIndex: Int = 0,
     val activePanel: PlayerAction? = null,
     val selectedPanelIndex: Int = 0,
+    val showDebugOverlay: Boolean = false,
     val isScrubbing: Boolean = false,
     val scrubDirection: Int = 0,
     val scrubPreviewPositionMs: Long? = null,
@@ -147,6 +149,11 @@ internal class PlayerOverlayStateMachine {
         when {
             uiState.activePanel != null -> {
                 uiState = uiState.copy(activePanel = null)
+                showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
+            }
+
+            uiState.showDebugOverlay -> {
+                uiState = uiState.copy(showDebugOverlay = false)
                 showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
             }
 
@@ -507,6 +514,14 @@ internal class PlayerOverlayStateMachine {
         onEffect: (PlayerOverlayEffect) -> Unit,
     ) {
         when (actions.getOrNull(uiState.selectedActionIndex) ?: return) {
+            PlayerAction.Detail -> {
+                uiState = uiState.copy(
+                    activePanel = null,
+                    showDebugOverlay = !uiState.showDebugOverlay,
+                )
+                showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
+            }
+
             PlayerAction.Comments -> {
                 uiState = uiState.copy(activePanel = null)
                 onEffect(PlayerOverlayEffect.OpenComments)
@@ -560,6 +575,7 @@ internal class PlayerOverlayStateMachine {
             }
 
             PlayerAction.Danmaku -> onEffect(PlayerOverlayEffect.ActivateDanmakuSetting(option.key))
+            PlayerAction.Detail,
             PlayerAction.Comments -> Unit
         }
         if (action != PlayerAction.Danmaku) {

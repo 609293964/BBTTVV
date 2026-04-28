@@ -84,25 +84,25 @@ fun LivePlayerScreen(
     val danmakuConfig = remember(storedDanmakuSettings) { storedDanmakuSettings.toEngineConfig() }
     val exoPlayer = remember(context) { createConfiguredPlayer(context) }
     val keyCaptureRequester = remember { FocusRequester() }
-    val actions = remember { LiveOverlayAction.entries.toList() }
+    val actions = remember { LiveOverlayAction.entries }
     var showOverlay by rememberSaveable(roomId) { mutableStateOf(true) }
     var selectedActionIndex by rememberSaveable(roomId) { mutableIntStateOf(0) }
     var activePanelKey by rememberSaveable(roomId) { mutableStateOf<String?>(null) }
     var selectedPanelIndex by rememberSaveable(roomId) { mutableIntStateOf(0) }
-    val activePanel = activePanelKey
-        ?.let { key -> runCatching { LiveOverlayAction.valueOf(key) }.getOrNull() }
+    var showDebugOverlay by rememberSaveable(roomId) { mutableStateOf(false) }
+    val debugMetrics = rememberLivePlaybackDebugMetrics(
+        player = exoPlayer,
+        roomId = roomId,
+        streamUrl = uiState.streamUrl,
+        isDebugOverlayVisible = showDebugOverlay,
+    )
+    val activePanel = activePanelKey?.let(LiveOverlayAction::valueOf)
     val panelOptions = remember(activePanel, uiState) {
         buildLivePanelOptions(activePanel = activePanel, uiState = uiState)
     }
     val panelOptionsFocusKey = buildPanelOptionsFocusKey(panelOptions)
     val latestUiState = rememberUpdatedState(uiState)
     val latestPlaybackState = rememberUpdatedState(playbackState)
-
-    LaunchedEffect(activePanelKey, activePanel) {
-        if (activePanelKey != null && activePanel == null) {
-            activePanelKey = null
-        }
-    }
 
     RegisterTvFocusEscapeTarget(
         key = "live_player",
@@ -131,6 +131,7 @@ fun LivePlayerScreen(
             KeyEvent.KEYCODE_ESCAPE -> {
                 when {
                     activePanel != null -> activePanelKey = null
+                    showDebugOverlay -> showDebugOverlay = false
                     else -> exitLivePlayer()
                 }
                 true
@@ -193,7 +194,7 @@ fun LivePlayerScreen(
                         }
                     }
                     !wasOverlayVisible -> viewModel.togglePlayback()
-                    else -> when (actions.getOrNull(selectedActionIndex)) {
+                    else -> when (actions[selectedActionIndex]) {
                         LiveOverlayAction.Danmaku -> viewModel.toggleDanmaku()
                         LiveOverlayAction.Quality,
                         LiveOverlayAction.Line,
@@ -202,7 +203,7 @@ fun LivePlayerScreen(
                         LiveOverlayAction.PlayerCore -> {
                             activePanelKey = actions[selectedActionIndex].name
                         }
-                        null -> Unit
+                        LiveOverlayAction.Debug -> showDebugOverlay = !showDebugOverlay
                     }
                 }
                 true
@@ -228,6 +229,7 @@ fun LivePlayerScreen(
     BackHandler {
         when {
             activePanel != null -> activePanelKey = null
+            showDebugOverlay -> showDebugOverlay = false
             else -> exitLivePlayer()
         }
     }
@@ -262,6 +264,7 @@ fun LivePlayerScreen(
         selectedActionIndex = 0
         activePanelKey = null
         selectedPanelIndex = 0
+        showDebugOverlay = false
         viewModel.loadLive(roomId = roomId, force = true)
     }
 
@@ -271,7 +274,7 @@ fun LivePlayerScreen(
             ?: selectedPanelIndex.coerceIn(0, panelOptions.lastIndex.coerceAtLeast(0))
     }
 
-    LaunchedEffect(roomId, showOverlay, activePanel, uiState.isLoading, uiState.errorMessage) {
+    LaunchedEffect(roomId, showOverlay, activePanel, showDebugOverlay, uiState.isLoading, uiState.errorMessage) {
         runCatching { keyCaptureRequester.requestFocus() }
     }
 
@@ -409,6 +412,23 @@ fun LivePlayerScreen(
                     )
                 }
             }
+        }
+
+        if (showDebugOverlay) {
+            val debugSnapshot = remember(uiState, playbackState, debugMetrics) {
+                buildLiveDebugSnapshot(
+                    player = exoPlayer,
+                    uiState = uiState,
+                    playbackState = playbackState,
+                    metrics = debugMetrics,
+                )
+            }
+            LiveDebugOverlay(
+                snapshot = debugSnapshot,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 28.dp, end = 28.dp)
+            )
         }
     }
 }

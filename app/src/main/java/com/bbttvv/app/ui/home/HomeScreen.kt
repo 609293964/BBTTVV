@@ -149,7 +149,7 @@ fun HomeScreen(
         effectiveFocusScene,
         restoreVideoFocusKey,
         restoreTargetTab,
-        restoreRecommendVideoIndex,
+        restoreRecommendVideoIndex
     ) {
         val focusKey = restoreVideoFocusKey
         if (
@@ -235,14 +235,6 @@ fun HomeScreen(
                 onTopBarFocusChanged = { isFocused ->
                     if (isFocused) {
                         focusCoordinator.onTopBarFocused()
-                        if (
-                            HomeFocusStrategy.shouldScrollRecommendToTopOnTopBarFocus(
-                                scene = focusCoordinator.scene,
-                                selectedHomeTab = selectedHomeTab,
-                            )
-                        ) {
-                            recommendGridFocusState.scrollToTopForTopBarFocus()
-                        }
                     }
                 },
                 modifier = Modifier

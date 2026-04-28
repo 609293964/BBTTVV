@@ -2,15 +2,118 @@
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.store.TokenManager
+import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.DynamicFeedResponse
 import com.bbttvv.app.data.model.response.DynamicItem
+import com.bbttvv.app.data.model.response.DynamicPortalUpItem
 import com.bbttvv.app.data.model.response.FollowedLiveRoom
+import com.bbttvv.app.data.model.response.FollowingUser
+import com.bbttvv.app.data.model.response.FollowingsResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private const val DYNAMIC_ABSOLUTE_PAGE_FETCH_LIMIT = 10
 private const val DYNAMIC_USER_PAGINATION_STATE_LIMIT = 64
+private const val DYNAMIC_FOLLOW_UPDATES_PAGE_SIZE = 15
+private const val DYNAMIC_FOLLOW_UPDATES_UP_LIMIT = 15
+private const val DYNAMIC_FOLLOW_UPDATES_TAG = "DynamicFollowUpdates"
+
+sealed interface DynamicFollowUpdateItem {
+    val key: String
+}
+
+enum class DynamicFollowUpdateFixedKind(
+    val title: String,
+    val iconText: String,
+    val stableKey: String
+) {
+    SPECIAL(title = "特别关注", iconText = "特", stableKey = "fixed:special"),
+    DEFAULT_GROUP(title = "默认分组", iconText = "组", stableKey = "fixed:default")
+}
+
+data class DynamicFollowUpdateFixedItem(
+    val kind: DynamicFollowUpdateFixedKind
+) : DynamicFollowUpdateItem {
+    override val key: String = kind.stableKey
+    val title: String = kind.title
+    val iconText: String = kind.iconText
+}
+
+data class DynamicFollowUpdateUpItem(
+    val mid: Long,
+    val name: String,
+    val face: String,
+    val hasUpdate: Boolean
+) : DynamicFollowUpdateItem {
+    override val key: String = "up:$mid"
+}
+
+private val DynamicFollowUpdateFixedItems = listOf(
+    DynamicFollowUpdateFixedItem(DynamicFollowUpdateFixedKind.SPECIAL),
+    DynamicFollowUpdateFixedItem(DynamicFollowUpdateFixedKind.DEFAULT_GROUP)
+)
+
+internal fun defaultDynamicFollowUpdateItems(): List<DynamicFollowUpdateItem> {
+    return DynamicFollowUpdateFixedItems
+}
+
+internal fun buildDynamicFollowUpdateItems(
+    followings: List<FollowingUser>,
+    portalItems: List<DynamicPortalUpItem>
+): List<DynamicFollowUpdateItem> {
+    val followingsByMid = LinkedHashMap<Long, FollowingUser>()
+    followings.forEach { user ->
+        if (user.mid > 0L && !followingsByMid.containsKey(user.mid)) {
+            followingsByMid[user.mid] = user
+        }
+    }
+
+    val addedMids = linkedSetOf<Long>()
+    val upItems = mutableListOf<DynamicFollowUpdateUpItem>()
+    portalItems.forEach { portalItem ->
+        val mid = portalItem.mid
+        if (mid <= 0L || !portalItem.has_update || !addedMids.add(mid)) return@forEach
+        val following = followingsByMid[mid]
+        upItems += DynamicFollowUpdateUpItem(
+            mid = mid,
+            name = portalItem.name.ifBlank { following?.uname.orEmpty() },
+            face = portalItem.face.ifBlank { following?.face.orEmpty() },
+            hasUpdate = true
+        )
+    }
+
+    followingsByMid.values.forEach { following ->
+        if (addedMids.add(following.mid)) {
+            upItems += DynamicFollowUpdateUpItem(
+                mid = following.mid,
+                name = following.uname,
+                face = following.face,
+                hasUpdate = false
+            )
+        }
+    }
+
+    return DynamicFollowUpdateFixedItems + upItems.take(DYNAMIC_FOLLOW_UPDATES_UP_LIMIT)
+}
+
+internal fun clearDynamicFollowUpdatePrompt(
+    items: List<DynamicFollowUpdateItem>,
+    mid: Long
+): List<DynamicFollowUpdateItem> {
+    if (mid <= 0L) return items
+    var changed = false
+    val updated = items.map { item ->
+        if (item is DynamicFollowUpdateUpItem && item.mid == mid && item.hasUpdate) {
+            changed = true
+            item.copy(hasUpdate = false)
+        } else {
+            item
+        }
+    }
+    return if (changed) updated else items
+}
 
 /**
  *  动态数据仓库
@@ -291,6 +394,93 @@ object DynamicRepository {
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
+        }
+    }
+
+    suspend fun getFollowUpdateItems(): Result<List<DynamicFollowUpdateItem>> = withContext(Dispatchers.IO) {
+        try {
+            TokenManager.awaitWarmup()
+            val currentMidResult = resolveCurrentMidForFollowUpdates()
+            val followingsResult = currentMidResult
+                .mapCatching { currentMid -> fetchDynamicFollowUpdateFollowings(currentMid) }
+            val portalItemsResult = fetchDynamicPortalUpdateItems()
+
+            val followings = followingsResult.getOrDefault(emptyList())
+            val portalItems = portalItemsResult.getOrDefault(emptyList())
+            if (followingsResult.isFailure) {
+                Logger.w(
+                    DYNAMIC_FOLLOW_UPDATES_TAG,
+                    "followings unavailable: ${followingsResult.exceptionOrNull()?.message.orEmpty()}"
+                )
+            }
+            if (portalItemsResult.isFailure) {
+                Logger.w(
+                    DYNAMIC_FOLLOW_UPDATES_TAG,
+                    "portal unavailable: ${portalItemsResult.exceptionOrNull()?.message.orEmpty()}"
+                )
+            }
+
+            if (followingsResult.isSuccess || portalItemsResult.isSuccess) {
+                return@withContext Result.success(buildDynamicFollowUpdateItems(followings, portalItems))
+            }
+
+            val error = followingsResult.exceptionOrNull()
+                ?: portalItemsResult.exceptionOrNull()
+                ?: Exception("关注更新加载失败")
+            Result.failure(error)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    suspend fun consumeFollowUpdatePrompt(mid: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            if (mid <= 0L) {
+                return@withContext Result.failure(IllegalArgumentException("Invalid mid"))
+            }
+            val response = NetworkModule.dynamicApi.consumeUserDynamicUpdatePrompt(hostMid = mid)
+            if (response.code == 0) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message.ifBlank { "关注更新提示同步失败(${response.code})" }))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun resolveCurrentMidForFollowUpdates(): Result<Long> {
+        val cachedMid = TokenManager.midCache?.takeIf { it > 0L }
+        if (cachedMid != null) return Result.success(cachedMid)
+
+        return runCatching {
+            val navResponse = NetworkModule.api.getNavInfo()
+            val navMid = navResponse.data?.mid?.takeIf { it > 0L }
+            navMid ?: throw Exception("未登录")
+        }
+    }
+
+    private suspend fun fetchDynamicFollowUpdateFollowings(currentMid: Long): List<FollowingUser> {
+        val response: FollowingsResponse = NetworkModule.api.getFollowings(
+            vmid = currentMid,
+            pn = 1,
+            ps = DYNAMIC_FOLLOW_UPDATES_PAGE_SIZE
+        )
+        if (response.code != 0) {
+            throw Exception(response.message.ifBlank { "关注列表加载失败(${response.code})" })
+        }
+        return response.data?.list.orEmpty()
+    }
+
+    private suspend fun fetchDynamicPortalUpdateItems(): Result<List<DynamicPortalUpItem>> {
+        return runCatching {
+            val response = NetworkModule.dynamicApi.getDynamicPortal()
+            if (response.code != 0) {
+                throw Exception(response.message.ifBlank { "关注更新状态加载失败(${response.code})" })
+            }
+            response.data?.up_list?.items.orEmpty()
         }
     }
 

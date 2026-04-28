@@ -23,17 +23,8 @@ local.properties
 # Signing credentials and private release config
 *.jks
 *.keystore
-*.p12
-*.pfx
-*.pem
 keystore.properties
 signing.properties
-
-# Packaged artifacts
-*.apk
-*.aab
-*.apks
-*.idsig
 
 # Logs, diagnostics, and temporary dumps
 logs/

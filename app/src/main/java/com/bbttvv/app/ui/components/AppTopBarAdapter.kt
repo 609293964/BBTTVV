@@ -137,11 +137,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                 }
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_UP -> true
-                    KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        val tab = boundTab
-                        val handled = onDpadDown()
-                        handled
-                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown()
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
                         val position = bindingAdapterPosition
                         if (position <= 0) {

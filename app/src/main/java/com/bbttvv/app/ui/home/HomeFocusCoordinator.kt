@@ -10,6 +10,7 @@ internal enum class HomeFocusRegion {
     ContentTabs,
     Grid,
     DynamicLiveUsers,
+    DynamicFollowUpdates,
     SearchInput,
     SearchCategory,
     ProfileSidebar,
@@ -179,16 +180,39 @@ internal class HomeFocusCoordinator(
     }
 
     fun handleDynamicLiveUsersDpadDown(): Boolean {
+        if (tryRequestRegionFocus(AppTopLevelTab.DYNAMIC, HomeFocusRegion.DynamicFollowUpdates)) {
+            return true
+        }
+        requestRegionFocus(tab = AppTopLevelTab.DYNAMIC, region = HomeFocusRegion.Grid)
+        return true
+    }
+
+    fun handleDynamicFollowUpdatesDpadUp(): Boolean {
+        if (tryRequestRegionFocus(AppTopLevelTab.DYNAMIC, HomeFocusRegion.DynamicLiveUsers)) {
+            return true
+        }
+        return handleContentWantsTopBar()
+    }
+
+    fun handleDynamicFollowUpdatesDpadDown(): Boolean {
         requestRegionFocus(tab = AppTopLevelTab.DYNAMIC, region = HomeFocusRegion.Grid)
         return true
     }
 
     fun handleGridTopEdge(tab: AppTopLevelTab): Boolean {
+        if (tab == AppTopLevelTab.DYNAMIC) {
+            if (tryRequestRegionFocus(tab, HomeFocusRegion.DynamicFollowUpdates)) {
+                return true
+            }
+            if (tryRequestRegionFocus(tab, HomeFocusRegion.DynamicLiveUsers)) {
+                return true
+            }
+            return handleContentWantsTopBar()
+        }
         val upperRegion = when (tab) {
             AppTopLevelTab.POPULAR,
             AppTopLevelTab.LIVE,
             AppTopLevelTab.TODAY_WATCH -> HomeFocusRegion.ContentTabs
-            AppTopLevelTab.DYNAMIC -> HomeFocusRegion.DynamicLiveUsers
             else -> null
         }
         if (upperRegion != null && tryRequestRegionFocus(tab, upperRegion)) {
@@ -260,8 +284,8 @@ internal class HomeFocusCoordinator(
     }
 
     fun recoverFocusAfterEscape(): Boolean {
-        val preferContent = isContentFocused || !isTopBarVisible
         if (drainPendingFocus()) return true
+        val preferContent = isContentFocused || !isTopBarVisible
         return if (preferContent) {
             tryRequestSelectedContentFocus(selectedHomeTab) || tryRequestTopBarFocus()
         } else {
@@ -306,6 +330,7 @@ internal class HomeFocusCoordinator(
         val orderedTargets = listOfNotNull(
             targets[HomeFocusRegion.Grid]?.let { HomeFocusRegion.Grid to it },
             targets[HomeFocusRegion.ProfileContent]?.let { HomeFocusRegion.ProfileContent to it },
+            targets[HomeFocusRegion.DynamicFollowUpdates]?.let { HomeFocusRegion.DynamicFollowUpdates to it },
             targets[HomeFocusRegion.DynamicLiveUsers]?.let { HomeFocusRegion.DynamicLiveUsers to it },
             targets[HomeFocusRegion.ContentTabs]?.let { HomeFocusRegion.ContentTabs to it },
         )
@@ -364,7 +389,11 @@ internal class HomeFocusCoordinator(
                     listOf(HomeFocusRegion.ContentTabs, HomeFocusRegion.Grid)
                 }
             }
-            AppTopLevelTab.DYNAMIC -> listOf(HomeFocusRegion.DynamicLiveUsers, HomeFocusRegion.Grid)
+            AppTopLevelTab.DYNAMIC -> listOf(
+                HomeFocusRegion.DynamicLiveUsers,
+                HomeFocusRegion.DynamicFollowUpdates,
+                HomeFocusRegion.Grid
+            )
             AppTopLevelTab.WATCH_LATER -> listOf(HomeFocusRegion.Grid)
             AppTopLevelTab.SEARCH -> listOf(
                 HomeFocusRegion.SearchInput,
@@ -379,6 +408,9 @@ internal class HomeFocusCoordinator(
         val remembered = lastContentRegionByTab[tab]
             ?.takeIf { region -> targets.containsKey(region) }
             ?: return fallback
+        if (tab == AppTopLevelTab.DYNAMIC) {
+            return fallback
+        }
         return listOf(remembered) + fallback.filterNot { region -> region == remembered }
     }
 

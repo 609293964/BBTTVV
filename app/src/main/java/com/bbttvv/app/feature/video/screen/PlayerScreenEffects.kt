@@ -47,6 +47,7 @@ internal data class PlayerScreenEffectArgs(
     val showSponsorSkipNotice: Boolean,
     val playerView: PlayerView?,
     val exoPlayer: ExoPlayer,
+    val exitTrace: PlayerExitTrace,
     val bufferingSpeedMeter: BufferingSpeedMeter,
     val playbackSnapshotProvider: () -> PlayerPlaybackState,
     val latestHandleOverlayEffect: State<(PlayerOverlayEffect) -> Unit>,
@@ -62,8 +63,11 @@ internal fun PlayerScreenEffectHost(
     playerFocusCoordinator: PlayerFocusCoordinator,
     focusBindings: PlayerScreenFocusBindings,
     handleOverlayEffect: (PlayerOverlayEffect) -> Unit,
+    onDebugSnapshotChange: (PlayerDebugSnapshot) -> Unit,
     args: PlayerScreenEffectArgs,
 ) {
+    val latestDebugSnapshotChange = rememberUpdatedState(onDebugSnapshotChange)
+    val latestExitTrace = rememberUpdatedState(args.exitTrace)
     val latestPlayerView = rememberUpdatedState(args.playerView)
 
     BackHandler {
@@ -95,11 +99,27 @@ internal fun PlayerScreenEffectHost(
         args.exoPlayer.addListener(perfListener)
         viewModel.attachPlayer(args.exoPlayer)
         onDispose {
-            ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
-            viewModel.finishPlaybackSession(reason = "screen_dispose")
-            args.exoPlayer.removeListener(perfListener)
-            latestPlayerView.value?.player = null
-            args.exoPlayer.release()
+            val exitTrace = latestExitTrace.value
+            exitTrace.start("screen_dispose")
+            try {
+                exitTrace.measure("keepScreenOn:false") {
+                    ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
+                }
+                exitTrace.measure("finishPlaybackSession:dispose") {
+                    viewModel.finishPlaybackSession(reason = "screen_dispose")
+                }
+                exitTrace.measure("listener:remove") {
+                    args.exoPlayer.removeListener(perfListener)
+                }
+                exitTrace.measure("playerView:detach") {
+                    latestPlayerView.value?.player = null
+                }
+                exitTrace.measure("exoPlayer:release") {
+                    args.exoPlayer.release()
+                }
+            } finally {
+                exitTrace.complete("screen_dispose")
+            }
         }
     }
 
@@ -113,6 +133,7 @@ internal fun PlayerScreenEffectHost(
         AppPerformanceTracker.beginSpanOnce("first_playback_open")
         args.bufferingSpeedMeter.reset()
         overlayStateMachine.resetForNewVideo(handleOverlayEffect)
+        latestDebugSnapshotChange.value(PlayerDebugSnapshot())
         presentationState.resetForNewVideo()
         viewModel.loadVideo(
             bvid = args.session.bvid,
@@ -130,6 +151,20 @@ internal fun PlayerScreenEffectHost(
 
     LaunchedEffect(args.overlayUiState.activePanel, args.overlayUiState.overlayMode) {
         presentationState.syncOverlayVisibility(args.overlayUiState)
+    }
+
+    LaunchedEffect(args.overlayUiState.showDebugOverlay, args.exoPlayer) {
+        if (!args.overlayUiState.showDebugOverlay) return@LaunchedEffect
+        while (overlayStateMachine.uiState.showDebugOverlay) {
+            latestDebugSnapshotChange.value(
+                buildPlayerDebugSnapshot(
+                    player = args.exoPlayer,
+                    uiState = args.latestUiState.value,
+                    playbackState = args.playbackSnapshotProvider(),
+                )
+            )
+            delay(500L)
+        }
     }
 
     LaunchedEffect(args.playbackState.isPlaying) {

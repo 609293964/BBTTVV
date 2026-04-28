@@ -123,6 +123,7 @@ internal fun buildPlayerPanelOptions(
             danmakuSettings = danmakuSettings,
             isDanmakuEnabled = isDanmakuEnabled,
         )
+        PlayerAction.Detail,
         PlayerAction.Comments,
         null -> emptyList()
     }
@@ -141,6 +142,7 @@ internal fun handlePlayerOverlayEffect(
     viewModel: PlayerViewModel,
     context: Context,
     scope: CoroutineScope,
+    exitTrace: PlayerExitTrace,
     onExitPlayer: () -> Unit,
 ) {
     when (effect) {
@@ -198,7 +200,11 @@ internal fun handlePlayerOverlayEffect(
         }
 
         PlayerOverlayEffect.ExitPlayer -> {
-            viewModel.finishPlaybackSession(reason = "back_pressed")
+            exitTrace.start("back_pressed")
+            exitTrace.measure("finishPlaybackSession:back_pressed") {
+                viewModel.finishPlaybackSession(reason = "back_pressed")
+            }
+            exitTrace.mark("navigateBack:request")
             onExitPlayer()
         }
     }

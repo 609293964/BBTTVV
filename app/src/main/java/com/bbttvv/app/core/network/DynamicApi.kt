@@ -23,6 +23,9 @@ private const val DYNAMIC_DETAIL_FEATURES =
     "itemOpusStyle,listOnlyfans,opusBigCover,commentsNewVersion,onlyfansVote,onlyfansAssetsV2,decorationCard,forwardListHidden,ugcDelete"
 
 interface DynamicApi {
+    @GET("x/polymer/web-dynamic/v1/portal")
+    suspend fun getDynamicPortal(): DynamicPortalResponse
+
     //  添加 features 参数以获取 rich_text_nodes 表情数据
     @GET("x/polymer/web-dynamic/v1/feed/all")
     suspend fun getDynamicFeed(
@@ -36,6 +39,17 @@ interface DynamicApi {
     @GET("x/polymer/web-dynamic/v1/feed/all")
     suspend fun getUserDynamicFeed(
         @QueryMap params: Map<String, String>
+    ): DynamicFeedResponse
+
+    // 读取指定 UP 的动态第一页，仅用于同步官方更新红点已读状态，不参与分页状态机。
+    @GET("x/polymer/web-dynamic/v1/feed/all")
+    suspend fun consumeUserDynamicUpdatePrompt(
+        @Query("host_mid") hostMid: Long,
+        @Query("page") page: Int = 1,
+        @Query("platform") platform: String = "web",
+        @Query("features") features: String = DYNAMIC_FEED_FEATURES,
+        @Query("timezone_offset") timezoneOffset: Int = -480,
+        @Query("web_location") webLocation: String = "333.1387"
     ): DynamicFeedResponse
 
     //  [新增] 获取单条动态详情（桌面端详情接口）
