@@ -1,94 +1,132 @@
 # BBTTVV
 
-BBTTVV 是一个专门给 Android TV 做的第三方客户端，目标很简单：在电视机那点可怜的硬件配置上，把流畅度做到极致。
+BBTTVV 是面向 Android TV 的第三方客户端，专为电视硬件打造的极致流畅体验。项目基于 Kotlin、Jetpack Compose、AndroidX TV Material、Media3 构建，重点优化了电视端遥控器 D-Pad 操作体验、首页多 Tab 导航性能、播放链路及多维度的调试信息，致力于实现流畅无卡顿的现代化 TV 应用。
 
-项目主体是用 Kotlin 写的，UI 框架全套上了 Jetpack Compose 和 AndroidX TV Material，播放器底座是 Media3。我们花了不少力气去死磕电视遥控器（D-Pad）的焦点逻辑，优化了首页多 Tab 切换和视频网格的滑动性能，希望能给大家一个顺滑、不卡顿的现代 TV 追剧体验。
 
-## 看看效果图
+焦点类问题排查重点：视频卡片快速上下、分页 append、数据刷新后焦点恢复，应按下方 TV 焦点问题排查流程采集输入、滚动、数据提交和焦点恢复时序。
+
+## 应用预览
+
+为了直观展示应用的界面设计与交互效果，以下是各核心场景的截图与功能说明：
 
 <p align="center">
-  <img src="docs/images/1.png" alt="首页截图1" width="600">
+  <img src="docs/images/1.png" alt="首页推荐与导航" width="600">
   <br>
-  <img src="docs/images/2.png" alt="首页截图2" width="600">
+  <em>首页多 Tab 导航与视频网格：支持 D-Pad 顺滑浏览，流畅展示海量推荐内容。</em>
+  <br><br>
+  <img src="docs/images/2.png" alt="分区动态展示" width="600">
   <br>
-  <img src="docs/images/3.png" alt="详情页截图1" width="600">
+  <em>分区动态展示：快速浏览各个分区的热门视频与最新动态。</em>
+  <br><br>
+  <img src="docs/images/3.png" alt="视频详情页" width="600">
   <br>
-  <img src="docs/images/4.png" alt="详情页截图2" width="600">
+  <em>视频详情页：提供丰富的视频介绍与相关视频推荐，焦点操作清晰稳定。</em>
+  <br><br>
+  <img src="docs/images/4.png" alt="播放界面与调试信息" width="600">
   <br>
-  <img src="docs/images/5.png" alt="播放页截图1" width="600">
+  <em>播放界面与硬核调试面板：实时监控分辨率、帧率、码率及解码器等播放状态。</em>
+  <br><br>
+  <img src="docs/images/5.png" alt="设置与高级选项" width="600">
   <br>
-  <img src="docs/images/6.png" alt="播放页截图2" width="600">
-  <br>
-  <img src="docs/images/screenshot_preview_1.png" alt="首页推荐与导航" width="600">
-  <br>
-  <img src="docs/images/screenshot_preview_2.png" alt="应用交互界面" width="600">
-  <br>
-  <img src="docs/images/screenshot_preview_3.png" alt="焦点与详情" width="600">
+  <em>播放设置与高级选项：支持清晰度切换、解码器选择及弹幕等设置，深度适配遥控器。</em>
 </p>
 
-## 做了些啥？
+## 核心特性
 
-- **丝滑的顶部导航**：原生 Compose 的重组开销在老电视上太感人了，所以抄袭了一套轻量级的 `Box` 方案来处理顶部 Tab 和焦点。结果就是：切换 Tab 基本零重组，老旧设备上也不掉帧、不丢焦点。
-- **能播，且稳**：基于 Media3 ExoPlayer，搞定了各种奇葩的直播流（比如某些不太标准的 FLV）。加了一套解码器降级和重试机制，尽量保证画面能出来。
-- **硬核的“极客面板”**：按个遥控器快捷键，就能在播放页呼出 Debug Overlay。里面实时显示分辨率、FPS、码率、用的什么解码器，还有丢没丢帧。看视频卡了？点开看看是网卡了还是解码器拉跨了。
-- **遥控器友好**：
-  - 首页想刷点新的？直接按遥控器的 **菜单键（Menu）** 就行。
-  - 从上面的 Tab 到下面的视频墙，焦点过渡非常自然。
-- **告别乱码**：把以前弹幕设置、插件中心里经常出现的各种火星文和乱码问题全干掉了。
-- **省点内存**：重写了首页的状态管理，切 Tab 的时候该扔的 ViewModel 赶紧扔，把以前臃肿的 God Object 拆散了，内存占用一下子少了一大截。
+- **极致性能导航架构**：采用自定义的轻量级 `Box` 方案重构了顶部 Tab 导航和相关焦点管理。实现了零重组（Zero-recomposition）切换，显著降低 CPU/GPU 开销，杜绝了低端设备上的 UI 卡顿和焦点丢失问题。
+- **完善的直播与点播播放器**：基于 Media3 ExoPlayer 构建的强大播放链路，解决各类直播流格式（如特定 FLV）的播放错误问题。具备完备的解码器回退与协商机制，确保视频内容稳定渲染。
+- **硬核调试信息面板（Debug Overlay）**：在视频和直播播放页面中集成了详尽的调试信息面板，可通过遥控器快捷键唤出。实时显示：分辨率、帧率（FPS）、实时码率（Bitrate）、当前解码器内核（Codec）以及丢帧数（Dropped Frames），方便监控播放器性能状态。
+- **为遥控器而生的交互**：
+  - 支持使用 D-PAD 菜单键（Menu）一键刷新当前流媒体列表（推荐、热门、直播、动态等）。
+  - 自动管理从顶部 Tab 栏到下方视频网格（Grid）的无缝焦点交接。
+- **UI 与本地化保障**：彻底修复了部分界面（如弹幕设置、插件中心）的字符编码和乱码（Mojibake）问题，保障一致的专业视觉体验。
+- **高效的内存管理**：重组了首页复杂 UI 的状态管理逻辑，通过生命周期感知设计在不同 Tab 切换时及时回收不再使用的 ViewModel，消除原有的“God Object”反模式，大幅降低后台内存占用。
 
-## 遥控器怎么按
+## 操作指南
 
-- **方向键（上下左右）**：指哪打哪，支持边缘回弹。
-- **确认键（OK）**：短按进详情，长按有彩蛋（更多操作）。
-- **菜单键（Menu）**：在流媒体列表页面一键刷新。
-- **返回键（Back）**：退一步或者关掉弹窗。
-- **调试面板**：播放视频时按遥控器快捷键，各种极客数据尽收眼底。
+本应用针对电视遥控器进行了深度适配，支持以下快捷操作：
 
-## 用到的技术
+- **方向键（D-Pad）**：控制页面内焦点的上下左右移动。支持从顶部导航栏无缝下移至内容区，并在边缘提供弹回或预加载效果。
+- **确认键（Center/OK）**：短按确认进入详情；长按可触发内容的更多操作。
+- **菜单键（Menu）**：在首页列表等流媒体页面，按下菜单键可一键刷新当前内容列表。
+- **返回键（Back/Escape/B）**：返回上一级页面或退出当前状态。
+- **调试面板**：在视频或直播播放页面中，可通过遥控器快捷键唤出 **硬核调试信息面板（Debug Overlay）**，实时查看分辨率、帧率、码率及丢帧等性能状态。
 
-- Kotlin 2.x, Java 21, AGP 8.x
-- Jetpack Compose, AndroidX TV Material, Compose Navigation
-- Media3 ExoPlayer, Room, DataStore, Retrofit, OkHttp, Coil
+## 技术栈
 
-## 下一步计划（画个饼）
+- Kotlin 2.x，Java 21，Android Gradle Plugin 8.x
+- Jetpack Compose、AndroidX TV Material、Compose Navigation
+- Media3 ExoPlayer、Room、DataStore、Retrofit、OkHttp、Coil
 
-- **主题切换**：支持更换应用皮肤，适配不同光线下的视觉体验。
-- **动态页可选关注列表**：让动态页可以自由选择并展示关注对象的内容，方便追踪更新。
+## 本地开发
 
-## 想自己跑跑看？
+开发环境要求：
 
-**环境准备：**
 - JDK 21
-- Android SDK (Compile SDK 36)
-- 最新版的 Android Studio（或者能跑 AGP 8.x 的版本）
+- Android SDK，Compile SDK 36
+- Android Studio 最新稳定版或兼容 AGP 8.x 的版本
 
-**常用命令：**
+常用命令：
 
 ```bash
-# 连上电视或者模拟器，跑起来
+# 编译并安装 Debug 调试包到连接的电视或模拟器
 ./gradlew installDebug
 
-# 看看代码规不规范，测试能不能过
+# 运行 lint、单元测试和 release 构建验证
 ./gradlew tvVerification
 
-# 打个 Release 包
+# 构建 Release APK
 ./gradlew tvBuild
 
-# 跑一把 UI 自动化测试
+# 运行连接设备上的 UI smoke test
 ./gradlew tvUiRegression
 ```
-*(Windows 的兄弟们记得把 `./gradlew` 换成 `.\gradlew.bat`)*
 
-**⚠️ 提交代码前注意：**
-我们已经配好了 `.gitignore`，一般不会把乱七八糟的东西传上来。但大家 commit 前最好还是扫一眼，别把你的 `local.properties`、签名文件（`*.jks`, `*.keystore`）或者什么奇怪的日志传到 GitHub 上了。
+Windows PowerShell 下可使用 `.\gradlew.bat` 替代 `./gradlew`。
+
+### TV 焦点问题排查
+
+遇到 Grid、Tab、播放器等 D-Pad 焦点乱跳时，可以临时加入 Debug-only 运行时日志，推荐统一使用
+`BBTTVVGridFocus` 作为 logcat tag。排查完成后应删除临时日志点，避免常驻热路径。
+
+建议记录以下信息：
+
+- 输入事件：`KEYCODE_DPAD_UP/DOWN/LEFT/RIGHT/CENTER/BACK`、`ACTION_DOWN/UP`、`eventTime`。
+- 当前焦点：`rootView.findFocus()`、是否为 RecyclerView 本身、是否在当前焦点区域内部。
+- Grid 状态：focused adapter position、visible range、scroll state、item count。
+- 焦点意图：pending focus key/position、scroll parking target、dataset restore target、request token。
+- 数据变化：submitList 前后数量、append/refresh generation、稳定 key 是否仍存在。
+
+常用采集命令：
+
+```bash
+adb logcat -c
+adb logcat -s BBTTVVGridFocus
+adb shell input keyevent 20   # DPAD_DOWN
+adb exec-out uiautomator dump /dev/tty > focus-ui.xml
+```
+
+分析时按时间线对齐“输入事件 -> parking/scroll -> 数据提交 -> 焦点恢复”。如果出现数据或布局变化后焦点被恢复到错误卡片，优先检查是否有旧子项焦点覆盖了 pending directional target，而不是先加延迟或循环 requestFocus。
+
+## 上传前检查
+
+仓库根目录已提供 `.gitignore`，用于排除 Gradle 构建产物、IDE 缓存、logcat / window dump、`local.properties` 以及签名文件。上传到 GitHub 前请确认不要提交以下本地文件：
+
+- `local.properties`
+- `keystore.properties`
+- `*.jks` / `*.keystore`
+- `logs/`、`build/`、`.gradle/`、`.kotlin/`
 
 ## CI
 
-项目里自带了 GitHub Actions (`.github/workflows/android-tv.yml`)。你每次 push 或者提 PR，CI 都会拿 JDK 21 帮你跑一遍验证：
+仓库包含 GitHub Actions 工作流 `.github/workflows/android-tv.yml`，在 push、pull request 和手动触发时使用 JDK 21 执行验证：
+
 ```bash
 ./gradlew tvVerification --no-daemon --stacktrace
 ```
-*注：这玩意只负责跑测试，不管打包发布。*
 
+CI 只负责验证，不进行签名发布、GitHub Release 或外部对象存储上传。
 
+## 免责声明
+
+本应用为第三方开源实现，仅用于个人学习、研究与技术交流，不得用于商业发行或盈利。项目中展示和访问的图片、视频、评论等业务数据版权归原权利方所有。使用、复制、分发或部署本项目所产生的任何账号、法律和合规风险由使用者自行承担。
