@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="@dimen/video_card_margin"
+    android:clickable="true"
+    android:focusable="true"
+    android:stateListAnimator="@animator/blbl_focus_scale"
+    app:cardBackgroundColor="@android:color/transparent"
+    app:cardCornerRadius="10dp"
+    app:cardElevation="0dp"
+    app:strokeColor="?attr/blblFocusStrokeColor"
+    app:strokeWidth="2dp"
+    app:cardUseCompatPadding="false">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- Top part: Cover Image -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/cl_cover"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintDimensionRatio="16:9"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/iv_cover"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:adjustViewBounds="true"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <View
+                android:id="@+id/v_cover_fade"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:background="@drawable/video_card_bottom_fade"
+                android:importantForAccessibility="no"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <!-- Stats overlay -->
+            <LinearLayout
+                android:id="@+id/ll_stats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:layout_marginStart="8dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent">
+
+                <ImageView
+                    android:id="@+id/iv_stat_play"
+                    android:layout_width="@dimen/video_card_stat_icon_size"
+                    android:layout_height="@dimen/video_card_stat_icon_size"
+                    android:src="@drawable/ic_stat_play" />
+
+                <TextView
+                    android:id="@+id/tv_view"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDy="1"
+                    android:shadowRadius="2"
+                    android:textColor="@color/blbl_text_on_media"
+                    android:textSize="@dimen/video_card_stat_text_size" />
+
+                <ImageView
+                    android:id="@+id/iv_stat_danmaku"
+                    android:layout_width="@dimen/video_card_stat_icon_size"
+                    android:layout_height="@dimen/video_card_stat_icon_size"
+                    android:layout_marginStart="8dp"
+                    android:src="@drawable/ic_stat_danmaku" />
+
+                <TextView
+                    android:id="@+id/tv_danmaku"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDy="1"
+                    android:shadowRadius="2"
+                    android:textColor="@color/blbl_text_on_media"
+                    android:textSize="@dimen/video_card_stat_text_size" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_duration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="4dp"
+                android:shadowColor="#CC000000"
+                android:shadowDy="1"
+                android:shadowRadius="2"
+                android:textColor="@color/blbl_text_on_media"
+                android:textSize="@dimen/video_card_duration_text_size"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <TextView
+                android:id="@+id/tv_progress_left"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:layout_marginStart="8dp"
+                android:shadowColor="#CC000000"
+                android:shadowDy="1"
+                android:shadowRadius="2"
+                android:textColor="@color/blbl_text_on_media"
+                android:textSize="@dimen/video_card_stat_text_size"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Bottom part: Content Area (Classic Card) -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/cl_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#242424"
+            android:padding="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/cl_cover">
+
+            <TextView
+                android:id="@+id/tv_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:lines="2"
+                android:maxLines="2"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="14sp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <ImageView
+                android:id="@+id/iv_avatar"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="8dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/tv_title" />
+
+            <TextView
+                android:id="@+id/tv_subtitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@id/iv_avatar"
+                app:layout_constraintEnd_toStartOf="@id/tv_pubdate"
+                app:layout_constraintStart_toEndOf="@id/iv_avatar"
+                app:layout_constraintTop_toTopOf="@id/iv_avatar" />
+
+            <TextView
+                android:id="@+id/tv_pubdate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@id/iv_avatar"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iv_avatar" />
+
+            <TextView
+                android:id="@+id/tv_reason_hint"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#CFE5EDF7"
+                android:textSize="11sp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iv_avatar" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>

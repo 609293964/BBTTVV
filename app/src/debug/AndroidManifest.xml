@@ -1,9 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <application>
-        <activity
-            android:name="leakcanary.internal.activity.LeakLauncherActivity"
-            android:enabled="false" />
-    </application>
-
-</manifest>

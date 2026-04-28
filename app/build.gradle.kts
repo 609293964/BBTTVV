@@ -1,79 +1,45 @@
+import java.util.Properties
+
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    // Compose 编译器插件
-    id("org.jetbrains.kotlin.plugin.compose")
-    // JSON 序列化插件
-    id("org.jetbrains.kotlin.plugin.serialization")
-    // Room 数据库编译插件
-    id("com.google.devtools.ksp")
-    // 🔥 Firebase 相关插件
-    // id("com.google.gms.google-services")
-    // id("com.google.firebase.crashlytics")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.protobuf)
 }
 
-abstract class PrepareKspGeneratedDirsTask : org.gradle.api.DefaultTask() {
-    @get:org.gradle.api.tasks.OutputDirectories
-    abstract val outputDirs: org.gradle.api.file.ConfigurableFileCollection
+val signingProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use { load(it) }
+    }
+}
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val missingReleaseSigningKeys = releaseSigningKeys.filter { signingProperties.getProperty(it).isNullOrBlank() }
+val hasReleaseKeystore = missingReleaseSigningKeys.isEmpty()
 
-    @org.gradle.api.tasks.TaskAction
-    fun prepare() {
-        outputDirs.files.forEach { it.mkdirs() }
+gradle.taskGraph.whenReady {
+    val hasReleaseTaskRequiringKeystore = allTasks.any { task ->
+        task.name.contains("Release", ignoreCase = true)
+    }
+    if (!hasReleaseKeystore && hasReleaseTaskRequiringKeystore) {
+        error("Missing keystore.properties for release signing: ${missingReleaseSigningKeys.joinToString()}")
     }
 }
 
-fun String.toBuildConfigStringLiteral(): String {
-    val escaped = this
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-    return "\"$escaped\""
-}
-
-val debugVerboseLogsEnabled = providers.gradleProperty("bili.debug.verboseLogs")
-    .map(String::toBoolean)
-    .orElse(false)
-    .get()
-val debugVerboseRuntimeLogPersistenceEnabled = providers.gradleProperty("bili.debug.persistVerboseLogs")
-    .map(String::toBoolean)
-    .orElse(false)
-    .get()
-val debugLeakCanaryEnabled = providers.gradleProperty("bili.debug.leakCanary")
-    .map(String::toBoolean)
-    .orElse(false)
-    .get()
-val debugUiToolingRuntimeEnabled = providers.gradleProperty("bili.debug.uiTooling")
-    .map(String::toBoolean)
-    .orElse(false)
-    .get()
-val buildCommitSha = providers.gradleProperty("bili.build.commitSha")
-    .orElse("local")
-    .get()
-val buildGitRef = providers.gradleProperty("bili.build.gitRef")
-    .orElse("")
-    .get()
-val buildWorkflowRunId = providers.gradleProperty("bili.build.workflowRunId")
-    .orElse("")
-    .get()
-val buildWorkflowRunUrl = providers.gradleProperty("bili.build.workflowRunUrl")
-    .orElse("")
-    .get()
-val buildReleaseTag = providers.gradleProperty("bili.build.releaseTag")
-    .orElse("")
-    .get()
-
 android {
-    namespace = "com.android.purebilibili"
+    namespace = "com.bbttvv.app"
     compileSdk = 36
 
-    // 投屏服务进程开关：
-    // 默认独立 :cast 进程（通过 CastBridgeService 做跨进程 IPC）
-    // 如需快速回滚，可传 -PcastServiceProcess=com.android.purebilibili
-    val castServiceProcess =
-        (project.findProperty("castServiceProcess") as String?) ?: ":cast"
-
     defaultConfig {
-        applicationId = "com.android.purebilibili"
+        applicationId = "com.bbttvv.app"
         minSdk = 26
+<<<<<<< HEAD
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0.0"
+=======
         targetSdk = 35  // 保持35以避免Android 16的新运行时行为
         // 🔥🔥 [版本号] 发布新版前记得更新！格式：versionCode +1, versionName 递增
         // 更新日志：CHANGELOG.md
@@ -81,73 +47,46 @@ android {
         versionName = "8.0.0-Alpha7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+>>>>>>> 66bf842c85f92ca468e1f91940f277d9739fd68f
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        // 👇👇👇 指定打包的 CPU 架构（64 位 only）👇👇👇
-        ndk {
-            // arm64-v8a: modern 64-bit devices
-            abiFilters += listOf("arm64-v8a")
-        }
-
-        manifestPlaceholders["castServiceProcess"] = castServiceProcess
-        buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha.toBuildConfigStringLiteral())
-        buildConfigField("String", "BUILD_GIT_REF", buildGitRef.toBuildConfigStringLiteral())
-        buildConfigField("String", "BUILD_WORKFLOW_RUN_ID", buildWorkflowRunId.toBuildConfigStringLiteral())
-        buildConfigField("String", "BUILD_WORKFLOW_RUN_URL", buildWorkflowRunUrl.toBuildConfigStringLiteral())
-        buildConfigField("String", "BUILD_RELEASE_TAG", buildReleaseTag.toBuildConfigStringLiteral())
     }
-    
-    // 🔥 Keep a single APK artifact while packaging arm64-v8a only
-    splits {
-        abi {
-            isEnable = false
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKeystore) {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         release {
-            // Disable PNG crunching to avoid AAPT errors
-            isCrunchPngs = false
-            buildConfigField("boolean", "ALLOW_HARDCODED_DNS_FALLBACK", "false")
-            buildConfigField("boolean", "ENABLE_VERBOSE_DEBUG_LOGS", "false")
-            buildConfigField("boolean", "ENABLE_VERBOSE_RUNTIME_LOG_PERSISTENCE", "false")
-            // 🔥 启用 R8 代码压缩
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
-            // 🔥 启用资源压缩 (移除未使用的资源)
             isShrinkResources = true
+            isDebuggable = false
+            isProfileable = false
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            // Debug 构建保持快速编译
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            resValue("string", "app_name", "BiliPai Debug")
-            buildConfigField("boolean", "ALLOW_HARDCODED_DNS_FALLBACK", "true")
-            buildConfigField("boolean", "ENABLE_VERBOSE_DEBUG_LOGS", debugVerboseLogsEnabled.toString())
-            buildConfigField(
-                "boolean",
-                "ENABLE_VERBOSE_RUNTIME_LOG_PERSISTENCE",
-                debugVerboseRuntimeLogPersistenceEnabled.toString()
-            )
             isMinifyEnabled = false
             isShrinkResources = false
-        }
-        create("dev") {
-            // Dev 保持“接近发布”的验证语义，不用于日常本地快速迭代。
-            initWith(getByName("release"))
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
-            resValue("string", "app_name", "BiliPai Dev")
-            buildConfigField("boolean", "ALLOW_HARDCODED_DNS_FALLBACK", "true")
-            buildConfigField("boolean", "ENABLE_VERBOSE_DEBUG_LOGS", "false")
-            buildConfigField("boolean", "ENABLE_VERBOSE_RUNTIME_LOG_PERSISTENCE", "false")
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += listOf("release")
+            ndk {
+                abiFilters += listOf("arm64-v8a", "x86", "x86_64")
+            }
         }
     }
 
@@ -159,45 +98,18 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-        aidl = true
+        viewBinding = true
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        baseline = file("lint-baseline.xml")
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-            // 🔥 排除不必要的文件以减小体积
-            excludes += "/META-INF/DEPENDENCIES"
-            excludes += "/META-INF/LICENSE*"
-            excludes += "/META-INF/NOTICE*"
-            excludes += "/META-INF/*.kotlin_module"
-            excludes += "/kotlin/**"
-            excludes += "DebugProbesKt.bin"
-            // 📺 Cling DLNA 库冲突文件
-            excludes += "META-INF/beans.xml"
-        }
-    }
-    
-    // 🚀 启用 JUnit 5
-    testOptions {
-        unitTests.all {
-            it.useJUnitPlatform()
-        }
-        // 🔥 允许 Android 类在单元测试中返回默认值而非抛出异常
-        unitTests.isReturnDefaultValues = true
-    }
-
-    lint {
-        baseline = file("lint-baseline.xml")
-        textReport = true
-        abortOnError = true
-    }
-    
-    // 🔥 自定义 APK 输出文件名
-    applicationVariants.configureEach {
-        val variant = this
-        outputs.configureEach {
-            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
-            output.outputFileName = "BiliPai-${variant.name}-${variant.versionName}.apk"
         }
     }
 }
@@ -213,66 +125,82 @@ ksp {
     arg("room.generateKotlin", "true")
 }
 
-val prepareKspGeneratedVariants = listOf(
-    "debug",
-    "debugUnitTest",
-    "release",
-    "releaseUnitTest",
-    "dev",
-    "devUnitTest"
-)
-
-val prepareKspGeneratedDirs by tasks.registering(PrepareKspGeneratedDirsTask::class) {
-    outputDirs.from(
-        prepareKspGeneratedVariants.map { variantName ->
-            layout.buildDirectory.dir("generated/ksp/$variantName")
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                register("java") {
+                    option("lite")
+                }
+            }
         }
-    )
+    }
 }
-
-tasks.matching { task ->
-    task.name.startsWith("ksp") && task.name.endsWith("Kotlin")
-}.configureEach {
-    dependsOn(prepareKspGeneratedDirs)
-}
-
-// 🔥 Compose 编译器性能指标 (仅在需要分析时启用，会拖慢编译速度)
-// composeCompiler {
-//     reportsDestination = layout.buildDirectory.dir("compose_reports")
-//     metricsDestination = layout.buildDirectory.dir("compose_metrics")
-// }
 
 dependencies {
-    val miuixVersion = "0.8.6"
-    val media3Version = "1.10.0"
-    val lifecycleVersion = "2.10.0"
-    val roomVersion = "2.8.4"
+    // --- 1. Compose TV UI ---
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.material3)
+    
+    // Android TV Foundation and Material
+    implementation(libs.androidx.tv.material)
 
+    // --- 2. Base Utilities matching BiliPai ---
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.navigation.compose)
+    
+    // Network & serialization ready
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.kotlinx.serialization.converter)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
+
+    // Media3 ready
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+
+    // Room ready
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // Core libs
     implementation(project(":settings-core"))
     implementation(project(":network-core"))
+    implementation(libs.androidx.datastore.preferences)
 
-    // --- 1. Compose UI ---
-    implementation(platform("androidx.compose:compose-bom:2026.03.01"))  // 🔥 更新到最新版本
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")  // 🚀 For AppCompatDelegate night mode
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material3:material3-window-size-class") // [新增] 窗口大小类
-    implementation("top.yukonga.miuix.kmp:miuix-android:$miuixVersion")
-    // 图标扩展库 (全屏、设置图标等)
-    implementation("androidx.compose.material:material-icons-extended")
+    // Utilities from BiliPai 
+    implementation(libs.org.brotli.dec)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.zxing.core)
+    implementation(libs.androidx.profileinstaller)
+    implementation(libs.danmaku.render.engine)
 
-    // --- 2. Network (网络请求) ---
-    implementation("com.squareup.retrofit2:retrofit:2.12.0")
-    implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
-    implementation("com.squareup.okhttp3:okhttp:5.3.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    // 🔥 Brotli Decompression (for Bilibili Live Danmaku ProtoVer=3)
-    implementation("org.brotli:dec:0.1.2")
+    // Extra media dependencies
+    implementation(libs.androidx.media3.exoplayer.dash)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.datasource.okhttp)
 
+<<<<<<< HEAD
+    // Coil ready
+    implementation(libs.coil)
+    implementation(libs.coil.compose)
+
+    // Traditional View libraries for hybrid rendering
+    implementation(libs.material)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.recyclerview)
+=======
     // --- 3. Image (图片加载) ---
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")  // 🔥 GIF 动图支持
@@ -428,4 +356,5 @@ if (file("google-services.json").exists()) {
         // 本地构建不上传 mapping，避免 release/dev 在离线环境失败。
         enabled = false
     }
+>>>>>>> 66bf842c85f92ca468e1f91940f277d9739fd68f
 }

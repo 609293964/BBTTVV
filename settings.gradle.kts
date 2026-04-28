@@ -1,5 +1,7 @@
 pluginManagement {
     repositories {
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -14,23 +16,16 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
-        // 🔥 ByteDance DanmakuRenderEngine 仓库
         maven { url = uri("https://artifact.bytedance.com/repository/releases/") }
-        // Cling Repo
-        maven { 
-            url = uri("http://4thline.org/m2") 
-            isAllowInsecureProtocol = true
-        }
     }
 }
 
-rootProject.name = "BiliPai"
+rootProject.name = "BBTTVV"
 include(":app")
-include(":baselineprofile")
 include(":settings-core")
 include(":network-core")
-
- 

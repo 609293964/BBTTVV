@@ -1,93 +1,55 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.external/KernelSU/
-.cxx
-local.properties
-
-# 🔥 忽略所有 build 目录
-**/build/
-
-# 🔥 忽略 Kotlin 编译器临时文件和错误日志
-*.compiler.options
+# Gradle / Android build output
+.gradle/
 .kotlin/
-*.log
+build/
+**/build/
+captures/
 
-# 🔥 忽略敏感配置文件
-*.keystore
+# Local Android SDK and IDE state
+local.properties
+.idea/caches/
+.idea/shelf/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries/
+.idea/libraries/
+
+# VS Code local state
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Signing credentials and private release config
 *.jks
-google-services.json
-signing.properties
+*.keystore
+*.p12
+*.pfx
+*.pem
 keystore.properties
+signing.properties
 
-# 🔥 忽略其他临时文件
-*.tmp
-*.bak
-*.swp
-*~
-
-# 🔥 忽略 IDE 相关
-.idea/
-.vscode/
-*.ipr
-*.iws
-
-# 🔥 忽略测试报告
-/reports/
-
-# 🔥 忽略 APK 和发布文件
+# Packaged artifacts
 *.apk
 *.aab
-**/release/
-app/release/
+*.apks
+*.idsig
 
-# 🔥 忽略 AI/Agent 相关文件
-.agent/
-.gemini/
-.cursor/
-.claude/
-.worktrees/
-*.ai.md
-*.txt
-bilipai_log_*.txt
-!AI.txt
-!llm.txt
+# Logs, diagnostics, and temporary dumps
+logs/
+*.log
+*.logcat
+*logcat*.txt
+build_log.txt
+focus_repro_*.txt
+focus-repro-*.txt
+focus-refactor-*.txt
+window_dump*.xml
+*.hprof
 
-# Bilibili API files
-bilibili-API-collect/
-
-# 🔥 Ignore external projects/useless files
-AndroidLiquidGlass/
-SimpMusic/
-Telegram/
-TMessagesProj/
-
-# Backup directory
-BiliPai_BusinessCode_Backup/
-
-# Docs / plans should not be pushed
-docs/
-**/docs/
-docs/plans/
-**/docs/plans/
-*.md
-!llms.txt
-!README.md
-!README_EN.md
-!AGENTS.md
-!CHANGELOG.md
-!docs/
-docs/*
-!docs/wiki/
-!docs/wiki/*.md
-.omx/
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
