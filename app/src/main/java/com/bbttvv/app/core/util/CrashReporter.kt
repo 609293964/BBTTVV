@@ -48,6 +48,9 @@ internal fun isSensitiveCrashCustomKey(key: String): Boolean {
 
 internal fun resolveCrashlyticsUserId(mid: Long?): String = ""
 
+@Suppress("DEPRECATION")
+private fun crashThreadId(thread: Thread): Long = thread.id
+
 object DummyFirebase {
     val crashlytics = DummyCrashlytics()
 }
@@ -157,7 +160,7 @@ object CrashReporter {
             try {
                 if (isEnabled) {
                     setCustomKey("fatal_thread_name", thread.name)
-                    setCustomKey("fatal_thread_id", thread.id)
+                    setCustomKey("fatal_thread_id", crashThreadId(thread))
                     setCustomKey("app_in_foreground", !BackgroundManager.isInBackground)
                     setCustomKey("fatal_in_live_session", liveSessionActive)
                     if (liveSessionActive) {

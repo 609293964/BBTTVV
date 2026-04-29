@@ -48,6 +48,7 @@ internal data class PlayerScreenEffectArgs(
     val playerView: PlayerView?,
     val exoPlayer: ExoPlayer,
     val exitTrace: PlayerExitTrace,
+    val isDebugOverlayVisible: Boolean,
     val bufferingSpeedMeter: BufferingSpeedMeter,
     val playbackSnapshotProvider: () -> PlayerPlaybackState,
     val latestHandleOverlayEffect: State<(PlayerOverlayEffect) -> Unit>,
@@ -153,8 +154,8 @@ internal fun PlayerScreenEffectHost(
         presentationState.syncOverlayVisibility(args.overlayUiState)
     }
 
-    LaunchedEffect(args.overlayUiState.showDebugOverlay, args.exoPlayer) {
-        if (!args.overlayUiState.showDebugOverlay) return@LaunchedEffect
+    LaunchedEffect(args.isDebugOverlayVisible, args.exoPlayer) {
+        if (!args.isDebugOverlayVisible) return@LaunchedEffect
         while (overlayStateMachine.uiState.showDebugOverlay) {
             latestDebugSnapshotChange.value(
                 buildPlayerDebugSnapshot(

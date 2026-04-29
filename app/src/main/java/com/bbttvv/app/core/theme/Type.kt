@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /**
- * BiliPai 定制字体系统
+ * BBTTVV 定制字体系统
  * 
  * 层级说明：
  * - headline: 大标题，用于欢迎页、空状态等

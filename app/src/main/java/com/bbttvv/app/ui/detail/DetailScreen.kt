@@ -263,11 +263,9 @@ fun DetailScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .focusProperties {
-                                enter = {
+                                onEnter = {
                                     if (restoreCommentFocusRpid == null) {
-                                        playButtonFocusRequester
-                                    } else {
-                                        FocusRequester.Default
+                                        playButtonFocusRequester.requestFocus(requestedFocusDirection)
                                     }
                                 }
                             },

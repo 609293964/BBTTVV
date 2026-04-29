@@ -51,6 +51,7 @@ internal fun BoxScope.PlayerOverlayHost(
     topRightBadges: List<PlaybackBadge>,
     seekPreviewFrame: VideoShotFrame?,
     showOnlineCount: Boolean,
+    isDebugOverlayVisible: Boolean,
     isDanmakuEnabled: Boolean,
     isCommentsPanelVisible: Boolean,
     visualEffectsState: PlayerVisualEffectsState,
@@ -71,7 +72,7 @@ internal fun BoxScope.PlayerOverlayHost(
             uiState = uiState,
             topRightBadges = topRightBadges,
             showOnlineCount = showOnlineCount,
-            showDebugOverlay = overlayUiState.showDebugOverlay,
+            showDebugOverlay = isDebugOverlayVisible,
         )
         PlayerControlsLayer(
             uiState = uiState,
@@ -334,6 +335,7 @@ private fun actionSecondaryText(
         PlayerAction.Codec -> buildCodecActionValue(uiState)?.let(::compactActionValue)
         PlayerAction.Danmaku -> if (isDanmakuEnabled) "开启" else "关闭"
         PlayerAction.Detail -> null
+        PlayerAction.Debug -> null
     }
 }
 

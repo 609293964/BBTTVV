@@ -1,6 +1,7 @@
 package com.bbttvv.app.core.player
 
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -8,7 +9,6 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
-import androidx.media3.exoplayer.source.ConcatenatingMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -129,20 +129,16 @@ internal class PlayerMediaSourceCoordinator(
         }
 
         player.volume = 1.0f
-        val concatenated = ConcatenatingMediaSource().apply {
-            cleanUrls.forEachIndexed { index, url ->
-                addMediaSource(
-                    buildProgressiveMediaSource(
-                        url = url,
-                        candidates = segmentUrlCandidates.getOrNull(index).orEmpty(),
-                        kind = PlaybackStreamKind.Segment,
-                        referer = referer,
-                    )
-                )
-            }
+        val mediaSources = cleanUrls.mapIndexed { index, url ->
+            buildProgressiveMediaSource(
+                url = url,
+                candidates = segmentUrlCandidates.getOrNull(index).orEmpty(),
+                kind = PlaybackStreamKind.Segment,
+                referer = referer,
+            )
         }
 
-        player.setMediaSource(concatenated, resetPlayer)
+        player.setMediaSources(mediaSources, resetPlayer)
         player.prepare()
         if (seekToMs > 0L) {
             player.seekTo(seekToMs)
@@ -224,7 +220,7 @@ internal class PlayerMediaSourceCoordinator(
         referer: String,
     ): MediaSource {
         val candidateUrls = normalizeCandidateUrls(primaryUrl = url, candidates = candidates)
-        val candidateUris = candidateUrls.map(Uri::parse)
+        val candidateUris = candidateUrls.map { it.toUri() }
         val dataSourceFactory: DataSource.Factory =
             if (candidateUris.size > 1) {
                 CdnFailoverDataSourceFactory(
@@ -234,7 +230,7 @@ internal class PlayerMediaSourceCoordinator(
             } else {
                 buildBaseDataSourceFactory(referer)
             }
-        val mediaItem = MediaItem.fromUri(candidateUris.firstOrNull() ?: Uri.parse(url))
+        val mediaItem = MediaItem.fromUri(candidateUris.firstOrNull() ?: url.toUri())
         val extractorsFactory = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
         return ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)

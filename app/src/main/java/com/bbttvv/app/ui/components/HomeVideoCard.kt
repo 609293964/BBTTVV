@@ -330,7 +330,11 @@ fun HomeVideoCard(
                 actions = buildList {
                     if (onNotInterested != null) {
                         add(
-                            TvContextMenuAction("不感兴趣") {
+                            TvContextMenuAction(
+                                text = "不感兴趣",
+                                supportingText = "减少类似推荐，并从当前列表移除",
+                                accentColor = Color(0xFFFF8EA3),
+                            ) {
                                 showContextMenu = false
                                 onNotInterested()
                             }
@@ -338,7 +342,11 @@ fun HomeVideoCard(
                     }
                     if (onWatchLater != null) {
                         add(
-                            TvContextMenuAction("稍后播放") {
+                            TvContextMenuAction(
+                                text = "稍后再看",
+                                supportingText = "加入稍后再看列表",
+                                accentColor = Color(0xFF7CCBFF),
+                            ) {
                                 showContextMenu = false
                                 onWatchLater()
                             }

@@ -66,10 +66,19 @@ object MediaUtils {
         return try {
             val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
             val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
-            display?.hdrCapabilities?.supportedHdrTypes
+            display?.supportedHdrTypesCompat()
         } catch (e: Exception) {
             Logger.e("MediaUtils", "Failed to read display HDR capabilities", e)
             null
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun Display.supportedHdrTypesCompat(): IntArray {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            mode.supportedHdrTypes
+        } else {
+            hdrCapabilities.supportedHdrTypes ?: IntArray(0)
         }
     }
 

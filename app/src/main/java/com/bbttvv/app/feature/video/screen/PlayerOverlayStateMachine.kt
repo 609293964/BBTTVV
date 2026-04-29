@@ -28,6 +28,7 @@ internal enum class PlayerAction(val label: String, val symbol: String) {
     Danmaku("弹幕设置", "弹"),
     Audio("音频音质", "音"),
     Codec("格式编码", "码"),
+    Debug("调试信息", "D"),
 }
 
 internal data class PanelOption(
@@ -68,11 +69,32 @@ internal data class PlayerOverlayUiState(
     val pendingSeekDirection: Int = 0,
 )
 
+internal fun PlayerOverlayUiState.withSyncedActions(actions: List<PlayerAction>): PlayerOverlayUiState {
+    val currentPanel = activePanel
+    val activePanelStillAvailable = currentPanel == null || currentPanel in actions
+    val nextFullControlsFocus = when {
+        activePanelStillAvailable && actions.isEmpty() && fullControlsFocus == PlayerFullControlsFocus.Actions -> {
+            PlayerFullControlsFocus.Progress
+        }
+
+        activePanelStillAvailable -> fullControlsFocus
+        actions.isEmpty() -> PlayerFullControlsFocus.Progress
+        else -> PlayerFullControlsFocus.Actions
+    }
+    return copy(
+        selectedActionIndex = selectedActionIndex.coerceIn(0, actions.lastIndex.coerceAtLeast(0)),
+        activePanel = if (activePanelStillAvailable) currentPanel else null,
+        selectedPanelIndex = if (activePanelStillAvailable) selectedPanelIndex else 0,
+        fullControlsFocus = nextFullControlsFocus,
+    )
+}
+
 internal sealed interface PlayerOverlayEffect {
     data object ClearSeekPreview : PlayerOverlayEffect
     data object TogglePlayback : PlayerOverlayEffect
     data object ToggleDanmaku : PlayerOverlayEffect
     data object OpenComments : PlayerOverlayEffect
+    data object OpenDetail : PlayerOverlayEffect
     data object ExitPlayer : PlayerOverlayEffect
     data class RequestSeekPreview(val targetPositionMs: Long) : PlayerOverlayEffect
     data class SeekBy(val deltaMs: Long) : PlayerOverlayEffect
@@ -85,6 +107,14 @@ internal sealed interface PlayerOverlayEffect {
     data class ChangeAudioQuality(val qualityId: Int) : PlayerOverlayEffect
     data class ChangeVideoCodec(val codecId: Int) : PlayerOverlayEffect
     data class ActivateDanmakuSetting(val key: String) : PlayerOverlayEffect
+}
+
+internal fun PlayerAction.toImmediateOverlayEffect(): PlayerOverlayEffect? {
+    return when (this) {
+        PlayerAction.Detail -> PlayerOverlayEffect.OpenDetail
+        PlayerAction.Comments -> PlayerOverlayEffect.OpenComments
+        else -> null
+    }
 }
 
 internal class PlayerOverlayStateMachine {
@@ -117,6 +147,13 @@ internal class PlayerOverlayStateMachine {
             },
             selectedPanelIndex = selectedIndex,
         )
+    }
+
+    fun syncActions(actions: List<PlayerAction>) {
+        val nextState = uiState.withSyncedActions(actions)
+        if (nextState != uiState) {
+            uiState = nextState
+        }
     }
 
     fun showFullOverlay(
@@ -513,8 +550,27 @@ internal class PlayerOverlayStateMachine {
         actions: List<PlayerAction>,
         onEffect: (PlayerOverlayEffect) -> Unit,
     ) {
-        when (actions.getOrNull(uiState.selectedActionIndex) ?: return) {
-            PlayerAction.Detail -> {
+        activateAction(
+            action = actions.getOrNull(uiState.selectedActionIndex) ?: return,
+            onEffect = onEffect,
+        )
+    }
+
+    fun activateAction(
+        action: PlayerAction,
+        onEffect: (PlayerOverlayEffect) -> Unit,
+    ) {
+        when (action) {
+            PlayerAction.Detail,
+            PlayerAction.Comments -> {
+                uiState = uiState.copy(activePanel = null)
+                action.toImmediateOverlayEffect()?.let(onEffect)
+                if (action == PlayerAction.Comments) {
+                    showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
+                }
+            }
+
+            PlayerAction.Debug -> {
                 uiState = uiState.copy(
                     activePanel = null,
                     showDebugOverlay = !uiState.showDebugOverlay,
@@ -522,15 +578,9 @@ internal class PlayerOverlayStateMachine {
                 showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
             }
 
-            PlayerAction.Comments -> {
-                uiState = uiState.copy(activePanel = null)
-                onEffect(PlayerOverlayEffect.OpenComments)
-                showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
-            }
-
             PlayerAction.Danmaku -> {
                 uiState = uiState.copy(
-                    activePanel = actions[uiState.selectedActionIndex],
+                    activePanel = action,
                     fullControlsFocus = PlayerFullControlsFocus.Actions,
                     selectedPanelIndex = 0,
                     interactionToken = uiState.interactionToken + 1,
@@ -542,7 +592,7 @@ internal class PlayerOverlayStateMachine {
             PlayerAction.Audio,
             PlayerAction.Codec -> {
                 uiState = uiState.copy(
-                    activePanel = actions[uiState.selectedActionIndex],
+                    activePanel = action,
                     fullControlsFocus = PlayerFullControlsFocus.Actions,
                     selectedPanelIndex = 0,
                     interactionToken = uiState.interactionToken + 1,
@@ -576,7 +626,8 @@ internal class PlayerOverlayStateMachine {
 
             PlayerAction.Danmaku -> onEffect(PlayerOverlayEffect.ActivateDanmakuSetting(option.key))
             PlayerAction.Detail,
-            PlayerAction.Comments -> Unit
+            PlayerAction.Comments,
+            PlayerAction.Debug -> Unit
         }
         if (action != PlayerAction.Danmaku) {
             uiState = uiState.copy(activePanel = null)

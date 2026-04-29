@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.store.player.DANMAKU_AREA_RATIO_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_OPACITY_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_STROKE_WIDTH_VALUES
@@ -91,6 +92,22 @@ internal fun rememberPlayerOverlayPresentationState(
     return presentationState
 }
 
+internal fun buildPlayerActions(
+    uiState: PlayerUiState,
+    isDebugBuild: Boolean = BuildConfig.DEBUG,
+): List<PlayerAction> {
+    val hasAudioChoices = uiState.audioOptions.size > 1
+    val hasCodecChoices = uiState.videoCodecOptions.size > 1
+    return PlayerAction.entries.filter { action ->
+        when (action) {
+            PlayerAction.Audio -> hasAudioChoices
+            PlayerAction.Codec -> hasCodecChoices
+            PlayerAction.Debug -> isDebugBuild
+            else -> true
+        }
+    }
+}
+
 internal fun buildPlayerPanelOptions(
     activePanel: PlayerAction?,
     uiState: PlayerUiState,
@@ -125,6 +142,7 @@ internal fun buildPlayerPanelOptions(
         )
         PlayerAction.Detail,
         PlayerAction.Comments,
+        PlayerAction.Debug,
         null -> emptyList()
     }
 }
@@ -144,6 +162,7 @@ internal fun handlePlayerOverlayEffect(
     scope: CoroutineScope,
     exitTrace: PlayerExitTrace,
     onExitPlayer: () -> Unit,
+    onOpenDetail: () -> Unit,
 ) {
     when (effect) {
         PlayerOverlayEffect.ClearSeekPreview -> viewModel.clearSeekPreview()
@@ -165,6 +184,11 @@ internal fun handlePlayerOverlayEffect(
         PlayerOverlayEffect.OpenComments -> {
             presentationState.showCommentsPanel()
             viewModel.ensureCommentsLoaded()
+        }
+
+        PlayerOverlayEffect.OpenDetail -> {
+            presentationState.hideCommentsPanel()
+            onOpenDetail()
         }
 
         is PlayerOverlayEffect.SetPlaybackSpeed -> {

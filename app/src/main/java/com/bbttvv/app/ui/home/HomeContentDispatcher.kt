@@ -330,7 +330,10 @@ private fun RecommendTabContent(
                 onFocusedRowChanged = focusCoordinator::onContentRowFocused,
                 onTopRowDpadUp = { focusCoordinator.handleContentWantsTopBar() },
                 onBackToTopBar = {
-                    focusCoordinator.handleContentWantsTopBar()
+                    HomeRecommendBackReturnPolicy.handleBackToTopBar(
+                        resetGridToTop = recommendGridFocusState::resetRememberedFocusToTopForTopBarReturn,
+                        requestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+                    )
                 },
                 onVideoLongClick = { video, key ->
                     onOpenRecommendMenu(video, key)
@@ -428,7 +431,11 @@ private fun RecommendContextMenuHost(
 
     TvContextMenu(
         actions = listOf(
-            TvContextMenuAction("稍后再看") {
+            TvContextMenuAction(
+                text = "稍后再看",
+                supportingText = "加入列表，稍后从我的页面继续观看",
+                accentColor = Color(0xFF7CCBFF),
+            ) {
                 onDismissRequest()
                 viewModel.markWatchLater(video) { result ->
                     val message = if (result.isSuccess) {
@@ -439,7 +446,11 @@ private fun RecommendContextMenuHost(
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 }
             },
-            TvContextMenuAction("不感兴趣") {
+            TvContextMenuAction(
+                text = "不感兴趣",
+                supportingText = "减少类似推荐，并从当前列表移除",
+                accentColor = Color(0xFFFF8EA3),
+            ) {
                 onDismissRequest()
                 viewModel.markRecommendNotInterested(video)
                 Toast.makeText(context, "已移除该推荐", Toast.LENGTH_SHORT).show()

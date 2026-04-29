@@ -83,9 +83,14 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+        if (shouldClearImageMemoryCache(level)) {
             imageLoaderRef?.memoryCache?.clear()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun shouldClearImageMemoryCache(level: Int): Boolean {
+        return level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
     }
 
     private fun runStartupTask(task: AppStartupTask) {

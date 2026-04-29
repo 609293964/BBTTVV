@@ -104,6 +104,7 @@ private fun actionButtonLabel(action: PlayerAction): String {
         PlayerAction.Danmaku -> "弹幕"
         PlayerAction.Audio -> "音频"
         PlayerAction.Codec -> "码率"
+        PlayerAction.Debug -> "调试"
     }
 }
 
@@ -116,5 +117,6 @@ private fun actionIcon(action: PlayerAction): ImageVector {
         PlayerAction.Danmaku -> Icons.Outlined.Create
         PlayerAction.Audio -> Icons.Outlined.Settings
         PlayerAction.Codec -> Icons.Outlined.Info
+        PlayerAction.Debug -> Icons.Outlined.Info
     }
 }

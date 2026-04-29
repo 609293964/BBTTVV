@@ -16,7 +16,7 @@ private const val LOG_DIRECTORY_NAME = "logs"
 private const val RUNTIME_LOG_FILE_NAME = "runtime.log"
 private const val CRASH_SNAPSHOT_FILE_NAME = "last_crash_log.txt"
 private const val CRASH_SNAPSHOT_MARKER_FILE_NAME = "pending_crash.marker"
-private const val DOWNLOAD_LOG_RELATIVE_PATH = "Download/BiliPai/logs"
+private const val DOWNLOAD_LOG_RELATIVE_PATH = "Download/BBTTVV/logs"
 
 internal fun resolveLogPersistenceDir(baseDir: File): File = File(baseDir, LOG_DIRECTORY_NAME)
 
@@ -84,7 +84,7 @@ internal fun buildCrashSnapshotContent(
     val headerDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     return buildString {
         appendLine("========================================")
-        appendLine("BiliPai 崩溃日志快照")
+        appendLine("BBTTVV 崩溃日志快照")
         appendLine("========================================")
         appendLine("生成时间: ${headerDateFormat.format(Date(exportedAtMillis))}")
         appendLine("应用版本: $appVersionName ($versionCode)")
@@ -588,7 +588,7 @@ object LogCollector {
     /**
      * 导出日志到文件并通过系统分享
      * 
-     * 日志会保存到 Download/BiliPai/logs/ 目录，方便 MT 管理器等工具直接访问
+     * 日志会保存到 Download/BBTTVV/logs/ 目录，方便 MT 管理器等工具直接访问
      */
     fun exportAndShare(context: Context) {
         try {
@@ -601,7 +601,7 @@ object LogCollector {
             // 生成日志内容
             val header = buildString {
                 appendLine("========================================")
-                appendLine("BiliPai 应用日志导出")
+                appendLine("BBTTVV 应用日志导出")
                 appendLine("========================================")
                 appendLine("导出时间: ${logDateFormat().format(Date())}")
                 appendLine("应用版本: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
@@ -615,7 +615,7 @@ object LogCollector {
             val content = header + entries.joinToString("\n") { entry ->
                 entry.copy(message = sanitizeMessage(entry.message)).format()
             }
-            val fileName = "bilipai_log_${logFileDateFormat().format(Date())}.txt"
+            val fileName = "bbttvv_log_${logFileDateFormat().format(Date())}.txt"
             
             //  [优化] 保存到外部 Download 目录，MT 管理器可直接访问
             val savedPath = saveToExternalDownload(context, fileName, content)
@@ -665,8 +665,8 @@ object LogCollector {
     /**
      *  保存日志到外部 Download 目录
      * 
-     * 路径: /storage/emulated/0/Download/BiliPai/logs/xxx.txt
-     * MT管理器路径: Download/BiliPai/logs/
+     * 路径: /storage/emulated/0/Download/BBTTVV/logs/xxx.txt
+     * MT管理器路径: Download/BBTTVV/logs/
      */
     private fun saveToExternalDownload(
         context: Context,
@@ -706,7 +706,7 @@ object LogCollector {
                 val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS
                 )
-                val logDir = File(downloadDir, "BiliPai/logs")
+                val logDir = File(downloadDir, "BBTTVV/logs")
                 logDir.mkdirs()
                 val logFile = File(logDir, fileName)
                 logFile.writeText(content)
@@ -782,7 +782,7 @@ object LogCollector {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "BiliPai 日志反馈")
+                putExtra(Intent.EXTRA_SUBJECT, "BBTTVV 日志反馈")
                 putExtra(Intent.EXTRA_TEXT, "请查看附件中的日志文件\n\n文件位置: $filePath")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -807,7 +807,7 @@ object LogCollector {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "BiliPai 日志反馈")
+                putExtra(Intent.EXTRA_SUBJECT, "BBTTVV 日志反馈")
                 putExtra(Intent.EXTRA_TEXT, "请查看附件中的日志文件")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }

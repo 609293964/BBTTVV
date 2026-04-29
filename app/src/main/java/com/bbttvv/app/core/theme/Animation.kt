@@ -18,7 +18,7 @@ object AnimationSpecs {
      * - 阻尼 (Damping 0.82f): 带有微小的过冲 (Overshoot)，富有弹性但不过分晃动
      * - 基于真正的物理弹簧模型，而非固定时长 tween
      */
-    val BiliPaiSpringSpec = spring<Rect>(
+    val BbtTvSpringSpec = spring<Rect>(
         dampingRatio = 0.82f,
         stiffness = 380f
     )

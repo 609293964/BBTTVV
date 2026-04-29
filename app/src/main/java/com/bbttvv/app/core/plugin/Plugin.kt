@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- *  BiliPai 插件基础接口
+ *  BBTTVV 插件基础接口
  * 
  * 所有插件必须实现此接口，定义插件的基本属性和生命周期方法。
  */

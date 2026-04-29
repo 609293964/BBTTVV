@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.plugin.PluginManager
@@ -89,8 +91,15 @@ fun PlayerScreen(
     val visualEffectsState = rememberPlayerVisualEffectsState()
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
-    val actions = remember {
-        PlayerAction.entries.filterNot { it == PlayerAction.Audio || it == PlayerAction.Codec }
+    val isDebugOverlayVisible = BuildConfig.DEBUG && overlayUiState.showDebugOverlay
+    val actions = remember(uiState.audioOptions, uiState.videoCodecOptions) {
+        buildPlayerActions(
+            uiState = uiState,
+            isDebugBuild = BuildConfig.DEBUG,
+        )
+    }
+    LaunchedEffect(actions) {
+        overlayStateMachine.syncActions(actions)
     }
     val panelOptions = remember(
         overlayUiState.activePanel,
@@ -149,6 +158,7 @@ fun PlayerScreen(
         scope = scope,
         exitTrace = exitTrace,
         onExitPlayer = onBack,
+        onOpenDetail = onOpenDetail,
     )
     val latestHandleOverlayEffect = rememberUpdatedState(handleOverlayEffect)
     val latestUiState = rememberUpdatedState(uiState)
@@ -171,7 +181,7 @@ fun PlayerScreen(
     )
     val useRealtimePlaybackState = overlayUiState.overlayMode == PlayerOverlayMode.FullControls ||
         (danmakuPayload != null && isDanmakuEnabled) ||
-        overlayUiState.showDebugOverlay
+        isDebugOverlayVisible
     val livePlaybackState = rememberRealtimePlaybackState(
         exoPlayer = exoPlayer,
         playbackState = playbackState,
@@ -232,6 +242,7 @@ fun PlayerScreen(
             playerView = playerViewRef,
             exoPlayer = exoPlayer,
             exitTrace = exitTrace,
+            isDebugOverlayVisible = isDebugOverlayVisible,
             bufferingSpeedMeter = bufferingSpeedMeter,
             playbackSnapshotProvider = playbackSnapshotProvider,
             latestHandleOverlayEffect = latestHandleOverlayEffect,
@@ -274,6 +285,7 @@ fun PlayerScreen(
             topRightBadges = topRightBadges,
             seekPreviewFrame = seekPreviewFrame,
             showOnlineCount = showOnlineCount,
+            isDebugOverlayVisible = isDebugOverlayVisible,
             isDanmakuEnabled = isDanmakuEnabled,
             isCommentsPanelVisible = isCommentsPanelVisible,
             visualEffectsState = visualEffectsState,
@@ -289,7 +301,7 @@ fun PlayerScreen(
             onBackFromCommentThread = viewModel::closeCommentThread,
         )
 
-        if (overlayUiState.showDebugOverlay) {
+        if (isDebugOverlayVisible) {
             PlayerDebugOverlay(
                 snapshot = debugSnapshot,
                 modifier = Modifier
@@ -304,7 +316,7 @@ fun PlayerScreen(
         PlayerTransientOverlayMessages(
             uiState = uiState,
             bufferingOverlayText = bufferingOverlayText,
-            showDebugOverlay = overlayUiState.showDebugOverlay,
+            showDebugOverlay = isDebugOverlayVisible,
             showSponsorSkipNotice = showSponsorSkipNotice,
         )
     }

@@ -108,7 +108,7 @@ private class AppRenderersFactory(context: Context) : DefaultRenderersFactory(co
     ): AudioSink {
         return DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
-            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
             .setAudioProcessors(arrayOf(StereoBalanceAudioProcessor()))
             .build()
     }

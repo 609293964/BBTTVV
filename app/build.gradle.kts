@@ -173,7 +173,7 @@ dependencies {
     // Android TV Foundation and Material
     implementation(libs.androidx.tv.material)
 
-    // --- 2. Base Utilities matching BiliPai ---
+    // --- 2. Base Utilities matching BBTTVV ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -201,7 +201,7 @@ dependencies {
     implementation(project(":network-core"))
     implementation(libs.androidx.datastore.preferences)
 
-    // Utilities from BiliPai 
+    // Utilities from BBTTVV 
     implementation(libs.org.brotli.dec)
     implementation(libs.protobuf.javalite)
     implementation(libs.zxing.core)

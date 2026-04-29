@@ -1,6 +1,7 @@
 package com.bbttvv.app.ui.home
 
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,5 +112,37 @@ class HomeFocusStrategyTest {
                 restoreVideoIndex = -1,
             )
         )
+    }
+
+    @Test
+    fun `recommend card back resets grid before requesting top bar focus`() {
+        val events = mutableListOf<String>()
+
+        val handled = HomeRecommendBackReturnPolicy.handleBackToTopBar(
+            resetGridToTop = { events += "reset-grid" },
+            requestTopBarFocus = {
+                events += "request-top-bar"
+                true
+            },
+        )
+
+        assertTrue(handled)
+        assertEquals(listOf("reset-grid", "request-top-bar"), events)
+    }
+
+    @Test
+    fun `recommend card back returns top bar focus result after reset`() {
+        val events = mutableListOf<String>()
+
+        val handled = HomeRecommendBackReturnPolicy.handleBackToTopBar(
+            resetGridToTop = { events += "reset-grid" },
+            requestTopBarFocus = {
+                events += "request-top-bar"
+                false
+            },
+        )
+
+        assertFalse(handled)
+        assertEquals(listOf("reset-grid", "request-top-bar"), events)
     }
 }

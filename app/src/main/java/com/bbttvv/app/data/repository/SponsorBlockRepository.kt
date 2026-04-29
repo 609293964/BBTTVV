@@ -51,7 +51,7 @@ object SponsorBlockRepository {
             
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "BiliPai/2.4.1")
+                .header("User-Agent", "BBTTVV/2.4.1")
                 .get()
                 .build()
             

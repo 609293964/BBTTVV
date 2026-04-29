@@ -36,3 +36,13 @@ internal object HomeFocusStrategy {
             restoreVideoFocusKey != null
     }
 }
+
+internal object HomeRecommendBackReturnPolicy {
+    fun handleBackToTopBar(
+        resetGridToTop: () -> Unit,
+        requestTopBarFocus: () -> Boolean,
+    ): Boolean {
+        resetGridToTop()
+        return requestTopBarFocus()
+    }
+}

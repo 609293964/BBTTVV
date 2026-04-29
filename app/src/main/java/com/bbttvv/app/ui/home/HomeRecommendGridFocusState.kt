@@ -13,6 +13,7 @@ internal class HomeRecommendGridFocusState {
     private var lastFocusedRow: Int = RecyclerView.NO_POSITION
     private var lastFocusedColumn: Int = RecyclerView.NO_POSITION
     private var pendingScrollToTop: Boolean = false
+    private var restoreFocusAfterPendingScrollToTop: Boolean = true
     private var pendingDataSetFocus: PendingGridFocus? = null
     private var pendingDirectionalScrollFocusPosition: Int = RecyclerView.NO_POSITION
     private var pendingDirectionalScrollFocusUntilUptimeMs: Long = 0L
@@ -167,6 +168,7 @@ internal class HomeRecommendGridFocusState {
 
     fun requestScrollToTop() {
         pendingScrollToTop = true
+        restoreFocusAfterPendingScrollToTop = true
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
         val recycler = currentRecyclerView()
@@ -185,6 +187,16 @@ internal class HomeRecommendGridFocusState {
     fun resetRememberedFocusToTop() {
         clearRememberedFocus()
         requestScrollToTop()
+    }
+
+    // Back-to-TopBar keeps the tab focused, so do not restore a grid child after scrolling.
+    fun resetRememberedFocusToTopForTopBarReturn() {
+        clearRememberedFocus()
+        pendingScrollToTop = true
+        restoreFocusAfterPendingScrollToTop = false
+        pendingDataSetFocus = null
+        clearPendingDirectionalScrollFocus()
+        applyPendingScrollToTop()
     }
 
     fun tryFocusVisibleItem(): Boolean {
@@ -287,8 +299,12 @@ internal class HomeRecommendGridFocusState {
         val recycler = currentRecyclerView() ?: return
         if ((recycler.adapter?.itemCount ?: 0) <= 0) return
         pendingScrollToTop = false
+        val shouldRestoreFocus = restoreFocusAfterPendingScrollToTop
+        restoreFocusAfterPendingScrollToTop = true
         recycler.scrollToPosition(0)
-        schedulePendingFocusAfterLayout()
+        if (shouldRestoreFocus) {
+            schedulePendingFocusAfterLayout()
+        }
     }
 
     private fun restoreChildFocusIfRecyclerOwnsFocus(): Boolean {

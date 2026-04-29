@@ -34,8 +34,6 @@ import com.bbttvv.app.feature.publisher.PublisherScreen
 import com.bbttvv.app.feature.video.screen.PlayerScreen
 
 import com.bbttvv.app.ui.components.AppTopLevelTab
-import com.bbttvv.app.ui.detail.DetailOpenMode
-import com.bbttvv.app.ui.detail.VideoDetailNavGraph
 import com.bbttvv.app.ui.detail.startVideoDetailActivity
 import com.bbttvv.app.ui.home.HomeScreen
 import com.bbttvv.app.ui.home.HomeViewModel
@@ -183,25 +181,6 @@ fun AppNavigation() {
             SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(
-            route = ScreenRoutes.VideoDetail.route,
-            arguments = listOf(
-                navArgument("bvid") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val bvid = backStackEntry.arguments?.getString("bvid").orEmpty()
-            VideoDetailNavGraph(
-                initialBvid = bvid,
-                openMode = DetailOpenMode.MainHost(
-                    restoreCommentFocusRpidFor = navigationState::restoreCommentFocusRpidFor,
-                    onCommentFocusRestored = navigationState::markCommentFocusRestored,
-                    setCommentFocusRestore = navigationState::setDetailCommentFocusRestore,
-                    clearCommentFocusRestore = navigationState::clearDetailCommentFocusRestore,
-                ),
-                onFinish = { navController.popBackStack() },
-            )
-        }
-
-        composable(
             route = ScreenRoutes.Publisher.route,
             arguments = listOf(
                 navArgument("mid") { type = NavType.LongType }
@@ -262,6 +241,7 @@ fun AppNavigation() {
                 startPositionMs = startPositionMs,
                 onBack = { navController.popBackStack() },
                 onOpenDetail = {
+                    navController.popBackStack()
                     context.startVideoDetailActivity(bvid)
                 }
             )

@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
@@ -61,6 +63,9 @@ import androidx.tv.material3.Text
 @Immutable
 internal data class TvContextMenuAction(
     val text: String,
+    val supportingText: String? = null,
+    val accentColor: Color? = null,
+    val icon: ImageVector? = null,
     val onClick: () -> Unit,
 )
 
@@ -70,6 +75,8 @@ internal fun TvContextMenu(
     actions: List<TvContextMenuAction>,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    title: String = "视频操作",
+    subtitle: String = "选择对这条视频的处理方式",
     suppressConfirmKey: Boolean = false,
     onSuppressConfirmKeyConsumed: () -> Unit = {},
 ) {
@@ -127,38 +134,50 @@ internal fun TvContextMenu(
         ) {
             Column(
                 modifier = modifier
-                    .fillMaxWidth(0.42f)
-                    .widthIn(min = 320.dp, max = 420.dp)
+                    .fillMaxWidth(0.38f)
+                    .widthIn(min = 340.dp, max = 460.dp)
                     .focusRequester(dialogFocusRequester)
                     .focusGroup()
                     .focusProperties {
                         onExit = { cancelFocusChange() }
                     }
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xF21A2028))
+                    .background(Color(0xF51A2028))
                     .border(
                         width = 1.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                        color = Color.White.copy(alpha = 0.16f),
                         shape = RoundedCornerShape(24.dp),
                     )
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(
-                        text = "更多操作",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(100.dp))
+                            .background(MaterialTheme.colorScheme.primary),
                     )
-                    Text(
-                        text = "选择对当前视频的处理方式",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = title,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 21.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = subtitle,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
 
                 Column(
@@ -168,7 +187,9 @@ internal fun TvContextMenu(
                     actions.forEachIndexed { index, action ->
                         TvContextMenuButton(
                             text = action.text,
-                            icon = action.icon(),
+                            supportingText = action.supportingText,
+                            icon = action.resolvedIcon(),
+                            accentColor = action.accentColor ?: action.defaultAccentColor(),
                             onClick = action.onClick,
                             modifier = if (index == 0) {
                                 Modifier.focusRequester(firstFocusRequester)
@@ -189,10 +210,20 @@ private fun isTvConfirmKey(keyCode: Int): Boolean {
         keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
 }
 
-private fun TvContextMenuAction.icon(): ImageVector {
+private fun TvContextMenuAction.resolvedIcon(): ImageVector {
     return when {
+        icon != null -> icon
         text.contains("稍后") -> Icons.Outlined.DateRange
+        text.contains("不感兴趣") -> Icons.Outlined.Close
         else -> Icons.Outlined.Info
+    }
+}
+
+private fun TvContextMenuAction.defaultAccentColor(): Color {
+    return when {
+        text.contains("不感兴趣") -> Color(0xFFFF8EA3)
+        text.contains("稍后") -> Color(0xFF7CCBFF)
+        else -> Color(0xFF9DD8FF)
     }
 }
 
@@ -200,24 +231,26 @@ private fun TvContextMenuAction.icon(): ImageVector {
 @Composable
 private fun TvContextMenuButton(
     text: String,
+    supportingText: String?,
     icon: ImageVector,
+    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(18.dp)
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) {
-            MaterialTheme.colorScheme.primary
+            accentColor.copy(alpha = 0.22f)
         } else {
-            Color.White.copy(alpha = 0.08f)
+            Color.White.copy(alpha = 0.07f)
         },
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonBackground",
     )
     val textColor by animateColorAsState(
         targetValue = if (isFocused) {
-            MaterialTheme.colorScheme.onPrimary
+            Color.White
         } else {
             MaterialTheme.colorScheme.onSurface
         },
@@ -225,9 +258,27 @@ private fun TvContextMenuButton(
         label = "TvContextMenuButtonText",
     )
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.035f else 1f,
+        targetValue = if (isFocused) 1.025f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonScale",
+    )
+    val iconBackgroundColor by animateColorAsState(
+        targetValue = if (isFocused) {
+            accentColor.copy(alpha = 0.95f)
+        } else {
+            accentColor.copy(alpha = 0.18f)
+        },
+        animationSpec = tween(durationMillis = 150),
+        label = "TvContextMenuButtonIconBackground",
+    )
+    val iconTintColor by animateColorAsState(
+        targetValue = if (isFocused) {
+            Color.White
+        } else {
+            accentColor
+        },
+        animationSpec = tween(durationMillis = 150),
+        label = "TvContextMenuButtonIconTint",
     )
 
     Surface(
@@ -252,7 +303,7 @@ private fun TvContextMenuButton(
                 shape = shape,
             ),
             focusedBorder = Border(
-                border = BorderStroke(2.dp, Color.White.copy(alpha = 0.86f)),
+                border = BorderStroke(2.dp, accentColor.copy(alpha = 0.95f)),
                 shape = shape,
             ),
         ),
@@ -260,7 +311,7 @@ private fun TvContextMenuButton(
     ) {
         Row(
             modifier = Modifier
-                .height(52.dp)
+                .height(if (supportingText == null) 56.dp else 68.dp)
                 .background(backgroundColor, shape)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -268,32 +319,40 @@ private fun TvContextMenuButton(
         ) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        if (isFocused) {
-                            Color.White.copy(alpha = 0.20f)
-                        } else {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
-                        },
-                    ),
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconBackgroundColor),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = textColor,
-                    modifier = Modifier.size(17.dp),
+                    tint = iconTintColor,
+                    modifier = Modifier.size(19.dp),
                 )
             }
-            Text(
-                text = text,
-                color = textColor,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = text,
+                    color = textColor,
+                    fontSize = 15.5f.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (supportingText != null) {
+                    Text(
+                        text = supportingText,
+                        color = textColor.copy(alpha = if (isFocused) 0.78f else 0.58f),
+                        fontSize = 12.5f.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }

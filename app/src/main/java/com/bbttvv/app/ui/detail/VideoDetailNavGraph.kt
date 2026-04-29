@@ -157,7 +157,10 @@ internal fun VideoDetailNavGraph(
                 onBack = { navigateBackOrFinish() },
                 onOpenDetail = {
                     clearCommentFocusRestore(openMode)
-                    navController.navigate(ScreenRoutes.VideoDetail.createRoute(bvid))
+                    navController.openDetailFromPlayer(
+                        bvid = bvid,
+                        initialBvid = initialBvid,
+                    )
                 },
             )
         }
@@ -249,5 +252,27 @@ private fun setCommentFocusRestore(
 private fun clearCommentFocusRestore(openMode: DetailOpenMode) {
     if (openMode is DetailOpenMode.MainHost) {
         openMode.clearCommentFocusRestore()
+    }
+}
+
+private fun NavHostController.openDetailFromPlayer(
+    bvid: String,
+    initialBvid: String,
+) {
+    popBackStack()
+    if (!isShowingDetailFor(bvid, initialBvid)) {
+        navigate(ScreenRoutes.VideoDetail.createRoute(bvid))
+    }
+}
+
+private fun NavHostController.isShowingDetailFor(
+    bvid: String,
+    initialBvid: String,
+): Boolean {
+    val entry = currentBackStackEntry ?: return false
+    return when (entry.destination.route) {
+        VideoDetailEntryRoute -> initialBvid == bvid
+        ScreenRoutes.VideoDetail.route -> entry.arguments?.getString("bvid") == bvid
+        else -> false
     }
 }
