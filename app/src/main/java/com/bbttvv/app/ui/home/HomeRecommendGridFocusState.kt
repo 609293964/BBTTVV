@@ -2,6 +2,7 @@ package com.bbttvv.app.ui.home
 
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.View
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
@@ -15,6 +16,7 @@ internal class HomeRecommendGridFocusState {
     private var pendingScrollToTop: Boolean = false
     private var restoreFocusAfterPendingScrollToTop: Boolean = true
     private var pendingDataSetFocus: PendingGridFocus? = null
+    private var forceFirstItemFocusOnNextDataSetChange: Boolean = false
     private var pendingDirectionalScrollFocusPosition: Int = RecyclerView.NO_POSITION
     private var pendingDirectionalScrollFocusUntilUptimeMs: Long = 0L
     private var focusRequestToken: Int = 0
@@ -91,6 +93,19 @@ internal class HomeRecommendGridFocusState {
             nextItems.indexOfFirst { it.key == key }.takeIf { it >= 0 }
         }
 
+        if (forceFirstItemFocusOnNextDataSetChange) {
+            forceFirstItemFocusOnNextDataSetChange = false
+            clearRememberedFocus()
+            clearPendingDirectionalScrollFocus()
+            val targetPosition = HomeGridDataSetFocusPolicy.menuRefreshFocusPosition(nextItems.size)
+            pendingDataSetFocus = PendingGridFocus(
+                key = null,
+                position = if (targetPosition != RecyclerView.NO_POSITION) targetPosition else 0,
+                preferPosition = true,
+            )
+            return parkFocusForPendingDataSetFocus(recycler, currentFocused)
+        }
+
         if (
             HomeGridDataSetFocusPolicy.shouldKeepFocusedChild(
                 focusIsRecyclerContainer = currentFocused === recycler,
@@ -145,7 +160,9 @@ internal class HomeRecommendGridFocusState {
         val pending = pendingDataSetFocus ?: return
         when {
             pending.matches(key = key, position = position) -> {
-                pendingDataSetFocus = null
+                if (!forceFirstItemFocusOnNextDataSetChange) {
+                    pendingDataSetFocus = null
+                }
             }
             isRecentUserNavigation() -> {
                 pendingDataSetFocus = null
@@ -182,6 +199,21 @@ internal class HomeRecommendGridFocusState {
             recycler.parkFocusForDataSetReset()
         }
         applyPendingScrollToTop()
+    }
+
+    fun requestMenuRefreshFocusToFirstItem() {
+        forceFirstItemFocusOnNextDataSetChange = true
+        clearRememberedFocus()
+        clearPendingDirectionalScrollFocus()
+        pendingScrollToTop = true
+        restoreFocusAfterPendingScrollToTop = true
+        pendingDataSetFocus = PendingGridFocus(
+            key = null,
+            position = 0,
+            preferPosition = true,
+        )
+        applyPendingScrollToTop()
+        applyPendingDataSetFocus()
     }
 
     fun resetRememberedFocusToTop() {
@@ -340,6 +372,7 @@ internal class HomeRecommendGridFocusState {
             itemCount = itemCount,
             keyPosition = pending.key?.let(adapter::positionOfKey),
             fallbackPosition = pending.position,
+            preferFallbackPosition = pending.preferPosition,
         )
         if (targetPosition == RecyclerView.NO_POSITION) return false
         return tryFocusPosition(
@@ -347,10 +380,31 @@ internal class HomeRecommendGridFocusState {
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
             onFocused = {
-                pendingDataSetFocus = null
+                if (!forceFirstItemFocusOnNextDataSetChange) {
+                    pendingDataSetFocus = null
+                }
             },
             retryCount = PendingFocusRetryCount,
         )
+    }
+
+    private fun parkFocusForPendingDataSetFocus(
+        recycler: RecyclerView,
+        currentFocused: View?,
+    ): Boolean {
+        if (pendingDataSetFocus == null) return false
+        if (currentFocused === recycler) {
+            if (!isRecyclerFocusRestoreSuppressed()) {
+                schedulePendingFocusAfterLayout()
+            }
+            return true
+        }
+
+        val parked = recycler.parkFocusForDataSetReset()
+        if (parked) {
+            schedulePendingFocusAfterLayout()
+        }
+        return parked
     }
 
     private fun schedulePendingFocusAfterLayout() {
@@ -540,6 +594,7 @@ internal class HomeRecommendGridFocusState {
 private data class PendingGridFocus(
     val key: String?,
     val position: Int,
+    val preferPosition: Boolean = false,
 ) {
     fun matches(key: String, position: Int): Boolean {
         return this.key == key || (this.key == null && this.position == position)

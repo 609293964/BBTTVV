@@ -29,6 +29,11 @@ data class PlaybackBadge(
     val isActive: Boolean = true
 )
 
+data class ProgressHeatmapPoint(
+    val fraction: Float,
+    val intensity: Float,
+)
+
 data class PlayerPlaybackState(
     val isPlaying: Boolean = false,
     val playWhenReady: Boolean = false,
@@ -111,5 +116,6 @@ data class PlayerUiState(
     val selectedVideoBandwidth: Int = 0,
     val selectedAudioBandwidth: Int = 0,
     val selectedQualityLabel: String = "",
+    val heatmapPoints: List<ProgressHeatmapPoint> = emptyList(),
     val resumePrompt: ResumePlaybackPrompt? = null,
 )

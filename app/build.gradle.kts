@@ -19,12 +19,13 @@ val signingProperties = Properties().apply {
 val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val missingReleaseSigningKeys = releaseSigningKeys.filter { signingProperties.getProperty(it).isNullOrBlank() }
 val hasReleaseKeystore = missingReleaseSigningKeys.isEmpty()
-val releaseAbi = providers.gradleProperty("bbttvv.releaseAbi")
+val releaseAbiStr = providers.gradleProperty("bbttvv.releaseAbi")
     .orElse("arm64-v8a")
     .get()
+val releaseAbis = releaseAbiStr.split(",").map { it.trim() }
 val allowedReleaseAbis = setOf("arm64-v8a", "armeabi-v7a")
-check(releaseAbi in allowedReleaseAbis) {
-    "Unsupported release ABI '$releaseAbi'. Expected one of: ${allowedReleaseAbis.joinToString()}"
+check(releaseAbis.all { it in allowedReleaseAbis }) {
+    "Unsupported release ABI '$releaseAbiStr'. Expected one of: ${allowedReleaseAbis.joinToString()}"
 }
 
 gradle.taskGraph.whenReady {
@@ -78,7 +79,7 @@ android {
             isDebuggable = false
             isProfileable = false 
             ndk {
-                abiFilters += listOf(releaseAbi)
+                abiFilters += releaseAbis
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

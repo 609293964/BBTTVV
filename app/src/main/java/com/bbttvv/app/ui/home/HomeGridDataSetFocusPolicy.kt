@@ -32,10 +32,18 @@ internal object HomeGridDataSetFocusPolicy {
         itemCount: Int,
         keyPosition: Int?,
         fallbackPosition: Int,
+        preferFallbackPosition: Boolean = false,
     ): Int {
         if (itemCount <= 0) return RecyclerView.NO_POSITION
+        if (preferFallbackPosition) {
+            return fallbackPosition.coerceIn(0, itemCount - 1)
+        }
         return keyPosition?.takeIf { it in 0 until itemCount }
             ?: fallbackPosition.coerceIn(0, itemCount - 1)
+    }
+
+    fun menuRefreshFocusPosition(itemCount: Int): Int {
+        return if (itemCount > 0) 0 else RecyclerView.NO_POSITION
     }
 
     private fun Int?.coerceIntoNextItems(itemCount: Int): Int? {

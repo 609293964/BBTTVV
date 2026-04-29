@@ -28,11 +28,13 @@ import com.bbttvv.app.data.model.AudioQuality
 import com.bbttvv.app.data.model.response.DashAudio
 import com.bbttvv.app.data.model.response.DashVideo
 import com.bbttvv.app.data.model.response.Page
+import com.bbttvv.app.data.model.response.PbpHeatmapResponse
 import com.bbttvv.app.data.model.response.RelatedVideo
 import com.bbttvv.app.data.model.response.ReplyData
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.data.model.response.ViewInfo
 import com.bbttvv.app.data.repository.CommentRepository
+import com.bbttvv.app.data.repository.PbpHeatmapRepository
 import com.bbttvv.app.data.repository.PlaybackRepository
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
@@ -100,6 +102,30 @@ private data class HeartbeatRuntimeState(
         get() = bvid.isNotBlank() && cid > 0L
 }
 
+internal fun normalizePbpHeatmapPoints(
+    response: PbpHeatmapResponse,
+    durationMs: Long,
+): List<ProgressHeatmapPoint> {
+    val rawPoints = response.events.default
+    val stepSec = response.stepSec
+    if (durationMs <= 0L || stepSec <= 0.0 || !stepSec.isFinite() || rawPoints.isEmpty()) {
+        return emptyList()
+    }
+
+    val finitePoints = rawPoints.map { value ->
+        if (value.isFinite()) value else 0.0
+    }
+    val maxValue = finitePoints.maxOrNull()?.takeIf { it > 0.0 } ?: return emptyList()
+
+    return finitePoints.mapIndexed { index, value ->
+        val timeMs = index * stepSec * 1000.0
+        ProgressHeatmapPoint(
+            fraction = (timeMs / durationMs.toDouble()).toFloat().coerceIn(0f, 1f),
+            intensity = (value / maxValue).toFloat().coerceIn(0f, 1f),
+        )
+    }
+}
+
 class PlayerViewModel : BasePlayerViewModel() {
     private val playbackUseCase = VideoPlaybackUseCase()
 
@@ -117,6 +143,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var settingsObservationJob: Job? = null
     private var videoShotLoadJob: Job? = null
     private var videoShotFrameJob: Job? = null
+    private var heatmapLoadJob: Job? = null
     private var commentsJob: Job? = null
     private var commentRepliesJob: Job? = null
     private var videoShot: VideoShot? = null
@@ -176,6 +203,7 @@ class PlayerViewModel : BasePlayerViewModel() {
 
         commentsJob?.cancel()
         commentRepliesJob?.cancel()
+        clearProgressHeatmap()
         _commentsUiState.update { PlayerCommentsUiState() }
 
         playbackRuntime = PlaybackRuntimeState(
@@ -310,6 +338,12 @@ class PlayerViewModel : BasePlayerViewModel() {
                             resumePrompt = resumePrompt,
                         )
                     }
+                    loadProgressHeatmap(
+                        bvid = result.info.bvid,
+                        aid = result.info.aid,
+                        cid = result.info.cid,
+                        durationMs = result.source.durationMs,
+                    )
                     loadOnlineCount(result.info.bvid, result.info.cid)
                 }
             }
@@ -1174,6 +1208,44 @@ class PlayerViewModel : BasePlayerViewModel() {
         }
     }
 
+    private fun loadProgressHeatmap(
+        bvid: String,
+        aid: Long,
+        cid: Long,
+        durationMs: Long,
+    ) {
+        ensureMainThread("loadProgressHeatmap")
+        heatmapLoadJob?.cancel()
+        if (cid <= 0L || durationMs <= 0L) {
+            _uiState.update { it.copy(heatmapPoints = emptyList()) }
+            return
+        }
+        heatmapLoadJob = viewModelScope.launch {
+            val points = PbpHeatmapRepository.getHeatmap(
+                cid = cid,
+                aid = aid,
+                bvid = bvid,
+            ).getOrNull()?.let { response ->
+                normalizePbpHeatmapPoints(
+                    response = response,
+                    durationMs = durationMs,
+                )
+            }.orEmpty()
+
+            if (playbackRuntime.bvid != bvid || playbackRuntime.cid != cid) {
+                return@launch
+            }
+            _uiState.update { it.copy(heatmapPoints = points) }
+        }
+    }
+
+    private fun clearProgressHeatmap() {
+        ensureMainThread("clearProgressHeatmap")
+        heatmapLoadJob?.cancel()
+        heatmapLoadJob = null
+        _uiState.update { it.copy(heatmapPoints = emptyList()) }
+    }
+
     private fun clearVideoShot() {
         ensureMainThread("clearVideoShot")
         videoShotLoadJob?.cancel()
@@ -1696,6 +1768,7 @@ class PlayerViewModel : BasePlayerViewModel() {
         settingsObservationJob?.cancel()
         commentsJob?.cancel()
         commentRepliesJob?.cancel()
+        clearProgressHeatmap()
         clearVideoShot()
         super.onCleared()
     }

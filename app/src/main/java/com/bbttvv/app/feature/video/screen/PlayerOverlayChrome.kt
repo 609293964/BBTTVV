@@ -32,7 +32,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +53,7 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.core.util.formatLongVideoPubDate
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
+import com.bbttvv.app.feature.video.viewmodel.ProgressHeatmapPoint
 import kotlinx.coroutines.delay
 
 @Composable
@@ -187,6 +193,7 @@ internal fun PlayerInfoOverlay(
         PlaybackProgressBlock(
             playbackState = currentPlaybackState,
             sponsorMarkers = sponsorMarkers,
+            heatmapPoints = uiState.heatmapPoints,
             modifier = progressModifier,
             positionOverrideMs = progressPreviewState?.targetPositionMs,
             isFocused = isProgressFocused,
@@ -256,6 +263,7 @@ private fun MetricItem(
 private fun PlaybackProgressBlock(
     playbackState: PlayerPlaybackState,
     sponsorMarkers: List<SponsorProgressMark>,
+    heatmapPoints: List<ProgressHeatmapPoint>,
     modifier: Modifier = Modifier,
     positionOverrideMs: Long? = null,
     isFocused: Boolean = false,
@@ -282,9 +290,10 @@ private fun PlaybackProgressBlock(
         SegmentedProgressBar(
             progress = progress,
             marks = sponsorMarkers,
+            heatmapPoints = heatmapPoints,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(7.dp),
+                .height(if (heatmapPoints.isEmpty()) 7.dp else 24.dp),
         )
 
         Row(
@@ -317,21 +326,131 @@ private fun PlaybackProgressBlock(
 private fun SegmentedProgressBar(
     progress: Float,
     marks: List<SponsorProgressMark>,
+    heatmapPoints: List<ProgressHeatmapPoint>,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
-        val radius = size.height / 2f
+        val hasHeatmap = heatmapPoints.isNotEmpty()
+        val progressHeight = if (hasHeatmap) {
+            7.dp.toPx().coerceAtMost(size.height)
+        } else {
+            size.height
+        }
+        val progressTop = if (hasHeatmap) {
+            (size.height - progressHeight).coerceAtLeast(0f)
+        } else {
+            0f
+        }
+        if (hasHeatmap) {
+            val heatmapGap = 2.dp.toPx().coerceAtMost(progressTop)
+            val heatmapBottom = (progressTop - heatmapGap).coerceAtLeast(0f)
+            val heatmapHeight = heatmapBottom.coerceAtLeast(0f)
+            if (heatmapHeight > 0f && size.width > 0f) {
+                val sampleCount = (size.width / 7.dp.toPx())
+                    .toInt()
+                    .coerceIn(48, 180)
+                val curvePoints = ArrayList<Offset>(sampleCount)
+                var sourceIndex = 0
+
+                repeat(sampleCount) { sampleIndex ->
+                    val fraction = if (sampleCount <= 1) {
+                        0f
+                    } else {
+                        sampleIndex.toFloat() / (sampleCount - 1).toFloat()
+                    }
+                    while (
+                        sourceIndex < heatmapPoints.lastIndex &&
+                        heatmapPoints[sourceIndex + 1].fraction < fraction
+                    ) {
+                        sourceIndex += 1
+                    }
+
+                    val left = heatmapPoints[sourceIndex]
+                    val right = heatmapPoints.getOrNull(sourceIndex + 1) ?: left
+                    val span = (right.fraction - left.fraction).takeIf { it > 0f } ?: 1f
+                    val t = ((fraction - left.fraction) / span).coerceIn(0f, 1f)
+                    val intensity = (left.intensity + (right.intensity - left.intensity) * t)
+                        .coerceIn(0f, 1f)
+                    curvePoints.add(
+                        Offset(
+                            x = size.width * fraction,
+                            y = heatmapBottom - heatmapHeight * intensity,
+                        )
+                    )
+                }
+
+                val fillPath = Path().apply {
+                    moveTo(0f, heatmapBottom)
+                    val first = curvePoints.first()
+                    lineTo(first.x, first.y)
+                    for (index in 1 until curvePoints.size) {
+                        val previous = curvePoints[index - 1]
+                        val current = curvePoints[index]
+                        quadraticTo(
+                            previous.x,
+                            previous.y,
+                            (previous.x + current.x) / 2f,
+                            (previous.y + current.y) / 2f,
+                        )
+                    }
+                    val last = curvePoints.last()
+                    lineTo(last.x, last.y)
+                    lineTo(size.width, heatmapBottom)
+                    close()
+                }
+                val strokePath = Path().apply {
+                    val first = curvePoints.first()
+                    moveTo(first.x, first.y)
+                    for (index in 1 until curvePoints.size) {
+                        val previous = curvePoints[index - 1]
+                        val current = curvePoints[index]
+                        quadraticTo(
+                            previous.x,
+                            previous.y,
+                            (previous.x + current.x) / 2f,
+                            (previous.y + current.y) / 2f,
+                        )
+                    }
+                    val last = curvePoints.last()
+                    lineTo(last.x, last.y)
+                }
+
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.36f),
+                            Color(0xFFBFE9FF).copy(alpha = 0.11f),
+                            Color.Transparent,
+                        ),
+                        startY = 0f,
+                        endY = heatmapBottom,
+                    ),
+                )
+                drawPath(
+                    path = strokePath,
+                    color = Color.White.copy(alpha = 0.62f),
+                    style = Stroke(
+                        width = 1.2.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
+            }
+        }
+
+        val radius = progressHeight / 2f
         val corner = CornerRadius(radius, radius)
         drawRoundRect(
             color = Color.White.copy(alpha = 0.16f),
-            topLeft = Offset.Zero,
-            size = size,
+            topLeft = Offset(0f, progressTop),
+            size = Size(width = size.width, height = progressHeight),
             cornerRadius = corner,
         )
         drawRoundRect(
             color = Color.White.copy(alpha = 0.92f),
-            topLeft = Offset.Zero,
-            size = Size(width = size.width * progress.coerceIn(0f, 1f), height = size.height),
+            topLeft = Offset(0f, progressTop),
+            size = Size(width = size.width * progress.coerceIn(0f, 1f), height = progressHeight),
             cornerRadius = corner,
         )
         marks.forEach { mark ->
@@ -340,8 +459,8 @@ private fun SegmentedProgressBar(
             val width = (end - start).coerceAtLeast(2f)
             drawRoundRect(
                 color = sponsorMarkColor(mark.category),
-                topLeft = Offset(start, 0f),
-                size = Size(width = width, height = size.height),
+                topLeft = Offset(start, progressTop),
+                size = Size(width = width, height = progressHeight),
                 cornerRadius = corner,
             )
         }

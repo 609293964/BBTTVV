@@ -82,4 +82,25 @@ class HomeGridDataSetFocusPolicyTest {
             )
         )
     }
+
+    @Test
+    fun `menu refresh pending target prefers first position over surviving key`() {
+        assertEquals(
+            0,
+            HomeGridDataSetFocusPolicy.resolvePendingTarget(
+                itemCount = 8,
+                keyPosition = 5,
+                fallbackPosition = HomeGridDataSetFocusPolicy.menuRefreshFocusPosition(itemCount = 8),
+                preferFallbackPosition = true,
+            )
+        )
+    }
+
+    @Test
+    fun `menu refresh has no focus target for empty list`() {
+        assertEquals(
+            RecyclerView.NO_POSITION,
+            HomeGridDataSetFocusPolicy.menuRefreshFocusPosition(itemCount = 0)
+        )
+    }
 }

@@ -344,6 +344,13 @@ interface BilibiliApi {
         @Query("cid") cid: Long,
         @Query("index") index: Int = 1  // 是否返回时间索引，1=是
     ): VideoshotResponse
+
+    @GET("https://bvc.bilivideo.com/pbp/data")
+    suspend fun getPbpHeatmap(
+        @Query("cid") cid: Long,
+        @Query("aid") aid: Long? = null,
+        @Query("bvid") bvid: String? = null
+    ): PbpHeatmapResponse
     
     //  [修复] 获取播放器信息（包含章节/看点数据）— 使用 WBI 签名版本
     @GET("x/player/wbi/v2")

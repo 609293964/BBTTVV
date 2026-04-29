@@ -108,8 +108,14 @@ internal fun VideoCardRecyclerGrid(
                     focusState.parkFocusForDirectionalScroll(targetPosition)
                 },
                 onMenu = {
-                    latestOnMenuRefresh?.invoke()
-                    latestOnMenuRefresh != null
+                    val refresh = latestOnMenuRefresh
+                    if (refresh != null) {
+                        focusState.requestMenuRefreshFocusToFirstItem()
+                        refresh()
+                        true
+                    } else {
+                        false
+                    }
                 },
                 onBack = {
                     latestOnBackToTopBar?.invoke() == true
