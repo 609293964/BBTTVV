@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import kotlin.math.abs
+import kotlinx.coroutines.delay
 
 private const val DetailBackgroundCoverWidthPx = 320
 private const val DetailBackgroundCoverHeightPx = 180
@@ -86,6 +88,11 @@ fun DetailScreen(
         )
     }
     BackHandler { onBack() }
+    LaunchedEffect(uiState.actionFeedbackMessage) {
+        val message = uiState.actionFeedbackMessage ?: return@LaunchedEffect
+        delay(1_800L)
+        viewModel.clearActionFeedback(message)
+    }
 
     Box(
         modifier = Modifier
@@ -296,11 +303,12 @@ fun DetailScreen(
                                 ownerAvatarModel = ownerAvatarModel,
                                 coverModel = coverModel,
                                 followerCount = uiState.creatorFollowerCount,
-                                accountCoinBalance = uiState.accountCoinBalance,
                                 isFollowing = uiState.isFollowing,
                                 isFollowActionLoading = uiState.isFollowActionLoading,
                                 isLiked = uiState.isLiked,
+                                coinCount = uiState.coinCount,
                                 isFavoured = uiState.isFavoured,
+                                isActionLoading = uiState.isActionLoading,
                                 playButtonFocusRequester = playButtonFocusRequester,
                                 onActionRowFocusChanged = { hasFocus ->
                                     heroActionRowHasFocus = hasFocus
@@ -325,7 +333,9 @@ fun DetailScreen(
                                 onOpenPublisher = onOpenPublisher,
                                 onToggleFollow = viewModel::toggleFollow,
                                 onToggleLike = viewModel::toggleLike,
-                                onToggleFavourite = viewModel::toggleFavourite
+                                onOpenCoinDialog = viewModel::openCoinDialog,
+                                onToggleFavourite = viewModel::toggleFavourite,
+                                onTripleAction = viewModel::performTripleAction
                             )
                         }
 
@@ -370,5 +380,28 @@ fun DetailScreen(
                 }
             }
         }
+        if (uiState.showTripleCelebration) {
+            DetailTripleSuccessAnimation(
+                visible = true,
+                onAnimationEnd = viewModel::dismissTripleCelebration,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        if (uiState.coinDialogVisible) {
+            DetailCoinDialog(
+                currentCoinCount = uiState.coinCount,
+                accountCoinBalance = uiState.accountCoinBalance,
+                isLiked = uiState.isLiked,
+                isLoading = uiState.coinActionLoading,
+                onDismiss = viewModel::closeCoinDialog,
+                onConfirm = viewModel::performCoinAction,
+            )
+        }
+        DetailActionFeedbackHost(
+            message = uiState.actionFeedbackMessage,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 72.dp),
+        )
     }
 }

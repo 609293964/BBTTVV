@@ -149,7 +149,7 @@ internal fun ProfileScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 46.dp)
+                    .padding(start = 46.dp, end = 24.dp)
             ) {
                 when {
                     uiState.isLoading -> CenterStatus("正在加载我的页面...")
@@ -344,7 +344,7 @@ private fun LoggedInProfileLayout(
             modifier = Modifier.width(324.dp)
         )
         ProfileContentPanel(
-            modifier = Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp, top = 2.dp, end = 14.dp),
+            modifier = Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp, top = 2.dp),
             uiState = uiState,
             selectedMenu = selectedMenu,
             onOpenSettings = onOpenSettings,

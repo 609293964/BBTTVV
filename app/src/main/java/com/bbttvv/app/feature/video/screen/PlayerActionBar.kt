@@ -97,26 +97,20 @@ private fun PlayerActionButton(
 
 private fun actionButtonLabel(action: PlayerAction): String {
     return when (action) {
-        PlayerAction.Detail -> "详情"
         PlayerAction.Comments -> "评论"
         PlayerAction.Speed -> "倍速"
         PlayerAction.Quality -> "画质"
         PlayerAction.Danmaku -> "弹幕"
-        PlayerAction.Audio -> "音频"
-        PlayerAction.Codec -> "码率"
         PlayerAction.Debug -> "调试"
     }
 }
 
 private fun actionIcon(action: PlayerAction): ImageVector {
     return when (action) {
-        PlayerAction.Detail -> Icons.Outlined.Info
         PlayerAction.Comments -> Icons.Outlined.Email
         PlayerAction.Speed -> Icons.Outlined.PlayArrow
         PlayerAction.Quality -> Icons.Outlined.Settings
         PlayerAction.Danmaku -> Icons.Outlined.Create
-        PlayerAction.Audio -> Icons.Outlined.Settings
-        PlayerAction.Codec -> Icons.Outlined.Info
         PlayerAction.Debug -> Icons.Outlined.Info
     }
 }

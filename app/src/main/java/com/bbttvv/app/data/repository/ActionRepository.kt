@@ -531,6 +531,9 @@ object ActionRepository {
                 if (csrf.isEmpty()) {
                     return@withContext Result.failure(Exception("请先登录"))
                 }
+                if (count !in 1..2) {
+                    return@withContext Result.failure(Exception("投币数量无效"))
+                }
                 
                 val selectLike = if (alsoLike) 1 else 0
                 val response = api.coinVideo(aid = aid, multiply = count, selectLike = selectLike, csrf = csrf)
@@ -578,10 +581,11 @@ object ActionRepository {
         val likeSuccess: Boolean,
         val coinSuccess: Boolean,
         val coinMessage: String?,
-        val favoriteSuccess: Boolean
+        val favoriteSuccess: Boolean,
+        val coinsAdded: Int
     )
     
-    suspend fun tripleAction(aid: Long): Result<TripleResult> {
+    suspend fun tripleAction(aid: Long, currentCoinCount: Int = 0): Result<TripleResult> {
         return withContext(Dispatchers.IO) {
             val csrf = TokenManager.csrfCache ?: ""
             if (csrf.isEmpty()) {
@@ -592,22 +596,33 @@ object ActionRepository {
             val likeResult = likeVideo(aid, true)
             val likeSuccess = likeResult.isSuccess
             
-            // 2. 投币 (2个，同时点赞)
-            val coinResult = coinVideo(aid, 2, true)
-            val coinSuccess = coinResult.isSuccess
-            val coinMessage = coinResult.exceptionOrNull()?.message
+            // 2. 投币 (补足到2个，同时点赞)
+            val safeCurrentCoinCount = currentCoinCount.coerceIn(0, 2)
+            val coinRequestCount = (2 - safeCurrentCoinCount).coerceIn(0, 2)
+            val coinResult = if (coinRequestCount > 0) {
+                coinVideo(aid, coinRequestCount, true)
+            } else {
+                null
+            }
+            val coinSuccess = coinResult?.isSuccess == true
+            val coinMessage = coinResult?.exceptionOrNull()?.message
+            val coinsAdded = if (coinSuccess) coinRequestCount else 0
             
             // 3. 收藏
             val favoriteResult = favoriteVideo(aid, true)
             val favoriteSuccess = favoriteResult.isSuccess
             
-            com.bbttvv.app.core.util.Logger.d("ActionRepository", " tripleAction: like=$likeSuccess, coin=$coinSuccess, fav=$favoriteSuccess")
+            com.bbttvv.app.core.util.Logger.d(
+                "ActionRepository",
+                " tripleAction: like=$likeSuccess, coin=$coinSuccess, coinsAdded=$coinsAdded, fav=$favoriteSuccess"
+            )
             
             Result.success(TripleResult(
                 likeSuccess = likeSuccess,
                 coinSuccess = coinSuccess,
                 coinMessage = coinMessage,
-                favoriteSuccess = favoriteSuccess
+                favoriteSuccess = favoriteSuccess,
+                coinsAdded = coinsAdded
             ))
         }
     }

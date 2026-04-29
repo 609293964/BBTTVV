@@ -17,7 +17,6 @@ import com.bbttvv.app.core.store.player.DanmakuFontWeightPreset
 import com.bbttvv.app.core.store.player.DanmakuLaneDensityPreset
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
-import com.bbttvv.app.feature.video.viewmodel.PlayerOption
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import java.util.Locale
@@ -93,15 +92,10 @@ internal fun rememberPlayerOverlayPresentationState(
 }
 
 internal fun buildPlayerActions(
-    uiState: PlayerUiState,
     isDebugBuild: Boolean = BuildConfig.DEBUG,
 ): List<PlayerAction> {
-    val hasAudioChoices = uiState.audioOptions.size > 1
-    val hasCodecChoices = uiState.videoCodecOptions.size > 1
     return PlayerAction.entries.filter { action ->
         when (action) {
-            PlayerAction.Audio -> hasAudioChoices
-            PlayerAction.Codec -> hasCodecChoices
             PlayerAction.Debug -> isDebugBuild
             else -> true
         }
@@ -134,13 +128,10 @@ internal fun buildPlayerPanelOptions(
             )
         }
 
-        PlayerAction.Audio -> uiState.audioOptions.map(PlayerOption::toPanelOption)
-        PlayerAction.Codec -> uiState.videoCodecOptions.map(PlayerOption::toPanelOption)
         PlayerAction.Danmaku -> buildDanmakuPanelOptions(
             danmakuSettings = danmakuSettings,
             isDanmakuEnabled = isDanmakuEnabled,
         )
-        PlayerAction.Detail,
         PlayerAction.Comments,
         PlayerAction.Debug,
         null -> emptyList()
@@ -162,7 +153,6 @@ internal fun handlePlayerOverlayEffect(
     scope: CoroutineScope,
     exitTrace: PlayerExitTrace,
     onExitPlayer: () -> Unit,
-    onOpenDetail: () -> Unit,
 ) {
     when (effect) {
         PlayerOverlayEffect.ClearSeekPreview -> viewModel.clearSeekPreview()
@@ -186,11 +176,6 @@ internal fun handlePlayerOverlayEffect(
             viewModel.ensureCommentsLoaded()
         }
 
-        PlayerOverlayEffect.OpenDetail -> {
-            presentationState.hideCommentsPanel()
-            onOpenDetail()
-        }
-
         is PlayerOverlayEffect.SetPlaybackSpeed -> {
             presentationState.hideCommentsPanel()
             viewModel.setPlaybackSpeed(effect.speed)
@@ -199,16 +184,6 @@ internal fun handlePlayerOverlayEffect(
         is PlayerOverlayEffect.ChangeQuality -> {
             presentationState.hideCommentsPanel()
             viewModel.changeQuality(effect.qualityId)
-        }
-
-        is PlayerOverlayEffect.ChangeAudioQuality -> {
-            presentationState.hideCommentsPanel()
-            viewModel.changeAudioQuality(effect.qualityId)
-        }
-
-        is PlayerOverlayEffect.ChangeVideoCodec -> {
-            presentationState.hideCommentsPanel()
-            viewModel.changeVideoCodec(effect.codecId)
         }
 
         is PlayerOverlayEffect.ActivateDanmakuSetting -> {
@@ -232,16 +207,6 @@ internal fun handlePlayerOverlayEffect(
             onExitPlayer()
         }
     }
-}
-
-private fun PlayerOption.toPanelOption(): PanelOption {
-    return PanelOption(
-        key = key,
-        label = label,
-        subtitle = subtitle ?: disabledReason,
-        isSelected = isSelected,
-        isEnabled = isEnabled,
-    )
 }
 
 private fun buildDanmakuPanelOptions(

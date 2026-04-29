@@ -1,10 +1,17 @@
 package com.bbttvv.app.ui.detail
 
+import android.view.KeyEvent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,7 +56,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.semantics.contentDescription
@@ -75,6 +85,8 @@ import com.bbttvv.app.ui.home.VideoCardRecyclerRow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val DetailTripleHoldDurationMs = 1_500
 
 @Composable
 internal fun DetailCoverBackdrop(model: ImageRequest) {
@@ -102,11 +114,12 @@ internal fun DetailHeroSection(
     ownerAvatarModel: ImageRequest,
     coverModel: ImageRequest,
     followerCount: Int?,
-    accountCoinBalance: Int?,
     isFollowing: Boolean,
     isFollowActionLoading: Boolean,
     isLiked: Boolean,
+    coinCount: Int,
     isFavoured: Boolean,
+    isActionLoading: Boolean,
     playButtonFocusRequester: FocusRequester,
     onActionRowFocusChanged: (Boolean) -> Unit,
     onPlayButtonPlaced: () -> Unit = {},
@@ -115,7 +128,9 @@ internal fun DetailHeroSection(
     onOpenPublisher: (Long, String, String) -> Unit,
     onToggleFollow: () -> Unit,
     onToggleLike: () -> Unit,
-    onToggleFavourite: () -> Unit
+    onOpenCoinDialog: () -> Unit,
+    onToggleFavourite: () -> Unit,
+    onTripleAction: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -172,8 +187,6 @@ internal fun DetailHeroSection(
                 )
             }
 
-            val accountCoinLabel = accountCoinBalance?.toString() ?: "--"
-
             DetailStaticFocusArea {
                 Row(
                     modifier = Modifier
@@ -216,10 +229,12 @@ internal fun DetailHeroSection(
                             )
                         }
                     )
-                    DetailCompactActionButton(
+                    DetailTripleLikeActionButton(
                         label = formatNumber(viewInfo.stat.like),
                         active = isLiked,
+                        enabled = !isActionLoading,
                         onClick = onToggleLike,
+                        onTripleAction = onTripleAction,
                         leadingContent = { tint ->
                             Icon(
                                 imageVector = Icons.Outlined.ThumbUp,
@@ -230,8 +245,10 @@ internal fun DetailHeroSection(
                         }
                     )
                     DetailCompactActionButton(
-                        label = accountCoinLabel,
-                        onClick = {},
+                        label = formatNumber(viewInfo.stat.coin),
+                        active = coinCount > 0,
+                        enabled = !isActionLoading,
+                        onClick = onOpenCoinDialog,
                         leadingContent = { tint ->
                             CoinMetricIcon(tint = tint, modifier = Modifier.size(16.dp))
                         }
@@ -583,11 +600,197 @@ private fun RelatedVideoPlaceholderCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun DetailTripleLikeActionButton(
+    label: String,
+    active: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    onTripleAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    leadingContent: (@Composable (Color) -> Unit)? = null
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    var isTriplePressing by remember { mutableStateOf(false) }
+    var tripleCompleted by remember { mutableStateOf(false) }
+
+    fun startTriplePress() {
+        if (!enabled) return
+        tripleCompleted = false
+        isTriplePressing = shouldStartDetailTriplePress(longPressConfirmed = true)
+    }
+
+    fun finishPress(released: Boolean) {
+        val completed = tripleCompleted
+        if (
+            shouldCancelDetailTriplePressOnRelease(
+                isTriplePressing = isTriplePressing,
+                tripleCompleted = completed,
+            )
+        ) {
+            isTriplePressing = false
+        }
+        if (completed) {
+            tripleCompleted = false
+            return
+        }
+        if (released && enabled) onClick()
+    }
+
+    val animatedTripleProgress by animateFloatAsState(
+        targetValue = if (isTriplePressing) 1f else 0f,
+        animationSpec = if (isTriplePressing) {
+            tween(durationMillis = DetailTripleHoldDurationMs, easing = LinearEasing)
+        } else {
+            tween(durationMillis = 180, easing = FastOutSlowInEasing)
+        },
+        label = "detailTripleLikeProgress",
+        finishedListener = { progress ->
+            if (progress >= 1f && isTriplePressing && !tripleCompleted) {
+                tripleCompleted = true
+                isTriplePressing = false
+                onTripleAction()
+            }
+        },
+    )
+
+    val contentColor = when {
+        isFocused -> DetailPrimaryTextColor
+        active -> DetailAccentColor
+        else -> Color.White
+    }.copy(alpha = if (enabled) 1f else 0.68f)
+    val containerColor = if (isFocused) DetailPrimaryPillColor else Color.Transparent
+    val borderWidth = if (isFocused) 0.dp else 1.5.dp
+    val borderColor = if (isFocused) Color.Transparent else Color(0x66FFFFFF)
+
+    Box(
+        modifier = modifier
+            .semantics(mergeDescendants = true) {
+                contentDescription = "点赞"
+            }
+            .defaultMinSize(minWidth = DetailCompactActionPillMetrics.minWidth)
+            .height(DetailCompactActionPillMetrics.height)
+            .clip(RoundedCornerShape(999.dp))
+            .background(containerColor)
+            .border(
+                width = borderWidth,
+                color = borderColor,
+                shape = RoundedCornerShape(999.dp),
+            )
+            .onFocusChanged { focusState ->
+                isFocused = focusState.hasFocus
+                if (!focusState.hasFocus) {
+                    isTriplePressing = false
+                    tripleCompleted = false
+                }
+            }
+            .onPreviewKeyEvent { event ->
+                val nativeEvent = event.nativeKeyEvent
+                if (!isDetailTripleConfirmKey(nativeEvent.keyCode)) return@onPreviewKeyEvent false
+                when (nativeEvent.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        if (nativeEvent.repeatCount == 0) startTriplePress()
+                        true
+                    }
+                    KeyEvent.ACTION_UP -> {
+                        finishPress(released = true)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .pointerInput(enabled) {
+                detectTapGestures(
+                    onPress = press@{
+                        if (!enabled) return@press
+                        startTriplePress()
+                        val released = tryAwaitRelease()
+                        finishPress(released = released)
+                    },
+                )
+            }
+            .focusable(),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = DetailCompactActionPillMetrics.horizontalPadding),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            leadingContent?.let { content ->
+                Box(
+                    modifier = Modifier.size(22.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DetailTripleProgressRing(
+                        progress = animatedTripleProgress,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    content(contentColor)
+                }
+                Spacer(modifier = Modifier.width(DetailCompactActionPillMetrics.iconSpacing))
+            }
+            Text(
+                text = label,
+                color = contentColor,
+                fontSize = DetailCompactActionPillMetrics.textSize,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailTripleProgressRing(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    if (progress <= 0f) return
+    Canvas(modifier = modifier) {
+        val stroke = 2.dp.toPx()
+        val diameter = size.minDimension - stroke
+        val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+        drawArc(
+            color = DetailAccentColor.copy(alpha = 0.22f),
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = Size(diameter, diameter),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+        drawArc(
+            color = DetailAccentColor,
+            startAngle = -90f,
+            sweepAngle = 360f * progress.coerceIn(0f, 1f),
+            useCenter = false,
+            topLeft = topLeft,
+            size = Size(diameter, diameter),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+private fun isDetailTripleConfirmKey(keyCode: Int): Boolean {
+    return when (keyCode) {
+        KeyEvent.KEYCODE_DPAD_CENTER,
+        KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_NUMPAD_ENTER,
+        KeyEvent.KEYCODE_SPACE,
+        KeyEvent.KEYCODE_BUTTON_A,
+        -> true
+        else -> false
+    }
+}
+
+@Composable
 internal fun DetailCompactActionButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = false,
+    enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
     leadingContent: (@Composable (Color) -> Unit)? = null
 ) {
@@ -596,7 +799,7 @@ internal fun DetailCompactActionButton(
         isFocused -> DetailPrimaryTextColor
         active -> DetailAccentColor
         else -> Color.White
-    }
+    }.copy(alpha = if (enabled) 1f else 0.62f)
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
     } else {
@@ -619,7 +822,7 @@ internal fun DetailCompactActionButton(
                 shape = RoundedCornerShape(999.dp)
             )
             .onFocusChanged { focusState -> isFocused = focusState.hasFocus }
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Row(

@@ -458,64 +458,6 @@ class PlayerViewModel : BasePlayerViewModel() {
     }
 
     @MainThread
-    fun changeAudioQuality(audioQualityId: Int) {
-        ensureMainThread("changeAudioQuality")
-        val source = playbackRuntime.source
-        if (source == null || source.dashAudios.isEmpty() || source.segmentUrls.isNotEmpty()) {
-            _uiState.update { it.copy(statusMessage = "当前格式不支持音频音质切换") }
-            return
-        }
-        val targetAudio = source.dashAudios.firstOrNull { it.id == audioQualityId && it.getValidUrl().isNotBlank() }
-        if (targetAudio == null) {
-            _uiState.update { it.copy(statusMessage = "未找到可用音频轨道") }
-            return
-        }
-        val nextSource = playbackUseCase.selectDashTracks(
-            source = source,
-            audioQualityId = audioQualityId,
-            cdnPreference = resolvePlayerCdnPreference(),
-            isHevcSupported = MediaUtils.isHevcSupported(),
-            isAv1Supported = MediaUtils.isAv1Supported()
-        ) ?: run {
-            _uiState.update { it.copy(statusMessage = "音频音质切换失败") }
-            return
-        }
-        switchPlaybackSource(
-            source = nextSource,
-            statusMessage = "音频音质：${resolveAudioLabel(targetAudio)}"
-        )
-    }
-
-    @MainThread
-    fun changeVideoCodec(videoCodecId: Int) {
-        ensureMainThread("changeVideoCodec")
-        val source = playbackRuntime.source
-        if (source == null || source.dashVideos.isEmpty() || source.segmentUrls.isNotEmpty()) {
-            _uiState.update { it.copy(statusMessage = "当前格式不支持编码切换") }
-            return
-        }
-        val option = _uiState.value.videoCodecOptions.firstOrNull { it.key == videoCodecId.toString() }
-        if (option != null && !option.isEnabled) {
-            _uiState.update { it.copy(statusMessage = option.disabledReason ?: "当前设备暂不支持该编码") }
-            return
-        }
-        val nextSource = playbackUseCase.selectDashTracks(
-            source = source,
-            videoCodecId = videoCodecId,
-            cdnPreference = resolvePlayerCdnPreference(),
-            isHevcSupported = MediaUtils.isHevcSupported(),
-            isAv1Supported = MediaUtils.isAv1Supported()
-        ) ?: run {
-            _uiState.update { it.copy(statusMessage = "编码切换失败") }
-            return
-        }
-        switchPlaybackSource(
-            source = nextSource,
-            statusMessage = "格式编码：${nextSource.selectedVideoCodec.ifBlank { videoCodecId.toString() }}"
-        )
-    }
-
-    @MainThread
     fun setPlaybackSpeed(speed: Float) {
         ensureMainThread("setPlaybackSpeed")
         val appContext = NetworkModule.appContext

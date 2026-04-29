@@ -55,8 +55,14 @@ data class DetailUiState(
     val isFollowing: Boolean = false,
     val isFollowActionLoading: Boolean = false,
     val isLiked: Boolean = false,
+    val coinCount: Int = 0,
     val isFavoured: Boolean = false,
     val isActionLoading: Boolean = false,
+    val isTripleActionLoading: Boolean = false,
+    val coinDialogVisible: Boolean = false,
+    val coinActionLoading: Boolean = false,
+    val showTripleCelebration: Boolean = false,
+    val actionFeedbackMessage: String? = null,
     val comments: DetailCommentsState = DetailCommentsState()
 )
 
@@ -334,6 +340,222 @@ class DetailViewModel : ViewModel() {
         }
     }
 
+    fun openCoinDialog() {
+        val currentState = _uiState.value
+        if (currentState.viewInfo == null || currentState.isActionLoading || currentState.coinActionLoading) return
+        if (currentState.coinCount >= DetailTripleTargetCoinCount) {
+            _uiState.update {
+                it.copy(actionFeedbackMessage = "已投满硬币")
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                coinDialogVisible = true,
+                actionFeedbackMessage = null,
+            )
+        }
+    }
+
+    fun closeCoinDialog() {
+        _uiState.update {
+            if (it.coinActionLoading) {
+                it
+            } else {
+                it.copy(coinDialogVisible = false)
+            }
+        }
+    }
+
+    fun performCoinAction(count: Int, alsoLike: Boolean) {
+        val currentState = _uiState.value
+        val viewInfo = currentState.viewInfo ?: return
+        if (viewInfo.aid <= 0L || currentState.isActionLoading || currentState.coinActionLoading) return
+
+        val requestedCoinCount = resolveDetailCoinActionRequestCount(
+            currentCoinCount = currentState.coinCount,
+            requestedCount = count,
+        )
+        if (requestedCoinCount <= 0) {
+            _uiState.update {
+                it.copy(
+                    coinDialogVisible = false,
+                    actionFeedbackMessage = "已投满硬币",
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                coinDialogVisible = false,
+                coinActionLoading = true,
+                isActionLoading = true,
+                actionFeedbackMessage = "正在投币",
+            )
+        }
+
+        viewModelScope.launch {
+            val result = ActionRepository.coinVideo(viewInfo.aid, requestedCoinCount, alsoLike)
+            if (currentBvid != viewInfo.bvid) return@launch
+
+            result.fold(
+                onSuccess = {
+                    _uiState.update { state ->
+                        val previousCoinCount = state.coinCount
+                        val coinsAdded = resolveDetailCoinStatIncrement(
+                            currentCoinCount = previousCoinCount,
+                            coinsAdded = requestedCoinCount,
+                        )
+                        val nextCoinCount = resolveDetailCoinCountAfterCoinAction(
+                            currentCoinCount = previousCoinCount,
+                            coinsAdded = coinsAdded,
+                        )
+                        val likedByCoin = alsoLike && !state.isLiked
+                        val updatedViewInfo = state.viewInfo?.withCoinActionStats(
+                            likeDelta = if (likedByCoin) 1 else 0,
+                            coinDelta = coinsAdded,
+                        )
+                        state.copy(
+                            viewInfo = updatedViewInfo,
+                            isLiked = state.isLiked || alsoLike,
+                            coinCount = nextCoinCount,
+                            accountCoinBalance = state.accountCoinBalance?.let { balance ->
+                                (balance - coinsAdded).coerceAtLeast(0)
+                            },
+                            isActionLoading = false,
+                            coinActionLoading = false,
+                            actionFeedbackMessage = if (likedByCoin) {
+                                "投币成功，已点赞"
+                            } else {
+                                "投币成功"
+                            },
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update { state ->
+                        val nextCoinCount = resolveDetailCoinCountAfterCoinAction(
+                            currentCoinCount = state.coinCount,
+                            coinsAdded = 0,
+                            coinFailureMessage = error.message,
+                        )
+                        state.copy(
+                            coinCount = nextCoinCount,
+                            isActionLoading = false,
+                            coinActionLoading = false,
+                            actionFeedbackMessage = error.message ?: "投币失败",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    fun performTripleAction() {
+        val currentState = _uiState.value
+        val viewInfo = currentState.viewInfo ?: return
+        if (viewInfo.aid <= 0L || currentState.isActionLoading || currentState.coinActionLoading) return
+
+        val currentVisualState = DetailTripleActionVisualState(
+            isLiked = currentState.isLiked,
+            coinCount = currentState.coinCount,
+            isFavoured = currentState.isFavoured,
+        )
+        if (currentVisualState.isSatisfied) {
+            _uiState.update {
+                it.copy(
+                    showTripleCelebration = true,
+                    actionFeedbackMessage = "已完成三连",
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                isActionLoading = true,
+                isTripleActionLoading = true,
+                coinDialogVisible = false,
+                actionFeedbackMessage = "正在三连",
+            )
+        }
+
+        viewModelScope.launch {
+            val result = ActionRepository.tripleAction(
+                aid = viewInfo.aid,
+                currentCoinCount = currentState.coinCount,
+            )
+            if (currentBvid != viewInfo.bvid) return@launch
+
+            result.fold(
+                onSuccess = { tripleResult ->
+                    _uiState.update { state ->
+                        val coinStatIncrement = resolveDetailCoinStatIncrement(
+                            currentCoinCount = state.coinCount,
+                            coinsAdded = tripleResult.coinsAdded,
+                        )
+                        val visualState = resolveDetailTripleActionVisualState(
+                            currentLiked = state.isLiked,
+                            currentCoinCount = state.coinCount,
+                            currentFavoured = state.isFavoured,
+                            likeSuccess = tripleResult.likeSuccess,
+                            coinSuccess = tripleResult.coinSuccess,
+                            coinFailureMessage = tripleResult.coinMessage,
+                            favouriteSuccess = tripleResult.favoriteSuccess,
+                        )
+                        state.copy(
+                            viewInfo = state.viewInfo?.withTripleActionStats(
+                                previousState = state,
+                                visualState = visualState,
+                                coinsAdded = coinStatIncrement,
+                            ),
+                            isLiked = visualState.isLiked,
+                            coinCount = visualState.coinCount,
+                            accountCoinBalance = state.accountCoinBalance?.let { balance ->
+                                (balance - coinStatIncrement).coerceAtLeast(0)
+                            },
+                            isFavoured = visualState.isFavoured,
+                            isActionLoading = false,
+                            isTripleActionLoading = false,
+                            showTripleCelebration = visualState.isSatisfied,
+                            actionFeedbackMessage = resolveDetailTripleActionFeedbackMessage(
+                                visualState = visualState,
+                                likeSuccess = tripleResult.likeSuccess,
+                                coinSuccess = tripleResult.coinSuccess,
+                                coinFailureMessage = tripleResult.coinMessage,
+                                favouriteSuccess = tripleResult.favoriteSuccess,
+                            ),
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isActionLoading = false,
+                            isTripleActionLoading = false,
+                            actionFeedbackMessage = error.message ?: "三连失败",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    fun dismissTripleCelebration() {
+        _uiState.update { it.copy(showTripleCelebration = false) }
+    }
+
+    fun clearActionFeedback(message: String? = null) {
+        _uiState.update { state ->
+            if (message != null && state.actionFeedbackMessage != message) {
+                state
+            } else {
+                state.copy(actionFeedbackMessage = null)
+            }
+        }
+    }
+
     fun changeCommentSort(sortMode: DetailCommentSortMode) {
         val current = _uiState.value
         if (current.comments.sortMode == sortMode && current.comments.items.isNotEmpty()) return
@@ -407,12 +629,22 @@ class DetailViewModel : ViewModel() {
                 runCatching { ActionRepository.checkFavoriteStatus(viewInfo.aid) }
                     .getOrDefault(false)
             }
+            val coinTask = async {
+                runCatching { ActionRepository.checkCoinStatus(viewInfo.aid) }
+                    .getOrDefault(0)
+            }
             val liked = likeTask.await()
             val favoured = favouriteTask.await()
+            val coinCount = coinTask.await().coerceIn(0, DetailTripleTargetCoinCount)
             if (currentBvid == requestBvid) {
                 _uiState.update {
                     it.copy(
                         isLiked = liked,
+                        coinCount = if (it.isTripleActionLoading || it.coinActionLoading) {
+                            it.coinCount
+                        } else {
+                            coinCount
+                        },
                         isFavoured = favoured
                     )
                 }
@@ -594,6 +826,38 @@ class DetailViewModel : ViewModel() {
         if (count <= 0 || pageSize <= 0) return 1
         return ((count - 1) / pageSize) + 1
     }
+}
+
+private fun ViewInfo.withTripleActionStats(
+    previousState: DetailUiState,
+    visualState: DetailTripleActionVisualState,
+    coinsAdded: Int,
+): ViewInfo {
+    val likeDelta = if (!previousState.isLiked && visualState.isLiked) 1 else 0
+    val coinDelta = resolveDetailCoinStatIncrement(
+        currentCoinCount = previousState.coinCount,
+        coinsAdded = coinsAdded,
+    )
+    val favouriteDelta = if (!previousState.isFavoured && visualState.isFavoured) 1 else 0
+    return copy(
+        stat = stat.copy(
+            like = (stat.like + likeDelta).coerceAtLeast(0),
+            coin = (stat.coin + coinDelta).coerceAtLeast(0),
+            favorite = (stat.favorite + favouriteDelta).coerceAtLeast(0),
+        ),
+    )
+}
+
+private fun ViewInfo.withCoinActionStats(
+    likeDelta: Int,
+    coinDelta: Int,
+): ViewInfo {
+    return copy(
+        stat = stat.copy(
+            like = (stat.like + likeDelta).coerceAtLeast(0),
+            coin = (stat.coin + coinDelta).coerceAtLeast(0),
+        ),
+    )
 }
 
 private fun RelatedVideo.toVideoItem(): VideoItem {

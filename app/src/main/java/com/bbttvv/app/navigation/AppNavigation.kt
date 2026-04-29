@@ -240,10 +240,6 @@ fun AppNavigation() {
                 aid = aid,
                 startPositionMs = startPositionMs,
                 onBack = { navController.popBackStack() },
-                onOpenDetail = {
-                    navController.popBackStack()
-                    context.startVideoDetailActivity(bvid)
-                }
             )
         }
     }

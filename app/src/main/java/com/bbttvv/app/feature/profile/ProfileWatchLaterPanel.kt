@@ -41,7 +41,7 @@ internal fun ProfileWatchLaterPanel(
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     showHeader: Boolean = true,
     gridColumnCount: Int = PROFILE_VIDEO_GRID_COLUMNS,
-    contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp, end = 8.dp),
+    contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp),
     resetGridToTop: Boolean = false,
     onBackToTopBar: (() -> Boolean)? = null,
     onRequestSidebarFocus: () -> Boolean
@@ -147,7 +147,7 @@ internal fun ProfileVideoGrid(
     focusTab: AppTopLevelTab? = null,
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     gridColumnCount: Int = PROFILE_VIDEO_GRID_COLUMNS,
-    contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp, end = 8.dp),
+    contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp),
     resetToTop: Boolean = false,
     onBackToTopBar: (() -> Boolean)? = null,
     onRequestSidebarFocus: () -> Boolean = { false }

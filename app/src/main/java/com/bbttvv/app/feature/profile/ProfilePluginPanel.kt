@@ -226,7 +226,7 @@ private fun SponsorBlockPluginPanel(
         )
         PluginCenterRowCard(
             title = "手动跳过提示",
-            subtitle = "关闭后不再显示右下角“按上键跳过”提示，但不会影响进度条标记和自动跳过。",
+            subtitle = "关闭后不再显示右下角“按确认键跳过”提示，但不会影响进度条标记和自动跳过。",
             value = if (config.showSkipPrompt) "已开启" else "已关闭",
             onClick = { plugin.setShowSkipPrompt(!config.showSkipPrompt) }
         )

@@ -36,8 +36,6 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.videoshot.VideoShotFrame
-import java.util.Locale
-import kotlin.math.roundToInt
 
 @Composable
 internal fun BoxScope.PlayerOverlayHost(
@@ -105,10 +103,6 @@ internal fun buildTopRightBadges(
     isDanmakuEnabled: Boolean,
 ): List<PlaybackBadge> {
     val seen = linkedSetOf<String>()
-    val duplicatedCodecLabels = buildSet {
-        uiState.selectedVideoCodecLabel.trim().takeIf { it.isNotBlank() }?.let(::add)
-        uiState.selectedAudioCodecLabel.trim().takeIf { it.isNotBlank() }?.let(::add)
-    }
     return buildList {
         fun addUnique(label: String?, isActive: Boolean = false) {
             val normalized = label?.trim().orEmpty()
@@ -124,26 +118,11 @@ internal fun buildTopRightBadges(
             )?.let { "质量 $it" }
         )
         addUnique(if (isDanmakuEnabled) "弹幕 开启" else "弹幕 关闭", isActive = isDanmakuEnabled)
-        addUnique(
-            actionSecondaryText(
-                action = PlayerAction.Audio,
-                uiState = uiState,
-                isDanmakuEnabled = isDanmakuEnabled,
-            )?.let { "音频 $it" }
-        )
-        addUnique(
-            actionSecondaryText(
-                action = PlayerAction.Codec,
-                uiState = uiState,
-                isDanmakuEnabled = isDanmakuEnabled,
-            )?.let { "码率 $it" }
-        )
 
         uiState.playbackBadges.forEach { badge ->
             val normalized = badge.label.trim()
             if (normalized.isBlank()) return@forEach
-            val isDuplicatedCodecBadge = duplicatedCodecLabels.any { it.equals(normalized, ignoreCase = true) }
-            if (!isDuplicatedCodecBadge && seen.add(normalized)) {
+            if (seen.add(normalized)) {
                 add(badge.copy(label = normalized))
             }
         }
@@ -331,46 +310,16 @@ private fun actionSecondaryText(
         PlayerAction.Quality -> uiState.selectedQualityLabel
             .ifBlank { null }
             ?.let(::compactActionValue)
-        PlayerAction.Audio -> selectedAudioActionValue(uiState)?.let(::compactActionValue)
-        PlayerAction.Codec -> buildCodecActionValue(uiState)?.let(::compactActionValue)
         PlayerAction.Danmaku -> if (isDanmakuEnabled) "开启" else "关闭"
-        PlayerAction.Detail -> null
         PlayerAction.Debug -> null
     }
-}
-
-private fun selectedAudioActionValue(uiState: PlayerUiState): String? {
-    return uiState.audioOptions.firstOrNull { it.isSelected }?.label
-        ?.takeIf { it.isNotBlank() }
-        ?: uiState.selectedAudioCodecLabel.takeIf { it.isNotBlank() }
-}
-
-private fun buildCodecActionValue(uiState: PlayerUiState): String? {
-    val codecLabel = uiState.selectedVideoCodecLabel.takeIf { it.isNotBlank() }
-        ?: uiState.videoCodecOptions.firstOrNull { it.isSelected }?.label?.takeIf { it.isNotBlank() }
-    val totalBitrate = uiState.selectedVideoBandwidth.coerceAtLeast(0) +
-        uiState.selectedAudioBandwidth.coerceAtLeast(0)
-    val bitrateLabel = totalBitrate.takeIf { it > 0 }?.let(::formatCompactBitrate)
-    return listOfNotNull(codecLabel, bitrateLabel).joinToString(" ").ifBlank { null }
 }
 
 private fun compactActionValue(value: String): String {
     return value
         .replace("高码率", "高码")
         .replace("低码率", "低码")
-        .replace("音频", "音频")
-        .replace("码率", "码率")
         .replace(" ", "")
-}
-
-private fun formatCompactBitrate(bitrate: Int): String {
-    if (bitrate <= 0) return "--"
-    val kbps = bitrate / 1000f
-    return if (kbps >= 1000f) {
-        String.format(Locale.US, "%.1f", kbps / 1000f).removeSuffix(".0") + "M"
-    } else {
-        "${kbps.roundToInt()}K"
-    }
 }
 
 @Composable

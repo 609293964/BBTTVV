@@ -98,6 +98,7 @@ internal fun DetailPillButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     active: Boolean = false,
+    enabled: Boolean = true,
     metrics: DetailPillMetrics = DetailDefaultPillMetrics,
     focusRequester: FocusRequester? = null,
     leadingContent: (@Composable (Color) -> Unit)? = null
@@ -107,7 +108,7 @@ internal fun DetailPillButton(
         selected || isFocused -> DetailPrimaryTextColor
         active -> DetailAccentColor
         else -> Color.White
-    }
+    }.copy(alpha = if (enabled) 1f else 0.62f)
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
     } else {
@@ -134,7 +135,7 @@ internal fun DetailPillButton(
                 shape = RoundedCornerShape(999.dp)
             )
             .onFocusChanged { focusState -> isFocused = focusState.hasFocus }
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
             modifier = Modifier
@@ -162,10 +163,11 @@ internal fun DetailPillButton(
 @Composable
 internal fun DetailDisabledPill(
     label: String,
+    modifier: Modifier = Modifier,
     metrics: DetailPillMetrics = DetailDefaultPillMetrics
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(metrics.height)
             .clip(RoundedCornerShape(999.dp))
             .background(Color.Transparent)

@@ -21,13 +21,10 @@ internal data class SimpleSeekState(
 )
 
 internal enum class PlayerAction(val label: String, val symbol: String) {
-    Detail("视频详细信息", "i"),
     Comments("视频评论", "评"),
     Speed("播放速度", "倍"),
     Quality("画质选择", "清"),
     Danmaku("弹幕设置", "弹"),
-    Audio("音频音质", "音"),
-    Codec("格式编码", "码"),
     Debug("调试信息", "D"),
 }
 
@@ -94,7 +91,6 @@ internal sealed interface PlayerOverlayEffect {
     data object TogglePlayback : PlayerOverlayEffect
     data object ToggleDanmaku : PlayerOverlayEffect
     data object OpenComments : PlayerOverlayEffect
-    data object OpenDetail : PlayerOverlayEffect
     data object ExitPlayer : PlayerOverlayEffect
     data class RequestSeekPreview(val targetPositionMs: Long) : PlayerOverlayEffect
     data class SeekBy(val deltaMs: Long) : PlayerOverlayEffect
@@ -104,17 +100,7 @@ internal sealed interface PlayerOverlayEffect {
     ) : PlayerOverlayEffect
     data class SetPlaybackSpeed(val speed: Float) : PlayerOverlayEffect
     data class ChangeQuality(val qualityId: Int) : PlayerOverlayEffect
-    data class ChangeAudioQuality(val qualityId: Int) : PlayerOverlayEffect
-    data class ChangeVideoCodec(val codecId: Int) : PlayerOverlayEffect
     data class ActivateDanmakuSetting(val key: String) : PlayerOverlayEffect
-}
-
-internal fun PlayerAction.toImmediateOverlayEffect(): PlayerOverlayEffect? {
-    return when (this) {
-        PlayerAction.Detail -> PlayerOverlayEffect.OpenDetail
-        PlayerAction.Comments -> PlayerOverlayEffect.OpenComments
-        else -> null
-    }
 }
 
 internal class PlayerOverlayStateMachine {
@@ -561,13 +547,10 @@ internal class PlayerOverlayStateMachine {
         onEffect: (PlayerOverlayEffect) -> Unit,
     ) {
         when (action) {
-            PlayerAction.Detail,
             PlayerAction.Comments -> {
                 uiState = uiState.copy(activePanel = null)
-                action.toImmediateOverlayEffect()?.let(onEffect)
-                if (action == PlayerAction.Comments) {
-                    showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
-                }
+                onEffect(PlayerOverlayEffect.OpenComments)
+                showFullOverlay(PlayerFullControlsFocus.Actions, onEffect = onEffect)
             }
 
             PlayerAction.Debug -> {
@@ -588,9 +571,7 @@ internal class PlayerOverlayStateMachine {
             }
 
             PlayerAction.Speed,
-            PlayerAction.Quality,
-            PlayerAction.Audio,
-            PlayerAction.Codec -> {
+            PlayerAction.Quality -> {
                 uiState = uiState.copy(
                     activePanel = action,
                     fullControlsFocus = PlayerFullControlsFocus.Actions,
@@ -616,16 +597,7 @@ internal class PlayerOverlayStateMachine {
                 onEffect(PlayerOverlayEffect.ChangeQuality(it))
             }
 
-            PlayerAction.Audio -> option.key.toIntOrNull()?.let {
-                onEffect(PlayerOverlayEffect.ChangeAudioQuality(it))
-            }
-
-            PlayerAction.Codec -> option.key.toIntOrNull()?.let {
-                onEffect(PlayerOverlayEffect.ChangeVideoCodec(it))
-            }
-
             PlayerAction.Danmaku -> onEffect(PlayerOverlayEffect.ActivateDanmakuSetting(option.key))
-            PlayerAction.Detail,
             PlayerAction.Comments,
             PlayerAction.Debug -> Unit
         }

@@ -10,7 +10,8 @@ data class TripleActionResult(
     val likeSuccess: Boolean,
     val coinSuccess: Boolean,
     val coinMessage: String?,
-    val favoriteSuccess: Boolean
+    val favoriteSuccess: Boolean,
+    val coinsAdded: Int
 )
 
 /**
@@ -78,13 +79,14 @@ class UserInteractionUseCase {
      * @param aid 视频 AID
      * @return 三连结果
      */
-    suspend fun doTripleAction(aid: Long): Result<TripleActionResult> {
-        return ActionRepository.tripleAction(aid).map { result ->
+    suspend fun doTripleAction(aid: Long, currentCoinCount: Int = 0): Result<TripleActionResult> {
+        return ActionRepository.tripleAction(aid, currentCoinCount).map { result ->
             TripleActionResult(
                 likeSuccess = result.likeSuccess,
                 coinSuccess = result.coinSuccess,
                 coinMessage = result.coinMessage,
-                favoriteSuccess = result.favoriteSuccess
+                favoriteSuccess = result.favoriteSuccess,
+                coinsAdded = result.coinsAdded
             )
         }
     }

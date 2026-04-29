@@ -19,6 +19,13 @@ val signingProperties = Properties().apply {
 val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val missingReleaseSigningKeys = releaseSigningKeys.filter { signingProperties.getProperty(it).isNullOrBlank() }
 val hasReleaseKeystore = missingReleaseSigningKeys.isEmpty()
+val releaseAbi = providers.gradleProperty("bbttvv.releaseAbi")
+    .orElse("arm64-v8a")
+    .get()
+val allowedReleaseAbis = setOf("arm64-v8a", "armeabi-v7a")
+check(releaseAbi in allowedReleaseAbis) {
+    "Unsupported release ABI '$releaseAbi'. Expected one of: ${allowedReleaseAbis.joinToString()}"
+}
 
 gradle.taskGraph.whenReady {
     fun Task.isBaselineProfileGeneratedReleaseTask(): Boolean {
@@ -71,7 +78,7 @@ android {
             isDebuggable = false
             isProfileable = false 
             ndk {
-                abiFilters += listOf("arm64-v8a")
+                abiFilters += listOf(releaseAbi)
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -201,7 +208,7 @@ dependencies {
     implementation(project(":network-core"))
     implementation(libs.androidx.datastore.preferences)
 
-    // Utilities from BBTTVV 
+    // Utilities from BBTTVV
     implementation(libs.org.brotli.dec)
     implementation(libs.protobuf.javalite)
     implementation(libs.zxing.core)

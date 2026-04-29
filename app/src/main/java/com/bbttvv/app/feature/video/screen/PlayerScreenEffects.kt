@@ -74,6 +74,7 @@ internal fun PlayerScreenEffectHost(
     BackHandler {
         when {
             args.uiState.resumePrompt != null -> viewModel.dismissResumePlaybackPrompt()
+            args.showSponsorSkipNotice -> viewModel.dismissSponsorNotice()
             args.isCommentsPanelVisible && args.commentsUiState.isViewingThread -> viewModel.closeCommentThread()
             args.isCommentsPanelVisible -> presentationState.hideCommentsPanel()
             else -> overlayStateMachine.handleBack(handleOverlayEffect)

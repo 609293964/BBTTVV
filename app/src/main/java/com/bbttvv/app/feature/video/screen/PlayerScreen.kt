@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.screen
 
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,9 +37,11 @@ import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 
 private const val PLAYER_FOCUS_ESCAPE_PRIORITY = 20
+private const val SPONSOR_SKIP_NOTICE_AUTO_DISMISS_MS = 3_000L
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -48,7 +52,6 @@ fun PlayerScreen(
     aid: Long,
     startPositionMs: Long,
     onBack: () -> Unit,
-    onOpenDetail: () -> Unit,
     viewModel: PlayerViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -92,9 +95,8 @@ fun PlayerScreen(
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
     val isDebugOverlayVisible = BuildConfig.DEBUG && overlayUiState.showDebugOverlay
-    val actions = remember(uiState.audioOptions, uiState.videoCodecOptions) {
+    val actions = remember {
         buildPlayerActions(
-            uiState = uiState,
             isDebugBuild = BuildConfig.DEBUG,
         )
     }
@@ -158,7 +160,6 @@ fun PlayerScreen(
         scope = scope,
         exitTrace = exitTrace,
         onExitPlayer = onBack,
-        onOpenDetail = onOpenDetail,
     )
     val latestHandleOverlayEffect = rememberUpdatedState(handleOverlayEffect)
     val latestUiState = rememberUpdatedState(uiState)
@@ -179,6 +180,21 @@ fun PlayerScreen(
         pauseForSeekScrub = viewModel::pauseForSeekScrub,
         onEffect = handleOverlayEffect,
     )
+    val handleSponsorSkipNoticeKey = remember(showSponsorSkipNotice, viewModel) {
+        { event: KeyEvent ->
+            handleSponsorSkipNoticeKeyEvent(
+                event = event,
+                showSponsorSkipNotice = showSponsorSkipNotice,
+                onSkipSponsor = viewModel::skipSponsor,
+                onDismissSponsorNotice = viewModel::dismissSponsorNotice,
+            )
+        }
+    }
+    val handlePlayerKey = remember(handleOverlayKey, handleSponsorSkipNoticeKey) {
+        { event: KeyEvent ->
+            handleSponsorSkipNoticeKey(event) || handleOverlayKey(event)
+        }
+    }
     val useRealtimePlaybackState = overlayUiState.overlayMode == PlayerOverlayMode.FullControls ||
         (danmakuPayload != null && isDanmakuEnabled) ||
         isDebugOverlayVisible
@@ -196,6 +212,11 @@ fun PlayerScreen(
     val isCommentsPanelVisible = presentationState.isCommentsPanelVisible
     val danmakuConfig = remember(presentationState.danmakuSettings) {
         presentationState.danmakuSettings.toEngineConfig()
+    }
+    LaunchedEffect(showSponsorSkipNotice, currentSponsorSegment?.UUID) {
+        if (!showSponsorSkipNotice) return@LaunchedEffect
+        delay(SPONSOR_SKIP_NOTICE_AUTO_DISMISS_MS)
+        viewModel.dismissSponsorNotice()
     }
 
     if (uiState.resumePrompt == null) {
@@ -254,13 +275,16 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .playerBackdropSource(visualEffectsState),
+            .playerBackdropSource(visualEffectsState)
+            .onPreviewKeyEvent { keyEvent ->
+                handleSponsorSkipNoticeKey(keyEvent.nativeKeyEvent)
+            },
     ) {
         PlayerSurfaceHost(
             exoPlayer = exoPlayer,
             keepScreenOn = playbackState.isPlaybackActive,
             overlayMode = overlayUiState.overlayMode,
-            onHiddenOverlayKey = handleOverlayKey,
+            onHiddenOverlayKey = handlePlayerKey,
             onViewAvailable = { playerViewRef = it },
             onPlayerSurfaceFocusNeeded = {
                 playerFocusCoordinator.requestFocus(PlayerFocusIntent.FocusPlayerSurface)
@@ -293,7 +317,7 @@ fun PlayerScreen(
             actionFocusRequesters = focusBindings.actionFocusRequesters,
             panelFocusRequesters = focusBindings.panelFocusRequesters,
             commentsPanelPrimaryFocusRequester = focusBindings.commentsPanelPrimaryFocusRequester,
-            onOverlayKey = handleOverlayKey,
+            onOverlayKey = handlePlayerKey,
             onToggleCommentSort = viewModel::toggleCommentSort,
             onRetryComments = viewModel::refreshComments,
             onLoadMoreComments = viewModel::loadMoreComments,
