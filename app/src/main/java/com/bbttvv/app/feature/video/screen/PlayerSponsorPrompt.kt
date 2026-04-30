@@ -140,6 +140,18 @@ internal fun BoxScope.PlayerTransientOverlayMessages(
                 ),
         )
     }
+
+    uiState.autoNextPrompt?.let { prompt ->
+        OverlayMessage(
+            text = "${prompt.subtitle}：${prompt.title}",
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = PlayerLayoutTokens.sponsorNoticeBottomPadding,
+                    bottom = PlayerLayoutTokens.sponsorNoticeBottomPadding,
+                ),
+        )
+    }
 }
 
 @Composable

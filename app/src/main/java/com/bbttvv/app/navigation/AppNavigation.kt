@@ -123,6 +123,9 @@ fun AppNavigation() {
                 onVideoFocusRestored = { restoredKey ->
                     navigationState.markHomeVideoFocusRestored(restoredKey)
                 },
+                onCancelVideoFocusRestore = {
+                    navigationState.cancelHomeVideoFocusRestore()
+                },
                 onTabSelected = { targetTab ->
                     navigationState.switchHomeTab(targetTab.index)
                 },

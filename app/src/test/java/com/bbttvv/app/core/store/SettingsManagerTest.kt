@@ -51,4 +51,37 @@ class SettingsManagerTest {
         assertEquals(false, SettingsManager.DynamicPageDisplayMode.NONE.showLive)
         assertEquals(false, SettingsManager.DynamicPageDisplayMode.NONE.showFollowUpdates)
     }
+
+    @Test
+    fun `player playback end action falls back to none`() {
+        assertEquals(
+            SettingsManager.PlayerPlaybackEndAction.NONE,
+            SettingsManager.PlayerPlaybackEndAction.fromValue(null)
+        )
+        assertEquals(
+            SettingsManager.PlayerPlaybackEndAction.NONE,
+            SettingsManager.PlayerPlaybackEndAction.fromValue("unexpected")
+        )
+    }
+
+    @Test
+    fun `player playback end action values stay stable`() {
+        assertEquals("none", SettingsManager.PlayerPlaybackEndAction.NONE.value)
+        assertEquals("auto_next", SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT.value)
+        assertEquals("loop_one", SettingsManager.PlayerPlaybackEndAction.LOOP_ONE.value)
+        assertEquals("return", SettingsManager.PlayerPlaybackEndAction.RETURN.value)
+    }
+
+    @Test
+    fun `player playback end action order matches settings cycling`() {
+        assertEquals(
+            listOf(
+                SettingsManager.PlayerPlaybackEndAction.NONE,
+                SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT,
+                SettingsManager.PlayerPlaybackEndAction.LOOP_ONE,
+                SettingsManager.PlayerPlaybackEndAction.RETURN,
+            ),
+            SettingsManager.PlayerPlaybackEndAction.entries.toList()
+        )
+    }
 }

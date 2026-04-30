@@ -48,6 +48,8 @@ internal fun TodayWatchScreen(
     onVideoFocused: (VideoItem) -> Unit,
     onContentRowFocused: (Int) -> Unit,
     focusCoordinator: HomeFocusCoordinator,
+    topBarHeightPx: Int = 0,
+    collapsingHeaderState: HomeCollapsingHeaderState = rememberHomeCollapsingHeaderState(),
     modifier: Modifier = Modifier
 ) {
     val previewVideos = remember(plan.videoQueue, config.queuePreviewLimit) {
@@ -94,55 +96,71 @@ internal fun TodayWatchScreen(
         }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize()
-    ) {
-        HomeSecondaryTabRow(
-            tabs = modeLabels,
-            selectedIndex = selectedModeIndex,
-            onTabSelected = { index -> modes.getOrNull(index)?.let(onModeActivated) },
-            onSelectedTabConfirmed = { index -> modes.getOrNull(index)?.let(onModeActivated) },
-            onTabFocused = { onContentRowFocused(0) },
-            itemFocusRequesters = modeFocusRequesters,
-            onDpadUp = { focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.TODAY_WATCH) },
-            onDpadDown = {
-                focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.TODAY_WATCH)
-            },
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp)
-        )
+    HomeCollapsingHeaderGrid(
+        topBarHeightPx = topBarHeightPx,
+        state = collapsingHeaderState,
+        modifier = modifier.fillMaxSize(),
+        localHeader = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HomeSecondaryTabRow(
+                    tabs = modeLabels,
+                    selectedIndex = selectedModeIndex,
+                    onTabSelected = { index -> modes.getOrNull(index)?.let(onModeActivated) },
+                    onSelectedTabConfirmed = { index -> modes.getOrNull(index)?.let(onModeActivated) },
+                    onTabFocused = {
+                        collapsingHeaderState.reset()
+                        onContentRowFocused(0)
+                    },
+                    itemFocusRequesters = modeFocusRequesters,
+                    onDpadUp = {
+                        collapsingHeaderState.reset()
+                        focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.TODAY_WATCH)
+                    },
+                    onDpadDown = {
+                        focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.TODAY_WATCH)
+                    },
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                )
 
-        if (config.showUpRank && plan.upRanks.isNotEmpty()) {
-            TodayWatchUpSummaryRow(
-                plan = plan,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                        end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                        bottom = 14.dp
+                if (config.showUpRank && plan.upRanks.isNotEmpty()) {
+                    TodayWatchUpSummaryRow(
+                        plan = plan,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                start = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                                end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                                bottom = 14.dp
+                            )
                     )
-            )
+                }
+            }
         }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
+    ) { topPadding, onScrollOffset ->
+        Box(modifier = Modifier.fillMaxSize()) {
             when {
                 previewVideos.isEmpty() && isLoading -> {
-                    TodayWatchStatus("正在生成推荐单...")
+                    TodayWatchStatus(
+                        text = "正在生成推荐单...",
+                        modifier = Modifier.padding(top = topPadding)
+                    )
                 }
 
                 previewVideos.isEmpty() && !errorMessage.isNullOrBlank() -> {
-                    TodayWatchStatus(errorMessage)
+                    TodayWatchStatus(
+                        text = errorMessage,
+                        modifier = Modifier.padding(top = topPadding)
+                    )
                 }
 
                 previewVideos.isEmpty() -> {
-                    TodayWatchStatus("暂时没有可展示的推荐单")
+                    TodayWatchStatus(
+                        text = "暂时没有可展示的推荐单",
+                        modifier = Modifier.padding(top = topPadding)
+                    )
                 }
 
                 else -> {
@@ -151,7 +169,7 @@ internal fun TodayWatchScreen(
                         contentPadding = PaddingValues(
                             start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                             end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                            top = AppTopBarDefaults.HeaderContentTopPadding,
+                            top = topPadding + AppTopBarDefaults.HeaderContentTopPadding,
                             bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
                         ),
                         modifier = Modifier.fillMaxSize(),
@@ -159,11 +177,19 @@ internal fun TodayWatchScreen(
                         focusState = gridFocusState,
                         focusCoordinator = focusCoordinator,
                         focusTab = AppTopLevelTab.TODAY_WATCH,
+                        allowChildDrawingOutsideBounds = false,
+                        onVerticalScrollOffsetChanged = onScrollOffset,
                         onFocusedRowChanged = onContentRowFocused,
                         onTopRowDpadUp = {
+                            collapsingHeaderState.reset()
+                            gridFocusState.resetRememberedFocusToTopForTopBarReturn()
                             focusCoordinator.handleGridTopEdge(AppTopLevelTab.TODAY_WATCH)
                         },
-                        onBackToTopBar = { focusCoordinator.handleContentWantsTopBar() },
+                        onBackToTopBar = {
+                            collapsingHeaderState.reset()
+                            gridFocusState.resetRememberedFocusToTopForTopBarReturn()
+                            focusCoordinator.handleContentWantsTopBar()
+                        },
                         supportingText = if (config.showReasonHint) {
                             { video ->
                                 plan.explanationByBvid[video.bvid].orEmpty().ifBlank {
@@ -212,9 +238,12 @@ internal fun TodayWatchScreen(
 }
 
 @Composable
-private fun TodayWatchStatus(text: String) {
+private fun TodayWatchStatus(
+    text: String,
+    modifier: Modifier = Modifier
+) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Text(

@@ -56,6 +56,12 @@ data class ResumePlaybackPrompt(
     val isCrossPage: Boolean = false,
 )
 
+data class PlayerAutoNextPrompt(
+    val id: Long,
+    val title: String,
+    val subtitle: String,
+)
+
 enum class PlayerCommentSortMode(val apiMode: Int, val label: String) {
     Hot(apiMode = 3, label = "热度"),
     Time(apiMode = 2, label = "时间"),
@@ -118,4 +124,5 @@ data class PlayerUiState(
     val selectedQualityLabel: String = "",
     val heatmapPoints: List<ProgressHeatmapPoint> = emptyList(),
     val resumePrompt: ResumePlaybackPrompt? = null,
+    val autoNextPrompt: PlayerAutoNextPrompt? = null,
 )

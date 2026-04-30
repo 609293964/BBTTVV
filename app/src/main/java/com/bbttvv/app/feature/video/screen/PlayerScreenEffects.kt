@@ -18,6 +18,7 @@ import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.util.ScreenUtils
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
+import com.bbttvv.app.feature.video.viewmodel.PlayerEvent
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val CONTROLS_AUTO_HIDE_MS = 3500L
 private const val SIMPLE_SEEK_HIDE_MS = 1200L
+private const val AUTO_NEXT_PROMPT_DELAY_MS = 2_000L
 
 internal data class PlayerScreenSession(
     val bvid: String,
@@ -64,20 +66,36 @@ internal fun PlayerScreenEffectHost(
     playerFocusCoordinator: PlayerFocusCoordinator,
     focusBindings: PlayerScreenFocusBindings,
     handleOverlayEffect: (PlayerOverlayEffect) -> Unit,
+    onExitPlayer: () -> Unit,
     onDebugSnapshotChange: (PlayerDebugSnapshot) -> Unit,
     args: PlayerScreenEffectArgs,
 ) {
     val latestDebugSnapshotChange = rememberUpdatedState(onDebugSnapshotChange)
     val latestExitTrace = rememberUpdatedState(args.exitTrace)
     val latestPlayerView = rememberUpdatedState(args.playerView)
+    val latestOnExitPlayer = rememberUpdatedState(onExitPlayer)
 
     BackHandler {
         when {
             args.uiState.resumePrompt != null -> viewModel.dismissResumePlaybackPrompt()
+            args.uiState.autoNextPrompt != null -> viewModel.cancelAutoNextPrompt()
             args.showSponsorSkipNotice -> viewModel.dismissSponsorNotice()
             args.isCommentsPanelVisible && args.commentsUiState.isViewingThread -> viewModel.closeCommentThread()
             args.isCommentsPanelVisible -> presentationState.hideCommentsPanel()
             else -> overlayStateMachine.handleBack(handleOverlayEffect)
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is PlayerEvent.ExitPlayer -> {
+                    val exitTrace = latestExitTrace.value
+                    exitTrace.start(event.reason)
+                    exitTrace.mark("navigateBack:request")
+                    latestOnExitPlayer.value()
+                }
+            }
         }
     }
 
@@ -131,6 +149,27 @@ internal fun PlayerScreenEffectHost(
         playerView = args.playerView,
     )
 
+    LaunchedEffect(
+        args.uiState.autoNextPrompt?.id,
+        args.uiState.resumePrompt,
+        args.showSponsorSkipNotice,
+        args.overlayUiState.activePanel,
+        args.isCommentsPanelVisible,
+        args.commentsUiState.isViewingThread,
+    ) {
+        val prompt = args.uiState.autoNextPrompt ?: return@LaunchedEffect
+        val isBlocked = args.uiState.resumePrompt != null ||
+            args.showSponsorSkipNotice ||
+            args.overlayUiState.activePanel != null ||
+            args.isCommentsPanelVisible ||
+            args.commentsUiState.isViewingThread
+        if (isBlocked) return@LaunchedEffect
+        delay(AUTO_NEXT_PROMPT_DELAY_MS)
+        if (args.latestUiState.value.autoNextPrompt?.id == prompt.id) {
+            viewModel.confirmAutoNextPrompt(prompt.id)
+        }
+    }
+
     LaunchedEffect(args.session) {
         AppPerformanceTracker.beginSpanOnce("first_playback_open")
         args.bufferingSpeedMeter.reset()
@@ -143,6 +182,13 @@ internal fun PlayerScreenEffectHost(
             cid = args.session.cid,
             startPositionMs = args.session.startPositionMs,
         )
+    }
+
+    LaunchedEffect(args.uiState.info?.bvid, args.uiState.info?.cid) {
+        if (args.uiState.info == null) return@LaunchedEffect
+        overlayStateMachine.resetForNewVideo(handleOverlayEffect)
+        latestDebugSnapshotChange.value(PlayerDebugSnapshot())
+        presentationState.resetForNewVideo()
     }
 
     LaunchedEffect(args.isCommentsPanelVisible, args.uiState.info?.aid) {

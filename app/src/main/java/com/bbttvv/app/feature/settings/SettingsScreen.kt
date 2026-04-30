@@ -172,6 +172,8 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(initialValue = false)
     val playerAutoResumeEnabled by SettingsManager.getPlayerAutoResumeEnabled(context)
         .collectAsStateWithLifecycle(initialValue = true)
+    val playerPlaybackEndAction by SettingsManager.getPlayerPlaybackEndAction(context)
+        .collectAsStateWithLifecycle(initialValue = SettingsManager.PlayerPlaybackEndAction.NONE)
     val videoDetailCommentsEnabled by SettingsManager.getVideoDetailCommentsEnabled(context)
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getVideoDetailCommentsEnabledSync(context)
@@ -181,7 +183,9 @@ fun TvSettingsList(
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val dynamicPageDisplayMode by SettingsManager.getDynamicPageDisplayMode(context)
-        .collectAsStateWithLifecycle(initialValue = SettingsManager.DynamicPageDisplayMode.ALL)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
+        )
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
@@ -293,6 +297,22 @@ fun TvSettingsList(
                         SettingsManager.setPlayerAutoResumeEnabled(
                             context,
                             !playerAutoResumeEnabled
+                        )
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "播放结束后",
+                subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
+                value = playerPlaybackEndAction.label,
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setPlayerPlaybackEndAction(
+                            context,
+                            nextPlayerPlaybackEndAction(playerPlaybackEndAction)
                         )
                     }
                 }
@@ -748,6 +768,28 @@ private fun resolvePlayerCdnDescription(
     return when (preference) {
         SettingsManager.PlayerCdnPreference.BILIVIDEO -> "默认线路，兼容性更稳；遇到卡顿可尝试切到 mcdn。"
         SettingsManager.PlayerCdnPreference.MCDN -> "部分网络可能更快或更慢；若播放异常请切回 bilivideo。"
+    }
+}
+
+private fun nextPlayerPlaybackEndAction(
+    action: SettingsManager.PlayerPlaybackEndAction
+): SettingsManager.PlayerPlaybackEndAction {
+    return when (action) {
+        SettingsManager.PlayerPlaybackEndAction.NONE -> SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT
+        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> SettingsManager.PlayerPlaybackEndAction.LOOP_ONE
+        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> SettingsManager.PlayerPlaybackEndAction.RETURN
+        SettingsManager.PlayerPlaybackEndAction.RETURN -> SettingsManager.PlayerPlaybackEndAction.NONE
+    }
+}
+
+private fun resolvePlayerPlaybackEndActionDescription(
+    action: SettingsManager.PlayerPlaybackEndAction
+): String {
+    return when (action) {
+        SettingsManager.PlayerPlaybackEndAction.NONE -> "播放结束后停留在播放器，按确认键可从头播放。"
+        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> "优先播放下一分P，没有下一分P时播放相关推荐。"
+        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> "当前视频结束后自动从头循环播放。"
+        SettingsManager.PlayerPlaybackEndAction.RETURN -> "播放结束后返回上一页；从详情页进入时会回到详情页。"
     }
 }
 

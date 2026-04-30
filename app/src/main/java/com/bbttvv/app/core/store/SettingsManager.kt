@@ -55,6 +55,22 @@ object SettingsManager {
         }
     }
 
+    enum class PlayerPlaybackEndAction(
+        val value: String,
+        val label: String
+    ) {
+        NONE("none", "什么都不做"),
+        AUTO_NEXT("auto_next", "自动续播"),
+        LOOP_ONE("loop_one", "循环该视频"),
+        RETURN("return", "返回上一页");
+
+        companion object {
+            fun fromValue(value: String?): PlayerPlaybackEndAction {
+                return entries.find { it.value == value } ?: NONE
+            }
+        }
+    }
+
     enum class DynamicPageDisplayMode(
         val value: String,
         val label: String,
@@ -91,6 +107,7 @@ object SettingsManager {
     private const val CACHE_SHOW_ONLINE_COUNT = "show_online_count"
     private const val CACHE_SUBTITLE_AUTO_PREFERENCE = "subtitle_auto_preference"
     private const val CACHE_AUTO_PLAY = "auto_play"
+    private const val CACHE_PLAYER_PLAYBACK_END_ACTION = "player_playback_end_action"
     private const val CACHE_USER_AGENT = "user_agent"
     private const val CACHE_IPV4_ONLY_ENABLED = "ipv4_only_enabled"
     private const val CACHE_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
@@ -116,6 +133,7 @@ object SettingsManager {
     private val keyShowOnlineCount = booleanPreferencesKey(CACHE_SHOW_ONLINE_COUNT)
     private val keySubtitleAutoPreference = stringPreferencesKey(CACHE_SUBTITLE_AUTO_PREFERENCE)
     private val keyAutoPlay = booleanPreferencesKey(CACHE_AUTO_PLAY)
+    private val keyPlayerPlaybackEndAction = stringPreferencesKey(CACHE_PLAYER_PLAYBACK_END_ACTION)
     private val keyUserAgent = stringPreferencesKey(CACHE_USER_AGENT)
     private val keyIpv4OnlyEnabled = booleanPreferencesKey(CACHE_IPV4_ONLY_ENABLED)
     private val keyPlayerAutoResumeEnabled = booleanPreferencesKey(CACHE_PLAYER_AUTO_RESUME_ENABLED)
@@ -252,6 +270,22 @@ object SettingsManager {
             preferences[keyAutoPlay] = enabled
         }
         updateSyncCache(context) { putBoolean(CACHE_AUTO_PLAY, enabled) }
+    }
+
+    fun getPlayerPlaybackEndAction(context: Context): Flow<PlayerPlaybackEndAction> {
+        return context.settingsDataStore.data.map { preferences ->
+            PlayerPlaybackEndAction.fromValue(preferences[keyPlayerPlaybackEndAction])
+        }
+    }
+
+    suspend fun setPlayerPlaybackEndAction(
+        context: Context,
+        action: PlayerPlaybackEndAction
+    ) {
+        updatePreference(context) { preferences ->
+            preferences[keyPlayerPlaybackEndAction] = action.value
+        }
+        updateSyncCache(context) { putString(CACHE_PLAYER_PLAYBACK_END_ACTION, action.value) }
     }
 
     fun getUserAgent(context: Context): Flow<String> {
@@ -494,6 +528,12 @@ object SettingsManager {
 
     fun getPlayerAutoResumeEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_PLAYER_AUTO_RESUME_ENABLED, true)
+    }
+
+    fun getPlayerPlaybackEndActionSync(context: Context): PlayerPlaybackEndAction {
+        return PlayerPlaybackEndAction.fromValue(
+            context.syncPrefs().getString(CACHE_PLAYER_PLAYBACK_END_ACTION, PlayerPlaybackEndAction.NONE.value)
+        )
     }
 
     fun getVideoDetailCommentsEnabledSync(context: Context): Boolean {

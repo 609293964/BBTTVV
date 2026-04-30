@@ -50,12 +50,20 @@ internal fun AppTopBar(
                     return controller.tryRequestFocus(latestFocusTargetTab)
                 }
 
+                override fun tryRequestFocusTab(tab: AppTopLevelTab): Boolean {
+                    return controller.tryRequestFocus(tab)
+                }
+
                 override fun hasFocus(): Boolean {
                     return controller.hasFocus()
                 }
 
                 override fun hasFocusOnRequestedTarget(): Boolean {
                     return controller.hasFocus(latestFocusTargetTab)
+                }
+
+                override fun hasFocusOnTab(tab: AppTopLevelTab): Boolean {
+                    return controller.hasFocus(tab)
                 }
             }
         )

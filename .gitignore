@@ -28,6 +28,7 @@ signing.properties
 
 # Logs, diagnostics, and temporary dumps
 logs/
+tmp/
 *.log
 *.logcat
 *logcat*.txt
@@ -37,6 +38,13 @@ focus-repro-*.txt
 focus-refactor-*.txt
 window_dump*.xml
 *.hprof
+*.tmp
+*.bak
+*.trace
+/emu-*.png
+/screenshot*.png
+/screen-*.png
+/debug-*.png
 
 # OS and editor noise
 .DS_Store

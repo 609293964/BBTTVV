@@ -228,7 +228,7 @@ internal class HomeRecommendGridFocusState {
         restoreFocusAfterPendingScrollToTop = false
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
-        applyPendingScrollToTop()
+        schedulePendingScrollToTop()
     }
 
     fun tryFocusVisibleItem(): Boolean {
@@ -336,6 +336,15 @@ internal class HomeRecommendGridFocusState {
         recycler.scrollToPosition(0)
         if (shouldRestoreFocus) {
             schedulePendingFocusAfterLayout()
+        }
+    }
+
+    private fun schedulePendingScrollToTop() {
+        val recycler = currentRecyclerView() ?: return
+        recycler.post {
+            if (recyclerView === recycler) {
+                applyPendingScrollToTop()
+            }
         }
     }
 

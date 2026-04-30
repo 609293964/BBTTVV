@@ -37,6 +37,7 @@ import com.bbttvv.app.data.repository.CommentRepository
 import com.bbttvv.app.data.repository.PbpHeatmapRepository
 import com.bbttvv.app.data.repository.PlaybackRepository
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
+import com.bbttvv.app.data.repository.VideoDetailRepository
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
 import com.bbttvv.app.feature.video.usecase.PlaybackLoadResult
 import com.bbttvv.app.feature.video.usecase.ResumePlaybackCandidate as RemoteResumePlaybackCandidate
@@ -47,8 +48,11 @@ import com.bbttvv.app.feature.video.videoshot.VideoShotFrame
 import java.net.URI
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -85,7 +89,10 @@ private data class PlaybackRuntimeState(
     val aid: Long = 0L,
     val cid: Long = 0L,
     val source: PlaybackSource? = null,
-)
+) {
+    val sessionKey: String
+        get() = "$bvid:$cid"
+}
 
 private data class HeartbeatRuntimeState(
     val aid: Long = 0L,
@@ -100,6 +107,10 @@ private data class HeartbeatRuntimeState(
 ) {
     val hasSession: Boolean
         get() = bvid.isNotBlank() && cid > 0L
+}
+
+internal sealed interface PlayerEvent {
+    data class ExitPlayer(val reason: String) : PlayerEvent
 }
 
 internal fun normalizePbpHeatmapPoints(
@@ -137,6 +148,8 @@ class PlayerViewModel : BasePlayerViewModel() {
     val playbackState: StateFlow<PlayerPlaybackState> = _playbackState.asStateFlow()
     private val _commentsUiState = MutableStateFlow(PlayerCommentsUiState())
     val commentsUiState: StateFlow<PlayerCommentsUiState> = _commentsUiState.asStateFlow()
+    private val _events = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 1)
+    internal val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
 
     private var playbackRuntime = PlaybackRuntimeState()
     private var playerPollingJob: Job? = null
@@ -144,6 +157,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var videoShotLoadJob: Job? = null
     private var videoShotFrameJob: Job? = null
     private var heatmapLoadJob: Job? = null
+    private var relatedVideosJob: Job? = null
     private var commentsJob: Job? = null
     private var commentRepliesJob: Job? = null
     private var videoShot: VideoShot? = null
@@ -153,6 +167,9 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var lastDanmakuRequestAtMs: Long = 0L
     private var heartbeatJob: Job? = null
     private var heartbeatRuntime = HeartbeatRuntimeState()
+    private var playbackEndHandledSessionKey: String? = null
+    private var autoNextPromptSequence: Long = 0L
+    private var pendingAutoNextTarget: PlayerPlaybackEndTarget? = null
 
     private val _seekPreviewFrame = MutableStateFlow<VideoShotFrame?>(null)
     val seekPreviewFrame: StateFlow<VideoShotFrame?> = _seekPreviewFrame.asStateFlow()
@@ -167,6 +184,11 @@ class PlayerViewModel : BasePlayerViewModel() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             ensureMainThread("Player.Listener.onPlaybackStateChanged")
             refreshPlayerSnapshot()
+            if (playbackState == Player.STATE_ENDED) {
+                handlePlaybackEnded()
+            } else {
+                playbackEndHandledSessionKey = null
+            }
         }
     }
 
@@ -203,8 +225,11 @@ class PlayerViewModel : BasePlayerViewModel() {
 
         commentsJob?.cancel()
         commentRepliesJob?.cancel()
+        relatedVideosJob?.cancel()
         clearProgressHeatmap()
         _commentsUiState.update { PlayerCommentsUiState() }
+        playbackEndHandledSessionKey = null
+        pendingAutoNextTarget = null
 
         playbackRuntime = PlaybackRuntimeState(
             bvid = bvid,
@@ -233,6 +258,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                     errorMessage = null,
                     statusMessage = null,
                     resumePrompt = null,
+                    autoNextPrompt = null,
                 )
             }
 
@@ -345,6 +371,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                         durationMs = result.source.durationMs,
                     )
                     loadOnlineCount(result.info.bvid, result.info.cid)
+                    prefetchRelatedVideosForAutoNextIfNeeded(result.info.bvid)
                 }
             }
         }
@@ -354,6 +381,10 @@ class PlayerViewModel : BasePlayerViewModel() {
     fun togglePlayback() {
         ensureMainThread("togglePlayback")
         val engine = playerEngine ?: return
+        if (exoPlayer?.playbackState == Player.STATE_ENDED) {
+            restartCurrentVideoFromBeginning()
+            return
+        }
         if (engine.isPlaying) engine.pause() else engine.play()
         refreshPlayerSnapshot()
     }
@@ -588,6 +619,26 @@ class PlayerViewModel : BasePlayerViewModel() {
         engine.seekTo(0L)
         engine.playWhenReady = true
         refreshPlayerSnapshot()
+    }
+
+    @MainThread
+    fun cancelAutoNextPrompt() {
+        ensureMainThread("cancelAutoNextPrompt")
+        pendingAutoNextTarget = null
+        _uiState.update { state ->
+            if (state.autoNextPrompt == null) state else state.copy(autoNextPrompt = null)
+        }
+    }
+
+    @MainThread
+    fun confirmAutoNextPrompt(promptId: Long) {
+        ensureMainThread("confirmAutoNextPrompt")
+        val prompt = _uiState.value.autoNextPrompt ?: return
+        if (prompt.id != promptId) return
+        val target = pendingAutoNextTarget ?: return
+        pendingAutoNextTarget = null
+        _uiState.update { it.copy(autoNextPrompt = null) }
+        playPlaybackEndTarget(target)
     }
 
     @MainThread
@@ -933,6 +984,197 @@ class PlayerViewModel : BasePlayerViewModel() {
     override fun onSponsorSkipped(segment: com.bbttvv.app.data.model.response.SponsorSegment) {
         ensureMainThread("onSponsorSkipped")
         _uiState.update { it.copy(statusMessage = "已跳过片段") }
+    }
+
+    @MainThread
+    private fun handlePlaybackEnded() {
+        ensureMainThread("handlePlaybackEnded")
+        val runtime = playbackRuntime
+        if (runtime.bvid.isBlank() || runtime.cid <= 0L) return
+        val sessionKey = runtime.sessionKey
+        if (playbackEndHandledSessionKey == sessionKey) return
+        playbackEndHandledSessionKey = sessionKey
+        pendingAutoNextTarget = null
+        _uiState.update { it.copy(autoNextPrompt = null) }
+
+        finishPlaybackSession(reason = "ended")
+
+        val action = resolvePlaybackEndAction()
+        val state = _uiState.value
+        if (
+            action == SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT &&
+            !hasNextPageTarget(state) &&
+            state.relatedVideos.isEmpty()
+        ) {
+            resolveAutoNextAfterRelatedVideosLoad(
+                sessionKey = sessionKey,
+                bvid = runtime.bvid,
+            )
+            return
+        }
+
+        val target = resolvePlayerPlaybackEndTarget(
+            action = action,
+            currentBvid = runtime.bvid,
+            pages = state.pages,
+            currentPageIndex = state.currentPageIndex,
+            relatedVideos = state.relatedVideos,
+        )
+        handlePlaybackEndTarget(target)
+    }
+
+    @MainThread
+    private fun handlePlaybackEndTarget(target: PlayerPlaybackEndTarget) {
+        ensureMainThread("handlePlaybackEndTarget")
+        when (target) {
+            PlayerPlaybackEndTarget.None -> Unit
+            PlayerPlaybackEndTarget.LoopOne -> restartCurrentVideoFromBeginning()
+            PlayerPlaybackEndTarget.Return -> requestExitPlayer(reason = "playback_ended")
+            is PlayerPlaybackEndTarget.PageTarget,
+            is PlayerPlaybackEndTarget.RelatedTarget -> showAutoNextPrompt(target)
+        }
+    }
+
+    @MainThread
+    private fun showAutoNextPrompt(target: PlayerPlaybackEndTarget) {
+        ensureMainThread("showAutoNextPrompt")
+        val prompt = buildPlayerAutoNextPrompt(
+            promptId = ++autoNextPromptSequence,
+            target = target,
+        ) ?: return
+        pendingAutoNextTarget = target
+        _uiState.update {
+            it.copy(
+                autoNextPrompt = prompt,
+                statusMessage = null,
+            )
+        }
+    }
+
+    @MainThread
+    private fun playPlaybackEndTarget(target: PlayerPlaybackEndTarget) {
+        ensureMainThread("playPlaybackEndTarget")
+        when (target) {
+            PlayerPlaybackEndTarget.None -> Unit
+            PlayerPlaybackEndTarget.LoopOne -> restartCurrentVideoFromBeginning()
+            PlayerPlaybackEndTarget.Return -> requestExitPlayer(reason = "playback_ended")
+            is PlayerPlaybackEndTarget.PageTarget -> {
+                val info = _uiState.value.info ?: return requestExitPlayer(reason = "auto_next_missing_info")
+                loadVideo(
+                    bvid = info.bvid,
+                    aid = info.aid,
+                    cid = target.page.cid,
+                    force = true,
+                )
+            }
+
+            is PlayerPlaybackEndTarget.RelatedTarget -> {
+                val video = target.video
+                loadVideo(
+                    bvid = video.bvid,
+                    aid = video.aid,
+                    cid = video.cid,
+                    force = true,
+                )
+            }
+        }
+    }
+
+    @MainThread
+    private fun restartCurrentVideoFromBeginning() {
+        ensureMainThread("restartCurrentVideoFromBeginning")
+        val engine = playerEngine ?: return
+        val info = _uiState.value.info
+        pendingAutoNextTarget = null
+        _uiState.update { it.copy(autoNextPrompt = null) }
+        engine.seekTo(0L)
+        engine.playWhenReady = true
+        if (info != null && info.cid > 0L) {
+            beginHeartbeatSession(
+                aid = info.aid,
+                bvid = info.bvid,
+                cid = info.cid,
+                creatorMid = info.owner.mid,
+                creatorName = info.owner.name,
+            )
+        }
+        refreshPlayerSnapshot()
+    }
+
+    private fun resolveAutoNextAfterRelatedVideosLoad(
+        sessionKey: String,
+        bvid: String,
+    ) {
+        relatedVideosJob?.cancel()
+        relatedVideosJob = viewModelScope.launch {
+            val relatedVideos = loadRelatedVideosForAutoNext(bvid)
+            if (
+                playbackRuntime.sessionKey != sessionKey ||
+                _playbackState.value.playerState != Player.STATE_ENDED ||
+                playbackEndHandledSessionKey != sessionKey
+            ) {
+                return@launch
+            }
+            val state = _uiState.value
+            val target = resolvePlayerPlaybackEndTarget(
+                action = SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT,
+                currentBvid = bvid,
+                pages = state.pages,
+                currentPageIndex = state.currentPageIndex,
+                relatedVideos = relatedVideos,
+            )
+            handlePlaybackEndTarget(target)
+        }
+    }
+
+    private fun prefetchRelatedVideosForAutoNextIfNeeded(bvid: String) {
+        val appContext = NetworkModule.appContext ?: return
+        if (SettingsManager.getPlayerPlaybackEndActionSync(appContext) != SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT) {
+            return
+        }
+        if (bvid.isBlank() || hasNextPageTarget(_uiState.value)) return
+        relatedVideosJob?.cancel()
+        relatedVideosJob = viewModelScope.launch {
+            loadRelatedVideosForAutoNext(bvid)
+        }
+    }
+
+    private suspend fun loadRelatedVideosForAutoNext(bvid: String): List<RelatedVideo> {
+        val cacheKey = bvid.trim()
+        if (cacheKey.isBlank()) return emptyList()
+        val cached = VideoDetailRepository.getCachedRelatedVideos(cacheKey).orEmpty()
+        if (cached.isNotEmpty()) {
+            updateRelatedVideosForCurrentSession(cacheKey, cached)
+            return cached
+        }
+        val relatedVideos = VideoDetailRepository.getRelatedVideos(cacheKey)
+        updateRelatedVideosForCurrentSession(cacheKey, relatedVideos)
+        return relatedVideos
+    }
+
+    private fun updateRelatedVideosForCurrentSession(
+        bvid: String,
+        relatedVideos: List<RelatedVideo>,
+    ) {
+        if (playbackRuntime.bvid != bvid || relatedVideos.isEmpty()) return
+        _uiState.update { it.copy(relatedVideos = relatedVideos) }
+    }
+
+    private fun hasNextPageTarget(state: PlayerUiState): Boolean {
+        return state.pages.getOrNull(state.currentPageIndex + 1)?.cid?.let { it > 0L } == true
+    }
+
+    private fun resolvePlaybackEndAction(): SettingsManager.PlayerPlaybackEndAction {
+        val appContext = NetworkModule.appContext ?: return SettingsManager.PlayerPlaybackEndAction.NONE
+        return SettingsManager.getPlayerPlaybackEndActionSync(appContext)
+    }
+
+    private fun requestExitPlayer(reason: String) {
+        if (!_events.tryEmit(PlayerEvent.ExitPlayer(reason))) {
+            viewModelScope.launch {
+                _events.emit(PlayerEvent.ExitPlayer(reason))
+            }
+        }
     }
 
     private suspend fun resolveInitialPreferredQuality(): Int {

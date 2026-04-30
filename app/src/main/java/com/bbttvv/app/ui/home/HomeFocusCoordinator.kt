@@ -19,6 +19,10 @@ internal enum class HomeFocusRegion {
 
 internal sealed class HomeFocusIntent {
     data object FocusTopBar : HomeFocusIntent()
+    data class FocusTopBarTab(
+        val tab: AppTopLevelTab,
+    ) : HomeFocusIntent()
+
     data object FocusSelectedContent : HomeFocusIntent()
     data class FocusRegion(
         val tab: AppTopLevelTab,
@@ -34,6 +38,8 @@ internal sealed class HomeFocusIntent {
 internal interface HomeFocusTarget {
     fun tryRequestFocus(): Boolean
 
+    fun tryRequestFocusTab(tab: AppTopLevelTab): Boolean = tryRequestFocus()
+
     fun tryRequestFocusKey(key: String): Boolean = false
 
     fun tryRequestFocusKeyOrFallback(key: String): Boolean = tryRequestFocusKey(key)
@@ -41,6 +47,8 @@ internal interface HomeFocusTarget {
     fun hasFocus(): Boolean = false
 
     fun hasFocusOnRequestedTarget(): Boolean = hasFocus()
+
+    fun hasFocusOnTab(tab: AppTopLevelTab): Boolean = hasFocusOnRequestedTarget()
 
     fun hasRememberedFocus(): Boolean = false
 
@@ -87,9 +95,12 @@ internal class HomeFocusCoordinator(
         this.scene = scene
     }
 
-    fun prepareForContentFocus(scene: HomeFocusScene = this.scene) {
+    fun prepareForContentFocus(
+        scene: HomeFocusScene = this.scene,
+        keepTopBarVisible: Boolean = false,
+    ) {
         this.scene = scene
-        isTopBarVisible = false
+        isTopBarVisible = keepTopBarVisible
         isContentFocused = true
     }
 
@@ -97,12 +108,22 @@ internal class HomeFocusCoordinator(
         clearSelectedContentVisualState()
         isTopBarVisible = true
         isContentFocused = false
-        if (pendingIntent == HomeFocusIntent.FocusTopBar) {
-            if (topBarTarget?.hasFocusOnRequestedTarget() == true) {
-                pendingIntent = null
-            } else {
-                drainPendingFocus()
+        when (val intent = pendingIntent) {
+            HomeFocusIntent.FocusTopBar -> {
+                if (topBarTarget?.hasFocusOnRequestedTarget() == true) {
+                    pendingIntent = null
+                } else {
+                    drainPendingFocus()
+                }
             }
+            is HomeFocusIntent.FocusTopBarTab -> {
+                if (topBarTarget?.hasFocusOnTab(intent.tab) == true) {
+                    pendingIntent = null
+                } else {
+                    drainPendingFocus()
+                }
+            }
+            else -> Unit
         }
     }
 
@@ -132,9 +153,22 @@ internal class HomeFocusCoordinator(
         enqueueFocusIntent(HomeFocusIntent.FocusTopBar)
     }
 
+    fun requestTopBarTabFocusAfterSwitch(
+        tab: AppTopLevelTab,
+        scene: HomeFocusScene = HomeFocusScene.TabSwitch,
+    ) {
+        this.scene = scene
+        clearSelectedContentVisualState()
+        isTopBarVisible = true
+        isContentFocused = false
+        pendingIntent = HomeFocusIntent.FocusTopBarTab(tab)
+    }
+
     fun requestSelectedContentFocus() {
         if (!canCoordinateContent(selectedHomeTab)) return
-        prepareForContentFocus()
+        prepareForContentFocus(
+            keepTopBarVisible = shouldKeepTopBarVisibleWhileEnteringContent(selectedHomeTab)
+        )
         enqueueFocusIntent(HomeFocusIntent.FocusSelectedContent)
     }
 
@@ -273,6 +307,7 @@ internal class HomeFocusCoordinator(
         val intent = pendingIntent ?: return false
         val focused = when (intent) {
             HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
+            is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
             HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)
             is HomeFocusIntent.FocusRegion -> tryRequestRegionFocus(intent.tab, intent.region)
             is HomeFocusIntent.RestoreVideoKey -> tryRestoreVideoKey(intent)
@@ -300,9 +335,14 @@ internal class HomeFocusCoordinator(
         }
     }
 
-    private fun tryRequestTopBarFocus(): Boolean {
+    private fun tryRequestTopBarFocus(tab: AppTopLevelTab? = null): Boolean {
         val target = topBarTarget ?: return false
-        if (!target.tryRequestFocus()) return false
+        val focused = if (tab == null) {
+            target.tryRequestFocus()
+        } else {
+            target.tryRequestFocusTab(tab)
+        }
+        if (!focused) return false
         isTopBarVisible = true
         isContentFocused = false
         return true
@@ -423,5 +463,9 @@ internal class HomeFocusCoordinator(
             tab == AppTopLevelTab.WATCH_LATER ||
             tab == AppTopLevelTab.TODAY_WATCH ||
             tab == AppTopLevelTab.PROFILE
+    }
+
+    private fun shouldKeepTopBarVisibleWhileEnteringContent(tab: AppTopLevelTab): Boolean {
+        return tab == AppTopLevelTab.PROFILE
     }
 }

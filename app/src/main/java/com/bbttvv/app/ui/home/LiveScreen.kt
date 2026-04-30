@@ -1,7 +1,6 @@
 package com.bbttvv.app.ui.home
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,7 +34,9 @@ internal fun LiveScreen(
     onContentRowFocused: (Int) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator,
     gridColumnCount: Int = 4,
-    focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() }
+    focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
+    topBarHeightPx: Int = 0,
+    collapsingHeaderState: HomeCollapsingHeaderState = rememberHomeCollapsingHeaderState()
 ) {
     val viewModel: LiveViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -79,30 +80,39 @@ internal fun LiveScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        HomeSecondaryTabRow(
-            tabs = uiState.categories.map { it.label },
-            selectedIndex = uiState.selectedCategoryIndex,
-            onTabSelected = viewModel::selectCategory,
-            onSelectedTabConfirmed = viewModel::selectCategory,
-            onTabFocused = { onContentRowFocused(0) },
-            itemFocusRequesters = categoryFocusRequesters,
-            onDpadUp = {
-                focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.LIVE)
-            },
-            onDpadDown = {
-                focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.LIVE)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp)
-        )
-
+    HomeCollapsingHeaderGrid(
+        topBarHeightPx = topBarHeightPx,
+        state = collapsingHeaderState,
+        modifier = Modifier.fillMaxSize(),
+        localHeader = {
+            HomeSecondaryTabRow(
+                tabs = uiState.categories.map { it.label },
+                selectedIndex = uiState.selectedCategoryIndex,
+                onTabSelected = viewModel::selectCategory,
+                onSelectedTabConfirmed = viewModel::selectCategory,
+                onTabFocused = {
+                    collapsingHeaderState.reset()
+                    onContentRowFocused(0)
+                },
+                itemFocusRequesters = categoryFocusRequesters,
+                onDpadUp = {
+                    collapsingHeaderState.reset()
+                    focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.LIVE)
+                },
+                onDpadDown = {
+                    focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.LIVE)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+            )
+        }
+    ) { topPadding, onScrollOffset ->
         if (uiState.liveRooms.isEmpty() && uiState.isLoading) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                    .fillMaxSize()
+                    .padding(top = topPadding),
                 contentAlignment = Alignment.Center
             ) {
                 Text(text = "正在加载直播列表...", color = MaterialTheme.colorScheme.onBackground)
@@ -110,8 +120,8 @@ internal fun LiveScreen(
         } else if (uiState.isError && uiState.liveRooms.isEmpty()) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                    .fillMaxSize()
+                    .padding(top = topPadding),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -128,25 +138,31 @@ internal fun LiveScreen(
                 contentPadding = PaddingValues(
                     start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                     end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    top = 8.dp,
+                    top = topPadding + 8.dp,
                     bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
                 ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 gridColumnCount = gridColumnCount,
                 focusState = focusState,
                 focusCoordinator = focusCoordinator,
                 focusTab = AppTopLevelTab.LIVE,
                 scrollResetKey = uiState.selectedCategoryIndex,
+                allowChildDrawingOutsideBounds = false,
+                onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },
                 onLoadMore = viewModel::loadMore,
                 onMenuRefresh = viewModel::refresh,
                 onFocusedRowChanged = onContentRowFocused,
                 onTopRowDpadUp = {
+                    collapsingHeaderState.reset()
+                    focusState.resetRememberedFocusToTopForTopBarReturn()
                     focusCoordinator.handleGridTopEdge(AppTopLevelTab.LIVE)
                 },
-                onBackToTopBar = { focusCoordinator.handleContentWantsTopBar() },
+                onBackToTopBar = {
+                    collapsingHeaderState.reset()
+                    focusState.resetRememberedFocusToTopForTopBarReturn()
+                    focusCoordinator.handleContentWantsTopBar()
+                },
                 onVideoClick = { videoItem, focusKey -> onLiveClick(videoItem.id, focusKey) }
             )
         }

@@ -130,6 +130,10 @@ class DetailReturnState internal constructor(
         }
     }
 
+    fun cancelHomeVideoFocusRestore() {
+        clearHomeVideoFocusRestore()
+    }
+
     fun prepareForDirectDetailOpen() {
         clearHomeVideoFocusRestore()
         clearDetailCommentFocusRestore()
@@ -289,6 +293,10 @@ class AppNavigationState internal constructor(
 
     fun markHomeVideoFocusRestored(restoredKey: String) {
         detailReturnState.markHomeVideoFocusRestored(restoredKey)
+    }
+
+    fun cancelHomeVideoFocusRestore() {
+        detailReturnState.cancelHomeVideoFocusRestore()
     }
 
     fun switchHomeTab(targetTabIndex: Int) {

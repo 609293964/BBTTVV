@@ -41,6 +41,8 @@ internal fun VideoCardRecyclerGrid(
     focusTab: AppTopLevelTab? = null,
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     scrollResetKey: Any? = null,
+    allowChildDrawingOutsideBounds: Boolean = true,
+    onVerticalScrollOffsetChanged: (Int) -> Unit = {},
     showHistoryProgressOnly: Boolean = false,
     showDanmakuCount: Boolean = true,
     supportingText: ((VideoItem) -> String?)? = null,
@@ -72,6 +74,7 @@ internal fun VideoCardRecyclerGrid(
     val latestOnVideoMenu by rememberUpdatedState(onVideoMenu)
     val latestOnVideoLongClick by rememberUpdatedState(onVideoLongClick)
     val latestSupportingText by rememberUpdatedState(supportingText)
+    val latestOnVerticalScrollOffsetChanged by rememberUpdatedState(onVerticalScrollOffsetChanged)
     val latestOnVideoClick by rememberUpdatedState(onVideoClick)
     val latestFocusCoordinator by rememberUpdatedState(focusCoordinator)
     val latestFocusTab by rememberUpdatedState(focusTab)
@@ -283,8 +286,7 @@ internal fun VideoCardRecyclerGrid(
                 focusState.attach(this)
                 dpadGridController.attach(this)
                 configureVideoCardRecycler()
-                clipToPadding = false
-                clipChildren = false
+                applyVideoCardRecyclerOverflowPolicy(allowChildDrawingOutsideBounds)
                 setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
                 layoutManager = GridLayoutManager(context, gridColumnCount)
                 setOnFocusChangeListener { _, hasFocus ->
@@ -293,6 +295,7 @@ internal fun VideoCardRecyclerGrid(
 
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
                         if (dy <= 0) return
                         val manager = recyclerView.layoutManager as? GridLayoutManager ?: return
                         val totalItemCount = manager.itemCount
@@ -348,6 +351,7 @@ internal fun VideoCardRecyclerGrid(
                     submitList(items) {
                         dpadGridController.onItemsCommitted()
                         focusState.onItemsCommitted()
+                        latestOnVerticalScrollOffsetChanged(computeVerticalScrollOffset())
                         latestFocusCoordinator?.drainPendingFocus()
                     }
                 }
@@ -357,8 +361,7 @@ internal fun VideoCardRecyclerGrid(
             recyclerViewRef.value = recyclerView
             focusState.attach(recyclerView)
             dpadGridController.attach(recyclerView)
-            recyclerView.clipToPadding = false
-            recyclerView.clipChildren = false
+            recyclerView.applyVideoCardRecyclerOverflowPolicy(allowChildDrawingOutsideBounds)
             recyclerView.setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
             val manager = recyclerView.layoutManager as? GridLayoutManager
             if (manager == null) {
@@ -378,6 +381,7 @@ internal fun VideoCardRecyclerGrid(
                 adapter.submitList(items) {
                     dpadGridController.onItemsCommitted()
                     focusState.onItemsCommitted()
+                    latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
                     latestFocusCoordinator?.drainPendingFocus()
                 }
             }
@@ -567,6 +571,13 @@ private fun RecyclerView.configureVideoCardRecycler() {
     defaultFocusHighlightEnabled = false
     itemAnimator = null
     installChildFocusParkingOnDetach()
+}
+
+private fun RecyclerView.applyVideoCardRecyclerOverflowPolicy(
+    allowChildDrawingOutsideBounds: Boolean,
+) {
+    clipToPadding = false
+    clipChildren = !allowChildDrawingOutsideBounds
 }
 
 private val GridNavigationKeyCodes = setOf(

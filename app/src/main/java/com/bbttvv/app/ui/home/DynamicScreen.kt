@@ -34,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
@@ -69,8 +70,6 @@ import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 
-import androidx.compose.ui.graphics.graphicsLayer
-
 private val LiveCardShape = RoundedCornerShape(8.dp)
 private val LiveTagShape = RoundedCornerShape(4.dp)
 private val FollowUpdateCardShape = RoundedCornerShape(8.dp)
@@ -85,12 +84,16 @@ internal fun DynamicScreen(
     onContentRowFocused: (Int) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator,
     gridColumnCount: Int = 4,
-    focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() }
+    focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
+    topBarHeightPx: Int = 0,
+    collapsingHeaderState: HomeCollapsingHeaderState = rememberHomeCollapsingHeaderState()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val displayMode by SettingsManager.getDynamicPageDisplayMode(context)
-        .collectAsStateWithLifecycle(initialValue = SettingsManager.DynamicPageDisplayMode.ALL)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
+        )
     val lifecycleOwner = LocalLifecycleOwner.current
     val visibleLiveUsers = if (displayMode.showLive) uiState.liveUsers else emptyList()
     val visibleFollowUpdateItems = if (displayMode.showFollowUpdates) {
@@ -280,125 +283,69 @@ internal fun DynamicScreen(
             }
         }
 
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            partialNoticeMessage?.let { notice ->
-                DynamicNoticeBanner(
-                    message = notice,
-                    modifier = Modifier.padding(
-                        start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
-                        end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
-                        top = contentPadding.calculateTopPadding(),
-                        bottom = 12.dp
-                    )
-                )
-            }
+        val hasHeaderContent = partialNoticeMessage != null || hasLiveRow || hasFollowUpdateRow
 
-            // -- Live Users Row --
-            if (visibleLiveUsers.isNotEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    contentPadding = PaddingValues(
-                        start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
-                        end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
-                        top = if (partialNoticeMessage == null) contentPadding.calculateTopPadding() else 0.dp,
-                        bottom = 12.dp
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusGroup()
-                ) {
-                    itemsIndexed(
-                        items = visibleLiveUsers,
-                        key = { _, live -> live.roomid },
-                        contentType = { _, _ -> "dynamic_live_user" }
-                    ) { index, live ->
-                        LiveAvatarCard(
-                            live = live,
-                            onClick = { onLiveClick(live.roomid) },
-                            focusRequester = liveUserFocusRequesters.getOrNull(index),
-                            onFocus = {
-                                lastFocusedLiveUserIndex = index
-                                onContentRowFocused(0)
-                                focusCoordinator.onContentRegionFocused(
-                                    AppTopLevelTab.DYNAMIC,
-                                    HomeFocusRegion.DynamicLiveUsers
-                                )
-                            },
-                            onDpadDown = {
-                                focusCoordinator.handleDynamicLiveUsersDpadDown()
-                            },
-                            modifier = Modifier.requestTopBarOnDpadUp(
-                                enabled = true,
-                                requestTopBarFocus = {
-                                    focusCoordinator.handleContentWantsTopBar()
-                                }
+        LaunchedEffect(hasHeaderContent) {
+            if (!hasHeaderContent) {
+                collapsingHeaderState.reset()
+            }
+        }
+
+        HomeCollapsingHeaderGrid(
+            topBarHeightPx = topBarHeightPx,
+            state = collapsingHeaderState,
+            modifier = Modifier.fillMaxSize(),
+            localHeader = if (hasHeaderContent) {
+                {
+                    DynamicHeaderRows(
+                        partialNoticeMessage = partialNoticeMessage,
+                        visibleLiveUsers = visibleLiveUsers,
+                        visibleFollowUpdateItems = visibleFollowUpdateItems,
+                        contentPadding = contentPadding,
+                        liveUserFocusRequesters = liveUserFocusRequesters,
+                        followUpdateFocusRequesters = followUpdateFocusRequesters,
+                        onLiveClick = onLiveClick,
+                        onOpenUp = onOpenUp,
+                        onLiveUserFocused = { index ->
+                            collapsingHeaderState.reset()
+                            lastFocusedLiveUserIndex = index
+                            onContentRowFocused(0)
+                            focusCoordinator.onContentRegionFocused(
+                                AppTopLevelTab.DYNAMIC,
+                                HomeFocusRegion.DynamicLiveUsers
                             )
-                        )
-                    }
-                }
-            }
-
-            // -- Follow Updates Row --
-            if (visibleFollowUpdateItems.isNotEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    contentPadding = PaddingValues(
-                        start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
-                        end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
-                        top = if (
-                            partialNoticeMessage == null &&
-                            visibleLiveUsers.isEmpty()
-                        ) {
-                            contentPadding.calculateTopPadding()
-                        } else {
-                            0.dp
                         },
-                        bottom = 12.dp
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusGroup()
-                ) {
-                    itemsIndexed(
-                        items = visibleFollowUpdateItems,
-                        key = { _, item -> item.key },
-                        contentType = { _, item ->
-                            when (item) {
-                                is DynamicFollowUpdateFixedItem -> "dynamic_follow_fixed"
-                                is DynamicFollowUpdateUpItem -> "dynamic_follow_up"
-                            }
-                        }
-                    ) { index, item ->
-                        DynamicFollowUpdateCard(
-                            item = item,
-                            onClick = {
-                                if (item is DynamicFollowUpdateUpItem) {
-                                    viewModel.consumeFollowUpdatePrompt(item.mid)
-                                    onOpenUp(item.mid)
-                                }
-                            },
-                            focusRequester = followUpdateFocusRequesters.getOrNull(index),
-                            onFocus = {
-                                lastFocusedFollowUpdateIndex = index
-                                onContentRowFocused(if (visibleLiveUsers.isNotEmpty()) 1 else 0)
-                                focusCoordinator.onContentRegionFocused(
-                                    AppTopLevelTab.DYNAMIC,
-                                    HomeFocusRegion.DynamicFollowUpdates
-                                )
-                            },
-                            onDpadUp = {
-                                focusCoordinator.handleDynamicFollowUpdatesDpadUp()
-                            },
-                            onDpadDown = {
-                                focusCoordinator.handleDynamicFollowUpdatesDpadDown()
-                            }
-                        )
-                    }
+                        onFollowUpdateFocused = { index ->
+                            collapsingHeaderState.reset()
+                            lastFocusedFollowUpdateIndex = index
+                            onContentRowFocused(if (visibleLiveUsers.isNotEmpty()) 1 else 0)
+                            focusCoordinator.onContentRegionFocused(
+                                AppTopLevelTab.DYNAMIC,
+                                HomeFocusRegion.DynamicFollowUpdates
+                            )
+                        },
+                        onLiveUsersDpadDown = {
+                            focusCoordinator.handleDynamicLiveUsersDpadDown()
+                        },
+                        onLiveUsersDpadUp = {
+                            collapsingHeaderState.reset()
+                            focusCoordinator.handleContentWantsTopBar()
+                        },
+                        onFollowUpdatesDpadUp = {
+                            collapsingHeaderState.reset()
+                            focusCoordinator.handleDynamicFollowUpdatesDpadUp()
+                        },
+                        onFollowUpdatesDpadDown = {
+                            focusCoordinator.handleDynamicFollowUpdatesDpadDown()
+                        },
+                        onConsumeFollowUpdatePrompt = viewModel::consumeFollowUpdatePrompt,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
+            } else {
+                null
             }
-
+        ) { topPadding, onScrollOffset ->
             // -- Dynamic Videos --
             if (dynamicVideoItems.isNotEmpty()) {
                 VideoCardRecyclerGrid(
@@ -406,24 +353,16 @@ internal fun DynamicScreen(
                     contentPadding = PaddingValues(
                         start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
                         end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
-                        top = if (
-                            partialNoticeMessage == null &&
-                            visibleLiveUsers.isEmpty() &&
-                            visibleFollowUpdateItems.isEmpty()
-                        ) {
-                            contentPadding.calculateTopPadding()
-                        } else {
-                            0.dp
-                        },
+                        top = topPadding + if (hasHeaderContent) 0.dp else contentPadding.calculateTopPadding(),
                         bottom = contentPadding.calculateBottomPadding()
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     gridColumnCount = gridColumnCount,
                     focusState = focusState,
                     focusCoordinator = focusCoordinator,
                     focusTab = AppTopLevelTab.DYNAMIC,
+                    allowChildDrawingOutsideBounds = false,
+                    onVerticalScrollOffsetChanged = onScrollOffset,
                     canLoadMore = { !uiState.isLoadingVideos },
                     onLoadMore = viewModel::loadMoreVideos,
                     onMenuRefresh = viewModel::refresh,
@@ -435,14 +374,136 @@ internal fun DynamicScreen(
                     },
                     consumeTopRowDpadUp = true,
                     onTopRowDpadUp = {
+                        collapsingHeaderState.reset()
+                        focusState.resetRememberedFocusToTopForTopBarReturn()
                         focusCoordinator.handleGridTopEdge(AppTopLevelTab.DYNAMIC)
                     },
-                    onBackToTopBar = { focusCoordinator.handleContentWantsTopBar() },
+                    onBackToTopBar = {
+                        collapsingHeaderState.reset()
+                        focusState.resetRememberedFocusToTopForTopBarReturn()
+                        focusCoordinator.handleContentWantsTopBar()
+                    },
                     onVideoClick = { videoItem, _ ->
                         viewModel.primeVideoDetail(videoItem)
                         onVideoClick(videoItem)
                     }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DynamicHeaderRows(
+    partialNoticeMessage: String?,
+    visibleLiveUsers: List<FollowedLiveRoom>,
+    visibleFollowUpdateItems: List<DynamicFollowUpdateItem>,
+    contentPadding: PaddingValues,
+    liveUserFocusRequesters: List<FocusRequester>,
+    followUpdateFocusRequesters: List<FocusRequester>,
+    onLiveClick: (Long) -> Unit,
+    onOpenUp: (Long) -> Unit,
+    onLiveUserFocused: (Int) -> Unit,
+    onFollowUpdateFocused: (Int) -> Unit,
+    onLiveUsersDpadDown: () -> Boolean,
+    onLiveUsersDpadUp: () -> Boolean,
+    onFollowUpdatesDpadUp: () -> Boolean,
+    onFollowUpdatesDpadDown: () -> Boolean,
+    onConsumeFollowUpdatePrompt: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        partialNoticeMessage?.let { notice ->
+            DynamicNoticeBanner(
+                message = notice,
+                modifier = Modifier.padding(
+                    start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
+                    end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
+                    top = contentPadding.calculateTopPadding(),
+                    bottom = 12.dp
+                )
+            )
+        }
+
+        if (visibleLiveUsers.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(
+                    start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
+                    end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
+                    top = if (partialNoticeMessage == null) contentPadding.calculateTopPadding() else 0.dp,
+                    bottom = 12.dp
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusGroup()
+            ) {
+                itemsIndexed(
+                    items = visibleLiveUsers,
+                    key = { _, live -> live.roomid },
+                    contentType = { _, _ -> "dynamic_live_user" }
+                ) { index, live ->
+                    LiveAvatarCard(
+                        live = live,
+                        onClick = { onLiveClick(live.roomid) },
+                        focusRequester = liveUserFocusRequesters.getOrNull(index),
+                        onFocus = { onLiveUserFocused(index) },
+                        onDpadDown = onLiveUsersDpadDown,
+                        modifier = Modifier.requestTopBarOnDpadUp(
+                            enabled = true,
+                            requestTopBarFocus = {
+                                onLiveUsersDpadUp()
+                            }
+                        )
+                    )
+                }
+            }
+        }
+
+        if (visibleFollowUpdateItems.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                contentPadding = PaddingValues(
+                    start = contentPadding.calculateStartPadding(LayoutDirection.Ltr),
+                    end = contentPadding.calculateEndPadding(LayoutDirection.Ltr),
+                    top = if (
+                        partialNoticeMessage == null &&
+                        visibleLiveUsers.isEmpty()
+                    ) {
+                        contentPadding.calculateTopPadding()
+                    } else {
+                        0.dp
+                    },
+                    bottom = 12.dp
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusGroup()
+            ) {
+                itemsIndexed(
+                    items = visibleFollowUpdateItems,
+                    key = { _, item -> item.key },
+                    contentType = { _, item ->
+                        when (item) {
+                            is DynamicFollowUpdateFixedItem -> "dynamic_follow_fixed"
+                            is DynamicFollowUpdateUpItem -> "dynamic_follow_up"
+                        }
+                    }
+                ) { index, item ->
+                    DynamicFollowUpdateCard(
+                        item = item,
+                        onClick = {
+                            if (item is DynamicFollowUpdateUpItem) {
+                                onConsumeFollowUpdatePrompt(item.mid)
+                                onOpenUp(item.mid)
+                            }
+                        },
+                        focusRequester = followUpdateFocusRequesters.getOrNull(index),
+                        onFocus = { onFollowUpdateFocused(index) },
+                        onDpadUp = onFollowUpdatesDpadUp,
+                        onDpadDown = onFollowUpdatesDpadDown
+                    )
+                }
             }
         }
     }

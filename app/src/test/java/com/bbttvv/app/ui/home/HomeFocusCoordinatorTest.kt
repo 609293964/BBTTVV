@@ -98,6 +98,24 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
+    fun `profile top bar dpad down keeps top bar visible while entering sidebar`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.PROFILE)
+        val sidebarTarget = FakeFocusTarget(canFocus = true)
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.PROFILE,
+            region = HomeFocusRegion.ProfileSidebar,
+            target = sidebarTarget,
+        )
+
+        assertTrue(coordinator.handleTopBarDpadDown())
+
+        assertEquals(1, sidebarTarget.focusRequests)
+        assertTrue(coordinator.isContentFocused)
+        assertTrue(coordinator.isTopBarVisible)
+    }
+
+    @Test
     fun `restore video key callback runs only after real key focus succeeds`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
         val gridTarget = FakeFocusTarget(canFocus = true, keyFocus = false)

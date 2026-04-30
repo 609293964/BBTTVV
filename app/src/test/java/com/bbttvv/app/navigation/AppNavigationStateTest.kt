@@ -53,6 +53,23 @@ class DetailReturnStateTest {
     }
 
     @Test
+    fun `cancel home video focus restore clears ready restore key`() {
+        val state = createDetailReturnState()
+
+        state.prepareForRecommendDetailOpen("BV1xx:3")
+        state.onHostActivityPaused()
+        state.onHostActivityResumed()
+
+        assertEquals("BV1xx:3", state.restoreVideoFocusKey(isOnHome = true))
+
+        state.cancelHomeVideoFocusRestore()
+
+        assertNull(state.homeVideoFocusRestoreKey)
+        assertNull(state.restoreVideoFocusKey(isOnHome = true))
+        assertNull(state.restoreVideoFocusTab(isOnHome = true))
+    }
+
+    @Test
     fun `comment focus restore is scoped by detail bvid`() {
         val state = createDetailReturnState()
 

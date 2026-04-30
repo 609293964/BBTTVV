@@ -2,24 +2,28 @@ package com.bbttvv.app.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.Alignment
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.bbttvv.app.core.performance.AppPerformanceTracker
@@ -42,6 +46,7 @@ fun HomeScreen(
     restoreVideoFocusTab: AppTopLevelTab? = null,
     hasPendingVideoFocusRestore: Boolean = restoreVideoFocusKey != null,
     onVideoFocusRestored: (String) -> Unit = {},
+    onCancelVideoFocusRestore: () -> Unit = {},
     onVideoClick: (VideoItem) -> Unit,
     onLiveClick: (Long, String?) -> Unit,
     onTabSelected: (AppTopLevelTab) -> Unit,
@@ -54,6 +59,8 @@ fun HomeScreen(
     val dynamicRefreshRequest = remember { mutableIntStateOf(0) }
     val tabGridFocusStates = remember { HomeTabGridFocusStates() }
     val recommendGridFocusState = tabGridFocusStates.stateFor(AppTopLevelTab.RECOMMEND)
+    val collapsingHeaderState = rememberHomeCollapsingHeaderState()
+    val topBarHeightState = remember { mutableIntStateOf(0) }
     val homeTabs = remember(visibleTabs) { visibleTabs.filter(AppTopLevelTab::isHomeContent) }
     val recommendVideos = uiState.videos
     val recommendVideoKeys = remember(recommendVideos) { recommendVideos.stableVideoItemKeys() }
@@ -72,6 +79,12 @@ fun HomeScreen(
         focusCoordinator.retainVisibleTabs(visibleTabs.toSet())
     }
     LaunchedEffect(selectedHomeTab) {
+        resetCollapsingTabForSwitch(
+            tab = selectedHomeTab,
+            collapsingHeaderState = collapsingHeaderState,
+            recommendGridFocusState = recommendGridFocusState,
+            tabGridFocusStates = tabGridFocusStates,
+        )
         focusCoordinator.updateSelectedHomeTab(selectedHomeTab)
         viewModel.onHomeTabVisible(selectedHomeTab)
     }
@@ -174,8 +187,22 @@ fun HomeScreen(
     fun selectHomeTab(
         targetTab: AppTopLevelTab,
         scene: HomeFocusScene,
+        keepTopBarFocus: Boolean = false,
     ) {
-        focusCoordinator.updateScene(scene)
+        resetCollapsingTabForSwitch(
+            tab = targetTab,
+            collapsingHeaderState = collapsingHeaderState,
+            recommendGridFocusState = recommendGridFocusState,
+            tabGridFocusStates = tabGridFocusStates,
+        )
+        if (keepTopBarFocus) {
+            focusCoordinator.requestTopBarTabFocusAfterSwitch(
+                tab = targetTab,
+                scene = scene,
+            )
+        } else {
+            focusCoordinator.updateScene(scene)
+        }
         onTabSelected(targetTab)
     }
 
@@ -187,13 +214,19 @@ fun HomeScreen(
         }
     }
 
+    fun requestTopBarFromContent(scene: HomeFocusScene = HomeFocusScene.BackToTopBar): Boolean {
+        onCancelVideoFocusRestore()
+        collapsingHeaderState.reset()
+        return focusCoordinator.handleContentWantsTopBar(scene)
+    }
+
     BackHandler(enabled = !focusCoordinator.isContentFocused && selectedHomeTab != AppTopLevelTab.RECOMMEND) {
         selectHomeTab(AppTopLevelTab.RECOMMEND, HomeFocusScene.BackToRecommend)
-        focusCoordinator.handleContentWantsTopBar(HomeFocusScene.BackToRecommend)
+        requestTopBarFromContent(HomeFocusScene.BackToRecommend)
     }
 
     BackHandler(enabled = focusCoordinator.isContentFocused) {
-        focusCoordinator.handleContentWantsTopBar(HomeFocusScene.BackToTopBar)
+        requestTopBarFromContent(HomeFocusScene.BackToTopBar)
     }
 
     val backgroundModifier = remember(selectedHomeTab) {
@@ -211,47 +244,26 @@ fun HomeScreen(
             Modifier
         }
     }
+    val usesCollapsingHomeHeader = selectedHomeTab.usesCollapsingHomeHeader()
+    val topBarHeightDp = with(LocalDensity.current) { topBarHeightState.intValue.toDp() }
+    val shouldComposeTopBar = !shouldResumeVideoContentFocus &&
+        (usesCollapsingHomeHeader || focusCoordinator.isTopBarVisible)
+    val contentTopPadding = if (!usesCollapsingHomeHeader && shouldComposeTopBar) {
+        topBarHeightDp
+    } else {
+        0.dp
+    }
 
-    Column(modifier = Modifier.fillMaxSize().then(backgroundModifier)) {
-        AnimatedVisibility(
-            visible = focusCoordinator.isTopBarVisible && !shouldResumeVideoContentFocus,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            AppTopBar(
-                tabs = homeTabs,
-                selectedTab = selectedHomeTab,
-                onTabSelected = { targetTab ->
-                    selectHomeTab(targetTab, HomeFocusScene.TabSwitch)
-                },
-                onSelectedTabConfirmed = { tab ->
-                    refreshSelectedTopBarTab(tab)
-                },
-                updateSelectedTabOnFocus = updateContentOnTabFocusEnabled,
-                onDpadDown = {
-                    focusCoordinator.handleTopBarDpadDown()
-                },
-                focusCoordinator = focusCoordinator,
-                onTopBarFocusChanged = { isFocused ->
-                    if (isFocused) {
-                        focusCoordinator.onTopBarFocused()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                        end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                        top = AppTopBarDefaults.TopPadding,
-                        bottom = AppTopBarDefaults.BottomPadding
-                    )
-            )
-        }
-
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(backgroundModifier)
+            .clipToBounds()
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
+                .padding(top = contentTopPadding)
                 .focusGroup()
                 .onFocusChanged { state ->
                     if (state.hasFocus) {
@@ -259,26 +271,136 @@ fun HomeScreen(
                     }
                 }
         ) {
-            HomeContentDispatcher(
+            key(selectedHomeTab) {
+                HomeContentDispatcher(
+                    selectedHomeTab = selectedHomeTab,
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    dynamicRefreshRequestId = dynamicRefreshRequest.intValue,
+                    tabGridFocusStates = tabGridFocusStates,
+                    recommendGridFocusState = recommendGridFocusState,
+                    focusCoordinator = focusCoordinator,
+                    topBarHeightPx = if (usesCollapsingHomeHeader && !shouldResumeVideoContentFocus) {
+                        topBarHeightState.intValue
+                    } else {
+                        0
+                    },
+                    collapsingHeaderState = collapsingHeaderState,
+                    onRequestTopBarFocus = ::requestTopBarFromContent,
+                    onTabSelected = { targetTab ->
+                        selectHomeTab(targetTab, HomeFocusScene.TabSwitch)
+                    },
+                    onVideoClick = onVideoClick,
+                    onLiveClick = onLiveClick,
+                    onRecommendVideoClick = onRecommendVideoClick,
+                    onOpenSettings = onOpenSettings,
+                    onProfileVideoClick = onProfileVideoClick,
+                    onOpenUp = onOpenUp
+                )
+            }
+        }
+
+        if (shouldComposeTopBar) {
+            HomeTopBarHost(
+                tabs = homeTabs,
                 selectedHomeTab = selectedHomeTab,
-                uiState = uiState,
-                viewModel = viewModel,
-                dynamicRefreshRequestId = dynamicRefreshRequest.intValue,
-                tabGridFocusStates = tabGridFocusStates,
-                recommendGridFocusState = recommendGridFocusState,
+                updateSelectedTabOnFocus = updateContentOnTabFocusEnabled,
                 focusCoordinator = focusCoordinator,
                 onTabSelected = { targetTab ->
-                    selectHomeTab(targetTab, HomeFocusScene.TabSwitch)
+                    selectHomeTab(
+                        targetTab = targetTab,
+                        scene = HomeFocusScene.TabSwitch,
+                        keepTopBarFocus = true,
+                    )
                 },
-                onVideoClick = onVideoClick,
-                onLiveClick = onLiveClick,
-                onRecommendVideoClick = onRecommendVideoClick,
-                onOpenSettings = onOpenSettings,
-                onProfileVideoClick = onProfileVideoClick,
-                onOpenUp = onOpenUp
+                onSelectedTabConfirmed = ::refreshSelectedTopBarTab,
+                onDpadDown = {
+                    focusCoordinator.handleTopBarDpadDown()
+                },
+                onTopBarFocusChanged = { isFocused ->
+                    if (isFocused) {
+                        collapsingHeaderState.reset()
+                        focusCoordinator.onTopBarFocused()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .zIndex(2f)
+                    .onSizeChanged { size ->
+                        topBarHeightState.intValue = size.height
+                    }
+                    .graphicsLayer {
+                        translationY = if (usesCollapsingHomeHeader) {
+                            -collapsingHeaderState.collapseOffsetPx.toFloat()
+                        } else if (focusCoordinator.isTopBarVisible) {
+                            0f
+                        } else {
+                            -topBarHeightState.intValue.toFloat()
+                        }
+                    }
             )
         }
     }
+}
+
+private fun resetCollapsingTabForSwitch(
+    tab: AppTopLevelTab,
+    collapsingHeaderState: HomeCollapsingHeaderState,
+    recommendGridFocusState: HomeRecommendGridFocusState,
+    tabGridFocusStates: HomeTabGridFocusStates,
+) {
+    collapsingHeaderState.reset()
+    when (tab) {
+        AppTopLevelTab.RECOMMEND -> {
+            recommendGridFocusState.resetRememberedFocusToTopForTopBarReturn()
+        }
+        AppTopLevelTab.POPULAR,
+        AppTopLevelTab.LIVE,
+        AppTopLevelTab.DYNAMIC -> {
+            tabGridFocusStates.stateFor(tab).resetRememberedFocusToTopForTopBarReturn()
+        }
+        else -> Unit
+    }
+}
+
+@Composable
+private fun HomeTopBarHost(
+    tabs: List<AppTopLevelTab>,
+    selectedHomeTab: AppTopLevelTab,
+    updateSelectedTabOnFocus: Boolean,
+    focusCoordinator: HomeFocusCoordinator,
+    onTabSelected: (AppTopLevelTab) -> Unit,
+    onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
+    onDpadDown: () -> Boolean,
+    onTopBarFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AppTopBar(
+        tabs = tabs,
+        selectedTab = selectedHomeTab,
+        onTabSelected = onTabSelected,
+        onSelectedTabConfirmed = onSelectedTabConfirmed,
+        updateSelectedTabOnFocus = updateSelectedTabOnFocus,
+        onDpadDown = onDpadDown,
+        focusCoordinator = focusCoordinator,
+        onTopBarFocusChanged = onTopBarFocusChanged,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                top = AppTopBarDefaults.TopPadding,
+                bottom = AppTopBarDefaults.BottomPadding
+            )
+    )
+}
+
+private fun AppTopLevelTab.usesCollapsingHomeHeader(): Boolean {
+    return this == AppTopLevelTab.RECOMMEND ||
+        this == AppTopLevelTab.POPULAR ||
+        this == AppTopLevelTab.LIVE ||
+        this == AppTopLevelTab.DYNAMIC ||
+        this == AppTopLevelTab.TODAY_WATCH
 }
 
 @Composable

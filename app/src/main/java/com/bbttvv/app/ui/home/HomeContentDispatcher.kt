@@ -83,6 +83,9 @@ internal fun HomeContentDispatcher(
     tabGridFocusStates: HomeTabGridFocusStates,
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
+    topBarHeightPx: Int,
+    collapsingHeaderState: HomeCollapsingHeaderState,
+    onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onTabSelected: (AppTopLevelTab) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onLiveClick: (Long, String?) -> Unit,
@@ -120,6 +123,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                onRequestTopBarFocus = onRequestTopBarFocus,
                 onTabSelected = onTabSelected,
                 onVideoClick = onVideoClick,
                 onOpenUp = onOpenUp
@@ -130,6 +134,9 @@ internal fun HomeContentDispatcher(
                 viewModel = viewModel,
                 recommendGridFocusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
+                topBarHeightPx = topBarHeightPx,
+                collapsingHeaderState = collapsingHeaderState,
+                onRequestTopBarFocus = onRequestTopBarFocus,
                 onRecommendVideoClick = onRecommendVideoClick,
                 onOpenRecommendMenu = { video, focusKey ->
                     suppressRecommendMenuConfirmKeyUp = true
@@ -162,7 +169,9 @@ internal fun HomeContentDispatcher(
                     onNotInterested = viewModel::markTodayWatchNotInterested,
                     onVideoFocused = viewModel::prefetchVideoDetail,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
-                    focusCoordinator = focusCoordinator
+                    focusCoordinator = focusCoordinator,
+                    topBarHeightPx = topBarHeightPx,
+                    collapsingHeaderState = collapsingHeaderState
                 )
             }
 
@@ -172,7 +181,9 @@ internal fun HomeContentDispatcher(
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
                     gridColumnCount = 4,
-                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.POPULAR)
+                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.POPULAR),
+                    topBarHeightPx = topBarHeightPx,
+                    collapsingHeaderState = collapsingHeaderState
                 )
             }
 
@@ -182,7 +193,9 @@ internal fun HomeContentDispatcher(
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
                     gridColumnCount = 4,
-                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.LIVE)
+                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.LIVE),
+                    topBarHeightPx = topBarHeightPx,
+                    collapsingHeaderState = collapsingHeaderState
                 )
             }
 
@@ -197,7 +210,9 @@ internal fun HomeContentDispatcher(
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
                     gridColumnCount = 4,
-                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.DYNAMIC)
+                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.DYNAMIC),
+                    topBarHeightPx = topBarHeightPx,
+                    collapsingHeaderState = collapsingHeaderState
                 )
             }
 
@@ -205,6 +220,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                onRequestTopBarFocus = onRequestTopBarFocus,
                 onProfileVideoClick = onProfileVideoClick
             )
 
@@ -212,6 +228,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                onRequestTopBarFocus = onRequestTopBarFocus,
                 onOpenSettings = onOpenSettings,
                 onProfileVideoClick = onProfileVideoClick
             )
@@ -243,7 +260,9 @@ private fun DynamicTabContent(
     onContentRowFocused: (Int) -> Unit,
     focusCoordinator: HomeFocusCoordinator,
     gridColumnCount: Int,
-    focusState: HomeRecommendGridFocusState
+    focusState: HomeRecommendGridFocusState,
+    topBarHeightPx: Int,
+    collapsingHeaderState: HomeCollapsingHeaderState
 ) {
     TabViewModelScope(selectedHomeTab, viewModel) {
         val dynamicViewModel: DynamicViewModel = composeViewModel()
@@ -258,7 +277,9 @@ private fun DynamicTabContent(
             onContentRowFocused = onContentRowFocused,
             focusCoordinator = focusCoordinator,
             gridColumnCount = gridColumnCount,
-            focusState = focusState
+            focusState = focusState,
+            topBarHeightPx = topBarHeightPx,
+            collapsingHeaderState = collapsingHeaderState
         )
     }
 }
@@ -268,6 +289,7 @@ private fun SearchTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onTabSelected: (AppTopLevelTab) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit
@@ -275,7 +297,7 @@ private fun SearchTabContent(
     TabViewModelScope(selectedHomeTab, viewModel) {
         com.bbttvv.app.feature.search.SearchScreen(
             onBack = { onTabSelected(AppTopLevelTab.RECOMMEND) },
-            onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+            onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             onOpenVideo = onVideoClick,
             onOpenUp = onOpenUp,
             focusCoordinator = focusCoordinator,
@@ -290,24 +312,38 @@ private fun RecommendTabContent(
     viewModel: HomeViewModel,
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
+    topBarHeightPx: Int,
+    collapsingHeaderState: HomeCollapsingHeaderState,
+    onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onOpenRecommendMenu: (VideoItem, String) -> Unit
 ) {
-    if (uiState.videos.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (uiState.isLoading) {
-                Text(text = "正在加载推荐内容...", color = MaterialTheme.colorScheme.onBackground)
-            } else if (uiState.isError) {
-                Text(
-                    text = "加载失败：${uiState.errorMsg ?: "未知错误"}",
-                    color = MaterialTheme.colorScheme.error
-                )
-            } else {
-                Text(text = "暂无推荐内容", color = MaterialTheme.colorScheme.onBackground)
+    HomeCollapsingHeaderGrid(
+        topBarHeightPx = topBarHeightPx,
+        state = collapsingHeaderState,
+        modifier = Modifier.fillMaxSize(),
+        localHeader = null,
+    ) { topPadding, onScrollOffset ->
+        if (uiState.videos.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = topPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                if (uiState.isLoading) {
+                    Text(text = "正在加载推荐内容...", color = MaterialTheme.colorScheme.onBackground)
+                } else if (uiState.isError) {
+                    Text(
+                        text = "加载失败：${uiState.errorMsg ?: "未知错误"}",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    Text(text = "暂无推荐内容", color = MaterialTheme.colorScheme.onBackground)
+                }
             }
-        }
-    } else {
-        Box(modifier = Modifier.fillMaxSize()) {
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
             VideoCardRecyclerGrid(
                 videos = uiState.videos,
                 modifier = Modifier.fillMaxSize(),
@@ -315,12 +351,14 @@ private fun RecommendTabContent(
                 contentPadding = PaddingValues(
                     start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                     end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    top = AppTopBarDefaults.HeaderContentTopPadding,
+                    top = topPadding + AppTopBarDefaults.HeaderContentTopPadding,
                     bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
                 ),
                 focusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
                 focusTab = AppTopLevelTab.RECOMMEND,
+                allowChildDrawingOutsideBounds = false,
+                onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },
                 onLoadMore = viewModel::loadMore,
                 onMenuRefresh = viewModel::refresh,
@@ -328,11 +366,17 @@ private fun RecommendTabContent(
                     viewModel.prefetchVideoDetail(video)
                 },
                 onFocusedRowChanged = focusCoordinator::onContentRowFocused,
-                onTopRowDpadUp = { focusCoordinator.handleContentWantsTopBar() },
+                onTopRowDpadUp = {
+                    collapsingHeaderState.reset()
+                    onRequestTopBarFocus(HomeFocusScene.BackToTopBar)
+                },
                 onBackToTopBar = {
                     HomeRecommendBackReturnPolicy.handleBackToTopBar(
-                        resetGridToTop = recommendGridFocusState::resetRememberedFocusToTopForTopBarReturn,
-                        requestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+                        resetGridToTop = {
+                            collapsingHeaderState.reset()
+                            recommendGridFocusState.resetRememberedFocusToTopForTopBarReturn()
+                        },
+                        requestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
                     )
                 },
                 onVideoLongClick = { video, key ->
@@ -369,6 +413,7 @@ private fun RecommendTabContent(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -376,6 +421,7 @@ private fun WatchLaterTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit
 ) {
     TabViewModelScope(selectedHomeTab, viewModel) {
@@ -383,7 +429,7 @@ private fun WatchLaterTabContent(
             onOpenVideo = { focusKey, video ->
                 onProfileVideoClick(AppTopLevelTab.WATCH_LATER, focusKey, video)
             },
-            onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+            onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             focusCoordinator = focusCoordinator,
             focusTab = AppTopLevelTab.WATCH_LATER
         )
@@ -395,6 +441,7 @@ private fun ProfileTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit
 ) {
@@ -404,7 +451,7 @@ private fun ProfileTabContent(
             onOpenVideo = { video ->
                 onProfileVideoClick(AppTopLevelTab.PROFILE, video.bvid.ifBlank { video.aid.toString() }, video)
             },
-            onRequestTopBarFocus = { focusCoordinator.handleContentWantsTopBar() },
+            onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             focusCoordinator = focusCoordinator,
             focusTab = selectedHomeTab
         )

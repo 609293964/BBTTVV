@@ -249,6 +249,7 @@ fun PlayerScreen(
         playerFocusCoordinator = playerFocusCoordinator,
         focusBindings = focusBindings,
         handleOverlayEffect = handleOverlayEffect,
+        onExitPlayer = onBack,
         onDebugSnapshotChange = { debugSnapshot = it },
         args = PlayerScreenEffectArgs(
             session = session,
