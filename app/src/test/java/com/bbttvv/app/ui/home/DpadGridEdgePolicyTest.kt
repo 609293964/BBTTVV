@@ -61,6 +61,38 @@ class DpadGridEdgePolicyTest {
     }
 
     @Test
+    fun dpadGridControllerPreloadsTwoRowsByDefault() {
+        assertEquals(2, DpadGridController.Config().downPreloadRows)
+    }
+
+    @Test
+    fun initialGridRestoreScrollClampsToAvailableItems() {
+        assertEquals(
+            7,
+            InitialGridRestoreScrollPolicy.targetPosition(position = 7, itemCount = 20),
+        )
+        assertEquals(
+            19,
+            InitialGridRestoreScrollPolicy.targetPosition(position = 24, itemCount = 20),
+        )
+    }
+
+    @Test
+    fun initialGridRestoreScrollRejectsMissingTargets() {
+        assertEquals(
+            RecyclerView.NO_POSITION,
+            InitialGridRestoreScrollPolicy.targetPosition(
+                position = RecyclerView.NO_POSITION,
+                itemCount = 20,
+            ),
+        )
+        assertEquals(
+            RecyclerView.NO_POSITION,
+            InitialGridRestoreScrollPolicy.targetPosition(position = 3, itemCount = 0),
+        )
+    }
+
+    @Test
     fun dpadDownPreloadClampsAtItemCount() {
         val positions = DpadGridPreloadPolicy.positionsAhead(
             position = 7,

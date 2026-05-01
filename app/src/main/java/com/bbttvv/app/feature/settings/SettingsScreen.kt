@@ -45,7 +45,10 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.store.DEFAULT_APP_USER_AGENT
+import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
+import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
+import com.bbttvv.app.core.store.nextPlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.data.repository.BlockedUpRepository
@@ -156,8 +159,6 @@ fun TvSettingsList(
 
     val autoHighestQuality by SettingsManager.getAuto1080p(context)
         .collectAsStateWithLifecycle(initialValue = true)
-    val playerCdnPreference by SettingsManager.getPlayerCdnPreference(context)
-        .collectAsStateWithLifecycle(initialValue = SettingsManager.PlayerCdnPreference.BILIVIDEO)
     val showOnlineCount by SettingsManager.getShowOnlineCount(context)
         .collectAsStateWithLifecycle(initialValue = true)
     val privacyMode by SettingsManager.getPrivacyModeEnabled(context)
@@ -189,6 +190,8 @@ fun TvSettingsList(
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
+        .collectAsStateWithLifecycle(initialValue = 1.0f)
+    val volumeCalibrationScale by PlayerSettingsStore.getVolumeCalibrationScale(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
     val blockedUps by blockedUpRepository.getAllBlockedUps()
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -224,22 +227,6 @@ fun TvSettingsList(
                 onClick = {
                     scope.launch {
                         SettingsManager.setAuto1080p(context, !autoHighestQuality)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "CDN线路",
-                subtitle = resolvePlayerCdnDescription(playerCdnPreference),
-                value = playerCdnPreference.label,
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setPlayerCdnPreference(
-                            context = context,
-                            preference = nextPlayerCdnPreference(playerCdnPreference)
-                        )
                     }
                 }
             )
@@ -282,6 +269,21 @@ fun TvSettingsList(
                             context,
                             nextPlaybackSpeed(preferredSpeed)
                         )
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "应用音量校准",
+                subtitle = "只降低 BBTTVV 播放输出，不改变电视系统音量。",
+                value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        val nextScale = nextPlayerVolumeCalibrationScale(volumeCalibrationScale)
+                        PlayerSettingsCache.updateVolumeCalibrationScale(nextScale)
+                        PlayerSettingsStore.setVolumeCalibrationScale(context, nextScale)
                     }
                 }
             )
@@ -625,23 +627,28 @@ internal fun SettingsRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val useLightFocusStyle = compact && isFocused
     val titleColor = when {
         !enabled -> Color(0x78FFFFFF)
+        useLightFocusStyle -> Color(0xFF111111)
         isFocused -> Color(0xFFF8FBFF)
         else -> Color.White
     }
     val subtitleColor = when {
         !enabled -> Color(0x5FFFFFFF)
+        useLightFocusStyle -> Color(0xB0000000)
         isFocused -> Color(0xE1EDF9)
         else -> Color(0x9FFFFFFF)
     }
     val valueContainerColor = when {
         !enabled -> Color(0x0FFFFFFF)
+        useLightFocusStyle -> Color(0x14000000)
         isFocused -> Color(0x1FFFFFFF)
         else -> Color(0x0DFFFFFF)
     }
     val valueTextColor = when {
         !enabled -> Color(0x72FFFFFF)
+        useLightFocusStyle -> Color(0xFF111111)
         isFocused -> Color(0xFFF8FBFF)
         else -> Color(0xCCFFFFFF)
     }
@@ -654,7 +661,7 @@ internal fun SettingsRow(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (compact) 24.dp else 28.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color(0x12000000),
-            focusedContainerColor = Color(0xFF31445E)
+            focusedContainerColor = if (compact) Color(0xE9E6EEF4) else Color(0xFF31445E)
         )
     ) {
         Row(
@@ -750,24 +757,6 @@ private fun resolveDynamicPageDisplayModeDescription(
         SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "动态页仅显示关注更新横栏，隐藏关注直播横栏。"
         SettingsManager.DynamicPageDisplayMode.ALL -> "动态页同时显示关注直播与关注更新横栏。"
         SettingsManager.DynamicPageDisplayMode.NONE -> "动态页隐藏关注直播与关注更新横栏，只保留视频列表。"
-    }
-}
-
-private fun nextPlayerCdnPreference(
-    preference: SettingsManager.PlayerCdnPreference
-): SettingsManager.PlayerCdnPreference {
-    return when (preference) {
-        SettingsManager.PlayerCdnPreference.BILIVIDEO -> SettingsManager.PlayerCdnPreference.MCDN
-        SettingsManager.PlayerCdnPreference.MCDN -> SettingsManager.PlayerCdnPreference.BILIVIDEO
-    }
-}
-
-private fun resolvePlayerCdnDescription(
-    preference: SettingsManager.PlayerCdnPreference
-): String {
-    return when (preference) {
-        SettingsManager.PlayerCdnPreference.BILIVIDEO -> "默认线路，兼容性更稳；遇到卡顿可尝试切到 mcdn。"
-        SettingsManager.PlayerCdnPreference.MCDN -> "部分网络可能更快或更慢；若播放异常请切回 bilivideo。"
     }
 }
 

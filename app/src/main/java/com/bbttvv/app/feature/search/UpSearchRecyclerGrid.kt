@@ -3,10 +3,12 @@ package com.bbttvv.app.feature.search
 import android.animation.AnimatorInflater
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -543,7 +545,7 @@ private fun createUpSearchCard(context: Context): UpSearchCardView {
     val margin = context.dp(8)
     val padding = context.dp(16)
     val avatarSize = context.dp(64)
-    val card = com.google.android.material.card.MaterialCardView(context).apply {
+    val card = UpSearchCardRoot(context).apply {
         layoutParams = RecyclerView.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -553,8 +555,6 @@ private fun createUpSearchCard(context: Context): UpSearchCardView {
         radius = context.dp(12).toFloat()
         strokeWidth = context.dp(2)
         strokeColor = UpNormalStroke
-        cardElevation = 0f
-        useCompatPadding = false
         setCardBackgroundColor(UpNormalBackground)
     }
     val row = LinearLayout(context).apply {
@@ -663,11 +663,47 @@ private fun Context.dp(value: Int): Int {
 }
 
 private data class UpSearchCardView(
-    val root: com.google.android.material.card.MaterialCardView,
+    val root: UpSearchCardRoot,
     val avatar: ImageView,
     val name: TextView,
     val subtitle: TextView,
 )
+
+private class UpSearchCardRoot(context: Context) : FrameLayout(context) {
+    var radius: Float = 0f
+        set(value) {
+            field = value
+            refreshBackground()
+        }
+
+    var strokeWidth: Int = 0
+        set(value) {
+            field = value
+            refreshBackground()
+        }
+
+    var strokeColor: Int = UpNormalStroke
+        set(value) {
+            field = value
+            refreshBackground()
+        }
+
+    private var cardBackgroundColor: Int = UpNormalBackground
+
+    fun setCardBackgroundColor(color: Int) {
+        cardBackgroundColor = color
+        refreshBackground()
+    }
+
+    private fun refreshBackground() {
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(cardBackgroundColor)
+            setStroke(strokeWidth, strokeColor)
+        }
+    }
+}
 
 private data class UpRecyclerPaddingPx(
     val start: Int,

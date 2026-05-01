@@ -145,4 +145,22 @@ class HomeFocusStrategyTest {
         assertFalse(handled)
         assertEquals(listOf("reset-grid", "request-top-bar"), events)
     }
+
+    @Test
+    fun `home top bar height uses fallback until measured`() {
+        assertEquals(
+            144,
+            effectiveTopBarHeightPx(
+                measuredTopBarHeightPx = 0,
+                fallbackTopBarHeightPx = 144,
+            ),
+        )
+        assertEquals(
+            132,
+            effectiveTopBarHeightPx(
+                measuredTopBarHeightPx = 132,
+                fallbackTopBarHeightPx = 144,
+            ),
+        )
+    }
 }

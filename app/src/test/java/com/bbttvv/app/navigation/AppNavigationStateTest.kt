@@ -39,8 +39,13 @@ class DetailReturnStateTest {
         assertEquals("BV1xx:3", state.homeVideoFocusRestoreKey)
         assertNull(state.restoreVideoFocusKey(isOnHome = true))
 
-        state.onHostActivityPaused()
-        state.onHostActivityResumed()
+        state.onRouteChanged(isOnHome = false)
+
+        assertNull(state.restoreVideoFocusKey(isOnHome = false))
+        assertEquals("BV1xx:3", state.restoreVideoFocusKey(isOnHome = true))
+        assertEquals(AppTopLevelTab.RECOMMEND, state.restoreVideoFocusTab(isOnHome = true))
+
+        state.onRouteChanged(isOnHome = true)
 
         assertEquals("BV1xx:3", state.restoreVideoFocusKey(isOnHome = true))
         assertEquals(AppTopLevelTab.RECOMMEND, state.restoreVideoFocusTab(isOnHome = true))
@@ -57,8 +62,8 @@ class DetailReturnStateTest {
         val state = createDetailReturnState()
 
         state.prepareForRecommendDetailOpen("BV1xx:3")
-        state.onHostActivityPaused()
-        state.onHostActivityResumed()
+        state.onRouteChanged(isOnHome = false)
+        state.onRouteChanged(isOnHome = true)
 
         assertEquals("BV1xx:3", state.restoreVideoFocusKey(isOnHome = true))
 
@@ -136,7 +141,7 @@ private fun createDetailReturnState(): DetailReturnState {
         homeVideoFocusRestoreKeyState = mutableStateOf(null),
         homeVideoFocusRestoreTabIndexState = mutableStateOf(null),
         homeVideoFocusRestoreReadyState = mutableStateOf(false),
-        homeVideoFocusRestoreSawPauseState = mutableStateOf(false),
+        homeVideoFocusRestoreLeftHomeState = mutableStateOf(false),
         detailCommentFocusRestoreRpidState = mutableStateOf(null),
         detailCommentFocusRestoreBvidState = mutableStateOf(null)
     )

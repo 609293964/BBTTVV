@@ -252,6 +252,47 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
+    fun `content tabs dpad down passes source index to grid entry focus`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.POPULAR)
+        val gridTarget = FakeFocusTarget(canFocus = true)
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.POPULAR,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        assertTrue(coordinator.handleContentTabsDpadDown(AppTopLevelTab.POPULAR, preferredIndex = 2))
+
+        assertEquals(listOf(2), gridTarget.entryRequests)
+        assertEquals(1, gridTarget.focusRequests)
+        assertTrue(coordinator.isContentFocused)
+    }
+
+    @Test
+    fun `dynamic live row dpad down passes source index to follow updates`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.DYNAMIC)
+        val followUpdatesTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(canFocus = true)
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.DYNAMIC,
+            region = HomeFocusRegion.DynamicFollowUpdates,
+            target = followUpdatesTarget,
+        )
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.DYNAMIC,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        assertTrue(coordinator.handleDynamicLiveUsersDpadDown(preferredIndex = 3))
+
+        assertEquals(listOf(3), followUpdatesTarget.entryRequests)
+        assertEquals(emptyList<Int?>(), gridTarget.entryRequests)
+    }
+
+    @Test
     fun `top bar dpad down still prefers dynamic live row after grid was remembered`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.DYNAMIC)
         val liveTarget = FakeFocusTarget(canFocus = true)
@@ -339,10 +380,16 @@ class HomeFocusCoordinatorTest {
         var focusRequests: Int = 0
             private set
         val keyRequests = mutableListOf<String>()
+        val entryRequests = mutableListOf<Int?>()
 
         override fun tryRequestFocus(): Boolean {
             focusRequests++
             return canFocus
+        }
+
+        override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
+            entryRequests += entryHint.preferredIndex
+            return tryRequestFocus()
         }
 
         override fun tryRequestFocusKey(key: String): Boolean {

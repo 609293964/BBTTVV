@@ -311,13 +311,20 @@ internal fun ProfileInfoCard(title: String, value: String, compact: Boolean = fa
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun ProfilePrimaryAction(text: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
+        modifier = Modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), contentAlignment = Alignment.Center) {
-            Text(text = text, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(
+                text = text,
+                color = if (focused) Color(0xFF111111) else Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }

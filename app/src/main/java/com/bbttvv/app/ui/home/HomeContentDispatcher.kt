@@ -92,7 +92,8 @@ internal fun HomeContentDispatcher(
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit,
-    onOpenUp: (Long) -> Unit = {}
+    onOpenUp: (Long) -> Unit = {},
+    restoreRecommendInitialScrollIndex: Int = -1,
 ) {
     var pendingRecommendMenuRequest by remember { mutableStateOf<RecommendContextMenuRequest?>(null) }
     var pendingRecommendFocusReturnKey by remember { mutableStateOf<String?>(null) }
@@ -136,6 +137,7 @@ internal fun HomeContentDispatcher(
                 focusCoordinator = focusCoordinator,
                 topBarHeightPx = topBarHeightPx,
                 collapsingHeaderState = collapsingHeaderState,
+                restoreInitialScrollIndex = restoreRecommendInitialScrollIndex,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onRecommendVideoClick = onRecommendVideoClick,
                 onOpenRecommendMenu = { video, focusKey ->
@@ -314,6 +316,7 @@ private fun RecommendTabContent(
     focusCoordinator: HomeFocusCoordinator,
     topBarHeightPx: Int,
     collapsingHeaderState: HomeCollapsingHeaderState,
+    restoreInitialScrollIndex: Int,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onOpenRecommendMenu: (VideoItem, String) -> Unit
@@ -357,6 +360,7 @@ private fun RecommendTabContent(
                 focusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
                 focusTab = AppTopLevelTab.RECOMMEND,
+                initialScrollPosition = restoreInitialScrollIndex,
                 allowChildDrawingOutsideBounds = false,
                 onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },

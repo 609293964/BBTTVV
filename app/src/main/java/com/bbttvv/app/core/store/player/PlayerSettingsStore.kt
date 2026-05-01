@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import com.bbttvv.app.core.store.normalizePlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.normalizePlaybackSpeed
 import com.bbttvv.app.core.store.resolvePreferredPlaybackSpeed
 import com.bbttvv.app.core.store.settingsDataStore
@@ -15,11 +16,13 @@ object PlayerSettingsStore {
     private val keyDefaultPlaybackSpeed = floatPreferencesKey("default_playback_speed")
     private val keyRememberLastPlaybackSpeed = booleanPreferencesKey("remember_last_playback_speed")
     private val keyLastPlaybackSpeed = floatPreferencesKey("last_playback_speed")
+    private val keyVolumeCalibrationScale = floatPreferencesKey("volume_calibration_scale")
 
     private const val playbackSpeedCachePrefs = "playback_speed_cache"
     private const val cacheKeyDefaultPlaybackSpeed = "default_speed"
     private const val cacheKeyRememberLastSpeed = "remember_last_speed"
     private const val cacheKeyLastPlaybackSpeed = "last_speed"
+    private const val cacheKeyVolumeCalibrationScale = "volume_calibration_scale"
 
     fun getDefaultPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
         .map { preferences -> normalizePlaybackSpeed(preferences[keyDefaultPlaybackSpeed] ?: 1.0f) }
@@ -76,5 +79,28 @@ object PlayerSettingsStore {
         val rememberLast = prefs.getBoolean(cacheKeyRememberLastSpeed, false)
         val lastSpeed = normalizePlaybackSpeed(prefs.getFloat(cacheKeyLastPlaybackSpeed, 1.0f))
         return resolvePreferredPlaybackSpeed(defaultSpeed, rememberLast, lastSpeed)
+    }
+
+    fun getVolumeCalibrationScale(context: Context): Flow<Float> = context.settingsDataStore.data
+        .map { preferences ->
+            normalizePlayerVolumeCalibrationScale(preferences[keyVolumeCalibrationScale] ?: 1.0f)
+        }
+
+    suspend fun setVolumeCalibrationScale(context: Context, scale: Float) {
+        val normalized = normalizePlayerVolumeCalibrationScale(scale)
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyVolumeCalibrationScale] = normalized
+        }
+        context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(cacheKeyVolumeCalibrationScale, normalized)
+            .apply()
+    }
+
+    fun getVolumeCalibrationScaleSync(context: Context): Float {
+        val prefs = context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+        return normalizePlayerVolumeCalibrationScale(
+            prefs.getFloat(cacheKeyVolumeCalibrationScale, 1.0f)
+        )
     }
 }

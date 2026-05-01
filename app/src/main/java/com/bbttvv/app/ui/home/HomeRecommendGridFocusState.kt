@@ -228,7 +228,8 @@ internal class HomeRecommendGridFocusState {
         restoreFocusAfterPendingScrollToTop = false
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
-        schedulePendingScrollToTop()
+        applyPendingScrollToTop()
+        scheduleScrollToTopAfterLayout()
     }
 
     fun tryFocusVisibleItem(): Boolean {
@@ -259,6 +260,28 @@ internal class HomeRecommendGridFocusState {
             recycler = recycler,
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
+        )
+    }
+
+    fun tryFocusEntryItem(preferredIndex: Int?): Boolean {
+        if (preferredIndex == null) return tryFocusVisibleItem()
+        pendingDataSetFocus = null
+        clearPendingDirectionalScrollFocus()
+        val recycler = currentRecyclerView() ?: return false
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
+        val spanCount = recycler.gridSpanCount() ?: return false
+        val targetPosition = HomeGridEntryFocusPolicy.targetPosition(
+            itemCount = adapter.itemCount,
+            spanCount = spanCount,
+            firstVisiblePosition = firstVisiblePosition(recycler),
+            preferredIndex = preferredIndex,
+        )
+        if (targetPosition == RecyclerView.NO_POSITION) return false
+        return tryFocusPosition(
+            recycler = recycler,
+            position = targetPosition,
+            expectedKey = adapter.keyAt(targetPosition),
+            retryCount = PendingFocusRetryCount,
         )
     }
 
@@ -333,17 +356,21 @@ internal class HomeRecommendGridFocusState {
         pendingScrollToTop = false
         val shouldRestoreFocus = restoreFocusAfterPendingScrollToTop
         restoreFocusAfterPendingScrollToTop = true
-        recycler.scrollToPosition(0)
+        recycler.scrollToTopRespectingPadding()
         if (shouldRestoreFocus) {
             schedulePendingFocusAfterLayout()
         }
     }
 
-    private fun schedulePendingScrollToTop() {
+    private fun scheduleScrollToTopAfterLayout() {
         val recycler = currentRecyclerView() ?: return
-        recycler.post {
-            if (recyclerView === recycler) {
-                applyPendingScrollToTop()
+        recycler.postOnAnimation {
+            if (recyclerView !== recycler) return@postOnAnimation
+            recycler.scrollToTopRespectingPadding()
+            recycler.postOnAnimation {
+                if (recyclerView === recycler) {
+                    recycler.scrollToTopRespectingPadding()
+                }
             }
         }
     }
@@ -548,6 +575,15 @@ internal class HomeRecommendGridFocusState {
 
     private fun RecyclerView.gridSpanCount(): Int? {
         return (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
+    }
+
+    private fun RecyclerView.scrollToTopRespectingPadding() {
+        val manager = layoutManager as? GridLayoutManager
+        if (manager != null) {
+            manager.scrollToPositionWithOffset(0, paddingTop)
+        } else {
+            scrollToPosition(0)
+        }
     }
 
     private fun nextFocusRequestToken(): Int {

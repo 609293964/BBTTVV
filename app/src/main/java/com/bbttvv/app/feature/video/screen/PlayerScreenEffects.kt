@@ -128,6 +128,9 @@ internal fun PlayerScreenEffectHost(
                 exitTrace.measure("finishPlaybackSession:dispose") {
                     viewModel.finishPlaybackSession(reason = "screen_dispose")
                 }
+                exitTrace.measure("viewModel:detachPlayer") {
+                    viewModel.detachPlayer(args.exoPlayer)
+                }
                 exitTrace.measure("listener:remove") {
                     args.exoPlayer.removeListener(perfListener)
                 }

@@ -27,6 +27,7 @@ internal sealed class HomeFocusIntent {
     data class FocusRegion(
         val tab: AppTopLevelTab,
         val region: HomeFocusRegion,
+        val entryHint: HomeFocusEntryHint = HomeFocusEntryHint(),
     ) : HomeFocusIntent()
 
     data class RestoreVideoKey(
@@ -34,6 +35,10 @@ internal sealed class HomeFocusIntent {
         val key: String,
     ) : HomeFocusIntent()
 }
+
+internal data class HomeFocusEntryHint(
+    val preferredIndex: Int? = null,
+)
 
 internal interface HomeFocusTarget {
     fun tryRequestFocus(): Boolean
@@ -43,6 +48,8 @@ internal interface HomeFocusTarget {
     fun tryRequestFocusKey(key: String): Boolean = false
 
     fun tryRequestFocusKeyOrFallback(key: String): Boolean = tryRequestFocusKey(key)
+
+    fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean = tryRequestFocus()
 
     fun hasFocus(): Boolean = false
 
@@ -57,6 +64,86 @@ internal interface HomeFocusTarget {
 
 internal fun interface HomeFocusTargetRegistration {
     fun unregister()
+}
+
+private data class HomeFocusRule(
+    val entryPriority: List<HomeFocusRegion>,
+    val gridRememberedEntryPriority: List<HomeFocusRegion> = entryPriority,
+    val topEdgePriority: List<HomeFocusRegion> = emptyList(),
+    val restorePriority: List<HomeFocusRegion> = HomeFocusRules.DefaultRestorePriority,
+    val rememberLastRegionOnEntry: Boolean = true,
+    val keepTopBarVisibleWhileEnteringContent: Boolean = false,
+) {
+    fun entryPriorityFor(targets: Map<HomeFocusRegion, HomeFocusTarget>): List<HomeFocusRegion> {
+        return if (targets[HomeFocusRegion.Grid]?.hasRememberedFocus() == true) {
+            gridRememberedEntryPriority
+        } else {
+            entryPriority
+        }
+    }
+}
+
+private object HomeFocusRules {
+    val DefaultRestorePriority = listOf(
+        HomeFocusRegion.Grid,
+        HomeFocusRegion.ProfileContent,
+        HomeFocusRegion.DynamicFollowUpdates,
+        HomeFocusRegion.DynamicLiveUsers,
+        HomeFocusRegion.ContentTabs,
+    )
+
+    private val contentTabsThenGrid = listOf(HomeFocusRegion.ContentTabs, HomeFocusRegion.Grid)
+    private val gridThenContentTabs = listOf(HomeFocusRegion.Grid, HomeFocusRegion.ContentTabs)
+
+    private val rules = mapOf(
+        AppTopLevelTab.RECOMMEND to HomeFocusRule(
+            entryPriority = listOf(HomeFocusRegion.Grid),
+        ),
+        AppTopLevelTab.SEARCH to HomeFocusRule(
+            entryPriority = listOf(
+                HomeFocusRegion.SearchInput,
+                HomeFocusRegion.SearchCategory,
+                HomeFocusRegion.Grid,
+            ),
+        ),
+        AppTopLevelTab.TODAY_WATCH to contentTabsRule(),
+        AppTopLevelTab.POPULAR to contentTabsRule(),
+        AppTopLevelTab.LIVE to contentTabsRule(),
+        AppTopLevelTab.DYNAMIC to HomeFocusRule(
+            entryPriority = listOf(
+                HomeFocusRegion.DynamicLiveUsers,
+                HomeFocusRegion.DynamicFollowUpdates,
+                HomeFocusRegion.Grid,
+            ),
+            topEdgePriority = listOf(
+                HomeFocusRegion.DynamicFollowUpdates,
+                HomeFocusRegion.DynamicLiveUsers,
+            ),
+            rememberLastRegionOnEntry = false,
+        ),
+        AppTopLevelTab.WATCH_LATER to HomeFocusRule(
+            entryPriority = listOf(HomeFocusRegion.Grid),
+        ),
+        AppTopLevelTab.PROFILE to HomeFocusRule(
+            entryPriority = listOf(
+                HomeFocusRegion.ProfileSidebar,
+                HomeFocusRegion.ProfileContent,
+            ),
+            keepTopBarVisibleWhileEnteringContent = true,
+        ),
+    )
+
+    fun ruleFor(tab: AppTopLevelTab): HomeFocusRule? = rules[tab]
+
+    fun canCoordinate(tab: AppTopLevelTab): Boolean = rules.containsKey(tab)
+
+    private fun contentTabsRule(): HomeFocusRule {
+        return HomeFocusRule(
+            entryPriority = contentTabsThenGrid,
+            gridRememberedEntryPriority = gridThenContentTabs,
+            topEdgePriority = listOf(HomeFocusRegion.ContentTabs),
+        )
+    }
 }
 
 internal class HomeFocusCoordinator(
@@ -175,9 +262,16 @@ internal class HomeFocusCoordinator(
     fun requestRegionFocus(
         tab: AppTopLevelTab,
         region: HomeFocusRegion,
+        entryHint: HomeFocusEntryHint = HomeFocusEntryHint(),
     ) {
         prepareForContentFocus()
-        enqueueFocusIntent(HomeFocusIntent.FocusRegion(tab = tab, region = region))
+        enqueueFocusIntent(
+            HomeFocusIntent.FocusRegion(
+                tab = tab,
+                region = region,
+                entryHint = entryHint,
+            )
+        )
     }
 
     fun requestRestoreVideoKey(
@@ -208,16 +302,34 @@ internal class HomeFocusCoordinator(
         return handleContentWantsTopBar(scene)
     }
 
-    fun handleContentTabsDpadDown(tab: AppTopLevelTab): Boolean {
-        requestRegionFocus(tab = tab, region = HomeFocusRegion.Grid)
+    fun handleContentTabsDpadDown(
+        tab: AppTopLevelTab,
+        preferredIndex: Int? = null,
+    ): Boolean {
+        requestRegionFocus(
+            tab = tab,
+            region = HomeFocusRegion.Grid,
+            entryHint = HomeFocusEntryHint(preferredIndex = preferredIndex),
+        )
         return true
     }
 
-    fun handleDynamicLiveUsersDpadDown(): Boolean {
-        if (tryRequestRegionFocus(AppTopLevelTab.DYNAMIC, HomeFocusRegion.DynamicFollowUpdates)) {
+    fun handleDynamicLiveUsersDpadDown(preferredIndex: Int? = null): Boolean {
+        val entryHint = HomeFocusEntryHint(preferredIndex = preferredIndex)
+        if (
+            tryRequestRegionFocus(
+                tab = AppTopLevelTab.DYNAMIC,
+                region = HomeFocusRegion.DynamicFollowUpdates,
+                entryHint = entryHint,
+            )
+        ) {
             return true
         }
-        requestRegionFocus(tab = AppTopLevelTab.DYNAMIC, region = HomeFocusRegion.Grid)
+        requestRegionFocus(
+            tab = AppTopLevelTab.DYNAMIC,
+            region = HomeFocusRegion.Grid,
+            entryHint = entryHint,
+        )
         return true
     }
 
@@ -228,29 +340,21 @@ internal class HomeFocusCoordinator(
         return handleContentWantsTopBar()
     }
 
-    fun handleDynamicFollowUpdatesDpadDown(): Boolean {
-        requestRegionFocus(tab = AppTopLevelTab.DYNAMIC, region = HomeFocusRegion.Grid)
+    fun handleDynamicFollowUpdatesDpadDown(preferredIndex: Int? = null): Boolean {
+        requestRegionFocus(
+            tab = AppTopLevelTab.DYNAMIC,
+            region = HomeFocusRegion.Grid,
+            entryHint = HomeFocusEntryHint(preferredIndex = preferredIndex),
+        )
         return true
     }
 
     fun handleGridTopEdge(tab: AppTopLevelTab): Boolean {
-        if (tab == AppTopLevelTab.DYNAMIC) {
-            if (tryRequestRegionFocus(tab, HomeFocusRegion.DynamicFollowUpdates)) {
+        val rule = HomeFocusRules.ruleFor(tab)
+        rule?.topEdgePriority.orEmpty().forEach { region ->
+            if (tryRequestRegionFocus(tab, region)) {
                 return true
             }
-            if (tryRequestRegionFocus(tab, HomeFocusRegion.DynamicLiveUsers)) {
-                return true
-            }
-            return handleContentWantsTopBar()
-        }
-        val upperRegion = when (tab) {
-            AppTopLevelTab.POPULAR,
-            AppTopLevelTab.LIVE,
-            AppTopLevelTab.TODAY_WATCH -> HomeFocusRegion.ContentTabs
-            else -> null
-        }
-        if (upperRegion != null && tryRequestRegionFocus(tab, upperRegion)) {
-            return true
         }
         return handleContentWantsTopBar()
     }
@@ -309,7 +413,11 @@ internal class HomeFocusCoordinator(
             HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
             is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
             HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)
-            is HomeFocusIntent.FocusRegion -> tryRequestRegionFocus(intent.tab, intent.region)
+            is HomeFocusIntent.FocusRegion -> tryRequestRegionFocus(
+                tab = intent.tab,
+                region = intent.region,
+                entryHint = intent.entryHint,
+            )
             is HomeFocusIntent.RestoreVideoKey -> tryRestoreVideoKey(intent)
         }
         if (focused) {
@@ -357,9 +465,10 @@ internal class HomeFocusCoordinator(
     private fun tryRequestRegionFocus(
         tab: AppTopLevelTab,
         region: HomeFocusRegion,
+        entryHint: HomeFocusEntryHint = HomeFocusEntryHint(),
     ): Boolean {
         val target = contentTargets[tab]?.get(region) ?: return false
-        if (!target.tryRequestFocus()) return false
+        if (!target.tryRequestFocusForEntry(entryHint)) return false
         markContentFocusRequested(tab, region)
         return true
     }
@@ -367,13 +476,11 @@ internal class HomeFocusCoordinator(
     private fun tryRestoreVideoKey(intent: HomeFocusIntent.RestoreVideoKey): Boolean {
         if (intent.tab != selectedHomeTab) return false
         val targets = contentTargets[intent.tab] ?: return false
-        val orderedTargets = listOfNotNull(
-            targets[HomeFocusRegion.Grid]?.let { HomeFocusRegion.Grid to it },
-            targets[HomeFocusRegion.ProfileContent]?.let { HomeFocusRegion.ProfileContent to it },
-            targets[HomeFocusRegion.DynamicFollowUpdates]?.let { HomeFocusRegion.DynamicFollowUpdates to it },
-            targets[HomeFocusRegion.DynamicLiveUsers]?.let { HomeFocusRegion.DynamicLiveUsers to it },
-            targets[HomeFocusRegion.ContentTabs]?.let { HomeFocusRegion.ContentTabs to it },
-        )
+        val restorePriority = HomeFocusRules.ruleFor(intent.tab)?.restorePriority
+            ?: HomeFocusRules.DefaultRestorePriority
+        val orderedTargets = restorePriority.mapNotNull { region ->
+            targets[region]?.let { target -> region to target }
+        }
         var restoredRegion: HomeFocusRegion? = null
         val restored = orderedTargets.any { (region, target) ->
             val restored = target.tryRequestFocusKeyOrFallback(intent.key)
@@ -416,56 +523,20 @@ internal class HomeFocusCoordinator(
 
     private fun contentFocusPriority(tab: AppTopLevelTab): List<HomeFocusRegion> {
         val targets = contentTargets[tab] ?: return emptyList()
-        val fallback = when (tab) {
-            AppTopLevelTab.RECOMMEND -> listOf(HomeFocusRegion.Grid)
-            AppTopLevelTab.POPULAR,
-            AppTopLevelTab.LIVE,
-            AppTopLevelTab.TODAY_WATCH -> {
-                val gridHasRememberedFocus =
-                    targets[HomeFocusRegion.Grid]?.hasRememberedFocus() == true
-                if (gridHasRememberedFocus) {
-                    listOf(HomeFocusRegion.Grid, HomeFocusRegion.ContentTabs)
-                } else {
-                    listOf(HomeFocusRegion.ContentTabs, HomeFocusRegion.Grid)
-                }
-            }
-            AppTopLevelTab.DYNAMIC -> listOf(
-                HomeFocusRegion.DynamicLiveUsers,
-                HomeFocusRegion.DynamicFollowUpdates,
-                HomeFocusRegion.Grid
-            )
-            AppTopLevelTab.WATCH_LATER -> listOf(HomeFocusRegion.Grid)
-            AppTopLevelTab.SEARCH -> listOf(
-                HomeFocusRegion.SearchInput,
-                HomeFocusRegion.SearchCategory,
-                HomeFocusRegion.Grid,
-            )
-            AppTopLevelTab.PROFILE -> listOf(
-                HomeFocusRegion.ProfileSidebar,
-                HomeFocusRegion.ProfileContent,
-            )
-        }
+        val rule = HomeFocusRules.ruleFor(tab) ?: return emptyList()
+        val fallback = rule.entryPriorityFor(targets)
         val remembered = lastContentRegionByTab[tab]
+            ?.takeIf { rule.rememberLastRegionOnEntry }
             ?.takeIf { region -> targets.containsKey(region) }
             ?: return fallback
-        if (tab == AppTopLevelTab.DYNAMIC) {
-            return fallback
-        }
         return listOf(remembered) + fallback.filterNot { region -> region == remembered }
     }
 
     private fun canCoordinateContent(tab: AppTopLevelTab): Boolean {
-        return tab == AppTopLevelTab.RECOMMEND ||
-            tab == AppTopLevelTab.SEARCH ||
-            tab == AppTopLevelTab.POPULAR ||
-            tab == AppTopLevelTab.LIVE ||
-            tab == AppTopLevelTab.DYNAMIC ||
-            tab == AppTopLevelTab.WATCH_LATER ||
-            tab == AppTopLevelTab.TODAY_WATCH ||
-            tab == AppTopLevelTab.PROFILE
+        return HomeFocusRules.canCoordinate(tab)
     }
 
     private fun shouldKeepTopBarVisibleWhileEnteringContent(tab: AppTopLevelTab): Boolean {
-        return tab == AppTopLevelTab.PROFILE
+        return HomeFocusRules.ruleFor(tab)?.keepTopBarVisibleWhileEnteringContent == true
     }
 }

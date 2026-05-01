@@ -36,7 +36,7 @@ class PublisherViewModel : ViewModel() {
     private val videoPaging = PagedGridStateMachine(initialKey = 1)
 
     fun primeVideoDetail(video: VideoItem) {
-        VideoDetailRepository.prefetchDetailLanding(video, scope = viewModelScope)
+        VideoDetailRepository.prefetchDetailSummary(video, scope = viewModelScope)
     }
 
     fun load(
@@ -70,26 +70,28 @@ class PublisherViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
-            val headerResult = PublisherRepository.getPublisherHeader(mid)
-            if (currentMid != mid) return@launch
-            headerResult
-                .onSuccess { header ->
-                    _uiState.update {
-                        it.copy(
-                            header = header,
-                            headerError = null
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        if (it.header != null) {
-                            it.copy(headerError = null)
-                        } else {
-                            it.copy(headerError = error.message ?: "发布者信息加载失败")
+            if (initialHeader == null) {
+                val headerResult = PublisherRepository.getPublisherHeader(mid)
+                if (currentMid != mid) return@launch
+                headerResult
+                    .onSuccess { header ->
+                        _uiState.update {
+                            it.copy(
+                                header = header,
+                                headerError = null
+                            )
                         }
                     }
-                }
+                    .onFailure { error ->
+                        _uiState.update {
+                            if (it.header != null) {
+                                it.copy(headerError = null)
+                            } else {
+                                it.copy(headerError = error.message ?: "发布者信息加载失败")
+                            }
+                        }
+                    }
+            }
 
             loadPage(mid = mid, reset = true)
         }

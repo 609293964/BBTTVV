@@ -74,23 +74,25 @@ fun HomeScreen(
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
     RegisterHomeFocusEscapeGuard(focusCoordinator)
     val restoreTargetTab = restoreVideoFocusTab ?: AppTopLevelTab.RECOMMEND
+    val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&
+        hasPendingVideoFocusRestore &&
+        restoreVideoFocusKey != null
     LaunchedEffect(visibleTabs) {
         tabGridFocusStates.retainVisibleTabs(visibleTabs.toSet())
         focusCoordinator.retainVisibleTabs(visibleTabs.toSet())
     }
     LaunchedEffect(selectedHomeTab) {
-        resetCollapsingTabForSwitch(
-            tab = selectedHomeTab,
-            collapsingHeaderState = collapsingHeaderState,
-            recommendGridFocusState = recommendGridFocusState,
-            tabGridFocusStates = tabGridFocusStates,
-        )
+        if (!isVideoFocusRestorePending) {
+            resetCollapsingTabForSwitch(
+                tab = selectedHomeTab,
+                collapsingHeaderState = collapsingHeaderState,
+                recommendGridFocusState = recommendGridFocusState,
+                tabGridFocusStates = tabGridFocusStates,
+            )
+        }
         focusCoordinator.updateSelectedHomeTab(selectedHomeTab)
         viewModel.onHomeTabVisible(selectedHomeTab)
     }
-    val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&
-        hasPendingVideoFocusRestore &&
-        restoreVideoFocusKey != null
     val effectiveFocusScene = if (isVideoFocusRestorePending) {
         HomeFocusScene.BackReturn
     } else {
@@ -106,6 +108,14 @@ fun HomeScreen(
         restoreVideoFocusKey = restoreVideoFocusKey,
         restoreVideoIndex = restoreRecommendVideoIndex,
     )
+    val restoreRecommendInitialScrollIndex = if (
+        shouldResumeVideoContentFocus &&
+        restoreTargetTab == AppTopLevelTab.RECOMMEND
+    ) {
+        restoreRecommendVideoIndex
+    } else {
+        -1
+    }
     LaunchedEffect(selectedHomeTab, uiState.isLoading, recommendIsEmpty) {
         if (selectedHomeTab != AppTopLevelTab.RECOMMEND) return@LaunchedEffect
         if (!uiState.isLoading || !recommendIsEmpty) return@LaunchedEffect
@@ -245,9 +255,14 @@ fun HomeScreen(
         }
     }
     val usesCollapsingHomeHeader = selectedHomeTab.usesCollapsingHomeHeader()
-    val topBarHeightDp = with(LocalDensity.current) { topBarHeightState.intValue.toDp() }
-    val shouldComposeTopBar = !shouldResumeVideoContentFocus &&
-        (usesCollapsingHomeHeader || focusCoordinator.isTopBarVisible)
+    val density = LocalDensity.current
+    val fallbackTopBarHeightPx = with(density) { EstimatedHomeTopBarHeight.toPx().toInt() }
+    val effectiveTopBarHeightPx = effectiveTopBarHeightPx(
+        measuredTopBarHeightPx = topBarHeightState.intValue,
+        fallbackTopBarHeightPx = fallbackTopBarHeightPx,
+    )
+    val topBarHeightDp = with(density) { effectiveTopBarHeightPx.toDp() }
+    val shouldComposeTopBar = usesCollapsingHomeHeader || focusCoordinator.isTopBarVisible
     val contentTopPadding = if (!usesCollapsingHomeHeader && shouldComposeTopBar) {
         topBarHeightDp
     } else {
@@ -280,8 +295,8 @@ fun HomeScreen(
                     tabGridFocusStates = tabGridFocusStates,
                     recommendGridFocusState = recommendGridFocusState,
                     focusCoordinator = focusCoordinator,
-                    topBarHeightPx = if (usesCollapsingHomeHeader && !shouldResumeVideoContentFocus) {
-                        topBarHeightState.intValue
+                    topBarHeightPx = if (usesCollapsingHomeHeader) {
+                        effectiveTopBarHeightPx
                     } else {
                         0
                     },
@@ -295,7 +310,8 @@ fun HomeScreen(
                     onRecommendVideoClick = onRecommendVideoClick,
                     onOpenSettings = onOpenSettings,
                     onProfileVideoClick = onProfileVideoClick,
-                    onOpenUp = onOpenUp
+                    onOpenUp = onOpenUp,
+                    restoreRecommendInitialScrollIndex = restoreRecommendInitialScrollIndex,
                 )
             }
         }
@@ -320,6 +336,13 @@ fun HomeScreen(
                 onTopBarFocusChanged = { isFocused ->
                     if (isFocused) {
                         collapsingHeaderState.reset()
+                        if (focusCoordinator.scene == HomeFocusScene.BackToTopBar) {
+                            resetHomeTabGridToTopForTopBarReturn(
+                                tab = selectedHomeTab,
+                                recommendGridFocusState = recommendGridFocusState,
+                                tabGridFocusStates = tabGridFocusStates,
+                            )
+                        }
                         focusCoordinator.onTopBarFocused()
                     }
                 },
@@ -331,11 +354,15 @@ fun HomeScreen(
                     }
                     .graphicsLayer {
                         translationY = if (usesCollapsingHomeHeader) {
-                            -collapsingHeaderState.collapseOffsetPx.toFloat()
+                            -effectiveTopBarCollapseOffsetPx(
+                                collapseOffsetPx = collapsingHeaderState.collapseOffsetPx,
+                                topBarHeightPx = effectiveTopBarHeightPx,
+                                isTopBarVisible = focusCoordinator.isTopBarVisible,
+                            ).toFloat()
                         } else if (focusCoordinator.isTopBarVisible) {
                             0f
                         } else {
-                            -topBarHeightState.intValue.toFloat()
+                            -effectiveTopBarHeightPx.toFloat()
                         }
                     }
             )
@@ -343,13 +370,11 @@ fun HomeScreen(
     }
 }
 
-private fun resetCollapsingTabForSwitch(
+private fun resetHomeTabGridToTopForTopBarReturn(
     tab: AppTopLevelTab,
-    collapsingHeaderState: HomeCollapsingHeaderState,
     recommendGridFocusState: HomeRecommendGridFocusState,
     tabGridFocusStates: HomeTabGridFocusStates,
 ) {
-    collapsingHeaderState.reset()
     when (tab) {
         AppTopLevelTab.RECOMMEND -> {
             recommendGridFocusState.resetRememberedFocusToTopForTopBarReturn()
@@ -361,6 +386,44 @@ private fun resetCollapsingTabForSwitch(
         }
         else -> Unit
     }
+}
+
+private val EstimatedHomeTopBarHeight = AppTopBarDefaults.TopPadding +
+    AppTopBarDefaults.BottomPadding +
+    10.dp
+
+internal fun effectiveTopBarHeightPx(
+    measuredTopBarHeightPx: Int,
+    fallbackTopBarHeightPx: Int,
+): Int {
+    return measuredTopBarHeightPx.takeIf { it > 0 }
+        ?: fallbackTopBarHeightPx.coerceAtLeast(0)
+}
+
+private fun effectiveTopBarCollapseOffsetPx(
+    collapseOffsetPx: Int,
+    topBarHeightPx: Int,
+    isTopBarVisible: Boolean,
+): Int {
+    return if (!isTopBarVisible && collapseOffsetPx <= 0) {
+        topBarHeightPx.coerceAtLeast(0)
+    } else {
+        collapseOffsetPx.coerceAtLeast(0)
+    }
+}
+
+private fun resetCollapsingTabForSwitch(
+    tab: AppTopLevelTab,
+    collapsingHeaderState: HomeCollapsingHeaderState,
+    recommendGridFocusState: HomeRecommendGridFocusState,
+    tabGridFocusStates: HomeTabGridFocusStates,
+) {
+    collapsingHeaderState.reset()
+    resetHomeTabGridToTopForTopBarReturn(
+        tab = tab,
+        recommendGridFocusState = recommendGridFocusState,
+        tabGridFocusStates = tabGridFocusStates,
+    )
 }
 
 @Composable

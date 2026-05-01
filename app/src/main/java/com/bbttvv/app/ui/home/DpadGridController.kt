@@ -216,7 +216,7 @@ internal class DpadGridController(
         val currentItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
         val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
         if (targetItem != null && targetItem.isValidFocusTarget()) {
-            if (isItemFullyVisible(recycler, targetItem) && targetItem.requestFocus()) {
+            if (focusAttachedItemThenScrollIntoView(recycler, targetItem, targetPosition)) {
                 return true
             }
             val requestToken = ++focusRequestToken
@@ -282,7 +282,7 @@ internal class DpadGridController(
         if (nextPosition in 0 until itemCount) {
             val targetItem = recycler.findViewHolderForAdapterPosition(nextPosition)?.itemView
             if (targetItem != null && targetItem.isValidFocusTarget()) {
-                if (isItemFullyVisible(recycler, targetItem) && targetItem.requestFocus()) {
+                if (focusAttachedItemThenScrollIntoView(recycler, targetItem, nextPosition)) {
                     return true
                 }
                 val requestToken = ++focusRequestToken
@@ -561,6 +561,49 @@ internal class DpadGridController(
             position = candidate,
             requestToken = requestToken,
         )
+    }
+
+    private fun focusAttachedItemThenScrollIntoView(
+        recycler: RecyclerView,
+        itemView: View,
+        position: Int,
+    ): Boolean {
+        if (!itemView.isValidFocusTarget()) return false
+        unparkFocusInRecyclerViewIfNeeded(recycler)
+        if (!itemView.requestFocus()) return false
+
+        val requestToken = focusRequestToken
+        recycler.postOnAnimation {
+            if (!isFocusRequestCurrent(recycler, requestToken)) return@postOnAnimation
+            val targetItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
+                ?: return@postOnAnimation
+            if (!targetItem.isValidFocusTarget()) return@postOnAnimation
+            val focusedView = recycler.rootView?.findFocus() ?: return@postOnAnimation
+            if (!focusedView.isSameOrDescendantOf(targetItem)) return@postOnAnimation
+            scrollAttachedItemIntoView(recycler, targetItem)
+        }
+        return true
+    }
+
+    private fun scrollAttachedItemIntoView(
+        recycler: RecyclerView,
+        itemView: View,
+    ): Boolean {
+        val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
+        val bounds = Rect()
+        layoutManager.getDecoratedBoundsWithMargins(itemView, bounds)
+        val topLimit = recycler.paddingTop
+        val bottomLimit = recycler.height - recycler.paddingBottom
+        val dy = when {
+            bounds.top < topLimit -> bounds.top - topLimit
+            bounds.bottom > bottomLimit -> bounds.bottom - bottomLimit
+            else -> 0
+        }
+        if (dy == 0 || !recycler.canScrollVertically(if (dy > 0) 1 else -1)) {
+            return false
+        }
+        recycler.scrollBy(0, dy)
+        return true
     }
 
     private fun tryFocusAtPosition(

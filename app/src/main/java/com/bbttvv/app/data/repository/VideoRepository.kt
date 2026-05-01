@@ -349,6 +349,18 @@ object VideoRepository {
         return videoInfoCache[cacheKey]?.data ?: videoPreviewCache[cacheKey]
     }
 
+    fun getCachedFullDetailViewInfo(bvid: String): ViewInfo? {
+        val cacheKey = bvid.trim()
+        if (cacheKey.isBlank()) return null
+        return videoInfoCache[cacheKey]?.data
+    }
+
+    fun getCachedDetailPreviewViewInfo(bvid: String): ViewInfo? {
+        val cacheKey = bvid.trim()
+        if (cacheKey.isBlank()) return null
+        return videoPreviewCache[cacheKey]
+    }
+
     fun getCachedRelatedVideos(bvid: String): List<RelatedVideo>? {
         val cacheKey = bvid.trim()
         if (cacheKey.isBlank()) return null
@@ -416,6 +428,13 @@ object VideoRepository {
     }
 
     fun prefetchDetailSummary(video: VideoItem, scope: CoroutineScope = AppScope.ioScope) {
+        val cacheKey = video.bvid.trim()
+        if (cacheKey.isBlank()) return
+        cacheVideoPreview(video)
+        prefetchVideoInfo(cacheKey, scope)
+    }
+
+    fun prefetchDetailSummary(video: RelatedVideo, scope: CoroutineScope = AppScope.ioScope) {
         val cacheKey = video.bvid.trim()
         if (cacheKey.isBlank()) return
         cacheVideoPreview(video)

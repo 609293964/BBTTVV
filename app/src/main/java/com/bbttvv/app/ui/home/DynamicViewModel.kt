@@ -255,7 +255,7 @@ class DynamicViewModel : ViewModel() {
             pendingPrefetchBvid = null
         }
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
-        VideoDetailRepository.prefetchDetailLanding(video)
+        VideoDetailRepository.prefetchDetailSummary(video)
     }
 
     fun prefetchVideoDetail(video: VideoItem) {

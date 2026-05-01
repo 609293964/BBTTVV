@@ -31,6 +31,9 @@ interface BilibiliApi {
     @GET("x/web-interface/nav/stat")
     suspend fun getNavStat(): NavStatResponse
 
+    @GET("x/web-interface/zone")
+    suspend fun getIpZone(): IpLocationResponse
+
     //  [New] 获取用户卡片信息 (轻量级用户信息)
     @GET("x/web-interface/card")
     suspend fun getUserCard(

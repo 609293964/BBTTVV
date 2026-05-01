@@ -5,6 +5,7 @@ import com.bbttvv.app.core.network.BilibiliApi
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.util.Logger
+import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.data.model.CommentFraudStatus
 import com.bbttvv.app.data.model.response.*
 import kotlinx.coroutines.CancellationException
@@ -420,7 +421,7 @@ object CommentRepository {
             val response = api.getEmotes(params)
             val packages = response.data?.packages ?: response.data?.all_packages
             packages?.forEach { pkg ->
-                pkg.emote?.forEach { emote -> map[emote.text] = emote.url }
+                pkg.emote?.forEach { emote -> map[emote.text] = preferHttpsUrl(emote.url) }
             }
         } catch (error: CancellationException) {
             throw error
@@ -432,9 +433,9 @@ object CommentRepository {
 
     private fun defaultReplyEmoteMap(): Map<String, String> {
         return mapOf(
-            "[doge]" to "http://i0.hdslb.com/bfs/emote/6f8743c3c13009f4705307b2750e32f5068225e3.png",
-            "[笑哭]" to "http://i0.hdslb.com/bfs/emote/500b63b2f293309a909403a746566fdd6104d498.png",
-            "[妙啊]" to "http://i0.hdslb.com/bfs/emote/03c39c8eb009f63568971032b49c716259c72441.png"
+            "[doge]" to "https://i0.hdslb.com/bfs/emote/6f8743c3c13009f4705307b2750e32f5068225e3.png",
+            "[笑哭]" to "https://i0.hdslb.com/bfs/emote/500b63b2f293309a909403a746566fdd6104d498.png",
+            "[妙啊]" to "https://i0.hdslb.com/bfs/emote/03c39c8eb009f63568971032b49c716259c72441.png"
         )
     }
 

@@ -48,7 +48,7 @@ fun HomeSecondaryTabRow(
     horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(10.dp),
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     onDpadUp: (() -> Boolean)? = null,
-    onDpadDown: (() -> Boolean)? = null,
+    onDpadDown: ((Int) -> Boolean)? = null,
 ) {
     if (tabs.isEmpty()) return
 
@@ -66,6 +66,7 @@ fun HomeSecondaryTabRow(
             contentType = { _, _ -> "home_secondary_tab" }
         ) { index, label ->
             HomeSecondaryTab(
+                index = index,
                 label = label,
                 selected = index == selectedIndex,
                 first = index == 0,
@@ -89,6 +90,7 @@ fun HomeSecondaryTabRow(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun HomeSecondaryTab(
+    index: Int,
     label: String,
     selected: Boolean,
     first: Boolean,
@@ -97,7 +99,7 @@ private fun HomeSecondaryTab(
     onClick: () -> Unit,
     onFocus: () -> Unit,
     onDpadUp: (() -> Boolean)?,
-    onDpadDown: (() -> Boolean)?,
+    onDpadDown: ((Int) -> Boolean)?,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     Surface(
@@ -111,7 +113,7 @@ private fun HomeSecondaryTab(
                 }
                 when (event.keyCode) {
                     AndroidKeyEvent.KEYCODE_DPAD_UP -> onDpadUp?.invoke() == true
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown?.invoke() == true
+                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown?.invoke(index) == true
                     AndroidKeyEvent.KEYCODE_DPAD_LEFT -> first
                     AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> last
                     else -> false

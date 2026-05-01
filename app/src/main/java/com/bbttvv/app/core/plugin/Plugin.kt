@@ -29,6 +29,10 @@ interface Plugin {
     /** 插件图标 (可选) */
     val icon: ImageVector?
         get() = null
+
+    /** 插件能力声明，用于插件中心展示和后续外部插件授权扩展。 */
+    val capabilityManifest: PluginCapabilityManifest?
+        get() = null
     
     /**  是否暂不可用 (用于标识功能尚未完成) */
     val unavailable: Boolean

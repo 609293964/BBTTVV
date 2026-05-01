@@ -3,9 +3,11 @@
 import android.content.Context
 import android.os.SystemClock
 import com.bbttvv.app.core.store.CreatorSignalSnapshot
+import com.bbttvv.app.core.store.TodayWatchDislikedVideoSnapshot
 import com.bbttvv.app.core.store.TodayWatchFeedbackSnapshot
 import com.bbttvv.app.core.store.TodayWatchFeedbackStore
 import com.bbttvv.app.core.store.TodayWatchProfileStore
+import com.bbttvv.app.core.store.withDislikedVideoFeedback
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.HistoryRepository
@@ -79,19 +81,16 @@ internal class TodayWatchCoordinator(
     }
 
     fun markNotInterested(video: VideoItem) {
-        val dislikedBvids = buildSet {
-            addAll(feedbackSnapshot.dislikedBvids)
-            video.bvid.takeIf { it.isNotBlank() }?.let(::add)
-        }
-        val dislikedCreatorMids = buildSet {
-            addAll(feedbackSnapshot.dislikedCreatorMids)
-            video.owner.mid.takeIf { it > 0L }?.let(::add)
-        }
         persistFeedback(
-            feedbackSnapshot.copy(
-                dislikedBvids = dislikedBvids,
-                dislikedCreatorMids = dislikedCreatorMids,
-                dislikedKeywords = feedbackSnapshot.dislikedKeywords + extractFeedbackKeywords(video.title)
+            feedbackSnapshot.withDislikedVideoFeedback(
+                video = TodayWatchDislikedVideoSnapshot(
+                    bvid = video.bvid,
+                    title = video.title,
+                    creatorName = video.owner.name,
+                    creatorMid = video.owner.mid,
+                    dislikedAtMillis = System.currentTimeMillis()
+                ),
+                keywords = extractFeedbackKeywords(video.title)
             )
         )
 

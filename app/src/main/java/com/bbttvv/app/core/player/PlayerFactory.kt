@@ -93,7 +93,7 @@ fun createConfiguredPlayer(
         .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
         .apply {
-            volume = 1.0f
+            volume = PlayerSettingsCache.getVolumeCalibrationScale()
             playbackParameters = PlaybackParameters(PlayerSettingsCache.getPreferredPlaybackSpeed())
             playWhenReady = true
         }

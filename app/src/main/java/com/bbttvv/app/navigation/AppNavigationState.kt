@@ -55,7 +55,7 @@ class DetailReturnState internal constructor(
     private val homeVideoFocusRestoreKeyState: MutableState<String?>,
     private val homeVideoFocusRestoreTabIndexState: MutableState<Int?>,
     private val homeVideoFocusRestoreReadyState: MutableState<Boolean>,
-    private val homeVideoFocusRestoreSawPauseState: MutableState<Boolean>,
+    private val homeVideoFocusRestoreLeftHomeState: MutableState<Boolean>,
     private val detailCommentFocusRestoreRpidState: MutableState<Long?>,
     private val detailCommentFocusRestoreBvidState: MutableState<String?>,
 ) {
@@ -77,10 +77,10 @@ class DetailReturnState internal constructor(
             homeVideoFocusRestoreReadyState.value = value
         }
 
-    private var homeVideoFocusRestoreSawPause: Boolean
-        get() = homeVideoFocusRestoreSawPauseState.value
+    private var homeVideoFocusRestoreLeftHome: Boolean
+        get() = homeVideoFocusRestoreLeftHomeState.value
         set(value) {
-            homeVideoFocusRestoreSawPauseState.value = value
+            homeVideoFocusRestoreLeftHomeState.value = value
         }
 
     private var detailCommentFocusRestoreRpid: Long?
@@ -96,8 +96,9 @@ class DetailReturnState internal constructor(
         }
 
     fun restoreVideoFocusKey(isOnHome: Boolean): String? {
-        return homeVideoFocusRestoreKey.takeIf {
-            isOnHome && homeVideoFocusRestoreReady && it != null
+        val key = homeVideoFocusRestoreKey ?: return null
+        return key.takeIf {
+            isOnHome && (homeVideoFocusRestoreReady || homeVideoFocusRestoreLeftHome)
         }
     }
 
@@ -111,16 +112,18 @@ class DetailReturnState internal constructor(
         return restoreVideoFocusKey(isOnHome) != null
     }
 
-    fun onHostActivityPaused() {
-        if (homeVideoFocusRestoreKey != null && !homeVideoFocusRestoreReady) {
-            homeVideoFocusRestoreSawPause = true
+    fun onRouteChanged(isOnHome: Boolean) {
+        if (homeVideoFocusRestoreKey == null) {
+            homeVideoFocusRestoreLeftHome = false
+            return
         }
-    }
-
-    fun onHostActivityResumed() {
-        if (homeVideoFocusRestoreKey != null && homeVideoFocusRestoreSawPause) {
+        if (!isOnHome) {
+            homeVideoFocusRestoreLeftHome = true
+            return
+        }
+        if (homeVideoFocusRestoreLeftHome && !homeVideoFocusRestoreReady) {
             homeVideoFocusRestoreReady = true
-            homeVideoFocusRestoreSawPause = false
+            homeVideoFocusRestoreLeftHome = false
         }
     }
 
@@ -143,7 +146,6 @@ class DetailReturnState internal constructor(
         prepareHomeVideoFocusRestore(
             tab = AppTopLevelTab.RECOMMEND,
             focusKey = focusKey,
-            waitForHostActivityReturn = true,
         )
         clearDetailCommentFocusRestore()
     }
@@ -152,7 +154,6 @@ class DetailReturnState internal constructor(
         prepareHomeVideoFocusRestore(
             tab = tab,
             focusKey = focusKey,
-            waitForHostActivityReturn = true,
         )
         clearDetailCommentFocusRestore()
     }
@@ -161,7 +162,6 @@ class DetailReturnState internal constructor(
         prepareHomeVideoFocusRestore(
             tab = tab,
             focusKey = focusKey,
-            waitForHostActivityReturn = false,
         )
         clearDetailCommentFocusRestore()
     }
@@ -170,7 +170,6 @@ class DetailReturnState internal constructor(
         prepareHomeVideoFocusRestore(
             tab = AppTopLevelTab.LIVE,
             focusKey = focusKey,
-            waitForHostActivityReturn = false,
         )
         clearDetailCommentFocusRestore()
     }
@@ -178,19 +177,18 @@ class DetailReturnState internal constructor(
     private fun prepareHomeVideoFocusRestore(
         tab: AppTopLevelTab,
         focusKey: String,
-        waitForHostActivityReturn: Boolean,
     ) {
         homeVideoFocusRestoreKey = focusKey
         homeVideoFocusRestoreTabIndex = tab.index
-        homeVideoFocusRestoreReady = !waitForHostActivityReturn
-        homeVideoFocusRestoreSawPause = false
+        homeVideoFocusRestoreReady = false
+        homeVideoFocusRestoreLeftHome = false
     }
 
     private fun clearHomeVideoFocusRestore() {
         homeVideoFocusRestoreKey = null
         homeVideoFocusRestoreTabIndex = null
         homeVideoFocusRestoreReady = false
-        homeVideoFocusRestoreSawPause = false
+        homeVideoFocusRestoreLeftHome = false
     }
 
     fun clearDetailCommentFocusRestore() {
@@ -280,15 +278,9 @@ class AppNavigationState internal constructor(
     }
 
     fun onRouteChanged(currentRoute: String?) {
-        backPressExitState.onRouteChanged(isOnHome(currentRoute))
-    }
-
-    fun onHostActivityPaused() {
-        detailReturnState.onHostActivityPaused()
-    }
-
-    fun onHostActivityResumed() {
-        detailReturnState.onHostActivityResumed()
+        val isOnHome = isOnHome(currentRoute)
+        backPressExitState.onRouteChanged(isOnHome)
+        detailReturnState.onRouteChanged(isOnHome)
     }
 
     fun markHomeVideoFocusRestored(restoredKey: String) {
@@ -362,7 +354,7 @@ fun rememberAppNavigationState(): AppNavigationState {
     val homeVideoFocusRestoreKeyState = rememberSaveable { mutableStateOf<String?>(null) }
     val homeVideoFocusRestoreTabIndexState = rememberSaveable { mutableStateOf<Int?>(null) }
     val homeVideoFocusRestoreReadyState = rememberSaveable { mutableStateOf(false) }
-    val homeVideoFocusRestoreSawPauseState = rememberSaveable { mutableStateOf(false) }
+    val homeVideoFocusRestoreLeftHomeState = rememberSaveable { mutableStateOf(false) }
     val detailCommentFocusRestoreRpidState = rememberSaveable { mutableStateOf<Long?>(null) }
     val detailCommentFocusRestoreBvidState = rememberSaveable { mutableStateOf<String?>(null) }
     val lastBackPressedAtState = remember { mutableLongStateOf(0L) }
@@ -374,7 +366,7 @@ fun rememberAppNavigationState(): AppNavigationState {
         homeVideoFocusRestoreKeyState,
         homeVideoFocusRestoreTabIndexState,
         homeVideoFocusRestoreReadyState,
-        homeVideoFocusRestoreSawPauseState,
+        homeVideoFocusRestoreLeftHomeState,
         detailCommentFocusRestoreRpidState,
         detailCommentFocusRestoreBvidState,
     ) {
@@ -382,7 +374,7 @@ fun rememberAppNavigationState(): AppNavigationState {
             homeVideoFocusRestoreKeyState = homeVideoFocusRestoreKeyState,
             homeVideoFocusRestoreTabIndexState = homeVideoFocusRestoreTabIndexState,
             homeVideoFocusRestoreReadyState = homeVideoFocusRestoreReadyState,
-            homeVideoFocusRestoreSawPauseState = homeVideoFocusRestoreSawPauseState,
+            homeVideoFocusRestoreLeftHomeState = homeVideoFocusRestoreLeftHomeState,
             detailCommentFocusRestoreRpidState = detailCommentFocusRestoreRpidState,
             detailCommentFocusRestoreBvidState = detailCommentFocusRestoreBvidState,
         )

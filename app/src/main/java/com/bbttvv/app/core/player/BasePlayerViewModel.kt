@@ -6,11 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.ExoPlayer
 import com.bbttvv.app.core.plugin.PluginManager
+import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
-import com.bbttvv.app.data.repository.SponsorBlockRepository
-import com.bbttvv.app.feature.plugin.SponsorBlockConfig
-import com.bbttvv.app.feature.plugin.findSponsorBlockPlugin
 import com.bbttvv.app.feature.video.danmaku.DanmakuRenderPayload
 import com.bbttvv.app.feature.video.danmaku.ParsedDanmaku
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +47,11 @@ abstract class BasePlayerViewModel : ViewModel() {
     private var danmakuLoadJob: Job? = null
     private var danmakuLoadSequence: Long = 0L
     private var danmakuSourceVersion: Long = 0L
+    private val sponsorBlockController = SponsorBlockController(
+        scope = viewModelScope,
+        playerEngineProvider = { playerEngine },
+        onSponsorSkipped = { segment -> onSponsorSkipped(segment) },
+    )
 
     init {
         observeDanmakuPluginUpdates()
@@ -62,7 +65,22 @@ abstract class BasePlayerViewModel : ViewModel() {
         ensureMainThread("attachPlayer")
         this.exoPlayer = player
         this.playerEngine = ExoPlayerEngine(player)
-        playerEngine?.volume = 1.0f
+        playerEngine?.volume = PlayerSettingsCache.getVolumeCalibrationScale()
+    }
+
+    /**
+     * 解除 ViewModel 与播放器实例的引用关系。
+     *
+     * Compose 页面销毁时会先调用此方法，再 release ExoPlayer，避免 ViewModel
+     * 在短时间内继续持有已释放的播放器。
+     */
+    @MainThread
+    open fun detachPlayer(player: ExoPlayer? = null) {
+        ensureMainThread("detachPlayer")
+        if (player == null || exoPlayer === player) {
+            playerEngine = null
+            exoPlayer = null
+        }
     }
 
     /**
@@ -95,16 +113,9 @@ abstract class BasePlayerViewModel : ViewModel() {
 
     // ========== 空降助手 (SponsorBlock) ==========
 
-    private val _sponsorSegments = MutableStateFlow<List<SponsorSegment>>(emptyList())
-    val sponsorSegments: StateFlow<List<SponsorSegment>> = _sponsorSegments.asStateFlow()
-
-    private val _currentSponsorSegment = MutableStateFlow<SponsorSegment?>(null)
-    val currentSponsorSegment: StateFlow<SponsorSegment?> = _currentSponsorSegment.asStateFlow()
-
-    private val _showSkipButton = MutableStateFlow(false)
-    val showSkipButton: StateFlow<Boolean> = _showSkipButton.asStateFlow()
-
-    private val skippedSegmentIds = mutableSetOf<String>()
+    val sponsorSegments: StateFlow<List<SponsorSegment>> = sponsorBlockController.segments
+    val currentSponsorSegment: StateFlow<SponsorSegment?> = sponsorBlockController.currentSegment
+    val showSkipButton: StateFlow<Boolean> = sponsorBlockController.showSkipButton
 
     /**
      * 加载空降片段
@@ -112,16 +123,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     @MainThread
     protected fun loadSponsorSegments(bvid: String) {
         ensureMainThread("loadSponsorSegments")
-        viewModelScope.launch {
-            try {
-                val segments = SponsorBlockRepository.getSegments(bvid)
-                _sponsorSegments.value = segments
-                skippedSegmentIds.clear()
-                Logger.d(TAG, " SponsorBlock: loaded ${segments.size} segments for $bvid")
-            } catch (e: Exception) {
-                Logger.w(TAG, " SponsorBlock: load failed: ${e.message}")
-            }
-        }
+        sponsorBlockController.load(bvid)
     }
 
     /**
@@ -132,42 +134,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     @MainThread
     suspend fun checkAndSkipSponsor(): Boolean {
         ensureMainThread("checkAndSkipSponsor")
-        val engine = playerEngine ?: return false
-        val segments = _sponsorSegments.value
-        if (segments.isEmpty()) return false
-
-        val sponsorConfig = resolveSponsorBlockConfig()
-        val filteredSegments = segments.filter { segment ->
-            segment.isSkipType && sponsorConfig.isCategoryEnabled(segment.category)
-        }
-        if (filteredSegments.isEmpty()) {
-            _currentSponsorSegment.value = null
-            _showSkipButton.value = false
-            return false
-        }
-
-        val currentPos = engine.currentPosition
-        val segment = SponsorBlockRepository.findSegmentAtPosition(filteredSegments, currentPos)
-
-        if (segment != null && segment.UUID !in skippedSegmentIds) {
-            _currentSponsorSegment.value = segment
-
-            if (sponsorConfig.autoSkip) {
-                engine.seekTo(segment.endTimeMs)
-                skippedSegmentIds.add(segment.UUID)
-                _currentSponsorSegment.value = null
-                _showSkipButton.value = false
-                onSponsorSkipped(segment)
-                return true
-            } else {
-                _showSkipButton.value = true
-            }
-        } else if (segment == null) {
-            _currentSponsorSegment.value = null
-            _showSkipButton.value = false
-        }
-
-        return false
+        return sponsorBlockController.checkAndSkip()
     }
 
     /**
@@ -176,15 +143,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     @MainThread
     fun skipCurrentSponsorSegment() {
         ensureMainThread("skipCurrentSponsorSegment")
-        val segment = _currentSponsorSegment.value ?: return
-        val engine = playerEngine ?: return
-
-        engine.seekTo(segment.endTimeMs)
-        skippedSegmentIds.add(segment.UUID)
-        _currentSponsorSegment.value = null
-        _showSkipButton.value = false
-
-        onSponsorSkipped(segment)
+        sponsorBlockController.skipCurrent()
     }
 
     /**
@@ -193,10 +152,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     @MainThread
     fun dismissSponsorSkipButton() {
         ensureMainThread("dismissSponsorSkipButton")
-        val segment = _currentSponsorSegment.value ?: return
-        skippedSegmentIds.add(segment.UUID)
-        _currentSponsorSegment.value = null
-        _showSkipButton.value = false
+        sponsorBlockController.dismissCurrent()
     }
 
     /**
@@ -205,10 +161,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     @MainThread
     protected fun resetSponsorState() {
         ensureMainThread("resetSponsorState")
-        _sponsorSegments.value = emptyList()
-        _currentSponsorSegment.value = null
-        _showSkipButton.value = false
-        skippedSegmentIds.clear()
+        sponsorBlockController.reset()
     }
 
     /**
@@ -216,11 +169,6 @@ abstract class BasePlayerViewModel : ViewModel() {
      */
     protected open fun onSponsorSkipped(segment: SponsorSegment) {
         // 子类可覆盖
-    }
-
-    private fun resolveSponsorBlockConfig(): SponsorBlockConfig {
-        val sponsorPlugin = PluginManager.plugins.findSponsorBlockPlugin()
-        return sponsorPlugin?.configState?.value ?: SponsorBlockConfig(autoSkip = false)
     }
 
     // ========== DASH 视频播放 ==========
@@ -543,9 +491,11 @@ abstract class BasePlayerViewModel : ViewModel() {
 
     override fun onCleared() {
         ensureMainThread("onCleared")
+        sponsorBlockController.reset()
+        danmakuLoadJob?.cancel()
+        danmakuPluginObserverJob?.cancel()
         super.onCleared()
         mediaSourceCoordinator.clear()
-        danmakuPluginObserverJob?.cancel()
         playerEngine = null
         exoPlayer = null
     }

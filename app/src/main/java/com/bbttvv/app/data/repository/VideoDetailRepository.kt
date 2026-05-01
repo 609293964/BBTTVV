@@ -19,6 +19,11 @@ object VideoDetailRepository {
 
     fun getCachedDetailViewInfo(bvid: String): ViewInfo? = VideoRepository.getCachedDetailViewInfo(bvid)
 
+    fun getCachedFullDetailViewInfo(bvid: String): ViewInfo? = VideoRepository.getCachedFullDetailViewInfo(bvid)
+
+    fun getCachedDetailPreviewViewInfo(bvid: String): ViewInfo? =
+        VideoRepository.getCachedDetailPreviewViewInfo(bvid)
+
     suspend fun getRelatedVideos(bvid: String): List<RelatedVideo> = VideoRepository.getRelatedVideos(bvid)
 
     fun getCachedRelatedVideos(bvid: String): List<RelatedVideo>? = VideoRepository.getCachedRelatedVideos(bvid)
@@ -40,6 +45,10 @@ object VideoDetailRepository {
     }
 
     fun prefetchDetailSummary(video: VideoItem, scope: CoroutineScope = AppScope.ioScope) {
+        VideoRepository.prefetchDetailSummary(video = video, scope = scope)
+    }
+
+    fun prefetchDetailSummary(video: RelatedVideo, scope: CoroutineScope = AppScope.ioScope) {
         VideoRepository.prefetchDetailSummary(video = video, scope = scope)
     }
 

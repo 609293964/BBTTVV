@@ -1,6 +1,7 @@
 package com.bbttvv.app.feature.video.danmaku
 
 import android.util.Log
+import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.proto.dm.DmSegMobileReply as ProtoDmSegMobileReply
 import com.bbttvv.app.proto.dmview.DmWebViewReply as ProtoDmWebViewReply
 import java.nio.charset.StandardCharsets
@@ -324,7 +325,9 @@ object DanmakuProto {
     private fun decodeSpecialDmUrl(data: ByteArray): String? {
         if (data.isEmpty()) return null
         val text = String(data, StandardCharsets.UTF_8).trim()
-        return text.takeIf { it.startsWith("http://") || it.startsWith("https://") || it.startsWith("//") }
+        return text
+            .takeIf { it.startsWith("http://") || it.startsWith("https://") || it.startsWith("//") }
+            ?.let(::preferHttpsUrl)
     }
 
     private fun isLikelyDmSegConfig(config: DmSegConfig): Boolean {

@@ -2,6 +2,7 @@
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.data.model.response.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -161,7 +162,7 @@ object LiveRepository {
                 val urlInfo = codec?.url_info?.firstOrNull()
                 
                 if (codec != null && urlInfo != null) {
-                    val url = urlInfo.host + codec.baseUrl + urlInfo.extra
+                    val url = preferHttpsUrl(urlInfo.host + codec.baseUrl + urlInfo.extra)
                     com.bbttvv.app.core.util.Logger.d("LiveRepo", " Xlive URL: ${url.take(100)}...")
                     return@withContext Result.success(url)
                 }
@@ -171,8 +172,9 @@ object LiveRepository {
             com.bbttvv.app.core.util.Logger.d("LiveRepo", "🔴 Trying legacy durl structure...")
             val url = resp.data?.durl?.firstOrNull()?.url
             if (url != null) {
-                com.bbttvv.app.core.util.Logger.d("LiveRepo", " Legacy URL: ${url.take(100)}...")
-                return@withContext Result.success(url)
+                val normalizedUrl = preferHttpsUrl(url)
+                com.bbttvv.app.core.util.Logger.d("LiveRepo", " Legacy URL: ${normalizedUrl.take(100)}...")
+                return@withContext Result.success(normalizedUrl)
             }
             
             android.util.Log.e("LiveRepo", " No URL found in response")

@@ -161,7 +161,9 @@ internal class HomeVideoCardAdapter(
             }
 
             binding.root.setOnFocusChangeListener { _, hasFocus ->
-                binding.root.isSelected = hasFocus
+                if (binding.root.isSelected != hasFocus) {
+                    binding.root.isSelected = hasFocus
+                }
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
                 val item = currentList.getOrNull(position ?: RecyclerView.NO_POSITION)
                 if (hasFocus) {
@@ -263,15 +265,25 @@ internal class HomeVideoCardAdapter(
         }
 
         fun clearFocusVisualState() {
-            if (binding.root.isFocused) {
+            val hasFocus = binding.root.isFocused
+            val hasSelectedState = binding.root.isSelected
+            val hasScaleState = binding.root.scaleX != 1f || binding.root.scaleY != 1f
+            if (!hasFocus && !hasSelectedState && !hasScaleState) {
+                return
+            }
+            if (hasFocus) {
                 binding.root.clearFocus()
             }
-            binding.root.isSelected = false
-            binding.root.refreshDrawableState()
+            if (hasSelectedState) {
+                binding.root.isSelected = false
+                binding.root.refreshDrawableState()
+            }
             binding.root.stateListAnimator?.jumpToCurrentState()
             binding.root.animate().cancel()
-            binding.root.scaleX = 1f
-            binding.root.scaleY = 1f
+            if (hasScaleState) {
+                binding.root.scaleX = 1f
+                binding.root.scaleY = 1f
+            }
         }
 
         private fun currentItem(): HomeRecommendVideoCardItem? {

@@ -57,6 +57,7 @@ import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusEntryHint
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
@@ -244,6 +245,20 @@ internal fun SearchScreen(
                     visibleTypes = visibleSearchTypes,
                     focusRequesters = categoryFocusRequesters,
                     onFocusUp = ::requestSearchInputFocus,
+                    onFocusDown = { index ->
+                        val tab = focusTab
+                        val coordinator = focusCoordinator
+                        if (tab != null && coordinator != null) {
+                            coordinator.requestRegionFocus(
+                                tab = tab,
+                                region = HomeFocusRegion.Grid,
+                                entryHint = HomeFocusEntryHint(preferredIndex = index),
+                            )
+                            true
+                        } else {
+                            false
+                        }
+                    },
                     onFocusChanged = { focused ->
                         searchCategoryHasFocus = focused
                         if (focused) {
@@ -404,6 +419,7 @@ private fun SearchCategoryTabs(
     visibleTypes: List<SearchType>,
     focusRequesters: List<FocusRequester>,
     onFocusUp: () -> Boolean,
+    onFocusDown: (Int) -> Boolean,
     onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -418,6 +434,7 @@ private fun SearchCategoryTabs(
                 selected = type == selected,
                 onClick = { onSelect(type) },
                 onFocusUp = onFocusUp,
+                onFocusDown = { onFocusDown(index) },
                 onFocusChanged = onFocusChanged,
                 modifier = focusRequesters
                     .getOrNull(index)
@@ -437,6 +454,7 @@ private fun CategoryPill(
     selected: Boolean,
     onClick: () -> Unit,
     onFocusUp: () -> Boolean,
+    onFocusDown: () -> Boolean,
     onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -481,10 +499,11 @@ private fun CategoryPill(
                 onClick = onClick
             )
             .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP
-                ) {
-                    return@onPreviewKeyEvent onFocusUp()
+                if (keyEvent.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        AndroidKeyEvent.KEYCODE_DPAD_UP -> return@onPreviewKeyEvent onFocusUp()
+                        AndroidKeyEvent.KEYCODE_DPAD_DOWN -> return@onPreviewKeyEvent onFocusDown()
+                    }
                 }
                 false
             }

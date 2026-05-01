@@ -99,7 +99,7 @@ class ProfileViewModel(
     private var favoriteSelectedFolder: FavFolder? = null
 
     fun primeVideoDetail(video: VideoItem) {
-        VideoDetailRepository.prefetchDetailLanding(video, scope = viewModelScope)
+        VideoDetailRepository.prefetchDetailSummary(video, scope = viewModelScope)
     }
 
     init {

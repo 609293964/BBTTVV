@@ -15,7 +15,9 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
+import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.util.Logger
+import com.bbttvv.app.core.util.preferHttpsUrl
 import java.io.File
 
 internal class PlayerMediaSourceCoordinator(
@@ -42,7 +44,7 @@ internal class PlayerMediaSourceCoordinator(
             "▶️ playDashVideo: referer=$referer, seekTo=${seekToMs}ms, reset=$resetPlayer, video=${videoUrl.take(50)}..."
         )
 
-        player.volume = 1.0f
+        player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
 
         val videoSource = buildProgressiveMediaSource(
             url = videoUrl,
@@ -85,7 +87,7 @@ internal class PlayerMediaSourceCoordinator(
         val dataSourceFactory = buildDefaultDataSourceFactory(referer) ?: return false
 
         return runCatching {
-            player.volume = 1.0f
+            player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
             val mediaSource = DashMediaSource.Factory(dataSourceFactory)
                 .createMediaSource(MediaItem.fromUri(manifestUri))
             player.setMediaSource(mediaSource, resetPlayer)
@@ -128,7 +130,7 @@ internal class PlayerMediaSourceCoordinator(
             return
         }
 
-        player.volume = 1.0f
+        player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
         val mediaSources = cleanUrls.mapIndexed { index, url ->
             buildProgressiveMediaSource(
                 url = url,
@@ -154,7 +156,7 @@ internal class PlayerMediaSourceCoordinator(
         val player = requireExoPlayer("playVideo") ?: return
         Logger.d(tag, " playVideo: seekTo=${seekToMs}ms, url=${url.take(50)}...")
 
-        player.volume = 1.0f
+        player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         if (seekToMs > 0L) {
@@ -179,7 +181,7 @@ internal class PlayerMediaSourceCoordinator(
             "▶️ playStreamingUrl: referer=$referer, seekTo=${seekToMs}ms, reset=$resetPlayer, url=${url.take(80)}..."
         )
 
-        player.volume = 1.0f
+        player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
         val mediaItem = MediaItem.fromUri(url)
         val dataSourceFactory = buildDefaultDataSourceFactory(referer)
 
@@ -269,7 +271,7 @@ internal class PlayerMediaSourceCoordinator(
         return buildList {
             primaryUrl.trim().takeIf { it.isNotBlank() }?.let(::add)
             candidates.map { it.trim() }.filter { it.isNotBlank() }.forEach(::add)
-        }.distinct()
+        }.map(::preferHttpsUrl).distinct()
     }
 
     private fun writeDashManifestToCache(manifestContent: String): Uri? {

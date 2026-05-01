@@ -23,7 +23,7 @@ internal class HomeDetailPrefetcher(
             pendingPrefetchBvid = null
         }
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
-        VideoDetailRepository.prefetchDetailLanding(video)
+        VideoDetailRepository.prefetchDetailSummary(video)
     }
 
     fun prefetch(video: VideoItem) {

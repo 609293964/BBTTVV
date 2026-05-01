@@ -10,8 +10,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,8 +100,11 @@ private fun FavoriteFolderChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val selectedOrFocused = selected || focused
     Surface(
         onClick = onClick,
+        modifier = Modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(22.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color(0xE8E5EEF4) else Color(0x12000000),
@@ -110,16 +118,16 @@ private fun FavoriteFolderChip(
         ) {
             Text(
                 text = title,
-                color = if (selected) Color(0xFF111111) else Color.White,
+                color = if (selectedOrFocused) Color(0xFF111111) else Color.White,
                 fontSize = 15.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (selectedOrFocused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (count > 0) {
                 Text(
                     text = count.toString(),
-                    color = if (selected) Color(0x99000000) else Color(0xB3FFFFFF),
+                    color = if (selectedOrFocused) Color(0x99000000) else Color(0xB3FFFFFF),
                     fontSize = 12.sp
                 )
             }

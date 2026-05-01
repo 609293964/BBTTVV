@@ -99,8 +99,11 @@ internal fun LiveScreen(
                     collapsingHeaderState.reset()
                     focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.LIVE)
                 },
-                onDpadDown = {
-                    focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.LIVE)
+                onDpadDown = { index ->
+                    focusCoordinator.handleContentTabsDpadDown(
+                        tab = AppTopLevelTab.LIVE,
+                        preferredIndex = index,
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()

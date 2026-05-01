@@ -41,5 +41,35 @@ class PlaybackSpeedPreferencePolicyTest {
         assertEquals(2.0f, normalizeLongPressSpeed(2.1f))
         assertEquals(3.0f, normalizeLongPressSpeed(3.4f))
     }
+
+    @Test
+    fun `player volume calibration defaults to disabled`() {
+        assertEquals(1.0f, DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE)
+        assertEquals("关闭", formatPlayerVolumeCalibrationLabel(DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE))
+    }
+
+    @Test
+    fun `player volume calibration rejects unsupported values`() {
+        assertEquals(1.0f, normalizePlayerVolumeCalibrationScale(Float.NaN))
+        assertEquals(1.0f, normalizePlayerVolumeCalibrationScale(1.2f))
+        assertEquals(1.0f, normalizePlayerVolumeCalibrationScale(0.2f))
+    }
+
+    @Test
+    fun `player volume calibration snaps to supported steps`() {
+        assertEquals(0.9f, normalizePlayerVolumeCalibrationScale(0.92f))
+        assertEquals(0.7f, normalizePlayerVolumeCalibrationScale(0.68f))
+        assertEquals("70%", formatPlayerVolumeCalibrationLabel(0.7f))
+    }
+
+    @Test
+    fun `player volume calibration cycles through supported steps`() {
+        assertEquals(0.9f, nextPlayerVolumeCalibrationScale(1.0f))
+        assertEquals(0.8f, nextPlayerVolumeCalibrationScale(0.9f))
+        assertEquals(0.7f, nextPlayerVolumeCalibrationScale(0.8f))
+        assertEquals(0.6f, nextPlayerVolumeCalibrationScale(0.7f))
+        assertEquals(0.5f, nextPlayerVolumeCalibrationScale(0.6f))
+        assertEquals(1.0f, nextPlayerVolumeCalibrationScale(0.5f))
+    }
 }
 

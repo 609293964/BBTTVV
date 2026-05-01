@@ -1,6 +1,10 @@
 package com.bbttvv.app.ui.detail
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
@@ -26,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -79,7 +84,17 @@ fun DetailScreen(
         viewModel.prefetchPlaybackDanmaku(playCid)
         onPlay(playBvid, playAid, playCid)
     }
+    var hasEnteredDetail by remember(bvid) { mutableStateOf(false) }
+    val detailEnterProgress by animateFloatAsState(
+        targetValue = if (hasEnteredDetail) 1f else 0f,
+        animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+        label = "detail_enter_progress"
+    )
+    val detailEnterOffsetPx = with(density) { 16.dp.toPx() }
 
+    LaunchedEffect(bvid) {
+        hasEnteredDetail = true
+    }
     LaunchedEffect(bvid, videoDetailCommentsEnabled) {
         AppPerformanceTracker.beginSpanOnce("first_detail_open")
         viewModel.loadDetail(
@@ -99,23 +114,44 @@ fun DetailScreen(
             .fillMaxSize()
             .background(Color(0xFF141414))
     ) {
-        when {
-            uiState.isLoading && uiState.viewInfo == null -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "正在加载详情...", color = Color.White)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    alpha = detailEnterProgress
+                    translationY = detailEnterOffsetPx * (1f - detailEnterProgress)
+                    val scale = 0.985f + 0.015f * detailEnterProgress
+                    scaleX = scale
+                    scaleY = scale
                 }
-            }
+        ) {
+            Crossfade(
+                targetState = uiState.viewInfo != null,
+                animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+                label = "detail_content_crossfade"
+            ) { hasFullDetail ->
+                when {
+                    uiState.isError && !hasFullDetail -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = uiState.errorMsg ?: "加载详情失败",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
 
-            uiState.isError -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = uiState.errorMsg ?: "加载详情失败",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
+                    !hasFullDetail -> {
+                        val previewInfo = uiState.previewInfo
+                        if (previewInfo != null) {
+                            DetailPreviewShell(previewInfo = previewInfo)
+                        } else if (uiState.isLoading) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = "正在加载详情...", color = Color.White)
+                            }
+                        }
+                    }
 
-            else -> uiState.viewInfo?.let { viewInfo ->
+                    else -> uiState.viewInfo?.let { viewInfo ->
                 LaunchedEffect(viewInfo.bvid, uiState.isLoading) {
                     if (uiState.isLoading) return@LaunchedEffect
                     withFrameNanos { }
@@ -379,6 +415,8 @@ fun DetailScreen(
                     }
                 }
             }
+        }
+        }
         }
         if (uiState.showTripleCelebration) {
             DetailTripleSuccessAnimation(

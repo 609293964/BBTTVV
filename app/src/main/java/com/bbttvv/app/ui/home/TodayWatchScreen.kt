@@ -116,8 +116,11 @@ internal fun TodayWatchScreen(
                         collapsingHeaderState.reset()
                         focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.TODAY_WATCH)
                     },
-                    onDpadDown = {
-                        focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.TODAY_WATCH)
+                    onDpadDown = { index ->
+                        focusCoordinator.handleContentTabsDpadDown(
+                            tab = AppTopLevelTab.TODAY_WATCH,
+                            preferredIndex = index,
+                        )
                     },
                     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                     modifier = Modifier

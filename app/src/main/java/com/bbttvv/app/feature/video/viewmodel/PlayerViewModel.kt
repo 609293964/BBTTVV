@@ -5,10 +5,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import android.os.SystemClock
-import com.bbttvv.app.core.cache.PlayUrlCache
-import com.bbttvv.app.core.coroutines.AppScope
-import com.bbttvv.app.core.history.PlaybackHistorySyncBus
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.player.BasePlayerViewModel
 import com.bbttvv.app.core.plugin.PluginManager
@@ -16,36 +12,21 @@ import com.bbttvv.app.core.store.PlaybackResumeCandidate
 import com.bbttvv.app.core.store.PlaybackResumeStore
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
-import com.bbttvv.app.core.store.TodayWatchProfileStore
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.resolveStoredResumeCandidate
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
-import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.MediaUtils
 import com.bbttvv.app.core.util.NetworkUtils
 import com.bbttvv.app.core.util.resolvePlaybackDefaultQualityId
-import com.bbttvv.app.data.model.AudioQuality
-import com.bbttvv.app.data.model.response.DashAudio
-import com.bbttvv.app.data.model.response.DashVideo
 import com.bbttvv.app.data.model.response.Page
-import com.bbttvv.app.data.model.response.PbpHeatmapResponse
-import com.bbttvv.app.data.model.response.RelatedVideo
-import com.bbttvv.app.data.model.response.ReplyData
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.data.model.response.ViewInfo
-import com.bbttvv.app.data.repository.CommentRepository
-import com.bbttvv.app.data.repository.PbpHeatmapRepository
 import com.bbttvv.app.data.repository.PlaybackRepository
-import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
-import com.bbttvv.app.data.repository.VideoDetailRepository
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
 import com.bbttvv.app.feature.video.usecase.PlaybackLoadResult
 import com.bbttvv.app.feature.video.usecase.ResumePlaybackCandidate as RemoteResumePlaybackCandidate
 import com.bbttvv.app.feature.video.usecase.PlaybackSource
 import com.bbttvv.app.feature.video.usecase.VideoPlaybackUseCase
-import com.bbttvv.app.feature.video.videoshot.VideoShot
-import com.bbttvv.app.feature.video.videoshot.VideoShotFrame
-import java.net.URI
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -61,28 +42,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val DANMAKU_RETRY_INTERVAL_MS = 2_500L
-private const val HISTORY_HEARTBEAT_INITIAL_DELAY_MS = 3_000L
-private const val HISTORY_HEARTBEAT_INTERVAL_MS = 15_000L
 private const val PLAYER_RESUME_MIN_POSITION_MS = 5_000L
 private const val PLAYER_RESUME_END_GUARD_MS = 10_000L
-private const val PLAYER_COMMENT_PAGE_SIZE = 10
-
-private data class PlaybackHeartbeatSnapshot(
-    val playedTimeSec: Long,
-    val realPlayedTimeSec: Long,
-    val durationMs: Long,
-)
-
-private data class PlaybackHeartbeatReport(
-    val aid: Long,
-    val bvid: String,
-    val cid: Long,
-    val startTsSec: Long,
-    val snapshot: PlaybackHeartbeatSnapshot,
-    val creatorMid: Long,
-    val creatorName: String,
-    val deltaWatchSec: Long
-)
 
 private data class PlaybackRuntimeState(
     val bvid: String = "",
@@ -94,47 +55,8 @@ private data class PlaybackRuntimeState(
         get() = "$bvid:$cid"
 }
 
-private data class HeartbeatRuntimeState(
-    val aid: Long = 0L,
-    val bvid: String = "",
-    val cid: Long = 0L,
-    val startTsSec: Long = 0L,
-    val creatorMid: Long = 0L,
-    val creatorName: String = "",
-    val accumulatedPlayMs: Long = 0L,
-    val activePlayStartElapsedMs: Long? = null,
-    val lastReportedSnapshot: PlaybackHeartbeatSnapshot? = null,
-) {
-    val hasSession: Boolean
-        get() = bvid.isNotBlank() && cid > 0L
-}
-
 internal sealed interface PlayerEvent {
     data class ExitPlayer(val reason: String) : PlayerEvent
-}
-
-internal fun normalizePbpHeatmapPoints(
-    response: PbpHeatmapResponse,
-    durationMs: Long,
-): List<ProgressHeatmapPoint> {
-    val rawPoints = response.events.default
-    val stepSec = response.stepSec
-    if (durationMs <= 0L || stepSec <= 0.0 || !stepSec.isFinite() || rawPoints.isEmpty()) {
-        return emptyList()
-    }
-
-    val finitePoints = rawPoints.map { value ->
-        if (value.isFinite()) value else 0.0
-    }
-    val maxValue = finitePoints.maxOrNull()?.takeIf { it > 0.0 } ?: return emptyList()
-
-    return finitePoints.mapIndexed { index, value ->
-        val timeMs = index * stepSec * 1000.0
-        ProgressHeatmapPoint(
-            fraction = (timeMs / durationMs.toDouble()).toFloat().coerceIn(0f, 1f),
-            intensity = (value / maxValue).toFloat().coerceIn(0f, 1f),
-        )
-    }
 }
 
 class PlayerViewModel : BasePlayerViewModel() {
@@ -146,38 +68,104 @@ class PlayerViewModel : BasePlayerViewModel() {
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
     private val _playbackState = MutableStateFlow(PlayerPlaybackState())
     val playbackState: StateFlow<PlayerPlaybackState> = _playbackState.asStateFlow()
-    private val _commentsUiState = MutableStateFlow(PlayerCommentsUiState())
-    val commentsUiState: StateFlow<PlayerCommentsUiState> = _commentsUiState.asStateFlow()
     private val _events = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 1)
     internal val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
 
     private var playbackRuntime = PlaybackRuntimeState()
+    private val playbackHistoryReporter = PlaybackHistoryReporter(
+        scope = viewModelScope,
+        ensureMainThread = { caller -> ensureMainThread(caller) },
+        playbackSnapshot = {
+            val runtime = playbackRuntime
+            val state = _playbackState.value
+            PlaybackHistoryPlaybackSnapshot(
+                bvid = runtime.bvid,
+                cid = runtime.cid,
+                currentPositionMs = getPlayerCurrentPosition(),
+                currentDurationMs = getPlayerDuration(),
+                fallbackPositionMs = state.positionMs,
+                fallbackDurationMs = state.durationMs,
+                isPlaying = exoPlayer?.isPlaying == true,
+            )
+        },
+    )
+    private val commentController = PlayerCommentController(
+        scope = viewModelScope,
+        currentAid = {
+            playbackRuntime.aid.takeIf { it > 0L } ?: _uiState.value.info?.aid ?: 0L
+        },
+        fallbackCommentCount = { _uiState.value.info?.stat?.reply ?: 0 },
+        isVideoLoading = { _uiState.value.isLoading },
+    )
+    private val videoShotController = VideoShotController(
+        scope = viewModelScope,
+        isCurrentPlayback = { bvid, cid ->
+            playbackRuntime.bvid == bvid && playbackRuntime.cid == cid
+        },
+        currentSessionKey = { playbackRuntime.sessionKey },
+    )
+    private val progressHeatmapController = ProgressHeatmapController(
+        scope = viewModelScope,
+        isCurrentPlayback = { bvid, cid ->
+            playbackRuntime.bvid == bvid && playbackRuntime.cid == cid
+        },
+        updateUiState = { transform -> _uiState.update(transform) },
+    )
+    private val playbackQualityController = PlaybackQualityController(
+        scope = viewModelScope,
+        playbackUseCase = playbackUseCase,
+        ensureMainThread = { caller -> ensureMainThread(caller) },
+        currentUiState = { _uiState.value },
+        currentSource = { playbackRuntime.source },
+        resolveCdnPreference = { resolvePlayerCdnPreference() },
+        isCurrentPlayback = { bvid, cid ->
+            playbackRuntime.bvid == bvid && playbackRuntime.cid == cid
+        },
+        updateUiState = { transform -> _uiState.update(transform) },
+        switchPlaybackSource = { source, statusMessage ->
+            switchPlaybackSource(source = source, statusMessage = statusMessage)
+        },
+    )
+    private val playbackEndController = PlaybackEndController(
+        scope = viewModelScope,
+        ensureMainThread = { caller -> ensureMainThread(caller) },
+        currentSession = {
+            PlaybackEndSessionSnapshot(
+                bvid = playbackRuntime.bvid,
+                cid = playbackRuntime.cid,
+            )
+        },
+        currentUiState = { _uiState.value },
+        currentPlaybackState = { _playbackState.value },
+        updateUiState = { transform -> _uiState.update(transform) },
+        finishPlaybackSession = { reason -> finishPlaybackSession(reason) },
+        restartCurrentVideoFromBeginning = { restartCurrentVideoFromBeginning() },
+        loadVideo = { bvid, aid, cid, force ->
+            loadVideo(
+                bvid = bvid,
+                aid = aid,
+                cid = cid,
+                force = force,
+            )
+        },
+        requestExitPlayer = { reason -> requestExitPlayer(reason) },
+    )
+    private var playbackLoadJob: Job? = null
+    private var playbackLoadGeneration: Long = 0L
     private var playerPollingJob: Job? = null
     private var settingsObservationJob: Job? = null
-    private var videoShotLoadJob: Job? = null
-    private var videoShotFrameJob: Job? = null
-    private var heatmapLoadJob: Job? = null
-    private var relatedVideosJob: Job? = null
-    private var commentsJob: Job? = null
-    private var commentRepliesJob: Job? = null
-    private var videoShot: VideoShot? = null
     private var sponsorBlockEnabled: Boolean = true
     private var lastDanmakuCid: Long = 0L
     private var lastDanmakuDurationMs: Long = 0L
     private var lastDanmakuRequestAtMs: Long = 0L
-    private var heartbeatJob: Job? = null
-    private var heartbeatRuntime = HeartbeatRuntimeState()
-    private var playbackEndHandledSessionKey: String? = null
-    private var autoNextPromptSequence: Long = 0L
-    private var pendingAutoNextTarget: PlayerPlaybackEndTarget? = null
 
-    private val _seekPreviewFrame = MutableStateFlow<VideoShotFrame?>(null)
-    val seekPreviewFrame: StateFlow<VideoShotFrame?> = _seekPreviewFrame.asStateFlow()
+    val commentsUiState = commentController.uiState
+    val seekPreviewFrame = videoShotController.seekPreviewFrame
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             ensureMainThread("Player.Listener.onIsPlayingChanged")
-            syncHeartbeatPlaybackTracking(isActivelyPlaying = isPlaying)
+            playbackHistoryReporter.syncPlaybackTracking(isActivelyPlaying = isPlaying)
             refreshPlayerSnapshot()
         }
 
@@ -185,9 +173,9 @@ class PlayerViewModel : BasePlayerViewModel() {
             ensureMainThread("Player.Listener.onPlaybackStateChanged")
             refreshPlayerSnapshot()
             if (playbackState == Player.STATE_ENDED) {
-                handlePlaybackEnded()
+                playbackEndController.handlePlaybackEnded()
             } else {
-                playbackEndHandledSessionKey = null
+                playbackEndController.markPlaybackActive()
             }
         }
     }
@@ -206,6 +194,38 @@ class PlayerViewModel : BasePlayerViewModel() {
     }
 
     @MainThread
+    override fun detachPlayer(player: ExoPlayer?) {
+        ensureMainThread("PlayerViewModel.detachPlayer")
+        val currentPlayer = exoPlayer
+        if (player == null || currentPlayer === player) {
+            currentPlayer?.removeListener(playerListener)
+            super.detachPlayer(player)
+        } else {
+            player.removeListener(playerListener)
+        }
+    }
+
+    private fun isCurrentPlaybackLoad(
+        generation: Long,
+        bvid: String,
+        requestedCid: Long,
+    ): Boolean {
+        return generation == playbackLoadGeneration &&
+            playbackRuntime.bvid == bvid &&
+            (requestedCid <= 0L || playbackRuntime.cid == requestedCid)
+    }
+
+    private fun isCurrentPlaybackSession(
+        generation: Long,
+        bvid: String,
+        cid: Long,
+    ): Boolean {
+        return generation == playbackLoadGeneration &&
+            playbackRuntime.bvid == bvid &&
+            playbackRuntime.cid == cid
+    }
+
+    @MainThread
     fun loadVideo(
         bvid: String,
         aid: Long = 0L,
@@ -215,35 +235,38 @@ class PlayerViewModel : BasePlayerViewModel() {
         resumeFromPrompt: Boolean = false,
     ) {
         ensureMainThread("loadVideo")
-        if (!force && playbackRuntime.bvid == bvid && playbackRuntime.cid == cid && _uiState.value.info != null) {
+        val requestBvid = bvid.trim()
+        val requestedCid = cid
+        if (requestBvid.isBlank()) return
+        if (!force && playbackRuntime.bvid == requestBvid && playbackRuntime.cid == requestedCid && _uiState.value.info != null) {
             return
         }
 
-        if (heartbeatRuntime.hasSession) {
-            flushPlaybackHistory(reason = "switch_video", closeSession = true)
+        if (playbackHistoryReporter.hasSession) {
+            playbackHistoryReporter.finishSession(reason = "switch_video", closeSession = true)
         }
 
-        commentsJob?.cancel()
-        commentRepliesJob?.cancel()
-        relatedVideosJob?.cancel()
+        playbackLoadJob?.cancel()
+        playbackQualityController.cancelPending()
+        val loadGeneration = ++playbackLoadGeneration
+        playbackEndController.resetForNewVideo()
         clearProgressHeatmap()
-        _commentsUiState.update { PlayerCommentsUiState() }
-        playbackEndHandledSessionKey = null
-        pendingAutoNextTarget = null
+        commentController.reset()
 
         playbackRuntime = PlaybackRuntimeState(
-            bvid = bvid,
+            bvid = requestBvid,
             aid = aid,
-            cid = cid
+            cid = requestedCid
         )
         lastDanmakuCid = 0L
         lastDanmakuDurationMs = 0L
         lastDanmakuRequestAtMs = 0L
         clearDanmaku()
+        resetSponsorState()
         clearVideoShot()
         updatePlaybackState(PlayerPlaybackState())
 
-        viewModelScope.launch {
+        playbackLoadJob = viewModelScope.launch {
             val appContext = NetworkModule.appContext
             val hdrSupported = MediaUtils.isHdrSupported(appContext)
             val dolbyVisionSupported = MediaUtils.isDolbyVisionSupported(appContext)
@@ -251,6 +274,10 @@ class PlayerViewModel : BasePlayerViewModel() {
             val av1Supported = MediaUtils.isAv1Supported()
             val preferredQuality = resolveInitialPreferredQuality()
             val cdnPreference = resolvePlayerCdnPreference()
+
+            if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
+                return@launch
+            }
 
             _uiState.update {
                 it.copy(
@@ -264,9 +291,9 @@ class PlayerViewModel : BasePlayerViewModel() {
 
             when (
                 val result = playbackUseCase.loadVideo(
-                    bvid = bvid,
+                    bvid = requestBvid,
                     aid = aid,
-                    cid = cid,
+                    cid = requestedCid,
                     preferredQuality = preferredQuality,
                     cdnPreference = cdnPreference,
                     isHevcSupported = hevcSupported,
@@ -276,6 +303,9 @@ class PlayerViewModel : BasePlayerViewModel() {
                 )
             ) {
                 is PlaybackLoadResult.Error -> {
+                    if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
+                        return@launch
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -285,10 +315,16 @@ class PlayerViewModel : BasePlayerViewModel() {
                 }
 
                 is PlaybackLoadResult.Success -> {
+                    if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
+                        return@launch
+                    }
                     playbackRuntime = playbackRuntime.copy(
                         aid = result.info.aid,
                         cid = result.info.cid
                     )
+                    if (!isCurrentPlaybackSession(loadGeneration, result.info.bvid, result.info.cid)) {
+                        return@launch
+                    }
                     val localResumeCandidate = resolveLocalResumeCandidate(result)
                     if (
                         shouldAutoSwitchToResumeCandidate(
@@ -328,8 +364,11 @@ class PlayerViewModel : BasePlayerViewModel() {
                         seekToMs = initialSeekPositionMs,
                         playWhenReady = resumePrompt == null,
                     )
+                    if (!isCurrentPlaybackSession(loadGeneration, result.info.bvid, result.info.cid)) {
+                        return@launch
+                    }
                     updatePlaybackDuration(result.source.durationMs)
-                    beginHeartbeatSession(
+                    playbackHistoryReporter.beginSession(
                         aid = result.info.aid,
                         bvid = result.info.bvid,
                         cid = result.info.cid,
@@ -371,7 +410,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                         durationMs = result.source.durationMs,
                     )
                     loadOnlineCount(result.info.bvid, result.info.cid)
-                    prefetchRelatedVideosForAutoNextIfNeeded(result.info.bvid)
+                    playbackEndController.prefetchRelatedVideosForAutoNextIfNeeded(result.info.bvid)
                 }
             }
         }
@@ -425,22 +464,13 @@ class PlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun requestSeekPreview(positionMs: Long) {
         ensureMainThread("requestSeekPreview")
-        val shot = videoShot ?: return
-        videoShotFrameJob?.cancel()
-        videoShotFrameJob = viewModelScope.launch {
-            delay(80L)
-            _seekPreviewFrame.value = runCatching {
-                shot.getFrame(positionMs)
-            }.getOrNull()
-        }
+        videoShotController.requestFrame(positionMs)
     }
 
     @MainThread
     fun clearSeekPreview() {
         ensureMainThread("clearSeekPreview")
-        videoShotFrameJob?.cancel()
-        videoShotFrameJob = null
-        _seekPreviewFrame.value = null
+        videoShotController.clearPreview()
     }
 
     @MainThread
@@ -458,68 +488,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun changeQuality(qualityId: Int) {
         ensureMainThread("changeQuality")
-        val info = _uiState.value.info ?: return
-        _uiState.value.qualityOptions.firstOrNull { it.id == qualityId && !it.isSupported }?.let { option ->
-            _uiState.update {
-                it.copy(
-                    statusMessage = option.unsupportedReason ?: "当前设备暂不支持该画质"
-                )
-            }
-            return
-        }
-
-        viewModelScope.launch {
-            val appContext = NetworkModule.appContext
-            val hdrSupported = MediaUtils.isHdrSupported(appContext)
-            val dolbyVisionSupported = MediaUtils.isDolbyVisionSupported(appContext)
-            val hevcSupported = MediaUtils.isHevcSupported()
-            val av1Supported = MediaUtils.isAv1Supported()
-            val previousSource = playbackRuntime.source
-            val cdnPreference = resolvePlayerCdnPreference()
-
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    errorMessage = null,
-                    statusMessage = "正在切换画质..."
-                )
-            }
-
-            val loadedSource = playbackUseCase.changeQuality(
-                bvid = info.bvid,
-                cid = info.cid,
-                qualityId = qualityId,
-                cdnPreference = cdnPreference,
-                isHevcSupported = hevcSupported,
-                isAv1Supported = av1Supported,
-                isHdrSupported = hdrSupported,
-                isDolbyVisionSupported = dolbyVisionSupported
-            )
-            if (loadedSource == null) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "无法切换到该画质。"
-                    )
-                }
-                return@launch
-            }
-
-            val nextSource = playbackUseCase.selectDashTracks(
-                source = loadedSource,
-                qualityId = loadedSource.actualQuality,
-                videoCodecId = previousSource?.selectedVideoCodecId ?: loadedSource.selectedVideoCodecId,
-                audioQualityId = previousSource?.selectedAudioQualityId ?: loadedSource.selectedAudioQualityId,
-                cdnPreference = cdnPreference,
-                isHevcSupported = hevcSupported,
-                isAv1Supported = av1Supported
-            ) ?: loadedSource
-
-            switchPlaybackSource(
-                source = nextSource,
-                statusMessage = "画质：${nextSource.qualityOptions.firstOrNull { it.id == nextSource.actualQuality }?.label ?: nextSource.actualQuality}"
-            )
-        }
+        playbackQualityController.changeQuality(qualityId)
     }
 
     @MainThread
@@ -624,361 +593,61 @@ class PlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun cancelAutoNextPrompt() {
         ensureMainThread("cancelAutoNextPrompt")
-        pendingAutoNextTarget = null
-        _uiState.update { state ->
-            if (state.autoNextPrompt == null) state else state.copy(autoNextPrompt = null)
-        }
+        playbackEndController.cancelAutoNextPrompt()
     }
 
     @MainThread
     fun confirmAutoNextPrompt(promptId: Long) {
         ensureMainThread("confirmAutoNextPrompt")
-        val prompt = _uiState.value.autoNextPrompt ?: return
-        if (prompt.id != promptId) return
-        val target = pendingAutoNextTarget ?: return
-        pendingAutoNextTarget = null
-        _uiState.update { it.copy(autoNextPrompt = null) }
-        playPlaybackEndTarget(target)
+        playbackEndController.confirmAutoNextPrompt(promptId)
     }
 
     @MainThread
     fun ensureCommentsLoaded() {
         ensureMainThread("ensureCommentsLoaded")
-        val current = _commentsUiState.value
-        if (current.items.isNotEmpty() || current.isLoading || current.isAppending) return
-        loadComments(
-            page = 1,
-            sortMode = current.sortMode,
-            append = false,
-        )
+        commentController.ensureLoaded()
     }
 
     @MainThread
     fun refreshComments() {
         ensureMainThread("refreshComments")
-        val current = _commentsUiState.value
-        if (current.isViewingThread) {
-            loadCommentReplies(page = 1, append = false)
-        } else {
-            loadComments(
-                page = 1,
-                sortMode = current.sortMode,
-                append = false,
-            )
-        }
+        commentController.refresh()
     }
 
     @MainThread
     fun changeCommentSort(sortMode: PlayerCommentSortMode) {
         ensureMainThread("changeCommentSort")
-        val current = _commentsUiState.value
-        if (current.sortMode == sortMode && current.items.isNotEmpty()) return
-        loadComments(
-            page = 1,
-            sortMode = sortMode,
-            append = false,
-        )
+        commentController.changeSort(sortMode)
     }
 
     @MainThread
     fun toggleCommentSort() {
         ensureMainThread("toggleCommentSort")
-        val nextSortMode = when (_commentsUiState.value.sortMode) {
-            PlayerCommentSortMode.Hot -> PlayerCommentSortMode.Time
-            PlayerCommentSortMode.Time -> PlayerCommentSortMode.Hot
-        }
-        changeCommentSort(nextSortMode)
+        commentController.toggleSort()
     }
 
     @MainThread
     fun loadMoreComments() {
         ensureMainThread("loadMoreComments")
-        val current = _commentsUiState.value
-        if (current.isViewingThread) {
-            loadMoreCommentReplies()
-            return
-        }
-        if (current.isLoading || current.isAppending || !current.hasMore) return
-        loadComments(
-            page = current.currentPage + 1,
-            sortMode = current.sortMode,
-            append = true,
-        )
+        commentController.loadMore()
     }
 
     @MainThread
     fun openCommentThread(rootReply: ReplyItem) {
         ensureMainThread("openCommentThread")
-        if (rootReply.rpid <= 0L) return
-        commentRepliesJob?.cancel()
-        val pageSize = _commentsUiState.value.pageSize
-        val fallbackTotalCount = maxOf(rootReply.rcount, rootReply.replies.orEmpty().size)
-        _commentsUiState.update {
-            it.copy(
-                activeThreadRoot = rootReply,
-                threadItems = emptyList(),
-                threadCurrentPage = 1,
-                threadTotalCount = fallbackTotalCount,
-                threadTotalPages = calculateCommentTotalPages(fallbackTotalCount, pageSize),
-                isThreadLoading = false,
-                isThreadAppending = false,
-                threadHasMore = fallbackTotalCount > 0,
-                threadErrorMessage = null,
-            )
-        }
-        loadCommentReplies(page = 1, append = false)
+        commentController.openThread(rootReply)
     }
 
     @MainThread
     fun closeCommentThread() {
         ensureMainThread("closeCommentThread")
-        commentRepliesJob?.cancel()
-        _commentsUiState.update {
-            it.copy(
-                activeThreadRoot = null,
-                threadItems = emptyList(),
-                threadCurrentPage = 1,
-                threadTotalCount = 0,
-                threadTotalPages = 1,
-                isThreadLoading = false,
-                isThreadAppending = false,
-                threadHasMore = true,
-                threadErrorMessage = null,
-            )
-        }
+        commentController.closeThread()
     }
 
     @MainThread
     fun loadMoreCommentReplies() {
         ensureMainThread("loadMoreCommentReplies")
-        val current = _commentsUiState.value
-        if (current.activeThreadRoot == null || current.isThreadLoading || current.isThreadAppending || !current.threadHasMore) {
-            return
-        }
-        loadCommentReplies(
-            page = current.threadCurrentPage + 1,
-            append = true,
-        )
-    }
-
-    private fun loadComments(
-        page: Int,
-        sortMode: PlayerCommentSortMode,
-        append: Boolean,
-    ) {
-        ensureMainThread("loadComments")
-        val aid = playbackRuntime.aid.takeIf { it > 0L } ?: _uiState.value.info?.aid ?: 0L
-        val current = _commentsUiState.value
-        val fallbackTotalCount = _uiState.value.info?.stat?.reply ?: 0
-        if (aid <= 0L) {
-            _commentsUiState.update {
-                it.copy(
-                    sortMode = sortMode,
-                    isLoading = false,
-                    isAppending = false,
-                    hasMore = false,
-                    errorMessage = if (_uiState.value.isLoading) {
-                        "视频信息加载中，请稍后再试"
-                    } else {
-                        "当前视频暂无评论数据"
-                    },
-                )
-            }
-            return
-        }
-
-        if (append) {
-            if (current.isLoading || current.isAppending || !current.hasMore) return
-            _commentsUiState.update {
-                it.copy(
-                    isAppending = true,
-                    errorMessage = null,
-                )
-            }
-        } else {
-            commentsJob?.cancel()
-            commentRepliesJob?.cancel()
-            val initialTotalCount = maxOf(current.totalCount, fallbackTotalCount)
-            _commentsUiState.update {
-                it.copy(
-                    sortMode = sortMode,
-                    currentPage = 1,
-                    items = emptyList(),
-                    totalCount = initialTotalCount,
-                    totalPages = calculateCommentTotalPages(initialTotalCount, current.pageSize),
-                    isLoading = true,
-                    isAppending = false,
-                    hasMore = true,
-                    errorMessage = null,
-                    activeThreadRoot = null,
-                    threadItems = emptyList(),
-                    threadCurrentPage = 1,
-                    threadTotalCount = 0,
-                    threadTotalPages = 1,
-                    isThreadLoading = false,
-                    isThreadAppending = false,
-                    threadHasMore = true,
-                    threadErrorMessage = null,
-                )
-            }
-        }
-
-        commentsJob?.cancel()
-        commentsJob = viewModelScope.launch {
-            val result = CommentRepository.getComments(
-                aid = aid,
-                page = page,
-                ps = current.pageSize,
-                mode = sortMode.apiMode,
-            )
-            val latestAid = playbackRuntime.aid.takeIf { it > 0L } ?: _uiState.value.info?.aid ?: 0L
-            if (latestAid != aid) return@launch
-
-            result.onSuccess { data ->
-                val pageItems = resolveDisplayComments(data, current.pageSize)
-                val totalCount = data.getAllCount().takeIf { it > 0 }
-                    ?: maxOf(fallbackTotalCount, _uiState.value.info?.stat?.reply ?: 0)
-                val totalPages = calculateCommentTotalPages(totalCount, current.pageSize)
-                val updatedCurrentPage = if (append && pageItems.isEmpty()) current.currentPage else page
-                _commentsUiState.update { state ->
-                    val mergedItems = if (append) {
-                        (state.items + pageItems).distinctBy { it.rpid }
-                    } else {
-                        pageItems
-                    }
-                    state.copy(
-                        sortMode = sortMode,
-                        currentPage = updatedCurrentPage,
-                        items = mergedItems,
-                        totalCount = totalCount,
-                        totalPages = totalPages,
-                        isLoading = false,
-                        isAppending = false,
-                        hasMore = updatedCurrentPage < totalPages && pageItems.isNotEmpty(),
-                        errorMessage = null,
-                    )
-                }
-            }.onFailure { error ->
-                _commentsUiState.update { state ->
-                    if (append && state.items.isNotEmpty()) {
-                        state.copy(isAppending = false)
-                    } else {
-                        state.copy(
-                            isLoading = false,
-                            isAppending = false,
-                            errorMessage = error.message ?: "评论加载失败",
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private fun loadCommentReplies(
-        page: Int,
-        append: Boolean,
-    ) {
-        ensureMainThread("loadCommentReplies")
-        val current = _commentsUiState.value
-        val rootReply = current.activeThreadRoot ?: return
-        val aid = playbackRuntime.aid.takeIf { it > 0L } ?: _uiState.value.info?.aid ?: 0L
-        if (aid <= 0L || rootReply.rpid <= 0L) return
-
-        if (append) {
-            if (current.isThreadLoading || current.isThreadAppending || !current.threadHasMore) return
-            _commentsUiState.update {
-                it.copy(
-                    isThreadAppending = true,
-                    threadErrorMessage = null,
-                )
-            }
-        } else {
-            commentRepliesJob?.cancel()
-            val initialTotalCount = maxOf(current.threadTotalCount, rootReply.rcount)
-            _commentsUiState.update {
-                it.copy(
-                    threadItems = emptyList(),
-                    threadCurrentPage = 1,
-                    threadTotalCount = initialTotalCount,
-                    threadTotalPages = calculateCommentTotalPages(initialTotalCount, current.pageSize),
-                    isThreadLoading = true,
-                    isThreadAppending = false,
-                    threadHasMore = true,
-                    threadErrorMessage = null,
-                )
-            }
-        }
-
-        commentRepliesJob?.cancel()
-        commentRepliesJob = viewModelScope.launch {
-            val result = CommentRepository.getSubComments(
-                aid = aid,
-                rootId = rootReply.rpid,
-                page = page,
-                ps = current.pageSize,
-            )
-            val latestAid = playbackRuntime.aid.takeIf { it > 0L } ?: _uiState.value.info?.aid ?: 0L
-            val latestRoot = _commentsUiState.value.activeThreadRoot
-            if (latestAid != aid || latestRoot?.rpid != rootReply.rpid) return@launch
-
-            result.onSuccess { data ->
-                val replies = data.replies.orEmpty().take(current.pageSize)
-                val updatedCurrentPage = if (append && replies.isEmpty()) current.threadCurrentPage else page
-                _commentsUiState.update { state ->
-                    val mergedReplies = if (append) {
-                        (state.threadItems + replies).distinctBy { it.rpid }
-                    } else {
-                        replies
-                    }
-                    val totalCount = data.getAllCount().takeIf { it > 0 }
-                        ?: maxOf(rootReply.rcount, mergedReplies.size)
-                    val totalPages = calculateCommentTotalPages(totalCount, current.pageSize)
-                    state.copy(
-                        threadItems = mergedReplies,
-                        threadCurrentPage = updatedCurrentPage,
-                        threadTotalCount = totalCount,
-                        threadTotalPages = totalPages,
-                        isThreadLoading = false,
-                        isThreadAppending = false,
-                        threadHasMore = updatedCurrentPage < totalPages && replies.isNotEmpty(),
-                        threadErrorMessage = null,
-                    )
-                }
-            }.onFailure { error ->
-                _commentsUiState.update { state ->
-                    if (append && state.threadItems.isNotEmpty()) {
-                        state.copy(isThreadAppending = false)
-                    } else {
-                        state.copy(
-                            isThreadLoading = false,
-                            isThreadAppending = false,
-                            threadErrorMessage = error.message ?: "回复加载失败",
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private fun resolveDisplayComments(
-        data: ReplyData,
-        pageSize: Int,
-    ): List<ReplyItem> {
-        val replies = data.replies.orEmpty()
-        if (replies.isNotEmpty()) return replies.take(pageSize)
-
-        val hotReplies = data.hots.orEmpty()
-        if (hotReplies.isNotEmpty()) return hotReplies.take(pageSize)
-
-        return data.collectTopReplies().take(pageSize)
-    }
-
-    private fun calculateCommentTotalPages(
-        count: Int,
-        pageSize: Int,
-    ): Int {
-        if (count <= 0 || pageSize <= 0) return 1
-        return ((count - 1) / pageSize) + 1
+        commentController.loadMoreReplies()
     }
 
     override fun onSponsorSkipped(segment: com.bbttvv.app.data.model.response.SponsorSegment) {
@@ -987,110 +656,15 @@ class PlayerViewModel : BasePlayerViewModel() {
     }
 
     @MainThread
-    private fun handlePlaybackEnded() {
-        ensureMainThread("handlePlaybackEnded")
-        val runtime = playbackRuntime
-        if (runtime.bvid.isBlank() || runtime.cid <= 0L) return
-        val sessionKey = runtime.sessionKey
-        if (playbackEndHandledSessionKey == sessionKey) return
-        playbackEndHandledSessionKey = sessionKey
-        pendingAutoNextTarget = null
-        _uiState.update { it.copy(autoNextPrompt = null) }
-
-        finishPlaybackSession(reason = "ended")
-
-        val action = resolvePlaybackEndAction()
-        val state = _uiState.value
-        if (
-            action == SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT &&
-            !hasNextPageTarget(state) &&
-            state.relatedVideos.isEmpty()
-        ) {
-            resolveAutoNextAfterRelatedVideosLoad(
-                sessionKey = sessionKey,
-                bvid = runtime.bvid,
-            )
-            return
-        }
-
-        val target = resolvePlayerPlaybackEndTarget(
-            action = action,
-            currentBvid = runtime.bvid,
-            pages = state.pages,
-            currentPageIndex = state.currentPageIndex,
-            relatedVideos = state.relatedVideos,
-        )
-        handlePlaybackEndTarget(target)
-    }
-
-    @MainThread
-    private fun handlePlaybackEndTarget(target: PlayerPlaybackEndTarget) {
-        ensureMainThread("handlePlaybackEndTarget")
-        when (target) {
-            PlayerPlaybackEndTarget.None -> Unit
-            PlayerPlaybackEndTarget.LoopOne -> restartCurrentVideoFromBeginning()
-            PlayerPlaybackEndTarget.Return -> requestExitPlayer(reason = "playback_ended")
-            is PlayerPlaybackEndTarget.PageTarget,
-            is PlayerPlaybackEndTarget.RelatedTarget -> showAutoNextPrompt(target)
-        }
-    }
-
-    @MainThread
-    private fun showAutoNextPrompt(target: PlayerPlaybackEndTarget) {
-        ensureMainThread("showAutoNextPrompt")
-        val prompt = buildPlayerAutoNextPrompt(
-            promptId = ++autoNextPromptSequence,
-            target = target,
-        ) ?: return
-        pendingAutoNextTarget = target
-        _uiState.update {
-            it.copy(
-                autoNextPrompt = prompt,
-                statusMessage = null,
-            )
-        }
-    }
-
-    @MainThread
-    private fun playPlaybackEndTarget(target: PlayerPlaybackEndTarget) {
-        ensureMainThread("playPlaybackEndTarget")
-        when (target) {
-            PlayerPlaybackEndTarget.None -> Unit
-            PlayerPlaybackEndTarget.LoopOne -> restartCurrentVideoFromBeginning()
-            PlayerPlaybackEndTarget.Return -> requestExitPlayer(reason = "playback_ended")
-            is PlayerPlaybackEndTarget.PageTarget -> {
-                val info = _uiState.value.info ?: return requestExitPlayer(reason = "auto_next_missing_info")
-                loadVideo(
-                    bvid = info.bvid,
-                    aid = info.aid,
-                    cid = target.page.cid,
-                    force = true,
-                )
-            }
-
-            is PlayerPlaybackEndTarget.RelatedTarget -> {
-                val video = target.video
-                loadVideo(
-                    bvid = video.bvid,
-                    aid = video.aid,
-                    cid = video.cid,
-                    force = true,
-                )
-            }
-        }
-    }
-
-    @MainThread
     private fun restartCurrentVideoFromBeginning() {
         ensureMainThread("restartCurrentVideoFromBeginning")
         val engine = playerEngine ?: return
         val info = _uiState.value.info
-        pendingAutoNextTarget = null
         _uiState.update { it.copy(autoNextPrompt = null) }
         engine.seekTo(0L)
         engine.playWhenReady = true
         if (info != null && info.cid > 0L) {
-            beginHeartbeatSession(
+            playbackHistoryReporter.beginSession(
                 aid = info.aid,
                 bvid = info.bvid,
                 cid = info.cid,
@@ -1099,74 +673,6 @@ class PlayerViewModel : BasePlayerViewModel() {
             )
         }
         refreshPlayerSnapshot()
-    }
-
-    private fun resolveAutoNextAfterRelatedVideosLoad(
-        sessionKey: String,
-        bvid: String,
-    ) {
-        relatedVideosJob?.cancel()
-        relatedVideosJob = viewModelScope.launch {
-            val relatedVideos = loadRelatedVideosForAutoNext(bvid)
-            if (
-                playbackRuntime.sessionKey != sessionKey ||
-                _playbackState.value.playerState != Player.STATE_ENDED ||
-                playbackEndHandledSessionKey != sessionKey
-            ) {
-                return@launch
-            }
-            val state = _uiState.value
-            val target = resolvePlayerPlaybackEndTarget(
-                action = SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT,
-                currentBvid = bvid,
-                pages = state.pages,
-                currentPageIndex = state.currentPageIndex,
-                relatedVideos = relatedVideos,
-            )
-            handlePlaybackEndTarget(target)
-        }
-    }
-
-    private fun prefetchRelatedVideosForAutoNextIfNeeded(bvid: String) {
-        val appContext = NetworkModule.appContext ?: return
-        if (SettingsManager.getPlayerPlaybackEndActionSync(appContext) != SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT) {
-            return
-        }
-        if (bvid.isBlank() || hasNextPageTarget(_uiState.value)) return
-        relatedVideosJob?.cancel()
-        relatedVideosJob = viewModelScope.launch {
-            loadRelatedVideosForAutoNext(bvid)
-        }
-    }
-
-    private suspend fun loadRelatedVideosForAutoNext(bvid: String): List<RelatedVideo> {
-        val cacheKey = bvid.trim()
-        if (cacheKey.isBlank()) return emptyList()
-        val cached = VideoDetailRepository.getCachedRelatedVideos(cacheKey).orEmpty()
-        if (cached.isNotEmpty()) {
-            updateRelatedVideosForCurrentSession(cacheKey, cached)
-            return cached
-        }
-        val relatedVideos = VideoDetailRepository.getRelatedVideos(cacheKey)
-        updateRelatedVideosForCurrentSession(cacheKey, relatedVideos)
-        return relatedVideos
-    }
-
-    private fun updateRelatedVideosForCurrentSession(
-        bvid: String,
-        relatedVideos: List<RelatedVideo>,
-    ) {
-        if (playbackRuntime.bvid != bvid || relatedVideos.isEmpty()) return
-        _uiState.update { it.copy(relatedVideos = relatedVideos) }
-    }
-
-    private fun hasNextPageTarget(state: PlayerUiState): Boolean {
-        return state.pages.getOrNull(state.currentPageIndex + 1)?.cid?.let { it > 0L } == true
-    }
-
-    private fun resolvePlaybackEndAction(): SettingsManager.PlayerPlaybackEndAction {
-        val appContext = NetworkModule.appContext ?: return SettingsManager.PlayerPlaybackEndAction.NONE
-        return SettingsManager.getPlayerPlaybackEndActionSync(appContext)
     }
 
     private fun requestExitPlayer(reason: String) {
@@ -1198,8 +704,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     }
 
     private fun resolvePlayerCdnPreference(): SettingsManager.PlayerCdnPreference {
-        val appContext = NetworkModule.appContext ?: return SettingsManager.PlayerCdnPreference.BILIVIDEO
-        return SettingsManager.getPlayerCdnPreferenceSync(appContext)
+        return SettingsManager.PlayerCdnPreference.BILIVIDEO
     }
 
     private fun resolveInitialPlaybackStartPosition(
@@ -1438,16 +943,7 @@ class PlayerViewModel : BasePlayerViewModel() {
 
     private fun loadVideoShot(bvid: String, cid: Long) {
         ensureMainThread("loadVideoShot")
-        if (bvid.isBlank() || cid <= 0L) return
-        videoShotLoadJob?.cancel()
-        videoShotLoadJob = viewModelScope.launch {
-            val data = SubtitleAndAuxRepository.getVideoshot(bvid = bvid, cid = cid) ?: return@launch
-            if (playbackRuntime.bvid != bvid || playbackRuntime.cid != cid) {
-                return@launch
-            }
-            videoShot?.clear()
-            videoShot = VideoShot.fromData(data)
-        }
+        videoShotController.load(bvid = bvid, cid = cid)
     }
 
     private fun loadProgressHeatmap(
@@ -1457,52 +953,28 @@ class PlayerViewModel : BasePlayerViewModel() {
         durationMs: Long,
     ) {
         ensureMainThread("loadProgressHeatmap")
-        heatmapLoadJob?.cancel()
-        if (cid <= 0L || durationMs <= 0L) {
-            _uiState.update { it.copy(heatmapPoints = emptyList()) }
-            return
-        }
-        heatmapLoadJob = viewModelScope.launch {
-            val points = PbpHeatmapRepository.getHeatmap(
-                cid = cid,
-                aid = aid,
-                bvid = bvid,
-            ).getOrNull()?.let { response ->
-                normalizePbpHeatmapPoints(
-                    response = response,
-                    durationMs = durationMs,
-                )
-            }.orEmpty()
-
-            if (playbackRuntime.bvid != bvid || playbackRuntime.cid != cid) {
-                return@launch
-            }
-            _uiState.update { it.copy(heatmapPoints = points) }
-        }
+        progressHeatmapController.load(
+            bvid = bvid,
+            aid = aid,
+            cid = cid,
+            durationMs = durationMs,
+        )
     }
 
     private fun clearProgressHeatmap() {
         ensureMainThread("clearProgressHeatmap")
-        heatmapLoadJob?.cancel()
-        heatmapLoadJob = null
-        _uiState.update { it.copy(heatmapPoints = emptyList()) }
+        progressHeatmapController.clear()
     }
 
     private fun clearVideoShot() {
         ensureMainThread("clearVideoShot")
-        videoShotLoadJob?.cancel()
-        videoShotFrameJob?.cancel()
-        videoShotLoadJob = null
-        videoShotFrameJob = null
-        videoShot?.clear()
-        videoShot = null
-        _seekPreviewFrame.value = null
+        videoShotController.clear()
     }
 
     private fun refreshPlayerSnapshot() {
         ensureMainThread("refreshPlayerSnapshot")
         val player = exoPlayer ?: return
-        syncHeartbeatPlaybackTracking(isActivelyPlaying = player.isPlaying)
+        playbackHistoryReporter.syncPlaybackTracking(isActivelyPlaying = player.isPlaying)
         updatePlaybackState(
             PlayerPlaybackState(
                 positionMs = player.currentPosition.coerceAtLeast(0L),
@@ -1571,445 +1043,19 @@ class PlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun finishPlaybackSession(reason: String = "manual_exit") {
         ensureMainThread("finishPlaybackSession")
-        flushPlaybackHistory(reason = reason, closeSession = true)
-    }
-
-    private fun beginHeartbeatSession(
-        aid: Long,
-        bvid: String,
-        cid: Long,
-        creatorMid: Long,
-        creatorName: String,
-        nowEpochSec: Long = System.currentTimeMillis() / 1000L
-    ) {
-        ensureMainThread("beginHeartbeatSession")
-        heartbeatJob?.cancel()
-        heartbeatRuntime = HeartbeatRuntimeState(
-            aid = aid,
-            bvid = bvid,
-            cid = cid,
-            startTsSec = nowEpochSec,
-            creatorMid = creatorMid,
-            creatorName = creatorName
-        )
-
-        if (bvid.isBlank() || cid <= 0L) {
-            return
-        }
-
-        heartbeatJob = viewModelScope.launch {
-            delay(HISTORY_HEARTBEAT_INITIAL_DELAY_MS)
-            while (isActive && heartbeatRuntime.bvid == bvid && heartbeatRuntime.cid == cid) {
-                reportPlaybackHeartbeat(forceFlush = false, reason = "interval")
-                delay(HISTORY_HEARTBEAT_INTERVAL_MS)
-            }
-        }
-    }
-
-    private fun clearHeartbeatSession() {
-        ensureMainThread("clearHeartbeatSession")
-        heartbeatJob?.cancel()
-        heartbeatJob = null
-        heartbeatRuntime = HeartbeatRuntimeState()
-    }
-
-    private fun syncHeartbeatPlaybackTracking(
-        isActivelyPlaying: Boolean,
-        nowElapsedMs: Long = SystemClock.elapsedRealtime()
-    ) {
-        ensureMainThread("syncHeartbeatPlaybackTracking")
-        val session = heartbeatRuntime
-        if (!session.hasSession) return
-        if (isActivelyPlaying) {
-            if (session.activePlayStartElapsedMs == null) {
-                heartbeatRuntime = session.copy(activePlayStartElapsedMs = nowElapsedMs)
-            }
-            return
-        }
-
-        val activePlayStartElapsedMs = session.activePlayStartElapsedMs ?: return
-        heartbeatRuntime = session.copy(
-            accumulatedPlayMs = session.accumulatedPlayMs + (nowElapsedMs - activePlayStartElapsedMs).coerceAtLeast(0L),
-            activePlayStartElapsedMs = null
-        )
-    }
-
-    private fun buildHeartbeatSnapshot(
-        currentPositionMs: Long = currentHeartbeatPositionMs(),
-        nowElapsedMs: Long = SystemClock.elapsedRealtime()
-    ): PlaybackHeartbeatSnapshot {
-        ensureMainThread("buildHeartbeatSnapshot")
-        val session = heartbeatRuntime
-        val activePlayMs = session.activePlayStartElapsedMs
-            ?.let { (nowElapsedMs - it).coerceAtLeast(0L) }
-            ?: 0L
-        val currentDurationMs = if (
-            session.bvid.isNotBlank() &&
-            session.bvid == playbackRuntime.bvid &&
-            session.cid == playbackRuntime.cid
-        ) {
-            getPlayerDuration()
-        } else {
-            _playbackState.value.durationMs
-        }.coerceAtLeast(0L)
-        return PlaybackHeartbeatSnapshot(
-            playedTimeSec = (currentPositionMs.coerceAtLeast(0L) / 1000L),
-            realPlayedTimeSec = ((session.accumulatedPlayMs + activePlayMs).coerceAtLeast(0L) / 1000L),
-            durationMs = currentDurationMs,
-        )
-    }
-
-    private fun currentHeartbeatPositionMs(): Long {
-        ensureMainThread("currentHeartbeatPositionMs")
-        val session = heartbeatRuntime
-        return if (
-            session.bvid.isNotBlank() &&
-            session.bvid == playbackRuntime.bvid &&
-            session.cid == playbackRuntime.cid
-        ) {
-            getPlayerCurrentPosition()
-        } else {
-            _playbackState.value.positionMs
-        }.coerceAtLeast(0L)
-    }
-
-    private fun captureHeartbeatReport(forceFlush: Boolean): PlaybackHeartbeatReport? {
-        ensureMainThread("captureHeartbeatReport")
-        var session = heartbeatRuntime
-        if ((session.aid <= 0L && session.bvid.isBlank()) || session.cid <= 0L) return null
-
-        val nowElapsedMs = SystemClock.elapsedRealtime()
-        val isActivelyPlaying = exoPlayer?.isPlaying == true
-        syncHeartbeatPlaybackTracking(
-            isActivelyPlaying = isActivelyPlaying,
-            nowElapsedMs = nowElapsedMs
-        )
-        session = heartbeatRuntime
-        val snapshot = buildHeartbeatSnapshot(nowElapsedMs = nowElapsedMs)
-        val shouldSend = if (forceFlush) {
-            snapshot.playedTimeSec > 0L ||
-                snapshot.realPlayedTimeSec > 0L ||
-                session.lastReportedSnapshot == null
-        } else {
-            isActivelyPlaying &&
-                (
-                    session.lastReportedSnapshot == null ||
-                        snapshot.playedTimeSec > session.lastReportedSnapshot.playedTimeSec ||
-                        snapshot.realPlayedTimeSec > session.lastReportedSnapshot.realPlayedTimeSec
-                    )
-        }
-        if (!shouldSend) return null
-
-        if (session.startTsSec <= 0L) {
-            session = session.copy(startTsSec = System.currentTimeMillis() / 1000L)
-            heartbeatRuntime = session
-        }
-        val deltaWatchSec = (
-            snapshot.realPlayedTimeSec - session.lastReportedSnapshot?.realPlayedTimeSec.orZero()
-            ).coerceAtLeast(0L)
-        return PlaybackHeartbeatReport(
-            aid = session.aid,
-            bvid = session.bvid,
-            cid = session.cid,
-            startTsSec = session.startTsSec,
-            snapshot = snapshot,
-            creatorMid = session.creatorMid,
-            creatorName = session.creatorName,
-            deltaWatchSec = deltaWatchSec
-        )
-    }
-
-    private suspend fun reportPlaybackHeartbeat(
-        forceFlush: Boolean,
-        reason: String
-    ): Boolean {
-        val report = captureHeartbeatReport(forceFlush = forceFlush) ?: return false
-        return sendHeartbeatReport(report = report, reason = reason, updateSessionState = true)
-    }
-
-    private fun flushPlaybackHistory(
-        reason: String,
-        closeSession: Boolean
-    ) {
-        ensureMainThread("flushPlaybackHistory")
-        val report = captureHeartbeatReport(forceFlush = true)
-        if (closeSession) {
-            clearHeartbeatSession()
-        }
-        if (report == null) return
-        AppScope.ioScope.launch {
-            sendHeartbeatReport(
-                report = report,
-                reason = reason,
-                updateSessionState = false
-            )
-        }
-    }
-
-    private suspend fun sendHeartbeatReport(
-        report: PlaybackHeartbeatReport,
-        reason: String,
-        updateSessionState: Boolean
-    ): Boolean {
-        val appContext = NetworkModule.appContext
-        if (appContext != null) {
-            PlaybackResumeStore.save(
-                context = appContext,
-                bvid = report.bvid,
-                cid = report.cid,
-                positionMs = report.snapshot.playedTimeSec * 1000L,
-                durationMs = report.snapshot.durationMs,
-            )
-        }
-        PlayUrlCache.invalidate(
-            bvid = report.bvid,
-            cid = report.cid,
-        )
-        val historyReported = if (report.aid > 0L) {
-            PlaybackRepository.reportPlayHistoryProgress(
-                aid = report.aid,
-                cid = report.cid,
-                progressSec = report.snapshot.playedTimeSec
-            )
-        } else {
-            false
-        }
-        val heartbeatReported = PlaybackRepository.reportPlayHeartbeat(
-            bvid = report.bvid,
-            cid = report.cid,
-            playedTime = report.snapshot.playedTimeSec,
-            realPlayedTime = report.snapshot.realPlayedTimeSec,
-            startTsSec = report.startTsSec
-        )
-        val reported = historyReported || heartbeatReported
-        if (reported && updateSessionState &&
-            heartbeatRuntime.bvid == report.bvid &&
-            heartbeatRuntime.cid == report.cid
-        ) {
-            heartbeatRuntime = heartbeatRuntime.copy(lastReportedSnapshot = report.snapshot)
-        }
-        if (reported) {
-            PlaybackHistorySyncBus.publish(
-                mid = TokenManager.midCache ?: 0L,
-                bvid = report.bvid,
-                cid = report.cid
-            )
-            if (appContext != null && report.deltaWatchSec > 0L) {
-                TodayWatchProfileStore.recordWatchProgress(
-                    context = appContext,
-                    mid = report.creatorMid,
-                    creatorName = report.creatorName,
-                    deltaWatchSec = report.deltaWatchSec,
-                    watchedAtSec = System.currentTimeMillis() / 1000L
-                )
-            }
-        }
-        if (!historyReported) {
-            Logger.w(
-                "PlayerVM",
-                "Remote history report failed; server-side resume state may stay stale " +
-                    "even if heartbeat succeeds. reason=$reason aid=${report.aid} bvid=${report.bvid} cid=${report.cid}"
-            )
-        }
-        Logger.d(
-            "PlayerVM",
-            "history sync result=$reported history=$historyReported heartbeat=$heartbeatReported " +
-                "reason=$reason aid=${report.aid} bvid=${report.bvid} cid=${report.cid} " +
-                "played=${report.snapshot.playedTimeSec} real=${report.snapshot.realPlayedTimeSec} " +
-                "delta=${report.deltaWatchSec} startTs=${report.startTsSec}"
-        )
-        return reported
-    }
-
-    private fun Long?.orZero(): Long = this ?: 0L
-
-    private fun PlayerUiState.withPlaybackSource(
-        source: PlaybackSource,
-        isLoading: Boolean,
-        statusMessage: String?
-    ): PlayerUiState {
-        return copy(
-            isLoading = isLoading,
-            selectedQuality = source.actualQuality,
-            qualityOptions = source.qualityOptions.map(::toQualityOption),
-            audioOptions = buildAudioOptions(source),
-            videoCodecOptions = buildVideoCodecOptions(source),
-            selectedVideoCodecId = source.selectedVideoCodecId,
-            selectedAudioQualityId = source.selectedAudioQualityId,
-            selectedAudioCodecId = source.selectedAudioCodecId,
-            statusMessage = statusMessage,
-            playbackBadges = buildPlaybackBadges(source),
-            capabilityHints = source.capabilityHints,
-            selectedVideoCodecLabel = source.selectedVideoCodec,
-            selectedAudioCodecLabel = source.selectedAudioCodec,
-            activeDynamicRangeLabel = source.activeDynamicRangeLabel,
-            videoCdnHost = source.videoUrl.toHostLabel(),
-            audioCdnHost = source.audioUrl.orEmpty().toHostLabel(),
-            selectedVideoWidth = source.selectedVideoWidth,
-            selectedVideoHeight = source.selectedVideoHeight,
-            selectedVideoFrameRate = source.selectedVideoFrameRate,
-            selectedVideoBandwidth = source.selectedVideoBandwidth,
-            selectedAudioBandwidth = source.selectedAudioBandwidth,
-            selectedQualityLabel = source.qualityOptions
-                .firstOrNull { it.id == source.actualQuality }
-                ?.label
-                ?: source.actualQuality.toString()
-        )
-    }
-
-    private fun toQualityOption(option: com.bbttvv.app.feature.video.usecase.PlaybackQualityInfo): QualityOption {
-        return QualityOption(
-            id = option.id,
-            label = option.label,
-            isSupported = option.isSupported,
-            unsupportedReason = option.unsupportedReason
-        )
-    }
-
-    private fun buildAudioOptions(source: PlaybackSource): List<PlayerOption> {
-        return source.dashAudios
-            .filter { it.getValidUrl().isNotBlank() }
-            .distinctBy { it.id }
-            .sortedWith(compareByDescending<DashAudio> { it.id }.thenByDescending { it.bandwidth })
-            .map { audio ->
-                PlayerOption(
-                    key = audio.id.toString(),
-                    label = resolveAudioLabel(audio),
-                    subtitle = buildAudioSubtitle(audio),
-                    isSelected = audio.id == source.selectedAudioQualityId
-                )
-            }
-    }
-
-    private fun buildVideoCodecOptions(source: PlaybackSource): List<PlayerOption> {
-        val hevcSupported = MediaUtils.isHevcSupported()
-        val av1Supported = MediaUtils.isAv1Supported()
-        return source.dashVideos
-            .filter { it.id == source.actualQuality && it.getValidUrl().isNotBlank() }
-            .distinctBy { it.videoCodecSelectionKey() }
-            .map { video ->
-                val supported = video.isSupportedByDevice(
-                    isHevcSupported = hevcSupported,
-                    isAv1Supported = av1Supported
-                )
-                PlayerOption(
-                    key = video.videoCodecSelectionKey().toString(),
-                    label = resolveCodecLabel(video.codecs, video.codecid).ifBlank { "未知编码" },
-                    subtitle = buildVideoCodecSubtitle(video),
-                    isSelected = video.videoCodecSelectionKey() == source.selectedVideoCodecId,
-                    isEnabled = supported,
-                    disabledReason = if (supported) null else "当前设备暂不支持该编码"
-                )
-            }
-    }
-
-    private fun buildPlaybackBadges(source: PlaybackSource): List<PlaybackBadge> {
-        return buildList {
-            source.activeDynamicRangeLabel?.let { add(PlaybackBadge(it)) }
-            if (source.hasDolbyVisionTrack && source.activeDynamicRangeLabel != "杜比视界") {
-                add(PlaybackBadge("杜比视界可用", isActive = false))
-            }
-            if (source.hasHdrTrack && source.activeDynamicRangeLabel != "HDR 真彩") {
-                add(PlaybackBadge("HDR 可用", isActive = false))
-            }
-            if (source.hasDolbyAudioTrack) {
-                val isDolbyActive = source.selectedAudioCodec.contains("杜比", ignoreCase = true) ||
-                    source.selectedAudioCodec.contains("Dolby", ignoreCase = true)
-                add(PlaybackBadge("杜比音频", isActive = isDolbyActive))
-            }
-            source.selectedVideoCodec.takeIf { it.isNotBlank() }?.let {
-                add(PlaybackBadge(it))
-            }
-            source.selectedAudioCodec.takeIf { it.isNotBlank() }?.let {
-                add(PlaybackBadge(it))
-            }
-        }
-    }
-
-    private fun resolveAudioLabel(audio: DashAudio): String {
-        return AudioQuality.fromCode(audio.id)?.description
-            ?: audio.bandwidth.takeIf { it > 0 }?.let { "${it / 1000}K" }
-            ?: "音频 ${audio.id}"
-    }
-
-    private fun buildAudioSubtitle(audio: DashAudio): String? {
-        return buildList {
-            resolveCodecLabel(audio.codecs, audio.codecid).takeIf { it.isNotBlank() }?.let(::add)
-            audio.bandwidth.takeIf { it > 0 }?.let { add("${it / 1000} kbps") }
-        }.joinToString(" · ").ifBlank { null }
-    }
-
-    private fun buildVideoCodecSubtitle(video: DashVideo): String? {
-        return buildList {
-            if (video.width > 0 && video.height > 0) {
-                add("${video.width}x${video.height}")
-            }
-            video.frameRate.takeIf { it.isNotBlank() }?.let(::add)
-            video.bandwidth.takeIf { it > 0 }?.let { add("${it / 1000} kbps") }
-        }.joinToString(" · ").ifBlank { null }
-    }
-
-    private fun String.toHostLabel(): String {
-        if (isBlank()) return ""
-        return runCatching { URI(this).host.orEmpty() }
-            .getOrElse {
-                substringAfter("://", this)
-                    .substringBefore("/")
-                    .substringBefore("?")
-            }
-    }
-
-    private fun DashVideo.videoCodecSelectionKey(): Int {
-        return codecid ?: codecs.lowercase().hashCode()
-    }
-
-    private fun DashVideo.isSupportedByDevice(
-        isHevcSupported: Boolean,
-        isAv1Supported: Boolean
-    ): Boolean {
-        val codecText = codecs.lowercase()
-        return when {
-            codecText.startsWith("avc") -> true
-            codecText.startsWith("hev") || codecText.startsWith("hvc") -> isHevcSupported
-            codecText.startsWith("av01") -> isAv1Supported
-            codecText.startsWith("dvh1") || codecText.startsWith("dvhe") -> isHevcSupported
-            else -> true
-        }
-    }
-
-    private fun resolveCodecLabel(codecs: String?, codecId: Int?): String {
-        val codecText = codecs.orEmpty().lowercase()
-        return when {
-            codecText.startsWith("dvh1") || codecText.startsWith("dvhe") -> "Dolby Vision"
-            codecText.startsWith("av01") -> "AV1"
-            codecText.startsWith("hev1") || codecText.startsWith("hvc1") -> "HEVC"
-            codecText.startsWith("avc1") -> "AVC"
-            codecText.contains("ec-3") || codecText.contains("eac-3") -> "杜比音频"
-            codecText.contains("flac") -> "FLAC"
-            codecText.contains("mp4a") -> "AAC"
-            codecId == 12 -> "HEVC"
-            codecId == 13 -> "AV1"
-            codecId == 7 -> "AVC"
-            else -> codecs.orEmpty()
-        }
-    }
-
-    private fun formatSpeed(speed: Float): String {
-        return if (speed % 1f == 0f) {
-            "${speed.toInt()}倍"
-        } else {
-            "${speed}倍"
-        }
+        playbackHistoryReporter.finishSession(reason = reason, closeSession = true)
     }
 
     override fun onCleared() {
         ensureMainThread("PlayerViewModel.onCleared")
         finishPlaybackSession(reason = "viewmodel_cleared")
-        exoPlayer?.removeListener(playerListener)
+        detachPlayer()
+        playbackLoadJob?.cancel()
+        playbackQualityController.cancelPending()
         playerPollingJob?.cancel()
         settingsObservationJob?.cancel()
-        commentsJob?.cancel()
-        commentRepliesJob?.cancel()
+        playbackEndController.clear()
+        commentController.reset()
         clearProgressHeatmap()
         clearVideoShot()
         super.onCleared()

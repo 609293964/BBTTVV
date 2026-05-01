@@ -10,8 +10,12 @@ object PlayerSettingsCache {
     @Volatile
     private var preferredPlaybackSpeed: Float = 1.0f
 
+    @Volatile
+    private var volumeCalibrationScale: Float = 1.0f
+
     fun init(context: Context) {
         preferredPlaybackSpeed = PlayerSettingsStore.getPreferredPlaybackSpeedSync(context)
+        volumeCalibrationScale = PlayerSettingsStore.getVolumeCalibrationScaleSync(context)
         initialized = true
     }
 
@@ -22,5 +26,14 @@ object PlayerSettingsCache {
 
     fun getPreferredPlaybackSpeed(defaultValue: Float = 1.0f): Float {
         return if (initialized) preferredPlaybackSpeed else defaultValue
+    }
+
+    fun updateVolumeCalibrationScale(scale: Float) {
+        volumeCalibrationScale = normalizePlayerVolumeCalibrationScale(scale)
+        initialized = true
+    }
+
+    fun getVolumeCalibrationScale(defaultValue: Float = 1.0f): Float {
+        return if (initialized) volumeCalibrationScale else defaultValue
     }
 }

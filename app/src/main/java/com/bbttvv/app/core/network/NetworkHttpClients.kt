@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.Dns
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 
@@ -57,58 +58,22 @@ internal object NetworkHttpClients {
                 TokenManager.awaitWarmupBlocking(appContext())
                 val original = chain.request()
                 val url = original.url
-                var referer = "https://www.bilibili.com"
-
-                val bvid = url.queryParameter("bvid")
-                if (!bvid.isNullOrEmpty()) {
-                    referer = "https://www.bilibili.com/video/$bvid"
-                }
-
-                val mid = url.queryParameter("mid") ?: url.queryParameter("vmid")
-                if (url.encodedPath.contains("/x/space/") && !mid.isNullOrEmpty()) {
-                    referer = "https://space.bilibili.com/$mid"
-                }
-
-                if (url.host == "api.live.bilibili.com") {
-                    val roomId = url.queryParameter("room_id") ?: url.queryParameter("id")
-                    referer = if (!roomId.isNullOrEmpty()) {
-                        "https://live.bilibili.com/$roomId"
-                    } else {
-                        "https://live.bilibili.com"
-                    }
-                }
-
-                if (url.encodedPath.contains("/dm/list.so") || url.encodedPath.contains("/x/v1/dm/")) {
-                    referer = "https://www.bilibili.com/video/"
-                }
-
-                val isDynamicEndpoint = url.encodedPath.contains("/x/polymer/web-dynamic/") ||
-                    url.encodedPath.contains("/x/dynamic/")
-                if (isDynamicEndpoint) {
-                    referer = "https://t.bilibili.com/"
-                }
-
-                var origin = "https://www.bilibili.com"
-                if (url.host == "api.live.bilibili.com") {
-                    origin = "https://live.bilibili.com"
-                }
-                if (isDynamicEndpoint) {
-                    origin = "https://t.bilibili.com"
-                }
+                val referer = resolveBilibiliReferer(url)
+                val origin = resolveBilibiliOrigin(url)
+                val shouldAttachReferer = shouldAttachBilibiliReferer(url)
 
                 val requestBuilder = original.newBuilder()
                     .header("User-Agent", resolveAppUserAgent(appContext()))
                     .header("Origin", origin)
 
-                val isWbiEndpoint = url.encodedPath.contains("/wbi/")
-                if (!isWbiEndpoint) {
+                if (shouldAttachReferer) {
                     requestBuilder.header("Referer", referer)
                 }
 
                 Logger.d(
                     "ApiClient",
                     " Sending request to ${original.url}, Referer: " +
-                        "${if (isWbiEndpoint) "OMITTED (WBI)" else referer}, " +
+                        "${if (shouldAttachReferer) referer else "OMITTED (WBI)"}, " +
                         "hasSess=${!TokenManager.sessDataCache.isNullOrEmpty()}, " +
                         "hasCsrf=${!TokenManager.csrfCache.isNullOrEmpty()}"
                 )
@@ -168,19 +133,14 @@ internal object NetworkHttpClients {
             .addInterceptor { chain ->
                 val original = chain.request()
                 val url = original.url
-                var referer = "https://www.bilibili.com"
-
-                val bvid = url.queryParameter("bvid")
-                if (!bvid.isNullOrEmpty()) {
-                    referer = "https://www.bilibili.com/video/$bvid"
-                }
-
-                val isWbiEndpoint = url.encodedPath.contains("/wbi/")
+                val referer = resolveBilibiliReferer(url)
+                val origin = resolveBilibiliOrigin(url)
+                val shouldAttachReferer = shouldAttachBilibiliReferer(url)
                 val requestBuilder = original.newBuilder()
                     .header("User-Agent", resolveAppUserAgent(appContext()))
-                    .header("Origin", "https://www.bilibili.com")
+                    .header("Origin", origin)
 
-                if (!isWbiEndpoint) {
+                if (shouldAttachReferer) {
                     requestBuilder.header("Referer", referer)
                 }
 
@@ -191,6 +151,53 @@ internal object NetworkHttpClients {
                 )
             }
             .build()
+    }
+
+    internal fun resolveBilibiliReferer(url: HttpUrl): String {
+        var referer = "https://www.bilibili.com"
+
+        val bvid = url.queryParameter("bvid")
+        if (!bvid.isNullOrEmpty()) {
+            referer = "https://www.bilibili.com/video/$bvid"
+        }
+
+        val mid = url.queryParameter("mid") ?: url.queryParameter("vmid")
+        if (isSpaceEndpoint(url) && !mid.isNullOrEmpty()) {
+            referer = "https://space.bilibili.com/$mid"
+        }
+
+        if (url.host == "api.live.bilibili.com") {
+            val roomId = url.queryParameter("room_id") ?: url.queryParameter("id")
+            referer = if (!roomId.isNullOrEmpty()) {
+                "https://live.bilibili.com/$roomId"
+            } else {
+                "https://live.bilibili.com"
+            }
+        }
+
+        if (url.encodedPath.contains("/dm/list.so") || url.encodedPath.contains("/x/v1/dm/")) {
+            referer = "https://www.bilibili.com/video/"
+        }
+
+        if (isDynamicEndpoint(url)) {
+            referer = "https://t.bilibili.com/"
+        }
+
+        return referer
+    }
+
+    internal fun resolveBilibiliOrigin(url: HttpUrl): String {
+        return when {
+            url.host == "api.live.bilibili.com" -> "https://live.bilibili.com"
+            isDynamicEndpoint(url) -> "https://t.bilibili.com"
+            isSpaceEndpoint(url) -> "https://space.bilibili.com"
+            else -> "https://www.bilibili.com"
+        }
+    }
+
+    internal fun shouldAttachBilibiliReferer(url: HttpUrl): Boolean {
+        val isWbiEndpoint = url.encodedPath.contains("/wbi/")
+        return !isWbiEndpoint || isSpaceEndpoint(url)
     }
 
     private fun buildApiDns(appContext: () -> Context?): Dns {
@@ -258,5 +265,14 @@ internal object NetworkHttpClients {
             normalized.contains("bilivideo.com") ||
             normalized.contains("bilivideo.cn") ||
             normalized.contains("mcdn.bilivideo")
+    }
+
+    private fun isSpaceEndpoint(url: HttpUrl): Boolean {
+        return url.encodedPath.contains("/x/space/")
+    }
+
+    private fun isDynamicEndpoint(url: HttpUrl): Boolean {
+        return url.encodedPath.contains("/x/polymer/web-dynamic/") ||
+            url.encodedPath.contains("/x/dynamic/")
     }
 }

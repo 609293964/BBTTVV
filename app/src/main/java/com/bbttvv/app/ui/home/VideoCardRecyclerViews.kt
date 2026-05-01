@@ -1,5 +1,6 @@
 package com.bbttvv.app.ui.home
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -41,6 +42,7 @@ internal fun VideoCardRecyclerGrid(
     focusTab: AppTopLevelTab? = null,
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     scrollResetKey: Any? = null,
+    initialScrollPosition: Int = RecyclerView.NO_POSITION,
     allowChildDrawingOutsideBounds: Boolean = true,
     onVerticalScrollOffsetChanged: (Int) -> Unit = {},
     showHistoryProgressOnly: Boolean = false,
@@ -79,7 +81,10 @@ internal fun VideoCardRecyclerGrid(
     val latestFocusCoordinator by rememberUpdatedState(focusCoordinator)
     val latestFocusTab by rememberUpdatedState(focusTab)
     val latestFocusRegion by rememberUpdatedState(focusRegion)
+    val latestGridColumnCount by rememberUpdatedState(gridColumnCount)
     val dpadGridController = remember { DpadGridController() }
+    val preloadThrottler = remember { RecyclerGridPreloadThrottler() }
+    val focusDispatchState = remember { VideoGridFocusDispatchState() }
     val recyclerViewRef = remember { RecyclerViewRef() }
 
     SideEffect {
@@ -100,7 +105,7 @@ internal fun VideoCardRecyclerGrid(
                     latestOnLoadMore()
                 },
                 preloadRowsAhead = { recyclerView, position, spanCount, rowCount ->
-                    (recyclerView.adapter as? HomeVideoCardAdapter)?.preloadRowsAhead(
+                    preloadThrottler.preloadRowsAhead(
                         recyclerView = recyclerView,
                         position = position,
                         spanCount = spanCount,
@@ -131,6 +136,7 @@ internal fun VideoCardRecyclerGrid(
         onDispose {
             recyclerViewRef.value?.let(focusState::detach)
             recyclerViewRef.value = null
+            preloadThrottler.cancel()
             dpadGridController.detach()
         }
     }
@@ -146,6 +152,10 @@ internal fun VideoCardRecyclerGrid(
                 target = object : HomeFocusTarget {
                     override fun tryRequestFocus(): Boolean {
                         return focusState.tryFocusVisibleItem()
+                    }
+
+                    override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
+                        return focusState.tryFocusEntryItem(entryHint.preferredIndex)
                     }
 
                     override fun tryRequestFocusKey(key: String): Boolean {
@@ -319,11 +329,21 @@ internal fun VideoCardRecyclerGrid(
                     onItemFocused = { item, position ->
                         if (dpadGridController.onItemFocused(position = position)) {
                             focusState.onItemFocused(item.key, position)
-                            latestFocusTab?.let { tab ->
-                                latestFocusCoordinator?.onContentRegionFocused(tab, latestFocusRegion)
+                            recyclerViewRef.value?.let { recyclerView ->
+                                preloadThrottler.preloadRowsAhead(
+                                    recyclerView = recyclerView,
+                                    position = position,
+                                    spanCount = latestGridColumnCount.coerceAtLeast(1),
+                                    rowCount = FocusSettledPreloadRows,
+                                )
                             }
-                            latestOnFocusedRowChanged(position / gridColumnCount.coerceAtLeast(1))
-                            latestOnVideoFocused(item.video, item.key)
+                            if (focusDispatchState.shouldDispatch(item.key)) {
+                                latestFocusTab?.let { tab ->
+                                    latestFocusCoordinator?.onContentRegionFocused(tab, latestFocusRegion)
+                                }
+                                latestOnFocusedRowChanged(position / latestGridColumnCount.coerceAtLeast(1))
+                                latestOnVideoFocused(item.video, item.key)
+                            }
                         }
                     },
                     onItemMenu = onVideoMenu?.let {
@@ -349,6 +369,7 @@ internal fun VideoCardRecyclerGrid(
                 },
                 ).apply {
                     submitList(items) {
+                        applyInitialScrollPosition(initialScrollPosition)
                         dpadGridController.onItemsCommitted()
                         focusState.onItemsCommitted()
                         latestOnVerticalScrollOffsetChanged(computeVerticalScrollOffset())
@@ -378,7 +399,15 @@ internal fun VideoCardRecyclerGrid(
                 if (adapter.currentList != items && !dpadGridController.hasPendingLoadMoreFocus()) {
                     focusState.prepareForDataSetChange(items)
                 }
+                val appliedInitialScrollBeforeCommit = if (adapter.currentList == items) {
+                    recyclerView.applyInitialScrollPosition(initialScrollPosition)
+                } else {
+                    false
+                }
                 adapter.submitList(items) {
+                    if (!appliedInitialScrollBeforeCommit) {
+                        recyclerView.applyInitialScrollPosition(initialScrollPosition)
+                    }
                     dpadGridController.onItemsCommitted()
                     focusState.onItemsCommitted()
                     latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
@@ -547,6 +576,71 @@ internal fun VideoCardRecyclerRow(
     )
 }
 
+private class RecyclerGridPreloadThrottler {
+    private var lastPreloadKey: RecyclerGridPreloadKey? = null
+    private var lastPreloadAtMs: Long = 0L
+
+    fun preloadRowsAhead(
+        recyclerView: RecyclerView,
+        position: Int,
+        spanCount: Int,
+        rowCount: Int,
+    ) {
+        val adapter = recyclerView.adapter as? HomeVideoCardAdapter ?: return
+        val preloadPositions = DpadGridPreloadPolicy.positionsAhead(
+            position = position,
+            itemCount = adapter.itemCount,
+            spanCount = spanCount,
+            rowCount = rowCount,
+        ) ?: return
+
+        val now = SystemClock.uptimeMillis()
+        val preloadKey = RecyclerGridPreloadKey(
+            firstPosition = preloadPositions.first,
+            lastPosition = preloadPositions.last,
+        )
+        if (
+            preloadKey == lastPreloadKey &&
+            now - lastPreloadAtMs <= RecyclerGridPreloadDuplicateWindowMs
+        ) {
+            return
+        }
+        lastPreloadKey = preloadKey
+        lastPreloadAtMs = now
+
+        adapter.preloadRowsAhead(
+            recyclerView = recyclerView,
+            position = position,
+            spanCount = spanCount,
+            rowCount = rowCount,
+        )
+    }
+
+    fun cancel() {
+        lastPreloadKey = null
+        lastPreloadAtMs = 0L
+    }
+}
+
+private data class RecyclerGridPreloadKey(
+    val firstPosition: Int,
+    val lastPosition: Int,
+)
+
+private class VideoGridFocusDispatchState {
+    private var lastDispatchedKey: String? = null
+    private var lastDispatchedAtMs: Long = 0L
+
+    fun shouldDispatch(key: String): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val isRapidDuplicate = key == lastDispatchedKey &&
+            now - lastDispatchedAtMs <= DuplicateFocusDispatchWindowMs
+        lastDispatchedKey = key
+        lastDispatchedAtMs = now
+        return !isRapidDuplicate
+    }
+}
+
 @Composable
 private fun rememberRecyclerPadding(contentPadding: PaddingValues): RecyclerPaddingPx {
     val density = LocalDensity.current
@@ -580,6 +674,30 @@ private fun RecyclerView.applyVideoCardRecyclerOverflowPolicy(
     clipChildren = !allowChildDrawingOutsideBounds
 }
 
+private fun RecyclerView.applyInitialScrollPosition(position: Int): Boolean {
+    val targetPosition = InitialGridRestoreScrollPolicy.targetPosition(
+        position = position,
+        itemCount = adapter?.itemCount ?: 0,
+    )
+    if (targetPosition == RecyclerView.NO_POSITION) return false
+    val manager = layoutManager as? GridLayoutManager
+    if (manager != null) {
+        manager.scrollToPositionWithOffset(targetPosition, paddingTop)
+    } else {
+        scrollToPosition(targetPosition)
+    }
+    return true
+}
+
+internal object InitialGridRestoreScrollPolicy {
+    fun targetPosition(position: Int, itemCount: Int): Int {
+        if (position == RecyclerView.NO_POSITION || itemCount <= 0) {
+            return RecyclerView.NO_POSITION
+        }
+        return position.coerceIn(0, itemCount - 1)
+    }
+}
+
 private val GridNavigationKeyCodes = setOf(
     KeyEvent.KEYCODE_DPAD_UP,
     KeyEvent.KEYCODE_DPAD_DOWN,
@@ -593,6 +711,10 @@ private data class RecyclerPaddingPx(
     val end: Int,
     val bottom: Int,
 )
+
+private const val FocusSettledPreloadRows = 2
+private const val RecyclerGridPreloadDuplicateWindowMs = 700L
+private const val DuplicateFocusDispatchWindowMs = 500L
 
 private class RecyclerViewRef {
     var value: RecyclerView? = null

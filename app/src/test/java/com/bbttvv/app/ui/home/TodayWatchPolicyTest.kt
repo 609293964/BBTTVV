@@ -227,6 +227,48 @@ class TodayWatchPolicyTest {
         assertFalse(plan.videoQueue.any { it.bvid == "consumed" })
     }
 
+    @Test
+    fun `plan filters out explicitly disliked videos`() {
+        val candidates = listOf(
+            candidateVideo(bvid = "keep", mid = 1, name = "UP-A", title = "保留视频"),
+            candidateVideo(bvid = "disliked", mid = 2, name = "UP-B", title = "不感兴趣视频")
+        )
+
+        val plan = buildTodayWatchPlan(
+            historyVideos = emptyList(),
+            candidateVideos = candidates,
+            mode = TodayWatchMode.RELAX,
+            eyeCareNightActive = false,
+            nowEpochSec = 1_700_010_000,
+            penaltySignals = TodayWatchPenaltySignals(dislikedBvids = setOf("disliked"))
+        )
+
+        assertTrue(plan.videoQueue.any { it.bvid == "keep" })
+        assertFalse(plan.videoQueue.any { it.bvid == "disliked" })
+    }
+
+    @Test
+    fun `plan diversifies repeated topics in top queue`() {
+        val candidates = listOf(
+            candidateVideo(bvid = "music1", mid = 1, name = "UP-A", title = "音乐翻唱合集"),
+            candidateVideo(bvid = "music2", mid = 2, name = "UP-B", title = "音乐现场演奏"),
+            candidateVideo(bvid = "learn1", mid = 3, name = "UP-C", title = "Kotlin 协程教程"),
+            candidateVideo(bvid = "food1", mid = 4, name = "UP-D", title = "家常美食料理")
+        )
+
+        val plan = buildTodayWatchPlan(
+            historyVideos = emptyList(),
+            candidateVideos = candidates,
+            mode = TodayWatchMode.RELAX,
+            eyeCareNightActive = false,
+            nowEpochSec = 1_700_010_000,
+            queueLimit = 4
+        )
+
+        val firstTwo = plan.videoQueue.take(2).map { it.bvid }
+        assertFalse(firstTwo == listOf("music1", "music2") || firstTwo == listOf("music2", "music1"))
+    }
+
     private fun historyVideo(
         bvid: String,
         mid: Long,

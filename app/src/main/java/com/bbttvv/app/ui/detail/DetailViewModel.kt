@@ -15,6 +15,7 @@ import com.bbttvv.app.data.repository.VideoDetailRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,7 @@ private const val DetailCommentPageSize = 10
 private const val DetailCommentsDelayMs = 900L
 private const val DetailInteractionStatusDelayMs = 260L
 private const val DetailRelatedPrefetchDelayMs = 240L
+private const val DetailSupportingContentDelayMs = 180L
 
 enum class DetailCommentSortMode(val apiMode: Int, val label: String) {
     Hot(apiMode = 3, label = "热度"),
@@ -47,6 +49,7 @@ data class DetailUiState(
     val isLoading: Boolean = false,
     val isError: Boolean = false,
     val errorMsg: String? = null,
+    val previewInfo: ViewInfo? = null,
     val viewInfo: ViewInfo? = null,
     val relatedVideos: List<RelatedVideo> = emptyList(),
     val isRelatedLoading: Boolean = false,
@@ -73,7 +76,6 @@ class DetailViewModel : ViewModel() {
     private var currentBvid: String = ""
     private var detailLoadJob: Job? = null
     private var loadingIndicatorJob: Job? = null
-    private var relatedLoadJob: Job? = null
     private var commentsJob: Job? = null
     private var supportingContentJob: Job? = null
     private var deferredCommentsJob: Job? = null
@@ -100,16 +102,20 @@ class DetailViewModel : ViewModel() {
         currentBvid = requestBvid
         detailLoadJob?.cancel()
         loadingIndicatorJob?.cancel()
-        relatedLoadJob?.cancel()
         commentsJob?.cancel()
         supportingContentJob?.cancel()
         deferredCommentsJob?.cancel()
         interactionStatusJob?.cancel()
         relatedPrefetchJob?.cancel()
 
-        val cachedInfo = VideoDetailRepository.getCachedDetailViewInfo(requestBvid)
-        val cachedRelated = VideoDetailRepository.getCachedRelatedVideos(requestBvid).orEmpty()
-        val cachedCreatorStats = cachedInfo?.owner?.mid?.let(SubtitleAndAuxRepository::getCachedCreatorCardStats)
+        val cachedFullInfo = VideoDetailRepository.getCachedFullDetailViewInfo(requestBvid)
+        val cachedPreviewInfo = cachedFullInfo ?: VideoDetailRepository.getCachedDetailPreviewViewInfo(requestBvid)
+        val cachedRelated = if (cachedFullInfo != null) {
+            VideoDetailRepository.getCachedRelatedVideos(requestBvid).orEmpty()
+        } else {
+            emptyList()
+        }
+        val cachedCreatorStats = cachedFullInfo?.owner?.mid?.let(SubtitleAndAuxRepository::getCachedCreatorCardStats)
         val cachedAccountCoinBalance = SubtitleAndAuxRepository.getCachedNavInfo()
             ?.money
             ?.toInt()
@@ -117,27 +123,20 @@ class DetailViewModel : ViewModel() {
         _uiState.update {
             DetailUiState(
                 isLoading = false,
-                viewInfo = cachedInfo,
+                previewInfo = cachedPreviewInfo,
+                viewInfo = cachedFullInfo,
                 relatedVideos = cachedRelated,
-                isRelatedLoading = cachedRelated.isEmpty(),
+                isRelatedLoading = cachedFullInfo != null && cachedRelated.isEmpty(),
                 creatorFollowerCount = cachedCreatorStats?.followerCount,
                 accountCoinBalance = cachedAccountCoinBalance,
                 comments = DetailCommentsState(
-                    totalCount = cachedInfo?.stat?.reply ?: 0,
-                    isLoading = loadCommentsEnabled
+                    totalCount = cachedFullInfo?.stat?.reply ?: cachedPreviewInfo?.stat?.reply ?: 0,
+                    isLoading = cachedFullInfo != null && loadCommentsEnabled
                 )
             )
         }
 
-        cachedInfo?.let { info ->
-            scheduleSupportingContentLoads(
-                requestBvid = requestBvid,
-                viewInfo = info,
-                loadCommentsEnabled = loadCommentsEnabled
-            )
-        }
-
-        if (cachedInfo == null) {
+        if (cachedPreviewInfo == null) {
             loadingIndicatorJob = viewModelScope.launch {
                 delay(180L)
                 if (currentBvid == requestBvid && _uiState.value.viewInfo == null) {
@@ -166,7 +165,9 @@ class DetailViewModel : ViewModel() {
                             isLoading = false,
                             isError = false,
                             errorMsg = null,
+                            previewInfo = state.previewInfo ?: viewInfo,
                             viewInfo = viewInfo,
+                            isRelatedLoading = state.relatedVideos.isEmpty(),
                             creatorFollowerCount = cachedFollowerCount ?: state.creatorFollowerCount,
                             accountCoinBalance = cachedAccountBalance ?: state.accountCoinBalance,
                             comments = state.comments.copy(
@@ -207,7 +208,7 @@ class DetailViewModel : ViewModel() {
         pendingPrefetchBvid = video.bvid
         relatedPrefetchJob = viewModelScope.launch {
             delay(DetailRelatedPrefetchDelayMs)
-            VideoDetailRepository.prefetchDetailLanding(video, scope = viewModelScope)
+            VideoDetailRepository.prefetchDetailSummary(video, scope = viewModelScope)
             lastPrefetchedBvid = video.bvid
             if (pendingPrefetchBvid == video.bvid) {
                 pendingPrefetchBvid = null
@@ -592,8 +593,10 @@ class DetailViewModel : ViewModel() {
         supportingContentJob?.cancel()
         deferredCommentsJob?.cancel()
         supportingContentJob = viewModelScope.launch {
+            delay(DetailSupportingContentDelayMs)
             if (currentBvid != requestBvid) return@launch
             loadRelatedVideos(requestBvid)
+            if (currentBvid != requestBvid) return@launch
             loadAuxiliaryState(requestBvid, viewInfo)
         }
         if (!loadCommentsEnabled) return
@@ -652,42 +655,40 @@ class DetailViewModel : ViewModel() {
         }
     }
 
-    private fun loadAuxiliaryState(requestBvid: String, viewInfo: ViewInfo) {
+    private suspend fun loadAuxiliaryState(requestBvid: String, viewInfo: ViewInfo) = coroutineScope {
         val ownerMid = viewInfo.owner.mid
 
-        viewModelScope.launch {
-            val statsTask = async {
-                if (ownerMid > 0L) {
-                    SubtitleAndAuxRepository.getCreatorCardStats(ownerMid).getOrNull()
-                } else {
-                    null
-                }
+        val statsTask = async {
+            if (ownerMid > 0L) {
+                SubtitleAndAuxRepository.getCreatorCardStats(ownerMid).getOrNull()
+            } else {
+                null
             }
-            val followTask = async {
-                if (ownerMid > 0L) {
-                    runCatching { ActionRepository.checkFollowStatus(ownerMid) }.getOrDefault(false)
-                } else {
-                    false
-                }
+        }
+        val followTask = async {
+            if (ownerMid > 0L) {
+                runCatching { ActionRepository.checkFollowStatus(ownerMid) }.getOrDefault(false)
+            } else {
+                false
             }
-            val navTask = async { SubtitleAndAuxRepository.getNavInfo().getOrNull() }
-            val creatorStats = statsTask.await()
-            val isFollowing = followTask.await()
-            val accountCoinBalance = navTask.await()?.money?.toInt()?.coerceAtLeast(0)
+        }
+        val navTask = async { SubtitleAndAuxRepository.getNavInfo().getOrNull() }
+        val creatorStats = statsTask.await()
+        val isFollowing = followTask.await()
+        val accountCoinBalance = navTask.await()?.money?.toInt()?.coerceAtLeast(0)
 
-            if (currentBvid == requestBvid) {
-                _uiState.update { state ->
-                    state.copy(
-                        creatorFollowerCount = creatorStats?.followerCount ?: state.creatorFollowerCount,
-                        accountCoinBalance = accountCoinBalance ?: state.accountCoinBalance,
-                        isFollowing = isFollowing
-                    )
-                }
+        if (currentBvid == requestBvid) {
+            _uiState.update { state ->
+                state.copy(
+                    creatorFollowerCount = creatorStats?.followerCount ?: state.creatorFollowerCount,
+                    accountCoinBalance = accountCoinBalance ?: state.accountCoinBalance,
+                    isFollowing = isFollowing
+                )
             }
         }
     }
 
-    private fun loadRelatedVideos(requestBvid: String) {
+    private suspend fun loadRelatedVideos(requestBvid: String) {
         val cachedRelated = VideoDetailRepository.getCachedRelatedVideos(requestBvid).orEmpty()
         if (cachedRelated.isNotEmpty()) {
             _uiState.update {
@@ -700,17 +701,14 @@ class DetailViewModel : ViewModel() {
         }
 
         _uiState.update { it.copy(isRelatedLoading = true) }
-        relatedLoadJob?.cancel()
-        relatedLoadJob = viewModelScope.launch {
-            if (currentBvid != requestBvid) return@launch
-            val relatedVideos = VideoDetailRepository.getRelatedVideos(requestBvid)
-            if (currentBvid == requestBvid) {
-                _uiState.update {
-                    it.copy(
-                        relatedVideos = relatedVideos,
-                        isRelatedLoading = false
-                    )
-                }
+        if (currentBvid != requestBvid) return
+        val relatedVideos = VideoDetailRepository.getRelatedVideos(requestBvid)
+        if (currentBvid == requestBvid) {
+            _uiState.update {
+                it.copy(
+                    relatedVideos = relatedVideos,
+                    isRelatedLoading = false
+                )
             }
         }
     }

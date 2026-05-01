@@ -9,14 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -27,6 +23,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.plugin.PluginManager
+import com.bbttvv.app.data.model.response.VideoItem
+import com.bbttvv.app.data.repository.VideoDetailRepository
 import com.bbttvv.app.feature.plugin.TodayWatchPlugin
 import com.bbttvv.app.feature.settings.SettingsScreen
 import com.bbttvv.app.feature.live.LivePlayerScreen
@@ -34,17 +32,14 @@ import com.bbttvv.app.feature.publisher.PublisherScreen
 import com.bbttvv.app.feature.video.screen.PlayerScreen
 
 import com.bbttvv.app.ui.components.AppTopLevelTab
-import com.bbttvv.app.ui.detail.startVideoDetailActivity
+import com.bbttvv.app.ui.detail.DetailOpenMode
+import com.bbttvv.app.ui.detail.videoDetailRoutes
 import com.bbttvv.app.ui.home.HomeScreen
 import com.bbttvv.app.ui.home.HomeViewModel
-
-private const val PublisherPreviewNameSavedStateKey = "publisher_preview_name"
-private const val PublisherPreviewFaceSavedStateKey = "publisher_preview_face"
 
 @Composable
 fun AppNavigation() {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val navController = rememberNavController()
     val navigationState = rememberAppNavigationState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -75,18 +70,13 @@ fun AppNavigation() {
         navigationState.normalizeHomeTabIfNeeded(visibleTopLevelTabs)
     }
 
-    DisposableEffect(lifecycleOwner, navigationState) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> navigationState.onHostActivityPaused()
-                Lifecycle.Event.ON_RESUME -> navigationState.onHostActivityResumed()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+    val detailOpenMode = remember(navigationState) {
+        DetailOpenMode(
+            restoreCommentFocusRpidFor = navigationState::restoreCommentFocusRpidFor,
+            onCommentFocusRestored = navigationState::markCommentFocusRestored,
+            setCommentFocusRestore = navigationState::setDetailCommentFocusRestore,
+            clearCommentFocusRestore = navigationState::clearDetailCommentFocusRestore,
+        )
     }
 
     fun handleHomeExitRequest() {
@@ -100,6 +90,17 @@ fun AppNavigation() {
                 (context as? Activity)?.finish()
             }
         }
+    }
+
+    fun openVideoDetail(
+        video: VideoItem,
+        prepareNavigation: () -> Unit,
+    ) {
+        val safeBvid = video.bvid.trim()
+        if (safeBvid.isBlank()) return
+        prepareNavigation()
+        VideoDetailRepository.cacheVideoPreview(video.copy(bvid = safeBvid))
+        navController.navigate(ScreenRoutes.VideoDetail.createRoute(safeBvid))
     }
 
     BackHandler(enabled = isOnHome) {
@@ -130,8 +131,9 @@ fun AppNavigation() {
                     navigationState.switchHomeTab(targetTab.index)
                 },
                 onVideoClick = { video ->
-                    navigationState.prepareForDirectDetailOpen()
-                    context.startVideoDetailActivity(video)
+                    openVideoDetail(video) {
+                        navigationState.prepareForDirectDetailOpen()
+                    }
                 },
                 onLiveClick = { roomId, focusKey ->
                     if (focusKey == null) {
@@ -142,8 +144,9 @@ fun AppNavigation() {
                     navController.navigate(ScreenRoutes.LivePlayer.createRoute(roomId))
                 },
                 onRecommendVideoClick = { focusKey, video ->
-                    navigationState.prepareForRecommendDetailOpen(focusKey)
-                    context.startVideoDetailActivity(video)
+                    openVideoDetail(video) {
+                        navigationState.prepareForRecommendDetailOpen(focusKey)
+                    }
                 },
                 onOpenSettings = {
                     navController.navigate(ScreenRoutes.Settings.route)
@@ -167,12 +170,13 @@ fun AppNavigation() {
                             )
                         )
                     } else {
-                        if (tab == AppTopLevelTab.WATCH_LATER) {
-                            navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
-                        } else {
-                            navigationState.clearDetailCommentFocusRestore()
+                        openVideoDetail(video) {
+                            if (tab == AppTopLevelTab.WATCH_LATER) {
+                                navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
+                            } else {
+                                navigationState.clearDetailCommentFocusRestore()
+                            }
                         }
-                        context.startVideoDetailActivity(video)
                     }
                 },
                 onOpenUp = { mid ->
@@ -196,11 +200,17 @@ fun AppNavigation() {
                 initialName = previousEntryState?.remove<String>(PublisherPreviewNameSavedStateKey),
                 initialFace = previousEntryState?.remove<String>(PublisherPreviewFaceSavedStateKey),
                 onOpenVideo = { publisherVideo ->
-                    navigationState.clearDetailCommentFocusRestore()
-                    context.startVideoDetailActivity(publisherVideo)
+                    openVideoDetail(publisherVideo) {
+                        navigationState.clearDetailCommentFocusRestore()
+                    }
                 }
             )
         }
+
+        videoDetailRoutes(
+            navController = navController,
+            openMode = detailOpenMode,
+        )
 
         composable(
             route = ScreenRoutes.LivePlayer.route,

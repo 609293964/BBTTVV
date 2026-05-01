@@ -1,6 +1,7 @@
 ﻿// 私信模块响应模型
 package com.bbttvv.app.data.model.response
 
+import com.bbttvv.app.core.util.preferHttpsUrl
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -438,7 +439,7 @@ object MessageFeedImageUrlSerializer : kotlinx.serialization.KSerializer<String>
         val value = raw.trim()
         return when {
             value.startsWith("//") -> "https:$value"
-            value.startsWith("http://") || value.startsWith("https://") -> value
+            value.startsWith("http://") || value.startsWith("https://") -> preferHttpsUrl(value)
             else -> value
         }
     }

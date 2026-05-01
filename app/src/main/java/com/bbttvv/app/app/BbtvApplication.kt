@@ -9,6 +9,7 @@ import com.bbttvv.app.app.startup.HomeBootstrapper
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.lifecycle.BackgroundManager
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.network.WbiKeyManager
 import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.plugin.PluginStore
 import com.bbttvv.app.core.plugin.json.JsonPluginManager
@@ -19,6 +20,7 @@ import com.bbttvv.app.core.util.CrashReporter
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.feature.plugin.AD_FILTER_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.AdFilterPlugin
+import com.bbttvv.app.feature.plugin.CdnRegionPlugin
 import com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin
 import com.bbttvv.app.feature.plugin.SPONSOR_BLOCK_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
@@ -96,7 +98,10 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
     private fun runStartupTask(task: AppStartupTask) {
         AppPerformanceTracker.measureStartupTask(task) {
             when (task.id) {
-                "network_module_init" -> NetworkModule.init(this)
+                "network_module_init" -> {
+                    NetworkModule.init(this)
+                    WbiKeyManager.restoreFromStorage(this)
+                }
                 "token_manager_init" -> TokenManager.init(this)
                 "video_repository_init" -> com.bbttvv.app.data.repository.PlaybackRepository.init(this)
                 "background_manager_init" -> BackgroundManager.init()
@@ -115,6 +120,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                     PluginManager.register(AdFilterPlugin())
                     PluginManager.register(DanmakuEnhancePlugin())
                     PluginManager.register(TodayWatchPlugin())
+                    PluginManager.register(CdnRegionPlugin())
                     syncBuiltInPluginState()
                 }
             }

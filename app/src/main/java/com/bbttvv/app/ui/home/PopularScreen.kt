@@ -92,8 +92,11 @@ internal fun PopularScreen(
                     collapsingHeaderState.reset()
                     focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.POPULAR)
                 },
-                onDpadDown = {
-                    focusCoordinator.handleContentTabsDpadDown(AppTopLevelTab.POPULAR)
+                onDpadDown = { index ->
+                    focusCoordinator.handleContentTabsDpadDown(
+                        tab = AppTopLevelTab.POPULAR,
+                        preferredIndex = index,
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()

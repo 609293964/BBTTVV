@@ -22,7 +22,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,9 +36,17 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.bbttvv.app.core.plugin.PluginCapability
 import com.bbttvv.app.core.plugin.json.JsonPluginManager
+import com.bbttvv.app.core.store.TodayWatchFeedbackStore
+import com.bbttvv.app.core.store.TodayWatchProfileStore
 import com.bbttvv.app.data.model.response.SponsorBlockMarkerMode
 import com.bbttvv.app.data.model.response.displayLabel
+import com.bbttvv.app.feature.plugin.CDN_REGION_PLUGIN_ID
+import com.bbttvv.app.feature.plugin.CdnRegionPlugin
+import com.bbttvv.app.feature.plugin.CdnRegionPluginCache
+import com.bbttvv.app.feature.plugin.TodayWatchTasteInsightState
+import com.bbttvv.app.feature.plugin.buildTodayWatchTasteInsightState
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvConfirmDialog
 import com.bbttvv.app.ui.components.TvDialog
@@ -67,7 +77,8 @@ internal fun ProfilePluginCenterPanel(
             com.bbttvv.app.feature.plugin.SPONSOR_BLOCK_PLUGIN_ID,
             com.bbttvv.app.feature.plugin.AD_FILTER_PLUGIN_ID,
             com.bbttvv.app.feature.plugin.DANMAKU_ENHANCE_PLUGIN_ID,
-            com.bbttvv.app.feature.plugin.TodayWatchPlugin.PLUGIN_ID
+            com.bbttvv.app.feature.plugin.TodayWatchPlugin.PLUGIN_ID,
+            CDN_REGION_PLUGIN_ID
         ).mapNotNull { id ->
             plugins.firstOrNull { it.plugin.id == id }
         }
@@ -103,7 +114,8 @@ internal fun ProfilePluginCenterPanel(
                     subtitle = pluginInfo.plugin.description,
                     value = buildString {
                         append(if (pluginInfo.enabled) "已启用" else "已关闭")
-                        append(" · 配置")
+                        append(" · ")
+                        append(resolvePluginCapabilitySummary(pluginInfo.plugin.capabilityManifest?.capabilities.orEmpty()))
                     },
                     onClick = {
                         expandedPluginId = if (expandedPluginId == pluginInfo.plugin.id) {
@@ -150,6 +162,17 @@ internal fun ProfilePluginCenterPanel(
                         }
                         is com.bbttvv.app.feature.plugin.TodayWatchPlugin -> {
                             TodayWatchPluginPanel(
+                                plugin = plugin,
+                                enabled = pluginInfo.enabled,
+                                onToggleEnabled = {
+                                    scope.launch {
+                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                    }
+                                }
+                            )
+                        }
+                        is CdnRegionPlugin -> {
+                            CdnRegionPluginPanel(
                                 plugin = plugin,
                                 enabled = pluginInfo.enabled,
                                 onToggleEnabled = {
@@ -656,9 +679,23 @@ private fun TodayWatchPluginPanel(
     enabled: Boolean,
     onToggleEnabled: () -> Unit
 ) {
+    val context = LocalContext.current
     val config by plugin.configState.collectAsStateWithLifecycle(
         initialValue = com.bbttvv.app.feature.plugin.TodayWatchPluginConfig()
     )
+    val feedbackSnapshot = remember(context, config.refreshTriggerToken) {
+        TodayWatchFeedbackStore.getSnapshot(context)
+    }
+    val creatorSignals = remember(context, config.refreshTriggerToken) {
+        TodayWatchProfileStore.getCreatorSignals(context, limit = 5)
+    }
+    val insightState = remember(config.currentMode, feedbackSnapshot, creatorSignals) {
+        buildTodayWatchTasteInsightState(
+            mode = config.currentMode,
+            feedbackSnapshot = feedbackSnapshot,
+            creatorSignals = creatorSignals
+        )
+    }
     var showResetDialog by remember { mutableStateOf(false) }
 
     val nextMode = remember(config.currentMode) {
@@ -732,6 +769,7 @@ private fun TodayWatchPluginPanel(
             value = if (config.showReasonHint) "已开启" else "已关闭",
             onClick = { plugin.setShowReasonHint(!config.showReasonHint) }
         )
+        TodayWatchTasteInsightSection(insightState)
         PluginCenterRowCard(
             title = "清空画像与反馈",
             subtitle = "清空后台学到的创作者偏好和不感兴趣反馈，推荐会重新学习。",
@@ -765,6 +803,100 @@ private fun TodayWatchPluginPanel(
 }
 
 @Composable
+private fun TodayWatchTasteInsightSection(
+    state: TodayWatchTasteInsightState
+) {
+    Text(text = "推荐依据", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    PluginCenterStaticInfoCard(
+        title = state.modeTitle,
+        subtitle = state.modeSummary
+    )
+    if (state.preferredCreators.isNotEmpty()) {
+        Text(text = "近期偏好 UP", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        state.preferredCreators.forEach { signal ->
+            PluginCenterStaticInfoCard(
+                title = signal.label,
+                subtitle = "本地观看画像信号",
+                value = signal.value
+            )
+        }
+    }
+    Text(text = "最近不感兴趣", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    if (state.recentDislikedVideos.isEmpty()) {
+        PluginCenterStaticInfoCard(
+            title = "还没有负反馈样本",
+            subtitle = "在推荐单视频菜单里选择“不感兴趣”后，这里会显示近期样本。"
+        )
+    } else {
+        state.recentDislikedVideos.forEach { item ->
+            PluginCenterStaticInfoCard(
+                title = item.title,
+                subtitle = item.subtitle,
+                value = "已降权"
+            )
+        }
+    }
+    if (state.negativeSignals.isNotEmpty()) {
+        Text(text = "已降权信号", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        state.negativeSignals.forEach { signal ->
+            PluginCenterStaticInfoCard(
+                title = signal.label,
+                subtitle = "用于降低相近内容排序权重",
+                value = signal.value
+            )
+        }
+    }
+}
+
+@Composable
+private fun CdnRegionPluginPanel(
+    plugin: CdnRegionPlugin,
+    enabled: Boolean,
+    onToggleEnabled: () -> Unit
+) {
+    val cache by plugin.cacheState.collectAsStateWithLifecycle(initialValue = CdnRegionPluginCache())
+    val locationLabel = buildCdnRegionLocationLabel(cache)
+    val selectedHosts = cache.selectedHosts.take(3).joinToString("、").ifBlank { "尚未命中属地线路" }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PluginCenterRowCard(
+            title = "插件状态",
+            subtitle = "启用后，播放地址会先尝试同属地 bilivideo CDN，原始线路仍保留兜底。",
+            value = if (enabled) "点击关闭" else "点击切换",
+            onClick = onToggleEnabled
+        )
+        PluginCenterStaticInfoCard(
+            title = "当前属地",
+            subtitle = locationLabel,
+            value = cache.selectedRegion.ifBlank { "未刷新" }
+        )
+        PluginCenterStaticInfoCard(
+            title = "候选线路",
+            subtitle = selectedHosts,
+            value = "${cache.selectedHosts.size} 条"
+        )
+        PluginCenterRowCard(
+            title = "刷新属地",
+            subtitle = if (enabled) "重新请求 B 站 IP 属地接口并更新本地 CDN 候选缓存。" else "开启插件后再刷新属地缓存。",
+            value = if (enabled) "立即刷新" else "未启用",
+            onClick = {
+                if (enabled) {
+                    plugin.refreshNow()
+                }
+            }
+        )
+        cache.lastError?.takeIf { it.isNotBlank() }?.let { error ->
+            PluginCenterStaticInfoCard(
+                title = "最近刷新失败",
+                subtitle = error,
+                value = "保留旧缓存"
+            )
+        }
+        ProfileInfoCard("已接入播放链路", "该插件只重排播放候选 URL，不删除原始 baseUrl / backupUrl；线路异常时播放器仍会继续尝试后续候选。", compact = true)
+    }
+}
+
+@Composable
 private fun PluginCenterSummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier.background(Color(0x12000000), RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -774,21 +906,68 @@ private fun PluginCenterSummaryCard(title: String, value: String, modifier: Modi
     }
 }
 
+@Composable
+private fun PluginCenterStaticInfoCard(
+    title: String,
+    subtitle: String,
+    value: String? = null
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0x12000000), RoundedCornerShape(24.dp))
+            .padding(horizontal = 18.dp, vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(text = subtitle, color = Color(0xB3FFFFFF), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            value?.takeIf { it.isNotBlank() }?.let {
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(text = it, color = Color(0xE8FFFFFF), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun PluginCenterRowCard(title: String, subtitle: String, value: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
+        modifier = Modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(text = subtitle, color = Color(0xB3FFFFFF), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = title,
+                    color = if (focused) Color(0xFF111111) else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium
+                )
+                Text(
+                    text = subtitle,
+                    color = if (focused) Color(0xB0000000) else Color(0xB3FFFFFF),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Text(text = value, color = Color(0xE8FFFFFF), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                text = value,
+                color = if (focused) Color(0xCC000000) else Color(0xE8FFFFFF),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
@@ -798,6 +977,46 @@ private fun resolveJsonPluginTypeLabel(type: String): String {
         "feed" -> "信息流控"
         "danmaku" -> "弹幕规则"
         else -> "插件"
+    }
+}
+
+private fun resolvePluginCapabilitySummary(capabilities: Set<PluginCapability>): String {
+    if (capabilities.isEmpty()) return "配置"
+    val primaryCapabilities = capabilities
+        .filterNot { it == PluginCapability.NETWORK || it == PluginCapability.PLUGIN_STORAGE }
+        .ifEmpty { capabilities.toList() }
+    return primaryCapabilities
+        .take(2)
+        .joinToString("、") { capability -> capability.label }
+        .ifBlank { "配置" }
+}
+
+private val PluginCapability.label: String
+    get() = when (this) {
+        PluginCapability.PLAYER_STATE -> "播放状态"
+        PluginCapability.PLAYER_CONTROL -> "播放控制"
+        PluginCapability.DANMAKU_STREAM -> "弹幕流"
+        PluginCapability.DANMAKU_MUTATION -> "弹幕增强"
+        PluginCapability.PLAYBACK_CDN -> "播放 CDN"
+        PluginCapability.RECOMMENDATION_CANDIDATES -> "推荐候选"
+        PluginCapability.LOCAL_HISTORY_READ -> "观看历史"
+        PluginCapability.LOCAL_FEEDBACK_READ -> "本地反馈"
+        PluginCapability.NETWORK -> "网络访问"
+        PluginCapability.PLUGIN_STORAGE -> "插件存储"
+    }
+
+private fun buildCdnRegionLocationLabel(cache: CdnRegionPluginCache): String {
+    val parts = listOf(cache.location.country, cache.location.province, cache.location.city)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+    return when {
+        parts.isNotEmpty() -> buildString {
+            append(parts.joinToString(" / "))
+            if (cache.fallbackUsed) append(" · 使用兜底地区")
+        }
+        cache.refreshedAtMs > 0L -> "已刷新，但接口没有返回明确地区。"
+        else -> "启用后会自动刷新；也可以在这里手动刷新。"
     }
 }
 

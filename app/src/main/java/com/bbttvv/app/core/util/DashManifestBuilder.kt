@@ -62,7 +62,7 @@ object DashManifestBuilder {
             audio?.baseUrl?.takeIf { it.isNotBlank() }?.let(::add)
             video?.backupUrl?.filterTo(this) { it.isNotBlank() }
             audio?.backupUrl?.filterTo(this) { it.isNotBlank() }
-        }.distinct()
+        }.map(::preferHttpsUrl).distinct()
         val segmentBase = video?.segmentBase ?: audio?.segmentBase
 
         append("""      <Representation id="$streamId" codecs="${escapeXml(codecs)}" bandwidth="$bandwidth"""")

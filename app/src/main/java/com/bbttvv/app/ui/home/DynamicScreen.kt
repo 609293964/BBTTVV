@@ -190,6 +190,25 @@ internal fun DynamicScreen(
         val hasFollowUpdateRow = visibleFollowUpdateItems.isNotEmpty()
         val rowsBeforeVideoGrid = (if (hasLiveRow) 1 else 0) + (if (hasFollowUpdateRow) 1 else 0)
 
+        fun requestLiveUserFocusAt(preferredIndex: Int? = null): Boolean {
+            if (liveUserFocusRequesters.isEmpty()) {
+                return false
+            }
+            val targetIndex = (preferredIndex ?: lastFocusedLiveUserIndex)
+                .coerceIn(0, liveUserFocusRequesters.lastIndex)
+            return runCatching {
+                val focused = liveUserFocusRequesters[targetIndex].requestFocus()
+                if (focused) {
+                    onContentRowFocused(0)
+                    focusCoordinator.onContentRegionFocused(
+                        AppTopLevelTab.DYNAMIC,
+                        HomeFocusRegion.DynamicLiveUsers
+                    )
+                }
+                focused
+            }.getOrDefault(false)
+        }
+
         val requestLiveUserFocus = remember(
             liveUserFocusRequesters,
             lastFocusedLiveUserIndex,
@@ -197,24 +216,27 @@ internal fun DynamicScreen(
             focusCoordinator,
         ) {
             {
-                if (liveUserFocusRequesters.isEmpty()) {
-                    false
-                } else {
-                    val targetIndex = lastFocusedLiveUserIndex
-                        .coerceIn(0, liveUserFocusRequesters.lastIndex)
-                    runCatching {
-                        val focused = liveUserFocusRequesters[targetIndex].requestFocus()
-                        if (focused) {
-                            onContentRowFocused(0)
-                            focusCoordinator.onContentRegionFocused(
-                                AppTopLevelTab.DYNAMIC,
-                                HomeFocusRegion.DynamicLiveUsers
-                            )
-                        }
-                        focused
-                    }.getOrDefault(false)
-                }
+                requestLiveUserFocusAt()
             }
+        }
+
+        fun requestFollowUpdateFocusAt(preferredIndex: Int? = null): Boolean {
+            if (followUpdateFocusRequesters.isEmpty()) {
+                return false
+            }
+            val targetIndex = (preferredIndex ?: lastFocusedFollowUpdateIndex)
+                .coerceIn(0, followUpdateFocusRequesters.lastIndex)
+            return runCatching {
+                val focused = followUpdateFocusRequesters[targetIndex].requestFocus()
+                if (focused) {
+                    onContentRowFocused(if (hasLiveRow) 1 else 0)
+                    focusCoordinator.onContentRegionFocused(
+                        AppTopLevelTab.DYNAMIC,
+                        HomeFocusRegion.DynamicFollowUpdates
+                    )
+                }
+                focused
+            }.getOrDefault(false)
         }
 
         val requestFollowUpdateFocus = remember(
@@ -225,23 +247,7 @@ internal fun DynamicScreen(
             focusCoordinator,
         ) {
             {
-                if (followUpdateFocusRequesters.isEmpty()) {
-                    false
-                } else {
-                    val targetIndex = lastFocusedFollowUpdateIndex
-                        .coerceIn(0, followUpdateFocusRequesters.lastIndex)
-                    runCatching {
-                        val focused = followUpdateFocusRequesters[targetIndex].requestFocus()
-                        if (focused) {
-                            onContentRowFocused(if (hasLiveRow) 1 else 0)
-                            focusCoordinator.onContentRegionFocused(
-                                AppTopLevelTab.DYNAMIC,
-                                HomeFocusRegion.DynamicFollowUpdates
-                            )
-                        }
-                        focused
-                    }.getOrDefault(false)
-                }
+                requestFollowUpdateFocusAt()
             }
         }
 
@@ -253,6 +259,10 @@ internal fun DynamicScreen(
                     target = object : HomeFocusTarget {
                         override fun tryRequestFocus(): Boolean {
                             return requestLiveUserFocus()
+                        }
+
+                        override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
+                            return requestLiveUserFocusAt(entryHint.preferredIndex)
                         }
                     }
                 )
@@ -272,6 +282,10 @@ internal fun DynamicScreen(
                     target = object : HomeFocusTarget {
                         override fun tryRequestFocus(): Boolean {
                             return requestFollowUpdateFocus()
+                        }
+
+                        override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
+                            return requestFollowUpdateFocusAt(entryHint.preferredIndex)
                         }
                     }
                 )
@@ -324,8 +338,8 @@ internal fun DynamicScreen(
                                 HomeFocusRegion.DynamicFollowUpdates
                             )
                         },
-                        onLiveUsersDpadDown = {
-                            focusCoordinator.handleDynamicLiveUsersDpadDown()
+                        onLiveUsersDpadDown = { index ->
+                            focusCoordinator.handleDynamicLiveUsersDpadDown(index)
                         },
                         onLiveUsersDpadUp = {
                             collapsingHeaderState.reset()
@@ -335,8 +349,8 @@ internal fun DynamicScreen(
                             collapsingHeaderState.reset()
                             focusCoordinator.handleDynamicFollowUpdatesDpadUp()
                         },
-                        onFollowUpdatesDpadDown = {
-                            focusCoordinator.handleDynamicFollowUpdatesDpadDown()
+                        onFollowUpdatesDpadDown = { index ->
+                            focusCoordinator.handleDynamicFollowUpdatesDpadDown(index)
                         },
                         onConsumeFollowUpdatePrompt = viewModel::consumeFollowUpdatePrompt,
                         modifier = Modifier.fillMaxWidth()
@@ -405,10 +419,10 @@ private fun DynamicHeaderRows(
     onOpenUp: (Long) -> Unit,
     onLiveUserFocused: (Int) -> Unit,
     onFollowUpdateFocused: (Int) -> Unit,
-    onLiveUsersDpadDown: () -> Boolean,
+    onLiveUsersDpadDown: (Int) -> Boolean,
     onLiveUsersDpadUp: () -> Boolean,
     onFollowUpdatesDpadUp: () -> Boolean,
-    onFollowUpdatesDpadDown: () -> Boolean,
+    onFollowUpdatesDpadDown: (Int) -> Boolean,
     onConsumeFollowUpdatePrompt: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -448,7 +462,7 @@ private fun DynamicHeaderRows(
                         onClick = { onLiveClick(live.roomid) },
                         focusRequester = liveUserFocusRequesters.getOrNull(index),
                         onFocus = { onLiveUserFocused(index) },
-                        onDpadDown = onLiveUsersDpadDown,
+                        onDpadDown = { onLiveUsersDpadDown(index) },
                         modifier = Modifier.requestTopBarOnDpadUp(
                             enabled = true,
                             requestTopBarFocus = {
@@ -501,7 +515,7 @@ private fun DynamicHeaderRows(
                         focusRequester = followUpdateFocusRequesters.getOrNull(index),
                         onFocus = { onFollowUpdateFocused(index) },
                         onDpadUp = onFollowUpdatesDpadUp,
-                        onDpadDown = onFollowUpdatesDpadDown
+                        onDpadDown = { onFollowUpdatesDpadDown(index) }
                     )
                 }
             }

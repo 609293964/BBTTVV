@@ -13,6 +13,7 @@ import com.bbttvv.app.core.player.BasePlayerViewModel
 import com.bbttvv.app.core.player.PlayerAudioBalanceController
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.CrashReporter
+import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.data.model.response.LivePlayUrlData
 import com.bbttvv.app.data.model.response.LiveQuality
 import com.bbttvv.app.data.model.response.LiveRoomDetailData
@@ -863,7 +864,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                         if (format.formatName == "flv" && codec.codecName.lowercase() == "hevc") return@forEach
                         codec.url_info.orEmpty().forEach { urlInfo ->
                             val host = urlInfo.host.trim()
-                            val url = (host + codec.baseUrl + urlInfo.extra).trim()
+                            val url = preferHttpsUrl(host + codec.baseUrl + urlInfo.extra)
                             if (url.isBlank()) return@forEach
                             val hostLabel = host
                                 .removePrefix("https://")

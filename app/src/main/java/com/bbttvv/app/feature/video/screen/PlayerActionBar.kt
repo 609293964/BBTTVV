@@ -15,12 +15,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
-import androidx.tv.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Create
 import androidx.compose.material.icons.outlined.Email
@@ -75,33 +72,20 @@ private fun PlayerActionButton(
                     Color.Transparent
                 }
             )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .size(40.dp),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = actionIcon(action),
-            contentDescription = null,
-            tint = if (selected) Color(0xFF111111) else Color.White,
-            modifier = Modifier.size(16.dp),
+            contentDescription = action.label,
+            tint = when {
+                selected -> Color(0xFF111111)
+                active -> Color.White
+                else -> Color.White.copy(alpha = 0.54f)
+            },
+            modifier = Modifier.size(18.dp),
         )
-        Text(
-            text = actionButtonLabel(action),
-            color = if (selected) Color(0xFF111111) else Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
-    }
-}
-
-private fun actionButtonLabel(action: PlayerAction): String {
-    return when (action) {
-        PlayerAction.Comments -> "评论"
-        PlayerAction.Speed -> "倍速"
-        PlayerAction.Quality -> "画质"
-        PlayerAction.Danmaku -> "弹幕"
-        PlayerAction.Debug -> "调试"
     }
 }
 

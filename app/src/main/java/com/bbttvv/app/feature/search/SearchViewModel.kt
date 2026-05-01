@@ -106,7 +106,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun primeVideoDetail(video: VideoItem) {
-        VideoDetailRepository.prefetchDetailLanding(video, scope = viewModelScope)
+        VideoDetailRepository.prefetchDetailSummary(video, scope = viewModelScope)
     }
 
     fun onQueryChange(query: String) {
