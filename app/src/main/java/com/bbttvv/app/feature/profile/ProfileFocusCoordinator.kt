@@ -9,6 +9,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 
+/**
+ * 个人页焦点协调器
+ *
+ * 管理 Profile 页侧边栏菜单焦点，每个 ProfileMenu 对应独立的 FocusRequester。
+ * 内容区域通过 ProfileContentFocusTargetState 注册为 HomeFocusRegion.ProfileContent 目标。
+ */
 internal class ProfileFocusCoordinator(
     val menuListState: LazyListState,
     val menuFocusRequesters: Map<ProfileMenu, FocusRequester>,

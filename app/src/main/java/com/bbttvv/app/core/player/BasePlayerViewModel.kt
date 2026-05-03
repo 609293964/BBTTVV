@@ -28,10 +28,12 @@ import kotlinx.coroutines.withContext
  * 播放器基类 ViewModel
  *
  * 提供 PlayerViewModel 和 BangumiPlayerViewModel 共用的功能：
- * 1. ExoPlayer 管理
+ * 1. ExoPlayer 绑定 / 解绑
  * 2. 空降助手 (SponsorBlock) 逻辑
- * 3. DASH 视频播放
- * 4. 弹幕数据加载
+ * 3. DASH / 分段 / 普通 / 流媒体播放
+ * 4. 弹幕数据加载与分段预取
+ *
+ * 所有方法强制主线程调用（ensureMainThread），修改时必须保持此约束。
  */
 abstract class BasePlayerViewModel : ViewModel() {
     // ========== 播放器引用 ==========
@@ -44,6 +46,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     private var danmakuSource: ParsedDanmaku? = null
     private var danmakuFilterContext: PlayerDanmakuFilterContext = PlayerDanmakuFilterContext()
     private var danmakuPluginObserverJob: Job? = null
+    private var volumeCalibrationObserverJob: Job? = null
     private var danmakuLoadJob: Job? = null
     private var danmakuLoadSequence: Long = 0L
     private var danmakuSourceVersion: Long = 0L
@@ -55,6 +58,7 @@ abstract class BasePlayerViewModel : ViewModel() {
 
     init {
         observeDanmakuPluginUpdates()
+        observeVolumeCalibrationUpdates()
     }
 
     /**
@@ -169,6 +173,22 @@ abstract class BasePlayerViewModel : ViewModel() {
      */
     protected open fun onSponsorSkipped(segment: SponsorSegment) {
         // 子类可覆盖
+    }
+
+    // ========== 音频平衡控制 ==========
+
+    private val _audioBalanceLevel = MutableStateFlow(PlayerSettingsCache.getAudioBalanceLevel())
+    val audioBalanceLevel: StateFlow<AudioBalanceLevel> = _audioBalanceLevel.asStateFlow()
+
+    /**
+     * 设置自适应音量均衡等级
+     */
+    @MainThread
+    open fun setAudioBalanceLevel(level: AudioBalanceLevel) {
+        ensureMainThread("setAudioBalanceLevel")
+        _audioBalanceLevel.value = level
+        VolumeBalanceController.setLevel(level)
+        PlayerSettingsCache.updateAudioBalanceLevel(level)
     }
 
     // ========== DASH 视频播放 ==========
@@ -300,7 +320,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     private val _isDanmakuEnabled = MutableStateFlow(resolveInitialDanmakuEnabled())
     val isDanmakuEnabled: StateFlow<Boolean> = _isDanmakuEnabled.asStateFlow()
 
-    private val loadedDanmakuSegments = mutableSetOf<Int>()
+    private val danmakuSessionController = PlayerDanmakuSessionController()
     private var currentDanmakuCid: Long = 0L
     private var currentDanmakuAid: Long = 0L
 
@@ -313,9 +333,11 @@ abstract class BasePlayerViewModel : ViewModel() {
         danmakuLoadJob?.cancel()
         currentDanmakuCid = cid
         currentDanmakuAid = aid
-        loadedDanmakuSegments.clear()
-        
-        val initialSegmentIndex = (startPositionMs / 360000L).coerceAtLeast(0L).toInt() + 1
+        val initialSegmentIndex = danmakuSessionController.begin(
+            cid = cid,
+            aid = aid,
+            startPositionMs = startPositionMs,
+        )
         
         val loadSequence = ++danmakuLoadSequence
         danmakuLoadJob = viewModelScope.launch {
@@ -330,7 +352,11 @@ abstract class BasePlayerViewModel : ViewModel() {
             if (!isActive || loadSequence != danmakuLoadSequence) {
                 return@launch
             }
-            loadedDanmakuSegments.add(initialSegmentIndex)
+            if (loadResult.parsed != null || loadResult.rawData != null) {
+                danmakuSessionController.markLoaded(initialSegmentIndex)
+            } else {
+                danmakuSessionController.markFailed(initialSegmentIndex)
+            }
             
             _danmakuData.value = loadResult.rawData
             danmakuSource = loadResult.parsed
@@ -368,50 +394,46 @@ abstract class BasePlayerViewModel : ViewModel() {
         if (cid <= 0L || !isDanmakuEnabled.value || currentPayload == null) return
         if (currentPayload.sourceLabel.startsWith("XML")) return
         
-        val currentSegmentIndex = (positionMs / 360000L).coerceAtLeast(0L).toInt() + 1
-        
-        val targetSegmentIndex = if (!loadedDanmakuSegments.contains(currentSegmentIndex)) {
-            currentSegmentIndex
-        } else {
-            val msInCurrentSegment = positionMs % 360000L
-            if (msInCurrentSegment > 300000L) {
-                currentSegmentIndex + 1
-            } else {
-                -1
+        val targets = danmakuSessionController.prefetchWindow(positionMs)
+        targets.forEach { targetSegmentIndex ->
+            if (!danmakuSessionController.markLoading(targetSegmentIndex)) {
+                return@forEach
             }
-        }
-        
-        if (targetSegmentIndex <= 0 || loadedDanmakuSegments.contains(targetSegmentIndex)) {
-            return
-        }
-        
-        loadedDanmakuSegments.add(targetSegmentIndex)
-        Logger.d(TAG, "Prefetching Danmaku Segment: $targetSegmentIndex for cid=$cid")
-        
-        viewModelScope.launch {
-            val loadResult = withContext(Dispatchers.IO) {
-                PlayerDanmakuPipeline.loadSegmentSource(
-                    cid = cid,
-                    aid = aid,
-                    segmentIndex = targetSegmentIndex,
-                )
+
+            Logger.d(TAG, "Prefetching Danmaku Segment: $targetSegmentIndex for cid=$cid")
+
+            viewModelScope.launch {
+                val loadResult = withContext(Dispatchers.IO) {
+                    PlayerDanmakuPipeline.loadSegmentSource(
+                        cid = cid,
+                        aid = aid,
+                        segmentIndex = targetSegmentIndex,
+                        allowXmlFallback = false,
+                    )
+                }
+                if (!isActive || !danmakuSessionController.matches(cid)) return@launch
+
+                val newParsed = loadResult.parsed
+                if (newParsed == null) {
+                    danmakuSessionController.markFailed(targetSegmentIndex)
+                    return@launch
+                }
+
+                danmakuSessionController.markLoaded(targetSegmentIndex)
+                val currentSource = danmakuSource
+                danmakuSource = currentSource?.mergeWith(newParsed) ?: newParsed
+                danmakuSourceVersion += 1
+
+                val payload = danmakuSource?.let {
+                    PlayerDanmakuPipeline.buildRenderPayload(
+                        parsed = it,
+                        sourceLabel = "SEG_MERGED_$targetSegmentIndex",
+                        filterContext = danmakuFilterContext,
+                    )
+                }
+                _danmakuPayload.value = payload
+                Logger.d(TAG, "Merged Danmaku Segment: $targetSegmentIndex, new total=${payload?.totalCount}")
             }
-            if (!isActive || currentDanmakuCid != cid) return@launch
-            
-            val newParsed = loadResult.parsed ?: return@launch
-            val currentSource = danmakuSource
-            danmakuSource = currentSource?.mergeWith(newParsed) ?: newParsed
-            danmakuSourceVersion += 1
-            
-            val payload = danmakuSource?.let {
-                PlayerDanmakuPipeline.buildRenderPayload(
-                    parsed = it,
-                    sourceLabel = "SEG_MERGED_$targetSegmentIndex",
-                    filterContext = danmakuFilterContext,
-                )
-            }
-            _danmakuPayload.value = payload
-            Logger.d(TAG, "Merged Danmaku Segment: $targetSegmentIndex, new total=${payload?.totalCount}")
         }
     }
 
@@ -450,7 +472,7 @@ abstract class BasePlayerViewModel : ViewModel() {
         danmakuLoadSequence += 1
         currentDanmakuCid = 0L
         currentDanmakuAid = 0L
-        loadedDanmakuSegments.clear()
+        danmakuSessionController.clear()
         _danmakuData.value = null
         _danmakuPayload.value = null
         _isDanmakuLoading.value = false
@@ -467,6 +489,22 @@ abstract class BasePlayerViewModel : ViewModel() {
                 rebuildDanmakuPayloadFromSource()
             }
         }
+    }
+
+    private fun observeVolumeCalibrationUpdates() {
+        if (volumeCalibrationObserverJob != null) return
+        volumeCalibrationObserverJob = viewModelScope.launch {
+            PlayerSettingsCache.volumeCalibrationUpdateToken.collectLatest { token ->
+                if (token <= 0L) return@collectLatest
+                applyVolumeCalibration()
+            }
+        }
+    }
+
+    @MainThread
+    private fun applyVolumeCalibration() {
+        ensureMainThread("applyVolumeCalibration")
+        playerEngine?.volume = PlayerSettingsCache.getVolumeCalibrationScale()
     }
 
     private suspend fun rebuildDanmakuPayloadFromSource() {
@@ -492,8 +530,9 @@ abstract class BasePlayerViewModel : ViewModel() {
     override fun onCleared() {
         ensureMainThread("onCleared")
         sponsorBlockController.reset()
-        danmakuLoadJob?.cancel()
+        clearDanmaku()
         danmakuPluginObserverJob?.cancel()
+        danmakuPluginObserverJob = null
         super.onCleared()
         mediaSourceCoordinator.clear()
         playerEngine = null

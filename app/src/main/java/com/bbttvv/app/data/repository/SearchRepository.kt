@@ -2,6 +2,7 @@ package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiUtils
+import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.HotItem
 import com.bbttvv.app.data.model.response.SearchArticleItem
 import com.bbttvv.app.data.model.response.VideoItem
@@ -92,7 +93,6 @@ object SearchRepository {
 
             Result.success(Pair(videoList, pageInfo))
         } catch (e: Exception) {
-            e.printStackTrace()
             com.bbttvv.app.core.util.Logger.e(
                 "SearchRepo",
                 "search(video) primary api exception, fallback=all/v2",
@@ -162,14 +162,16 @@ object SearchRepository {
 
             Result.success(Pair(upList, pageInfo))
         } catch (e: Exception) {
-            e.printStackTrace()
             com.bbttvv.app.core.util.Logger.e("SearchRepo", "UP Search failed", e)
             searchUpFallback(keyword, page)
         }
     }
 
     private suspend fun searchUpFallback(keyword: String, page: Int): Result<Pair<List<SearchUpItem>, SearchPageInfo>> {
-        try {
+        return safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "searchUpFallback failed: keyword=$keyword, page=$page" }
+        ) {
             val response = api.searchAll(mapOf("keyword" to keyword, "page" to page.toString()))
             val upItems = mutableListOf<SearchUpItem>()
             var foundResultCount = 0
@@ -189,22 +191,22 @@ object SearchRepository {
                 totalResults = foundResultCount,
                 hasMore = upItems.size >= 10
             )
-            return Result.success(Pair(upItems, pageInfo))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return Result.failure(e)
+            Pair(upItems, pageInfo)
         }
     }
 
     // 默认搜索占位词
     suspend fun getDefaultSearchHint(): Result<String> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "getDefaultSearchHint failed" }
+        ) {
             val signedParams = signWithWbi(emptyMap())
             val wbiResp = api.getDefaultSearch(signedParams)
             if (wbiResp.code == 0) {
                 val hint = wbiResp.data?.showName?.trim().orEmpty()
                 if (hint.isNotEmpty()) {
-                    return@withContext Result.success(hint)
+                    return@safeApiCall hint
                 }
             }
 
@@ -212,25 +214,22 @@ object SearchRepository {
             if (legacyResp.code == 0) {
                 val hint = legacyResp.data?.showName?.trim().orEmpty()
                 if (hint.isNotEmpty()) {
-                    return@withContext Result.success(hint)
+                    return@safeApiCall hint
                 }
             }
 
-            Result.failure(Exception("获取默认搜索词失败"))
-        } catch (e: Exception) {
-            Result.failure(e)
+            throw Exception("获取默认搜索词失败")
         }
     }
 
     //  热搜
     suspend fun getHotSearch(): Result<List<HotItem>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "getHotSearch failed" }
+        ) {
             val response = api.getHotSearch()
-            val list = response.data?.trending?.list ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            response.data?.trending?.list ?: emptyList()
         }
     }
     
@@ -239,7 +238,10 @@ object SearchRepository {
         keyword: String,
         page: Int = 1
     ): Result<Pair<List<com.bbttvv.app.data.model.response.BangumiSearchItem>, SearchPageInfo>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "searchBangumi failed: keyword=$keyword, page=$page" }
+        ) {
             val params = mutableMapOf(
                 "keyword" to keyword,
                 "search_type" to "media_bangumi",
@@ -250,7 +252,7 @@ object SearchRepository {
 
             val response = api.searchBangumi(signedParams)
             if (response.code != 0) {
-                return@withContext Result.failure(createSearchError(response.code, response.message))
+                throw createSearchError(response.code, response.message)
             }
             
             val bangumiList = response.data?.result?.map { item ->
@@ -274,10 +276,7 @@ object SearchRepository {
             
             com.bbttvv.app.core.util.Logger.d("SearchRepo", "🔍 Bangumi search result: ${bangumiList.size} items, page ${pageInfo.currentPage}/${pageInfo.totalPages}")
 
-            Result.success(Pair(bangumiList, pageInfo))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            Pair(bangumiList, pageInfo)
         }
     }
 
@@ -286,7 +285,10 @@ object SearchRepository {
         keyword: String,
         page: Int = 1
     ): Result<Pair<List<com.bbttvv.app.data.model.response.BangumiSearchItem>, SearchPageInfo>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "searchMediaFt failed: keyword=$keyword, page=$page" }
+        ) {
             val params = mutableMapOf(
                 "keyword" to keyword,
                 "search_type" to "media_ft",
@@ -296,7 +298,7 @@ object SearchRepository {
             val signedParams = signWithWbi(params)
             val response = api.searchMediaFt(signedParams)
             if (response.code != 0) {
-                return@withContext Result.failure(createSearchError(response.code, response.message))
+                throw createSearchError(response.code, response.message)
             }
 
             val resultList = response.data?.result?.map { item ->
@@ -322,10 +324,7 @@ object SearchRepository {
                 "🔍 MediaFT search result: ${resultList.size} items, page ${pageInfo.currentPage}/${pageInfo.totalPages}"
             )
 
-            Result.success(Pair(resultList, pageInfo))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            Pair(resultList, pageInfo)
         }
     }
     
@@ -335,7 +334,10 @@ object SearchRepository {
         page: Int = 1,
         order: SearchLiveOrder = SearchLiveOrder.ONLINE
     ): Result<Pair<List<LiveRoomSearchItem>, SearchPageInfo>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "searchLive failed: keyword=$keyword, page=$page" }
+        ) {
             val params = mutableMapOf(
                 "keyword" to keyword,
                 "search_type" to "live_room",
@@ -347,7 +349,7 @@ object SearchRepository {
 
             val response = api.searchLive(signedParams)
             if (response.code != 0) {
-                return@withContext Result.failure(createSearchError(response.code, response.message))
+                throw createSearchError(response.code, response.message)
             }
             
             val liveList = response.data?.result?.map { it.cleanupFields() } ?: emptyList()
@@ -365,10 +367,7 @@ object SearchRepository {
             
             com.bbttvv.app.core.util.Logger.d("SearchRepo", "🔍 Live search result: ${liveList.size} rooms, page ${pageInfo.currentPage}/${pageInfo.totalPages}")
 
-            Result.success(Pair(liveList, pageInfo))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            Pair(liveList, pageInfo)
         }
     }
 
@@ -376,7 +375,10 @@ object SearchRepository {
         keyword: String,
         page: Int = 1
     ): Result<Pair<List<SearchArticleItem>, SearchPageInfo>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "searchArticle failed: keyword=$keyword, page=$page" }
+        ) {
             val params = mutableMapOf(
                 "keyword" to keyword,
                 "search_type" to "article",
@@ -387,7 +389,7 @@ object SearchRepository {
             val signedParams = signWithWbi(params)
             val response = api.searchArticle(signedParams)
             if (response.code != 0) {
-                return@withContext Result.failure(createSearchError(response.code, response.message))
+                throw createSearchError(response.code, response.message)
             }
 
             val articleList = response.data?.result
@@ -405,27 +407,23 @@ object SearchRepository {
                 hasMore = resolvedPage < (response.data?.numPages ?: 1)
             )
 
-            Result.success(Pair(articleList, pageInfo))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            Pair(articleList, pageInfo)
         }
     }
     
     //  搜索建议/联想
     suspend fun getSuggest(keyword: String): Result<List<String>> = withContext(Dispatchers.IO) {
-        try {
-            if (keyword.isBlank()) return@withContext Result.success(emptyList())
+        safeApiCall(
+            tag = "SearchRepo",
+            errorMessage = { "getSuggest failed: keyword=$keyword" }
+        ) {
+            if (keyword.isBlank()) return@safeApiCall emptyList()
             
             val response = api.getSearchSuggest(keyword)
             if (response.code != 0) {
-                return@withContext Result.failure(createSearchError(response.code, "搜索建议加载失败"))
+                throw createSearchError(response.code, "搜索建议加载失败")
             }
-            val suggestions = response.result?.tag?.map { it.value } ?: emptyList()
-            Result.success(suggestions)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            response.result?.tag?.map { it.value } ?: emptyList()
         }
     }
 
@@ -456,7 +454,7 @@ object SearchRepository {
             // 3. 静态兜底
             Result.success("搜索发现" to listOf("黑神话悟空", "原神", "初音未来", "JOJO", "罗翔说刑法", "何同学", "毕业季", "猫咪", "我的世界", "战鹰"))
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.bbttvv.app.core.util.Logger.e("SearchRepo", "getSearchDiscover failed, using static fallback", e)
             // 发生异常时的最后兜底
             Result.success("搜索发现" to listOf("黑神话悟空", "原神", "初音未来", "JOJO", "罗翔说刑法", "何同学", "毕业季", "猫咪", "我的世界", "战鹰"))
         }
@@ -492,7 +490,10 @@ object SearchRepository {
         page: Int
     ): Result<Pair<List<VideoItem>, SearchPageInfo>> {
         return withContext(Dispatchers.IO) {
-            try {
+            safeApiCall(
+                tag = "SearchRepo",
+                errorMessage = { "search(video) fallback failed: keyword=$keyword, page=$page" }
+            ) {
                 val response = api.searchAll(
                     mapOf(
                         "keyword" to keyword,
@@ -522,10 +523,7 @@ object SearchRepository {
                     "search(video) fallback result: size=${videos.size}, page=${pageInfo.currentPage}, hasMore=${pageInfo.hasMore}"
                 )
 
-                Result.success(Pair(videos, pageInfo))
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Result.failure(e)
+                Pair(videos, pageInfo)
             }
         }
     }

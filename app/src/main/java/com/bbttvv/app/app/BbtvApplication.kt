@@ -6,6 +6,7 @@ import com.bbttvv.app.app.startup.AppStartupOrchestrator
 import com.bbttvv.app.app.startup.AppStartupTask
 import com.bbttvv.app.app.startup.BackgroundWarmupCoordinator
 import com.bbttvv.app.app.startup.HomeBootstrapper
+import com.bbttvv.app.core.cache.PlayUrlCache
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.lifecycle.BackgroundManager
 import com.bbttvv.app.core.network.NetworkModule
@@ -18,6 +19,7 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.CrashReporter
 import com.bbttvv.app.core.util.Logger
+import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.feature.plugin.AD_FILTER_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.AdFilterPlugin
 import com.bbttvv.app.feature.plugin.CdnRegionPlugin
@@ -34,6 +36,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+
+private const val BACKGROUND_PLAY_URL_CACHE_ENTRIES = 10
+private const val BACKGROUND_DANMAKU_RAW_CACHE_BYTES = 0L
+private const val BACKGROUND_DANMAKU_SEGMENT_CACHE_BYTES = 2L * 1024L * 1024L
 
 class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
     private val startupOrchestrator by lazy { AppStartupOrchestrator() }
@@ -68,6 +74,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
         super.onCreate()
         AppPerformanceTracker.markApplicationCreated()
         Logger.init(this)
+        DanmakuRepository.configureDanmakuCache(this)
         startupOrchestrator.runImmediate(::runStartupTask)
     }
 
@@ -81,6 +88,8 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
     override fun onLowMemory() {
         super.onLowMemory()
         imageLoaderRef?.memoryCache?.clear()
+        PlayUrlCache.clear()
+        DanmakuRepository.clearDanmakuCache()
     }
 
     override fun onTrimMemory(level: Int) {
@@ -88,11 +97,42 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
         if (shouldClearImageMemoryCache(level)) {
             imageLoaderRef?.memoryCache?.clear()
         }
+        trimPlayUrlMemoryCache(level)
+        trimDanmakuMemoryCache(level)
     }
 
     @Suppress("DEPRECATION")
     private fun shouldClearImageMemoryCache(level: Int): Boolean {
         return level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+    }
+
+    @Suppress("DEPRECATION")
+    private fun trimPlayUrlMemoryCache(level: Int) {
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+                level < ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                PlayUrlCache.clear()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                PlayUrlCache.trimToSize(BACKGROUND_PLAY_URL_CACHE_ENTRIES)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun trimDanmakuMemoryCache(level: Int) {
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+                level < ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                DanmakuRepository.clearDanmakuCache()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                DanmakuRepository.trimDanmakuCache(
+                    maxRawBytes = BACKGROUND_DANMAKU_RAW_CACHE_BYTES,
+                    maxSegmentBytes = BACKGROUND_DANMAKU_SEGMENT_CACHE_BYTES,
+                )
+            }
+        }
     }
 
     private fun runStartupTask(task: AppStartupTask) {
@@ -105,7 +145,12 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                 "token_manager_init" -> TokenManager.init(this)
                 "video_repository_init" -> com.bbttvv.app.data.repository.PlaybackRepository.init(this)
                 "background_manager_init" -> BackgroundManager.init()
-                "player_settings_cache_init" -> PlayerSettingsCache.init(this)
+                "player_settings_cache_init" -> {
+                    PlayerSettingsCache.init(this)
+                    com.bbttvv.app.core.player.VolumeBalanceController.init(
+                        PlayerSettingsCache.getAudioBalanceLevel()
+                    )
+                }
                 "token_manager_warmup" -> TokenManager.warmup(this)
                 "home_feed_preload" -> HomeBootstrapper.preload()
                 "background_warmup" -> BackgroundWarmupCoordinator.warmup(this)

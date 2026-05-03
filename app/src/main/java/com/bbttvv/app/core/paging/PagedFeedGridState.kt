@@ -78,4 +78,32 @@ class PagedFeedGridState<K, SourceItem, VisibleItem>(
         }
         return result
     }
+
+    suspend fun <Fetched> refresh(
+        fetch: suspend (key: K) -> Fetched?,
+        reduce: (key: K, fetched: Fetched) -> Page<K, SourceItem, VisibleItem>,
+    ): PagedGridStateMachine.LoadResult<VisibleItem> {
+        var pageUpdate: Page<K, SourceItem, VisibleItem>? = null
+        val result = paging.refresh(
+            fetch = fetch,
+            reduce = { key, fetched ->
+                val page = reduce(key, fetched)
+                pageUpdate = page
+                PagedGridStateMachine.Update(
+                    items = page.visibleItems,
+                    nextKey = page.nextKey,
+                    endReached = page.endReached,
+                )
+            },
+        )
+
+        if (result is PagedGridStateMachine.LoadResult.Applied) {
+            val page = pageUpdate ?: return result
+            sourceItems.clear()
+            visibleItems.clear()
+            sourceItems.addAll(page.sourceItems)
+            visibleItems.addAll(result.items)
+        }
+        return result
+    }
 }

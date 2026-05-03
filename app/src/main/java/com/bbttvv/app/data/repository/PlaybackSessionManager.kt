@@ -57,6 +57,7 @@ internal object PlaybackSessionManager {
         get() = buvidInitialized
 
     fun init(context: Context) {
+        // Keep only ApplicationContext because playback services live for the process.
         applicationContext = context.applicationContext
     }
 

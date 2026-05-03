@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -47,7 +48,8 @@ internal fun ProfileFavoritePanel(
     onLoadMore: () -> Unit,
     onRequestSidebarFocus: () -> Boolean,
     focusCoordinator: HomeFocusCoordinator? = null,
-    focusTab: AppTopLevelTab? = null
+    focusTab: AppTopLevelTab? = null,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(top = 24.dp),
@@ -86,6 +88,7 @@ internal fun ProfileFavoritePanel(
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
             focusRegion = HomeFocusRegion.ProfileContent,
+            videoCardRecycledViewPool = videoCardRecycledViewPool,
             onRequestSidebarFocus = onRequestSidebarFocus,
             modifier = Modifier.weight(1f)
         )

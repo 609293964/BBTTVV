@@ -78,8 +78,6 @@ class DynamicViewModel : ViewModel() {
     }
 
     private fun refreshDynamicVideos(showLoading: Boolean = false) {
-        loadMoreJob?.cancel()
-        loadMoreJob = null
         loadDynamicVideos(refresh = true, showLoading = showLoading)
     }
 
@@ -181,15 +179,14 @@ class DynamicViewModel : ViewModel() {
     }
 
     private fun loadDynamicVideos(refresh: Boolean, showLoading: Boolean) {
+        val snapshot = videoFeed.snapshot()
         if (refresh) {
             hasMoreVideos = true
-            videoFeed.resetPageCursor()
         } else {
-            val snapshot = videoFeed.snapshot()
             if (snapshot.isLoading || snapshot.endReached) return
         }
 
-        val startGeneration = videoFeed.snapshot().generation
+        val expectedGeneration = if (refresh) snapshot.generation + 1 else snapshot.generation
         val job = viewModelScope.launch {
             if (showLoading) {
                 _uiState.update {
@@ -200,9 +197,7 @@ class DynamicViewModel : ViewModel() {
                 }
             }
             try {
-                val result = videoFeed.loadNextPage(
-                    isRefresh = refresh,
-                    fetch = { pageKey ->
+                val fetchPage: suspend (Int) -> PagedFeedGridState.Page<Int, DynamicItem, DynamicItem> = { pageKey ->
                         val newVideos = DynamicRepository.getDynamicFeed(refresh = refresh)
                             .getOrElse { error -> throw error }
                         PagedFeedGridState.Page(
@@ -211,12 +206,22 @@ class DynamicViewModel : ViewModel() {
                             nextKey = pageKey + 1,
                             endReached = newVideos.isEmpty()
                         )
-                    },
-                    reduce = { _, page -> page }
-                )
+                    }
+                val result = if (refresh) {
+                    videoFeed.refresh(
+                        fetch = fetchPage,
+                        reduce = { _, page -> page }
+                    )
+                } else {
+                    videoFeed.loadNextPage(
+                        isRefresh = false,
+                        fetch = fetchPage,
+                        reduce = { _, page -> page }
+                    )
+                }
 
                 if (result.appliedOrNull() == null) {
-                    if (videoFeed.snapshot().generation == startGeneration) {
+                    if (videoFeed.snapshot().generation == expectedGeneration) {
                         hasMoreVideos = !videoFeed.snapshot().endReached
                         _uiState.update { it.copy(isLoadingVideos = false) }
                     }
@@ -233,7 +238,7 @@ class DynamicViewModel : ViewModel() {
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
-                if (videoFeed.snapshot().generation != startGeneration) return@launch
+                if (videoFeed.snapshot().generation != expectedGeneration) return@launch
                 hasMoreVideos = !videoFeed.snapshot().endReached
                 _uiState.update {
                     it.copy(
@@ -242,12 +247,14 @@ class DynamicViewModel : ViewModel() {
                     )
                 }
             } finally {
-                if (videoFeed.snapshot().generation == startGeneration) {
+                if (videoFeed.snapshot().generation == expectedGeneration) {
                     loadMoreJob = null
                 }
             }
         }
-        loadMoreJob = job
+        if (!refresh || !snapshot.isLoading) {
+            loadMoreJob = job
+        }
     }
     fun primeVideoDetail(video: VideoItem) {
         if (video.bvid == pendingPrefetchBvid) {

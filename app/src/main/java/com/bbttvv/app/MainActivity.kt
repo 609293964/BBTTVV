@@ -23,6 +23,13 @@ import com.bbttvv.app.ui.focus.TvFocusEscapeGuard
 import com.bbttvv.app.ui.focus.TvFocusReturn
 import com.bbttvv.app.ui.theme.AppTheme
 
+/**
+ * 应用主 Activity
+ *
+ * 通过 CompositionLocalProvider 注入 TvFocusEscapeGuard 和 TvFocusReturn 全局焦点基础设施。
+ * dispatchKeyEvent 中优先由 TvFocusEscapeGuard 处理焦点逃逸事件。
+ * 首帧渲染后通知 BbtvApplication.onFirstFrameRendered() 触发延迟启动任务。
+ */
 class MainActivity : ComponentActivity() {
     private val tvFocusEscapeGuard = TvFocusEscapeGuard()
     private val tvFocusReturn = TvFocusReturn()

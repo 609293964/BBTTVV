@@ -76,6 +76,39 @@ class PagedGridStateMachine<K>(
         }
     }
 
+    suspend fun <Fetched, Item> refresh(
+        fetch: suspend (key: K) -> Fetched?,
+        reduce: (key: K, fetched: Fetched) -> Update<K, Item>,
+    ): LoadResult<Item> {
+        val generationAtStart: Long
+        val keyAtStart: K
+        synchronized(lock) {
+            val current = state
+            if (current.isLoading) {
+                return LoadResult.Skipped(
+                    isRefresh = true,
+                    reason = LoadResult.Skipped.Reason.AlreadyLoading,
+                )
+            }
+            generationAtStart = current.generation + 1
+            keyAtStart = initialKey
+            state = State(
+                nextKey = initialKey,
+                isLoading = true,
+                endReached = false,
+                generation = generationAtStart,
+            )
+        }
+
+        return loadStartedPage(
+            isRefresh = true,
+            generationAtStart = generationAtStart,
+            keyAtStart = keyAtStart,
+            fetch = fetch,
+            reduce = reduce,
+        )
+    }
+
     suspend fun <Fetched, Item> loadNextPage(
         isRefresh: Boolean,
         fetch: suspend (key: K) -> Fetched?,
@@ -102,6 +135,22 @@ class PagedGridStateMachine<K>(
             state = current.copy(isLoading = true)
         }
 
+        return loadStartedPage(
+            isRefresh = isRefresh,
+            generationAtStart = generationAtStart,
+            keyAtStart = keyAtStart,
+            fetch = fetch,
+            reduce = reduce,
+        )
+    }
+
+    private suspend fun <Fetched, Item> loadStartedPage(
+        isRefresh: Boolean,
+        generationAtStart: Long,
+        keyAtStart: K,
+        fetch: suspend (key: K) -> Fetched?,
+        reduce: (key: K, fetched: Fetched) -> Update<K, Item>,
+    ): LoadResult<Item> {
         try {
             val fetched = fetch(keyAtStart)
             if (fetched == null) {

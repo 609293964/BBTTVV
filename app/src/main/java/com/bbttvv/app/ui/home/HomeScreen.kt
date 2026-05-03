@@ -31,7 +31,6 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBar
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
-import com.bbttvv.app.ui.components.stableVideoItemKeys
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
@@ -62,9 +61,8 @@ fun HomeScreen(
     val collapsingHeaderState = rememberHomeCollapsingHeaderState()
     val topBarHeightState = remember { mutableIntStateOf(0) }
     val homeTabs = remember(visibleTabs) { visibleTabs.filter(AppTopLevelTab::isHomeContent) }
-    val recommendVideos = uiState.videos
-    val recommendVideoKeys = remember(recommendVideos) { recommendVideos.stableVideoItemKeys() }
-    val recommendVideoCount = recommendVideos.size
+    val recommendVideoItems = uiState.recommendVideoItems
+    val recommendVideoCount = recommendVideoItems.size
     val recommendHasVideos = recommendVideoCount > 0
     val recommendIsEmpty = !recommendHasVideos
     val selectedHomeTab = AppTopLevelTab.resolveVisibleHomeTab(
@@ -72,6 +70,7 @@ fun HomeScreen(
         visibleTabs = visibleTabs
     )
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
+    val recyclerPools = remember { HomeRecyclerPools() }
     RegisterHomeFocusEscapeGuard(focusCoordinator)
     val restoreTargetTab = restoreVideoFocusTab ?: AppTopLevelTab.RECOMMEND
     val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&
@@ -99,7 +98,7 @@ fun HomeScreen(
         focusCoordinator.scene
     }
     val restoreRecommendVideoIndex = restoreVideoFocusKey?.let { focusKey ->
-        recommendVideoKeys.indexOf(focusKey).takeIf { it >= 0 }
+        recommendVideoItems.indexOfFirst { it.key == focusKey }.takeIf { it >= 0 }
     } ?: -1
     val shouldResumeVideoContentFocus = HomeFocusStrategy.shouldRestoreBackReturnVideoFocus(
         scene = effectiveFocusScene,
@@ -295,6 +294,7 @@ fun HomeScreen(
                     tabGridFocusStates = tabGridFocusStates,
                     recommendGridFocusState = recommendGridFocusState,
                     focusCoordinator = focusCoordinator,
+                    recyclerPools = recyclerPools,
                     topBarHeightPx = if (usesCollapsingHomeHeader) {
                         effectiveTopBarHeightPx
                     } else {
@@ -336,7 +336,7 @@ fun HomeScreen(
                 onTopBarFocusChanged = { isFocused ->
                     if (isFocused) {
                         collapsingHeaderState.reset()
-                        if (focusCoordinator.scene == HomeFocusScene.BackToTopBar) {
+                        if (focusCoordinator.consumeBackToTopBarResetIntent()) {
                             resetHomeTabGridToTopForTopBarReturn(
                                 tab = selectedHomeTab,
                                 recommendGridFocusState = recommendGridFocusState,
@@ -388,9 +388,12 @@ private fun resetHomeTabGridToTopForTopBarReturn(
     }
 }
 
+private val EstimatedTabPillHeight = 36.dp
+
 private val EstimatedHomeTopBarHeight = AppTopBarDefaults.TopPadding +
     AppTopBarDefaults.BottomPadding +
-    10.dp
+    AppTopBarDefaults.ContainerVerticalPadding * 2 +
+    EstimatedTabPillHeight
 
 internal fun effectiveTopBarHeightPx(
     measuredTopBarHeightPx: Int,

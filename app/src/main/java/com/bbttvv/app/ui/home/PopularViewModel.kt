@@ -132,15 +132,13 @@ class PopularViewModel : ViewModel() {
     private fun loadCategory(index: Int, refresh: Boolean) {
         val category = defaultPopularCategories.getOrNull(index) ?: return
         val feed = feedForCategory(index)
-        if (refresh) {
-            feed.resetPageCursor()
-        } else {
-            val snapshot = feed.snapshot()
+        val snapshot = feed.snapshot()
+        if (!refresh) {
             if (snapshot.isLoading || snapshot.endReached) return
         }
 
-        val startGeneration = feed.snapshot().generation
-        val page = feed.snapshot().nextKey
+        val expectedGeneration = if (refresh) snapshot.generation + 1 else snapshot.generation
+        val page = if (refresh) 1 else snapshot.nextKey
         _uiState.update {
             if (it.selectedCategoryIndex == index) {
                 it.copy(
@@ -156,9 +154,7 @@ class PopularViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 Logger.d("PopularViewModel", "Loading category=${category.label}, tid=${category.tid}, page=$page")
-                val loadResult = feed.loadNextPage(
-                    isRefresh = refresh,
-                    fetch = { pageKey ->
+                val fetchPage: suspend (Int) -> PagedFeedGridState.Page<Int, VideoItem, VideoItem> = { pageKey ->
                         val incomingVideos = if (category.tid == null) {
                             FeedRepository.getPopularVideos(page = pageKey)
                         } else {
@@ -174,9 +170,19 @@ class PopularViewModel : ViewModel() {
                             nextKey = if (incomingVideos.isNotEmpty()) pageKey + 1 else pageKey,
                             endReached = incomingVideos.isEmpty()
                         )
-                    },
-                    reduce = { _, page -> page }
-                )
+                    }
+                val loadResult = if (refresh) {
+                    feed.refresh(
+                        fetch = fetchPage,
+                        reduce = { _, page -> page }
+                    )
+                } else {
+                    feed.loadNextPage(
+                        isRefresh = false,
+                        fetch = fetchPage,
+                        reduce = { _, page -> page }
+                    )
+                }
 
                 loadResult.appliedOrNull() ?: return@launch
                 val visibleVideos = feed.visibleSnapshot()
@@ -196,7 +202,7 @@ class PopularViewModel : ViewModel() {
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
-                if (feed.snapshot().generation != startGeneration) return@launch
+                if (feed.snapshot().generation != expectedGeneration) return@launch
                 Logger.e("PopularViewModel", "Failed to load category=${category.label}", error)
                 _uiState.update { state ->
                     if (state.selectedCategoryIndex == index) {

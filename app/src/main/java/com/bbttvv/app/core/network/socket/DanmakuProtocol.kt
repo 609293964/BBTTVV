@@ -1,5 +1,6 @@
 ﻿package com.bbttvv.app.core.network.socket
 
+import com.bbttvv.app.core.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.brotli.dec.BrotliInputStream
@@ -133,7 +134,7 @@ object DanmakuProtocol {
                         val decompressed = decompressZlib(body)
                         packets.addAll(decode(decompressed))
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Logger.e("DanmakuProtocol", "Failed to decompress zlib danmaku packet", e)
                     }
                 }
                 PROTO_VER_BROTLI -> {
@@ -142,7 +143,7 @@ object DanmakuProtocol {
                         val decompressed = decompressBrotli(body)
                         packets.addAll(decode(decompressed))
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Logger.e("DanmakuProtocol", "Failed to decompress brotli danmaku packet", e)
                     }
                 }
                 else -> {

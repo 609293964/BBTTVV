@@ -4,6 +4,7 @@ import com.bbttvv.app.ui.components.AppTopLevelTab
 
 internal enum class HomeFocusScene {
     InitialEnter,
+    TopBarFocused,
     TabSwitch,
     BackToTopBar,
     BackToRecommend,

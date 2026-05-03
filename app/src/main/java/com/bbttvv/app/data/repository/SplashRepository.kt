@@ -2,6 +2,7 @@
 
 import com.bbttvv.app.core.network.AppSignUtils
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.SplashItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +17,10 @@ object SplashRepository {
      * 失败时回退到 splash/list API
      */
     suspend fun getOfficialWallpapers(): Result<List<SplashItem>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "SplashRepo",
+            errorMessage = { "getOfficialWallpapers failed" }
+        ) {
             val params = mutableMapOf<String, String>()
             params["appkey"] = AppSignUtils.ANDROID_APP_KEY
             params["ts"] = AppSignUtils.getTimestamp().toString()
@@ -37,12 +41,16 @@ object SplashRepository {
                             )
                         }
                     if (items.isNotEmpty()) {
-                        return@withContext Result.success(items)
+                        return@safeApiCall items
                     }
-                }
+            }
             } catch (e: Exception) {
                 // brand/list 失败，回退到 splash/list
-                e.printStackTrace()
+                com.bbttvv.app.core.util.Logger.e(
+                    "SplashRepo",
+                    "getSplashBrandList failed, fallback=splash/list",
+                    e
+                )
             }
             
             // 回退到原有 splash/list API
@@ -66,12 +74,14 @@ object SplashRepository {
                 val filteredList = rawList.filter { 
                     !it.isAd && (it.thumb.isNotEmpty() || it.image.isNotEmpty()) 
                 }
-                Result.success(if (filteredList.isNotEmpty()) filteredList else rawList.filter { it.thumb.isNotEmpty() || it.image.isNotEmpty() })
+                if (filteredList.isNotEmpty()) {
+                    filteredList
+                } else {
+                    rawList.filter { it.thumb.isNotEmpty() || it.image.isNotEmpty() }
+                }
             } else {
-                Result.failure(Exception(response.message))
+                throw Exception(response.message)
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 }

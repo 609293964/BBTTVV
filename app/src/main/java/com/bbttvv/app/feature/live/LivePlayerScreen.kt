@@ -39,6 +39,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
+import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
@@ -83,6 +85,8 @@ fun LivePlayerScreen(
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
     val danmakuConfig = remember(storedDanmakuSettings) { storedDanmakuSettings.toEngineConfig() }
     val exoPlayer = remember(context) { createConfiguredPlayer(context) }
+    val playerReleaseGuard = remember(exoPlayer) { ExoPlayerReleaseGuard(exoPlayer) }
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     val keyCaptureRequester = remember { FocusRequester() }
     val actions = remember { LiveOverlayAction.entries }
     var showOverlay by rememberSaveable(roomId) { mutableStateOf(true) }
@@ -103,6 +107,7 @@ fun LivePlayerScreen(
     val panelOptionsFocusKey = buildPanelOptionsFocusKey(panelOptions)
     val latestUiState = rememberUpdatedState(uiState)
     val latestPlaybackState = rememberUpdatedState(playbackState)
+    val latestPlayerView = rememberUpdatedState(playerViewRef)
 
     RegisterTvFocusEscapeTarget(
         key = "live_player",
@@ -234,13 +239,23 @@ fun LivePlayerScreen(
         }
     }
 
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(exoPlayer, playerReleaseGuard) {
         viewModel.attachPlayer(exoPlayer)
         onDispose {
-            ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
-            viewModel.resetTransientPlaybackTuning()
-            viewModel.finishSession(reason = "screen_dispose")
-            exoPlayer.release()
+            com.bbttvv.app.core.player.VolumeBalanceController.unregisterProcessor()
+            playerReleaseGuard.releaseOnce(
+                finishSession = {
+                    ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
+                    viewModel.resetTransientPlaybackTuning()
+                    viewModel.finishSession(reason = "screen_dispose")
+                },
+                detachOwner = { player ->
+                    viewModel.detachPlayer(player)
+                },
+                detachPlayerView = {
+                    clearPlayerViewReference(latestPlayerView.value)
+                },
+            )
         }
     }
 
@@ -344,8 +359,15 @@ fun LivePlayerScreen(
                 }
             },
             update = { playerView ->
+                playerViewRef = playerView
                 if (playerView.player !== exoPlayer) {
                     playerView.player = exoPlayer
+                }
+            },
+            onRelease = { playerView ->
+                clearPlayerViewReference(playerView)
+                if (playerViewRef === playerView) {
+                    playerViewRef = null
                 }
             },
             modifier = Modifier.fillMaxSize()

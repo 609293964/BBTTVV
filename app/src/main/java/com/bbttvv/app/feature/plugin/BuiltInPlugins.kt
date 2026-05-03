@@ -225,16 +225,17 @@ class AdFilterPlugin : FeedPlugin {
         scope.launch {
             loadConfigFromStore()
         }
-        startBlockedObserver()
     }
 
     override suspend fun onEnable() {
         loadConfigFromStore()
+        startBlockedObserver()
         PluginManager.notifyFeedPluginsUpdated()
         Logger.d("AdFilterPlugin", "Ad filter plugin enabled")
     }
 
     override suspend fun onDisable() {
+        stopBlockedObserver()
         PluginManager.notifyFeedPluginsUpdated()
         Logger.d("AdFilterPlugin", "Ad filter plugin disabled")
     }
@@ -338,6 +339,11 @@ class AdFilterPlugin : FeedPlugin {
                 PluginManager.notifyFeedPluginsUpdated()
             }
         }
+    }
+
+    private fun stopBlockedObserver() {
+        blockedObserverJob?.cancel()
+        blockedObserverJob = null
     }
 
     private suspend fun loadConfigFromStore() {

@@ -217,7 +217,9 @@ object CacheUtils {
         emit(ClearProgress(60, "正在清除网络缓存..."))
         try {
             com.bbttvv.app.core.network.NetworkModule.okHttpClient.cache?.evictAll()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Logger.e(TAG, "Failed to clear OkHttp cache", e)
+        }
         emit(ClearProgress(70, "网络缓存已清除"))
         
         // 文件缓存
@@ -299,7 +301,9 @@ object CacheUtils {
         val httpSize = breakdown.httpCache
         try {
             com.bbttvv.app.core.network.NetworkModule.okHttpClient.cache?.evictAll()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Logger.e(TAG, "Failed to clear OkHttp cache", e)
+        }
         clearedSize += httpSize
         emit(ClearProgressV2(clearedSize, totalSize, false, "网络缓存已清除"))
         kotlinx.coroutines.delay(100)

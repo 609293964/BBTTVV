@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.VideoItem
@@ -48,6 +49,7 @@ internal fun TodayWatchScreen(
     onVideoFocused: (VideoItem) -> Unit,
     onContentRowFocused: (Int) -> Unit,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     topBarHeightPx: Int = 0,
     collapsingHeaderState: HomeCollapsingHeaderState = rememberHomeCollapsingHeaderState(),
     modifier: Modifier = Modifier
@@ -181,6 +183,7 @@ internal fun TodayWatchScreen(
                         focusCoordinator = focusCoordinator,
                         focusTab = AppTopLevelTab.TODAY_WATCH,
                         allowChildDrawingOutsideBounds = false,
+                        videoCardRecycledViewPool = videoCardRecycledViewPool,
                         onVerticalScrollOffsetChanged = onScrollOffset,
                         onFocusedRowChanged = onContentRowFocused,
                         onTopRowDpadUp = {
@@ -205,7 +208,7 @@ internal fun TodayWatchScreen(
                         onVideoFocused = { video, _ ->
                             onVideoFocused(video)
                         },
-                        onVideoMenu = { video ->
+                        onVideoLongClick = { video, _ ->
                             pendingFeedbackVideo = video
                         },
                         onVideoClick = { video, _ ->

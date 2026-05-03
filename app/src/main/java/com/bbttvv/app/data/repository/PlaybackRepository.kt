@@ -14,6 +14,7 @@ object PlaybackRepository {
     private val api get() = VideoSessionService.api
 
     fun init(context: Context) {
+        // This repository is process-wide; only ApplicationContext may be retained.
         PlaybackSessionManager.init(context)
     }
 
@@ -313,7 +314,11 @@ object PlaybackRepository {
 
             Result.success(Pair(effectiveInfo, playData))
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.bbttvv.app.core.util.Logger.e(
+                "PlaybackRepo",
+                "getVideoDetails failed: bvid=$bvid, aid=$aid, requestedCid=$requestedCid",
+                e
+            )
             Result.failure(e)
         }
     }

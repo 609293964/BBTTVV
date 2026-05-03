@@ -1,5 +1,11 @@
 package com.bbttvv.app.ui.detail
 
+/**
+ * 详情页焦点意图密封类
+ *
+ * - [FocusPlayButton]: 聚焦播放按钮
+ * - [RestoreComment]: 恢复到指定 rpid 的评论焦点
+ */
 internal sealed class DetailFocusIntent {
     data class FocusPlayButton(
         val onFocused: () -> Unit,
@@ -19,6 +25,12 @@ internal fun interface DetailFocusTargetRegistration {
     fun unregister()
 }
 
+/**
+ * 详情页焦点协调器
+ *
+ * 管理视频详情页的焦点，包括播放按钮和评论项。
+ * 支持按 rpid 索引的评论焦点恢复，以及焦点逃逸后的恢复。
+ */
 internal class DetailFocusCoordinator {
     private var pendingIntent: DetailFocusIntent? = null
     private var playButtonTarget: DetailFocusTarget? = null

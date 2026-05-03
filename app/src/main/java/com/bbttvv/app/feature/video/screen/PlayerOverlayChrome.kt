@@ -50,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.util.formatLongVideoPubDate
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
@@ -63,6 +64,7 @@ internal fun PlayerSurface(
     overlayMode: PlayerOverlayMode,
     onHiddenOverlayKey: (KeyEvent) -> Boolean,
     onViewAvailable: (PlayerView) -> Unit,
+    onViewReleased: (PlayerView) -> Unit = {},
     onPlayerSurfaceFocusNeeded: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -98,6 +100,10 @@ internal fun PlayerSurface(
             if (overlayMode == PlayerOverlayMode.Hidden && !playerView.hasFocus()) {
                 onPlayerSurfaceFocusNeeded()
             }
+        },
+        onRelease = { playerView ->
+            clearPlayerViewReference(playerView)
+            onViewReleased(playerView)
         },
         modifier = modifier,
     )

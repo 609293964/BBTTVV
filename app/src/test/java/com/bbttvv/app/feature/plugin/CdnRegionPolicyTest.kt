@@ -58,6 +58,31 @@ class CdnRegionPolicyTest {
     }
 
     @Test
+    fun `empty verified cache does not fall back to raw catalog hosts`() {
+        val hosts = resolveCdnRegionHosts(
+            region = "广州",
+            cachedHosts = emptyList(),
+            catalog = mapOf("广州" to listOf("cn-gdgz-cm-01-02.bilivideo.com"))
+        )
+
+        assertTrue(hosts.isEmpty())
+    }
+
+    @Test
+    fun `host verification drops unresolved candidates before playback rewrite`() {
+        val hosts = filterResolvableCdnHosts(
+            hosts = listOf(
+                "cn-gdgz-cm-01-02.bilivideo.com",
+                "cn-gdgz-fx-01-01.bilivideo.com",
+                "cn-gdgz-fx-01-01.bilivideo.com"
+            ),
+            resolver = { it == "cn-gdgz-fx-01-01.bilivideo.com" }
+        )
+
+        assertEquals(listOf("cn-gdgz-fx-01-01.bilivideo.com"), hosts)
+    }
+
+    @Test
     fun `refresh policy honors disabled state and ttl`() {
         assertFalse(
             shouldRefreshCdnIpLocation(

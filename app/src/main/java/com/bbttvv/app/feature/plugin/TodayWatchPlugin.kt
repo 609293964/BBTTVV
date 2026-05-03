@@ -13,6 +13,7 @@ import com.bbttvv.app.core.plugin.RecommendationPluginApi
 import com.bbttvv.app.core.plugin.RecommendationRequest
 import com.bbttvv.app.core.plugin.RecommendationResult
 import com.bbttvv.app.core.plugin.RecommendedVideo
+import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.store.TodayWatchFeedbackStore
 import com.bbttvv.app.core.store.TodayWatchProfileStore
 import com.bbttvv.app.core.util.Logger
@@ -20,9 +21,7 @@ import com.bbttvv.app.ui.home.TodayWatchCreatorSignal
 import com.bbttvv.app.ui.home.TodayWatchMode
 import com.bbttvv.app.ui.home.TodayWatchPenaltySignals
 import com.bbttvv.app.ui.home.buildTodayWatchPlan
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,7 +70,8 @@ class TodayWatchPlugin : RecommendationPluginApi {
         )
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var persistJob: Job? = null
+    private var clearPersonalizationJob: Job? = null
 
     private val _configState = MutableStateFlow(TodayWatchPluginConfig())
     val configState: StateFlow<TodayWatchPluginConfig> = _configState.asStateFlow()
@@ -169,7 +169,8 @@ class TodayWatchPlugin : RecommendationPluginApi {
     }
 
     fun clearPersonalizationData() {
-        scope.launch {
+        clearPersonalizationJob?.cancel()
+        clearPersonalizationJob = AppScope.ioScope.launch {
             runCatching {
                 val context = PluginManager.getContext()
                 TodayWatchProfileStore.clear(context)
@@ -201,7 +202,8 @@ class TodayWatchPlugin : RecommendationPluginApi {
     private fun persistConfig(config: TodayWatchPluginConfig) {
         val normalized = normalizeConfig(config)
         _configState.value = normalized
-        scope.launch {
+        persistJob?.cancel()
+        persistJob = AppScope.ioScope.launch {
             runCatching {
                 PluginStore.setConfigJson(
                     context = PluginManager.getContext(),

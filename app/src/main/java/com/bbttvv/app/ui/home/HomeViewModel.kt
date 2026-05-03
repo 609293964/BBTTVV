@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bbttvv.app.core.di.AppContainer
 import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.ActionRepository
@@ -25,6 +26,7 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val isError: Boolean = false,
     val videos: List<VideoItem> = emptyList(),
+    val recommendVideoItems: List<HomeRecommendVideoCardItem> = emptyList(),
     val hasMore: Boolean = true,
     val errorMsg: String? = null,
     val refreshErrorMessage: String? = null,
@@ -54,7 +56,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val detailPrefetcher = HomeDetailPrefetcher(viewModelScope)
     private val recommendDismissStore = RecommendDismissStore()
-    private val feedController = HomeFeedController(recommendDismissStore)
+    private val feedController = HomeFeedController(
+        dismissStore = recommendDismissStore,
+        feedRepository = AppContainer.feedRepository
+    )
     private val todayWatchCoordinator = TodayWatchCoordinator(appContext, viewModelScope)
     private var todayWatchPluginConfigJob: Job? = null
     private var todayWatchRebuildJob: Job? = null
@@ -134,6 +139,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         currentState.copy(
                             isLoading = false,
                             videos = result.videos,
+                            recommendVideoItems = result.recommendVideoItems,
                             hasMore = result.hasMore,
                             isError = false,
                             errorMsg = null
@@ -156,7 +162,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() {
-        feedController.resetPageCursor()
         _uiState.update {
             it.copy(
                 isLoading = true,
@@ -167,7 +172,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         viewModelScope.launch {
-            when (val result = feedController.refresh()) {
+            when (val result = feedController.refresh(force = true)) {
                 is HomeFeedLoadResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -176,6 +181,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             errorMsg = null,
                             refreshErrorMessage = null,
                             videos = result.videos,
+                            recommendVideoItems = result.recommendVideoItems,
                             hasMore = result.hasMore
                         )
                     }
@@ -274,9 +280,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun markRecommendNotInterested(video: VideoItem) {
-        val nextVisibleVideos = feedController.dismiss(video) ?: return
+        val nextSnapshot = feedController.dismiss(video) ?: return
         _uiState.update { currentState ->
-            currentState.copy(videos = nextVisibleVideos)
+            currentState.copy(
+                videos = nextSnapshot.videos,
+                recommendVideoItems = nextSnapshot.recommendVideoItems,
+            )
         }
         requestTodayWatchRebuild(forceReloadHistory = false)
     }
@@ -293,9 +302,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             PluginManager.feedPluginUpdateToken.collectLatest { token ->
                 if (token <= 0L || !feedController.hasSourceItems()) return@collectLatest
-                val nextVisibleVideos = feedController.reapplyPluginFilters()
+                val nextSnapshot = feedController.reapplyPluginFilters()
                 _uiState.update { currentState ->
-                    currentState.copy(videos = nextVisibleVideos)
+                    currentState.copy(
+                        videos = nextSnapshot.videos,
+                        recommendVideoItems = nextSnapshot.recommendVideoItems,
+                    )
                 }
                 requestTodayWatchRebuild(forceReloadHistory = false)
             }

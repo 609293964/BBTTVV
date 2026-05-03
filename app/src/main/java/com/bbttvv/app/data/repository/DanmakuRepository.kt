@@ -1,6 +1,8 @@
 // 文件路径: data/repository/DanmakuRepository.kt
 package com.bbttvv.app.data.repository
 
+import android.content.Context
+import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.store.normalizeDanmakuDisplayArea
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.network.NetworkModule
@@ -10,6 +12,7 @@ import com.bbttvv.app.core.network.socket.LiveDanmakuEndpoint
 import com.bbttvv.app.data.model.response.DanmakuThumbupStatsItem
 import com.bbttvv.app.data.model.response.LiveDanmuHost
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -21,6 +24,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.CRC32
 import kotlin.math.abs
 
@@ -134,7 +138,11 @@ internal fun estimateDanmakuCacheBytes(
 data class DanmakuCacheStats(
     val rawEntryCount: Int,
     val segmentEntryCount: Int,
-    val totalBytes: Long
+    val totalBytes: Long,
+    val rawBytes: Long = 0L,
+    val segmentBytes: Long = 0L,
+    val rawMaxBytes: Long = 0L,
+    val segmentMaxBytes: Long = 0L,
 )
 
 internal fun resolveDanmakuThumbupState(
@@ -202,46 +210,45 @@ object DanmakuRepository {
     @Volatile
     private var danmakuUserFilterCache: DanmakuUserFilterCache? = null
 
-    // 弹幕数据缓存 - 避免横竖屏切换时重复下载
-    private val danmakuCache = LinkedHashMap<Long, ByteArray>(5, 0.75f, true)
-    private const val MAX_DANMAKU_CACHE_COUNT = 3  // 最多缓存3个视频的弹幕
-    private const val MAX_DANMAKU_CACHE_BYTES = 4L * 1024 * 1024
-    private var danmakuCacheBytes = 0L
-    
-    // Protobuf 弹幕分段缓存
-    private val danmakuSegmentCache = LinkedHashMap<Long, List<ByteArray>>(5, 0.75f, true)
-    private const val MAX_SEGMENT_CACHE_COUNT = 3
-    private const val MAX_SEGMENT_CACHE_BYTES = 12L * 1024 * 1024
+    private val danmakuCacheManager = DanmakuCacheManager()
+    private val rawXmlInFlight = ConcurrentHashMap<Long, Deferred<ByteArray?>>()
+    private val segmentInFlight = ConcurrentHashMap<DanmakuSegmentCacheKey, Deferred<ByteArray?>>()
     private const val MAX_SEGMENT_PARALLELISM = 3
-    private var danmakuSegmentCacheBytes = 0L
+
+    fun configureDanmakuCache(context: Context) {
+        danmakuCacheManager.configure(DanmakuCacheProfile.fromContext(context))
+    }
 
     /**
      * 清除弹幕缓存
      */
     fun clearDanmakuCache() {
-        synchronized(danmakuCache) {
-            danmakuCache.clear()
-            danmakuCacheBytes = 0L
-        }
-        synchronized(danmakuSegmentCache) {
-            danmakuSegmentCache.clear()
-            danmakuSegmentCacheBytes = 0L
-        }
+        rawXmlInFlight.values.forEach { it.cancel() }
+        segmentInFlight.values.forEach { it.cancel() }
+        rawXmlInFlight.clear()
+        segmentInFlight.clear()
+        danmakuCacheManager.clear()
         com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku cache cleared")
     }
 
+    fun trimDanmakuCache(targetBytes: Long) {
+        danmakuCacheManager.trimDanmakuCache(targetBytes)
+    }
+
+    fun trimDanmakuCache(maxRawBytes: Long, maxSegmentBytes: Long) {
+        danmakuCacheManager.trimDanmakuCache(maxRawBytes, maxSegmentBytes)
+    }
+
+    fun trimDanmakuCacheToHalf() {
+        danmakuCacheManager.trimToHalf()
+    }
+
+    fun trimDanmakuCacheToSmall() {
+        danmakuCacheManager.trimToSmall()
+    }
+
     fun getDanmakuCacheStats(): DanmakuCacheStats {
-        val rawEntryCount = synchronized(danmakuCache) { danmakuCache.size }
-        val segmentEntryCount = synchronized(danmakuSegmentCache) { danmakuSegmentCache.size }
-        val totalBytes = estimateDanmakuCacheBytes(
-            rawCacheBytes = synchronized(danmakuCache) { danmakuCacheBytes },
-            segmentCacheBytes = synchronized(danmakuSegmentCache) { danmakuSegmentCacheBytes }
-        )
-        return DanmakuCacheStats(
-            rawEntryCount = rawEntryCount,
-            segmentEntryCount = segmentEntryCount,
-            totalBytes = totalBytes
-        )
+        return danmakuCacheManager.stats()
     }
 
     suspend fun warmUpDanmaku(
@@ -264,16 +271,26 @@ object DanmakuRepository {
      */
     suspend fun getDanmakuRawData(cid: Long): ByteArray? = withContext(Dispatchers.IO) {
         com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuRawData: cid=$cid")
-        
-        // 先检查缓存
-        synchronized(danmakuCache) {
-            danmakuCache[cid]?.let {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku cache hit for cid=$cid, size=${it.size}")
-                return@withContext it
+        if (cid <= 0L) return@withContext null
+        danmakuCacheManager.getRawXml(cid)?.let {
+            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku cache hit for cid=$cid, size=${it.size}")
+            return@withContext it
+        }
+
+        val request = rawXmlInFlight.computeIfAbsent(cid) {
+            AppScope.ioScope.async { fetchDanmakuRawData(cid) }
+        }
+        try {
+            request.await()
+        } finally {
+            if (request.isCompleted) {
+                rawXmlInFlight.remove(cid, request)
             }
         }
-        
-        try {
+    }
+
+    private suspend fun fetchDanmakuRawData(cid: Long): ByteArray? {
+        return try {
             val bytes = requestBytesWithGuestFallback(
                 requestName = "getDanmakuXml cid=$cid",
                 primary = { api.getDanmakuXml(cid).bytes() },
@@ -283,78 +300,52 @@ object DanmakuRepository {
 
             if (bytes.isEmpty()) {
                 android.util.Log.w("DanmakuRepo", " Danmaku response is empty!")
-                return@withContext null
+                return null
             }
 
-            val result: ByteArray?
-            
-            // 检查首字节判断是否压缩
-            // XML 以 '<' 开头 (0x3C)
-            if (bytes[0] == 0x3C.toByte()) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku is plain XML, size=${bytes.size}")
-                result = bytes
-            } else {
-                // 尝试 Deflate 解压
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku appears compressed, attempting deflate...")
-                result = try {
-                    val inflater = java.util.zip.Inflater(true) // nowrap=true
-                    inflater.setInput(bytes)
-                    val outputStream = java.io.ByteArrayOutputStream(bytes.size * 3)
-                    val tempBuffer = ByteArray(1024)
-                    while (!inflater.finished()) {
-                        val count = inflater.inflate(tempBuffer)
-                        if (count == 0) {
-                             if (inflater.needsInput()) break
-                             if (inflater.needsDictionary()) break
-                        }
-                        outputStream.write(tempBuffer, 0, count)
-                    }
-                    inflater.end()
-                    val decompressed = outputStream.toByteArray()
-                    com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku decompressed: ${bytes.size} → ${decompressed.size} bytes")
-                    decompressed
-                } catch (e: Exception) {
-                    android.util.Log.e("DanmakuRepo", " Deflate failed: ${e.message}")
-                    e.printStackTrace()
-                    // 解压失败，返回原始数据
-                    bytes
-                }
+            val result = decodeRawXmlBytes(bytes)
+            if (result.isNotEmpty()) {
+                danmakuCacheManager.putRawXml(cid, result)
+                com.bbttvv.app.core.util.Logger.d(
+                    "DanmakuRepo",
+                    " Danmaku cached: cid=$cid, size=${result.size}, bytes=${danmakuCacheManager.stats().rawBytes}"
+                )
             }
-            
-            // 存入缓存（限制条目数与字节数）
-            if (result != null && result.isNotEmpty()) {
-                val entrySize = result.size.toLong()
-                if (entrySize <= MAX_DANMAKU_CACHE_BYTES) {
-                    synchronized(danmakuCache) {
-                        danmakuCache.remove(cid)?.let { danmakuCacheBytes -= it.size.toLong() }
-                        
-                        val iterator = danmakuCache.entries.iterator()
-                        while (iterator.hasNext() &&
-                            (danmakuCache.size >= MAX_DANMAKU_CACHE_COUNT ||
-                                danmakuCacheBytes + entrySize > MAX_DANMAKU_CACHE_BYTES)
-                        ) {
-                            val eldest = iterator.next()
-                            danmakuCacheBytes -= eldest.value.size.toLong()
-                            iterator.remove()
-                            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku cache evicted: cid=${eldest.key}")
-                        }
-                        danmakuCache[cid] = result
-                        danmakuCacheBytes += entrySize
-                        com.bbttvv.app.core.util.Logger.d(
-                            "DanmakuRepo",
-                            " Danmaku cached: cid=$cid, size=${result.size}, cacheSize=${danmakuCache.size}, bytes=$danmakuCacheBytes"
-                        )
-                    }
-                } else {
-                    com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku too large to cache: size=$entrySize")
-                }
-            }
-            
             result
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", " getDanmakuRawData failed: ${e.message}")
-            e.printStackTrace()
+            if (e is CancellationException) throw e
+            com.bbttvv.app.core.util.Logger.e("DanmakuRepo", "getDanmakuRawData failed: cid=$cid", e)
             null
+        }
+    }
+
+    private fun decodeRawXmlBytes(bytes: ByteArray): ByteArray {
+        if (bytes[0] == 0x3C.toByte()) {
+            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku is plain XML, size=${bytes.size}")
+            return bytes
+        }
+
+        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku appears compressed, attempting deflate...")
+        return try {
+            val inflater = java.util.zip.Inflater(true)
+            inflater.setInput(bytes)
+            val outputStream = java.io.ByteArrayOutputStream(bytes.size * 3)
+            val tempBuffer = ByteArray(1024)
+            while (!inflater.finished()) {
+                val count = inflater.inflate(tempBuffer)
+                if (count == 0) {
+                    if (inflater.needsInput()) break
+                    if (inflater.needsDictionary()) break
+                }
+                outputStream.write(tempBuffer, 0, count)
+            }
+            inflater.end()
+            val decompressed = outputStream.toByteArray()
+            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku decompressed: ${bytes.size} → ${decompressed.size} bytes")
+            decompressed
+        } catch (e: Exception) {
+            com.bbttvv.app.core.util.Logger.e("DanmakuRepo", "Deflate failed, using raw danmaku bytes", e)
+            bytes
         }
     }
     
@@ -477,33 +468,48 @@ object DanmakuRepository {
             return@withContext null
         }
 
-        synchronized(danmakuSegmentCache) {
-            danmakuSegmentCache[cid]
-                ?.getOrNull(segmentIndex - 1)
-                ?.let { cached ->
-                    com.bbttvv.app.core.util.Logger.d(
-                        "DanmakuRepo",
-                        " Protobuf danmaku segment cache hit: cid=$cid, index=$segmentIndex, size=${cached.size}"
-                    )
-                    return@withContext cached
-                }
+        val cacheKey = DanmakuSegmentCacheKey(cid = cid, segmentIndex = segmentIndex)
+        danmakuCacheManager.getSegment(cacheKey)?.let { cached ->
+            com.bbttvv.app.core.util.Logger.d(
+                "DanmakuRepo",
+                " Protobuf danmaku segment cache hit: cid=$cid, index=$segmentIndex, size=${cached.size}"
+            )
+            return@withContext cached
         }
 
+        val request = segmentInFlight.computeIfAbsent(cacheKey) {
+            AppScope.ioScope.async { fetchDanmakuSegment(cacheKey) }
+        }
         try {
+            request.await()
+        } finally {
+            if (request.isCompleted) {
+                segmentInFlight.remove(cacheKey, request)
+            }
+        }
+    }
+
+    private suspend fun fetchDanmakuSegment(cacheKey: DanmakuSegmentCacheKey): ByteArray? {
+        return try {
             val bytes = requestBytesWithGuestFallback(
-                requestName = "getDanmakuSeg cid=$cid segment=$segmentIndex",
-                primary = { api.getDanmakuSeg(oid = cid, segmentIndex = segmentIndex).bytes() },
-                fallback = { guestApi.getDanmakuSeg(oid = cid, segmentIndex = segmentIndex).bytes() }
+                requestName = "getDanmakuSeg cid=${cacheKey.cid} segment=${cacheKey.segmentIndex}",
+                primary = { api.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex).bytes() },
+                fallback = { guestApi.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex).bytes() }
             )
             if (bytes.isNotEmpty()) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment $segmentIndex: ${bytes.size} bytes")
+                danmakuCacheManager.putSegment(cacheKey, bytes)
+                com.bbttvv.app.core.util.Logger.d(
+                    "DanmakuRepo",
+                    " Segment ${cacheKey.segmentIndex}: ${bytes.size} bytes, cacheBytes=${danmakuCacheManager.stats().segmentBytes}"
+                )
                 bytes
             } else {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment $segmentIndex is empty")
+                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment ${cacheKey.segmentIndex} is empty")
                 null
             }
         } catch (e: Exception) {
-            android.util.Log.w("DanmakuRepo", " Segment $segmentIndex failed: ${e.message}")
+            if (e is CancellationException) throw e
+            android.util.Log.w("DanmakuRepo", " Segment ${cacheKey.segmentIndex} failed: ${e.message}")
             null
         }
     }
@@ -522,15 +528,7 @@ object DanmakuRepository {
         metadataSegmentCount: Int? = null
     ): List<ByteArray> = withContext(Dispatchers.IO) {
         com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuSegments: cid=$cid, duration=${durationMs}ms")
-        
-        // 检查缓存
-        synchronized(danmakuSegmentCache) {
-            danmakuSegmentCache[cid]?.let {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Protobuf danmaku cache hit: cid=$cid, segments=${it.size}")
-                return@withContext it
-            }
-        }
-        
+
         // 计算所需分段数（优先 duration，其次 metadata，最后安全默认值）
         val segmentCount = resolveDanmakuSegmentCount(durationMs, metadataSegmentCount)
         
@@ -547,23 +545,8 @@ object DanmakuRepository {
             (1..segmentCount).map { index ->
                 async {
                     semaphore.withPermit {
-                        try {
-                            val bytes = requestBytesWithGuestFallback(
-                                requestName = "getDanmakuSeg cid=$cid segment=$index",
-                                primary = { api.getDanmakuSeg(oid = cid, segmentIndex = index).bytes() },
-                                fallback = { guestApi.getDanmakuSeg(oid = cid, segmentIndex = index).bytes() }
-                            )
-                            if (bytes.isNotEmpty()) {
-                                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment $index: ${bytes.size} bytes")
-                                SegmentResult(index, bytes)
-                            } else {
-                                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment $index is empty")
-                                null
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.w("DanmakuRepo", " Segment $index failed: ${e.message}")
-                            null
-                        }
+                        getDanmakuSegment(cid = cid, segmentIndex = index)
+                            ?.let { bytes -> SegmentResult(index, bytes) }
                     }
                 }
             }.awaitAll()
@@ -575,34 +558,6 @@ object DanmakuRepository {
             .map { it.bytes }
         
         com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Got ${results.size}/$segmentCount segments for cid=$cid")
-        
-        // 缓存结果（限制条目数与字节数）
-        if (results.isNotEmpty()) {
-            val entrySize = results.sumOf { it.size.toLong() }
-            if (entrySize <= MAX_SEGMENT_CACHE_BYTES) {
-                synchronized(danmakuSegmentCache) {
-                    danmakuSegmentCache.remove(cid)?.let { removed ->
-                        danmakuSegmentCacheBytes -= removed.sumOf { it.size.toLong() }
-                    }
-                    
-                    val iterator = danmakuSegmentCache.entries.iterator()
-                    while (iterator.hasNext() &&
-                        (danmakuSegmentCache.size >= MAX_SEGMENT_CACHE_COUNT ||
-                            danmakuSegmentCacheBytes + entrySize > MAX_SEGMENT_CACHE_BYTES)
-                    ) {
-                        val eldest = iterator.next()
-                        danmakuSegmentCacheBytes -= eldest.value.sumOf { it.size.toLong() }
-                        iterator.remove()
-                    }
-                    
-                    danmakuSegmentCache[cid] = results.toList()
-                    danmakuSegmentCacheBytes += entrySize
-                }
-            } else {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segments too large to cache: size=$entrySize")
-            }
-        }
-        
         results.toList()
     }
 

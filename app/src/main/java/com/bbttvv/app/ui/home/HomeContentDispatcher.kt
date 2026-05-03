@@ -26,6 +26,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.VideoItem
@@ -83,6 +84,7 @@ internal fun HomeContentDispatcher(
     tabGridFocusStates: HomeTabGridFocusStates,
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
+    recyclerPools: HomeRecyclerPools,
     topBarHeightPx: Int,
     collapsingHeaderState: HomeCollapsingHeaderState,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
@@ -107,7 +109,7 @@ internal fun HomeContentDispatcher(
         }
     }
 
-    LaunchedEffect(pendingRecommendFocusReturnKey, selectedHomeTab, uiState.videos) {
+    LaunchedEffect(pendingRecommendFocusReturnKey, selectedHomeTab, uiState.recommendVideoItems) {
         val focusKey = pendingRecommendFocusReturnKey ?: return@LaunchedEffect
         if (selectedHomeTab != AppTopLevelTab.RECOMMEND) {
             pendingRecommendFocusReturnKey = null
@@ -124,6 +126,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                videoCardRecycledViewPool = recyclerPools.videoCardPool,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onTabSelected = onTabSelected,
                 onVideoClick = onVideoClick,
@@ -135,6 +138,7 @@ internal fun HomeContentDispatcher(
                 viewModel = viewModel,
                 recommendGridFocusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
+                videoCardRecycledViewPool = recyclerPools.videoCardPool,
                 topBarHeightPx = topBarHeightPx,
                 collapsingHeaderState = collapsingHeaderState,
                 restoreInitialScrollIndex = restoreRecommendInitialScrollIndex,
@@ -172,6 +176,7 @@ internal fun HomeContentDispatcher(
                     onVideoFocused = viewModel::prefetchVideoDetail,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
+                    videoCardRecycledViewPool = recyclerPools.videoCardPool,
                     topBarHeightPx = topBarHeightPx,
                     collapsingHeaderState = collapsingHeaderState
                 )
@@ -182,6 +187,7 @@ internal fun HomeContentDispatcher(
                     onVideoClick = onVideoClick,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
+                    videoCardRecycledViewPool = recyclerPools.videoCardPool,
                     gridColumnCount = 4,
                     focusState = tabGridFocusStates.stateFor(AppTopLevelTab.POPULAR),
                     topBarHeightPx = topBarHeightPx,
@@ -194,6 +200,7 @@ internal fun HomeContentDispatcher(
                     onLiveClick = onLiveClick,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
+                    videoCardRecycledViewPool = recyclerPools.videoCardPool,
                     gridColumnCount = 4,
                     focusState = tabGridFocusStates.stateFor(AppTopLevelTab.LIVE),
                     topBarHeightPx = topBarHeightPx,
@@ -211,6 +218,7 @@ internal fun HomeContentDispatcher(
                     dynamicRefreshRequestId = dynamicRefreshRequestId,
                     onContentRowFocused = focusCoordinator::onContentRowFocused,
                     focusCoordinator = focusCoordinator,
+                    videoCardRecycledViewPool = recyclerPools.videoCardPool,
                     gridColumnCount = 4,
                     focusState = tabGridFocusStates.stateFor(AppTopLevelTab.DYNAMIC),
                     topBarHeightPx = topBarHeightPx,
@@ -222,6 +230,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                videoCardRecycledViewPool = recyclerPools.videoCardPool,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onProfileVideoClick = onProfileVideoClick
             )
@@ -230,6 +239,7 @@ internal fun HomeContentDispatcher(
                 selectedHomeTab = selectedHomeTab,
                 viewModel = viewModel,
                 focusCoordinator = focusCoordinator,
+                videoCardRecycledViewPool = recyclerPools.videoCardPool,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onOpenSettings = onOpenSettings,
                 onProfileVideoClick = onProfileVideoClick
@@ -261,6 +271,7 @@ private fun DynamicTabContent(
     dynamicRefreshRequestId: Int,
     onContentRowFocused: (Int) -> Unit,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     gridColumnCount: Int,
     focusState: HomeRecommendGridFocusState,
     topBarHeightPx: Int,
@@ -278,6 +289,7 @@ private fun DynamicTabContent(
             viewModel = dynamicViewModel,
             onContentRowFocused = onContentRowFocused,
             focusCoordinator = focusCoordinator,
+            videoCardRecycledViewPool = videoCardRecycledViewPool,
             gridColumnCount = gridColumnCount,
             focusState = focusState,
             topBarHeightPx = topBarHeightPx,
@@ -291,6 +303,7 @@ private fun SearchTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onTabSelected: (AppTopLevelTab) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
@@ -303,7 +316,8 @@ private fun SearchTabContent(
             onOpenVideo = onVideoClick,
             onOpenUp = onOpenUp,
             focusCoordinator = focusCoordinator,
-            focusTab = selectedHomeTab
+            focusTab = selectedHomeTab,
+            videoCardRecycledViewPool = videoCardRecycledViewPool
         )
     }
 }
@@ -314,6 +328,7 @@ private fun RecommendTabContent(
     viewModel: HomeViewModel,
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     topBarHeightPx: Int,
     collapsingHeaderState: HomeCollapsingHeaderState,
     restoreInitialScrollIndex: Int,
@@ -327,7 +342,7 @@ private fun RecommendTabContent(
         modifier = Modifier.fillMaxSize(),
         localHeader = null,
     ) { topPadding, onScrollOffset ->
-        if (uiState.videos.isEmpty()) {
+        if (uiState.recommendVideoItems.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -347,76 +362,77 @@ private fun RecommendTabContent(
             }
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-            VideoCardRecyclerGrid(
-                videos = uiState.videos,
-                modifier = Modifier.fillMaxSize(),
-                gridColumnCount = 4,
-                contentPadding = PaddingValues(
-                    start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    top = topPadding + AppTopBarDefaults.HeaderContentTopPadding,
-                    bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
-                ),
-                focusState = recommendGridFocusState,
-                focusCoordinator = focusCoordinator,
-                focusTab = AppTopLevelTab.RECOMMEND,
-                initialScrollPosition = restoreInitialScrollIndex,
-                allowChildDrawingOutsideBounds = false,
-                onVerticalScrollOffsetChanged = onScrollOffset,
-                canLoadMore = { uiState.hasMore && !uiState.isLoading },
-                onLoadMore = viewModel::loadMore,
-                onMenuRefresh = viewModel::refresh,
-                onVideoFocused = { video, _ ->
-                    viewModel.prefetchVideoDetail(video)
-                },
-                onFocusedRowChanged = focusCoordinator::onContentRowFocused,
-                onTopRowDpadUp = {
-                    collapsingHeaderState.reset()
-                    onRequestTopBarFocus(HomeFocusScene.BackToTopBar)
-                },
-                onBackToTopBar = {
-                    HomeRecommendBackReturnPolicy.handleBackToTopBar(
-                        resetGridToTop = {
-                            collapsingHeaderState.reset()
-                            recommendGridFocusState.resetRememberedFocusToTopForTopBarReturn()
-                        },
-                        requestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
-                    )
-                },
-                onVideoLongClick = { video, key ->
-                    onOpenRecommendMenu(video, key)
-                },
-                onVideoClick = { video, key ->
-                    viewModel.primeVideoDetail(video)
-                    onRecommendVideoClick(key, video)
-                }
-            )
-            uiState.refreshErrorMessage?.let { message ->
-                LaunchedEffect(message) {
-                    kotlinx.coroutines.delay(3_000L)
-                    viewModel.clearRefreshErrorMessage()
-                }
-                Text(
-                    text = "刷新失败：$message",
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(
-                            top = AppTopBarDefaults.HeaderContentTopPadding,
-                            end = AppTopBarDefaults.HeaderContentHorizontalPadding
+                VideoCardRecyclerGridItems(
+                    items = uiState.recommendVideoItems,
+                    modifier = Modifier.fillMaxSize(),
+                    gridColumnCount = 4,
+                    contentPadding = PaddingValues(
+                        start = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                        end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                        top = topPadding + AppTopBarDefaults.HeaderContentTopPadding,
+                        bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
+                    ),
+                    focusState = recommendGridFocusState,
+                    focusCoordinator = focusCoordinator,
+                    focusTab = AppTopLevelTab.RECOMMEND,
+                    initialScrollPosition = restoreInitialScrollIndex,
+                    allowChildDrawingOutsideBounds = false,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool,
+                    onVerticalScrollOffsetChanged = onScrollOffset,
+                    canLoadMore = { uiState.hasMore && !uiState.isLoading },
+                    onLoadMore = viewModel::loadMore,
+                    onMenuRefresh = viewModel::refresh,
+                    onVideoFocused = { video, _ ->
+                        viewModel.prefetchVideoDetail(video)
+                    },
+                    onFocusedRowChanged = focusCoordinator::onContentRowFocused,
+                    onTopRowDpadUp = {
+                        collapsingHeaderState.reset()
+                        onRequestTopBarFocus(HomeFocusScene.BackToTopBar)
+                    },
+                    onBackToTopBar = {
+                        HomeRecommendBackReturnPolicy.handleBackToTopBar(
+                            resetGridToTop = {
+                                collapsingHeaderState.reset()
+                                recommendGridFocusState.resetRememberedFocusToTopForTopBarReturn()
+                            },
+                            requestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
                         )
-                        .background(
-                            color = Color(0xCC2A1515),
-                            shape = RoundedCornerShape(999.dp)
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                    },
+                    onVideoLongClick = { video, key ->
+                        onOpenRecommendMenu(video, key)
+                    },
+                    onVideoClick = { video, key ->
+                        viewModel.primeVideoDetail(video)
+                        onRecommendVideoClick(key, video)
+                    }
                 )
+                uiState.refreshErrorMessage?.let { message ->
+                    LaunchedEffect(message) {
+                        kotlinx.coroutines.delay(3_000L)
+                        viewModel.clearRefreshErrorMessage()
+                    }
+                    Text(
+                        text = "刷新失败：$message",
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(
+                                top = AppTopBarDefaults.HeaderContentTopPadding,
+                                end = AppTopBarDefaults.HeaderContentHorizontalPadding
+                            )
+                            .background(
+                                color = Color(0xCC2A1515),
+                                shape = RoundedCornerShape(999.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
             }
         }
-    }
     }
 }
 
@@ -425,6 +441,7 @@ private fun WatchLaterTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit
 ) {
@@ -435,7 +452,8 @@ private fun WatchLaterTabContent(
             },
             onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             focusCoordinator = focusCoordinator,
-            focusTab = AppTopLevelTab.WATCH_LATER
+            focusTab = AppTopLevelTab.WATCH_LATER,
+            videoCardRecycledViewPool = videoCardRecycledViewPool
         )
     }
 }
@@ -445,6 +463,7 @@ private fun ProfileTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit
@@ -457,7 +476,8 @@ private fun ProfileTabContent(
             },
             onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             focusCoordinator = focusCoordinator,
-            focusTab = selectedHomeTab
+            focusTab = selectedHomeTab,
+            videoCardRecycledViewPool = videoCardRecycledViewPool
         )
     }
 }

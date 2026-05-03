@@ -54,7 +54,9 @@ data class PlaybackSource(
     val hasDolbyVisionTrack: Boolean,
     val hasDolbyAudioTrack: Boolean,
     val capabilityHints: List<String>,
-    val resumePositionMs: Long = 0L
+    val resumePositionMs: Long = 0L,
+    val selectedDashVideo: DashVideo? = null,
+    val selectedDashAudio: DashAudio? = null
 )
 
 data class ResumePlaybackCandidate(
@@ -309,7 +311,9 @@ class VideoPlaybackUseCase {
                 hasDolbyVisionTrack = hasDolbyVisionTrack,
                 hasDolbyAudioTrack = hasDolbyAudioTrack,
                 capabilityHints = capabilityHints,
-                resumePositionMs = resumePositionMs
+                resumePositionMs = resumePositionMs,
+                selectedDashVideo = dashVideo,
+                selectedDashAudio = dashAudio
             )
 
             segmentUrls.isNotEmpty() -> PlaybackSource(
@@ -394,7 +398,9 @@ class VideoPlaybackUseCase {
             selectedVideoFrameRate = selectedVideo.frameRate,
             selectedVideoBandwidth = selectedVideo.bandwidth,
             selectedAudioBandwidth = selectedAudio?.bandwidth ?: 0,
-            activeDynamicRangeLabel = resolveDynamicRangeLabel(selectedVideo.id)
+            activeDynamicRangeLabel = resolveDynamicRangeLabel(selectedVideo.id),
+            selectedDashVideo = selectedVideo,
+            selectedDashAudio = selectedAudio
         )
     }
 

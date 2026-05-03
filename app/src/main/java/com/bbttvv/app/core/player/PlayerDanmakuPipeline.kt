@@ -40,11 +40,22 @@ internal data class PlayerDanmakuLoadResult(
     val filterContext: PlayerDanmakuFilterContext,
 )
 
+/**
+ * 弹幕渲染管线
+ *
+ * 三阶段管线：
+ * 1. loadSegmentSource(): 加载分段，优先 Protobuf，fallback XML
+ * 2. buildRenderPayload(): 全局过滤 → 插件过滤 → 构建 DanmakuRenderPayload
+ * 3. 样式管线: DanmakuPlugin.styleDanmaku() + JsonPluginManager.getDanmakuStyle()
+ *
+ * 插件管线：先 DanmakuPlugin.filterDanmaku()，再 JsonPluginManager.shouldShowDanmaku()
+ */
 internal object PlayerDanmakuPipeline {
     suspend fun loadSegmentSource(
         cid: Long,
         aid: Long = 0L,
         segmentIndex: Int = 1,
+        allowXmlFallback: Boolean = true,
     ): PlayerDanmakuLoadResult {
         val localSettings = resolveDanmakuSettings()
         val shouldFollowBiliShield =
@@ -81,6 +92,15 @@ internal object PlayerDanmakuPipeline {
                 parsed = segmented,
                 rawData = null,
                 sourceLabel = "SEG_$segmentIndex",
+                filterContext = filterContext,
+            )
+        }
+
+        if (!allowXmlFallback) {
+            return PlayerDanmakuLoadResult(
+                parsed = null,
+                rawData = null,
+                sourceLabel = "SEG_EMPTY_$segmentIndex",
                 filterContext = filterContext,
             )
         }

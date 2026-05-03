@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class BlockedUpRepository(context: Context) {
-    private val blockedUpDao = AppDatabase.getDatabase(context).blockedUpDao()
+    private val blockedUpDao = AppDatabase.getDatabase(context.applicationContext).blockedUpDao()
 
     fun getAllBlockedUps(): Flow<List<BlockedUp>> = blockedUpDao.getAllBlockedUps()
 

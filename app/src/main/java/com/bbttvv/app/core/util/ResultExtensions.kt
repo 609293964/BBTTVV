@@ -1,6 +1,8 @@
 ﻿// 文件路径: core/util/ResultExtensions.kt
 package com.bbttvv.app.core.util
 
+import kotlinx.coroutines.CancellationException
+
 /**
  * Result 扩展工具类
  * 
@@ -10,11 +12,17 @@ package com.bbttvv.app.core.util
 /**
  * 安全执行挂起函数，自动捕获异常并包装为 Result
  */
-suspend inline fun <T> safeApiCall(crossinline block: suspend () -> T): Result<T> {
+suspend inline fun <T> safeApiCall(
+    tag: String = "SafeApiCall",
+    crossinline errorMessage: (Throwable) -> String = { "API call failed: ${it.message}" },
+    crossinline block: suspend () -> T
+): Result<T> {
     return try {
         Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
-        Logger.e("SafeApiCall", " API call failed: ${e.message}")
+        Logger.e(tag, errorMessage(e), e)
         Result.failure(e)
     }
 }
@@ -22,25 +30,30 @@ suspend inline fun <T> safeApiCall(crossinline block: suspend () -> T): Result<T
 /**
  * 安全执行挂起函数，失败时返回默认值
  */
-suspend inline fun <T> safeApiCallOrDefault(default: T, crossinline block: suspend () -> T): T {
-    return try {
-        block()
-    } catch (e: Exception) {
-        Logger.e("SafeApiCall", " API call failed, using default: ${e.message}")
-        default
-    }
+suspend inline fun <T> safeApiCallOrDefault(
+    default: T,
+    tag: String = "SafeApiCall",
+    crossinline errorMessage: (Throwable) -> String = { "API call failed, using default: ${it.message}" },
+    crossinline block: suspend () -> T
+): T {
+    return safeApiCall(
+        tag = tag,
+        errorMessage = errorMessage
+    ) { block() }.getOrDefault(default)
 }
 
 /**
  * 安全执行挂起函数，失败时返回 null
  */
-suspend inline fun <T> safeApiCallOrNull(crossinline block: suspend () -> T): T? {
-    return try {
-        block()
-    } catch (e: Exception) {
-        Logger.e("SafeApiCall", " API call failed, returning null: ${e.message}")
-        null
-    }
+suspend inline fun <T> safeApiCallOrNull(
+    tag: String = "SafeApiCall",
+    crossinline errorMessage: (Throwable) -> String = { "API call failed, returning null: ${it.message}" },
+    crossinline block: suspend () -> T
+): T? {
+    return safeApiCall(
+        tag = tag,
+        errorMessage = errorMessage
+    ) { block() }.getOrNull()
 }
 
 /**

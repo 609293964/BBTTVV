@@ -17,9 +17,7 @@ import coil.size.Size
 import coil.transform.CircleCropTransformation
 import com.bbttvv.app.R
 import com.bbttvv.app.core.util.FormatUtils
-import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.databinding.ItemVideoCardBinding
-import com.bbttvv.app.ui.components.stableVideoItemKeys
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
 
 private val avatarCircleCropTransformation = CircleCropTransformation()
@@ -41,6 +39,8 @@ internal class HomeVideoCardAdapter(
         setHasStableIds(true)
         stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
     }
+
+    override fun getItemViewType(position: Int): Int = HomeRecyclerViewTypes.VideoCard
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val binding = ItemVideoCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -349,30 +349,4 @@ private fun isVideoCardBackKey(keyCode: Int): Boolean {
     return keyCode == KeyEvent.KEYCODE_BACK ||
         keyCode == KeyEvent.KEYCODE_ESCAPE ||
         keyCode == KeyEvent.KEYCODE_BUTTON_B
-}
-
-internal data class HomeRecommendVideoCardItem(
-    val key: String,
-    val stableId: Long,
-    val video: VideoItem,
-)
-
-internal fun List<VideoItem>.toHomeRecommendVideoCardItems(): List<HomeRecommendVideoCardItem> {
-    val keys = stableVideoItemKeys()
-    return mapIndexed { index, video ->
-        val key = keys[index]
-        HomeRecommendVideoCardItem(
-            key = key,
-            stableId = stableLongHash(key),
-            video = video,
-        )
-    }
-}
-
-private fun stableLongHash(value: String): Long {
-    var hash = 1125899906842597L
-    for (char in value) {
-        hash = 31 * hash + char.code
-    }
-    return hash and Long.MAX_VALUE
 }

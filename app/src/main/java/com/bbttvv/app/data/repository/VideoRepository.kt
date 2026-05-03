@@ -7,6 +7,8 @@ import com.bbttvv.app.data.model.response.*
 import com.bbttvv.app.data.service.video.VideoCacheService
 import com.bbttvv.app.data.service.video.VideoSessionService
 import com.bbttvv.app.core.util.SubtitleCue
+import com.bbttvv.app.core.util.safeApiCall
+import com.bbttvv.app.core.util.safeApiCallOrDefault
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -137,7 +139,10 @@ object VideoRepository {
         bvid: String,
         aid: Long = 0L
     ): Result<String> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "VideoRepo",
+            errorMessage = { "getVideoTitle failed: bvid=$bvid, aid=$aid" }
+        ) {
             val lookup = resolveVideoInfoLookupInput(rawBvid = bvid, aid = aid)
                 ?: throw Exception("无效的视频标识: bvid=$bvid, aid=$aid")
             val response = if (lookup.bvid.isNotEmpty()) {
@@ -148,9 +153,7 @@ object VideoRepository {
             val info = response.data ?: throw Exception("视频详情为空: ${response.code}")
             val title = info.title.trim()
             if (title.isEmpty()) throw Exception("视频标题为空")
-            Result.success(title)
-        } catch (e: Exception) {
-            Result.failure(e)
+            title
         }
     }
     
@@ -319,15 +322,16 @@ object VideoRepository {
         graphVersion: Long,
         edgeId: Long? = null
     ): Result<InteractEdgeInfoData> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "VideoRepo",
+            errorMessage = { "getInteractEdgeInfo failed: bvid=$bvid, graphVersion=$graphVersion" }
+        ) {
             val response = api.getInteractEdgeInfo(bvid = bvid, graphVersion = graphVersion, edgeId = edgeId)
             if (response.code == 0 && response.data != null) {
-                Result.success(response.data)
+                response.data
             } else {
-                Result.failure(Exception(response.message.ifBlank { "互动分支信息加载失败(${response.code})" }))
+                throw Exception(response.message.ifBlank { "互动分支信息加载失败(${response.code})" })
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
     
@@ -526,15 +530,17 @@ object VideoRepository {
     }
 
     private suspend fun fetchAndCacheRelatedVideos(cacheKey: String): List<RelatedVideo> {
-        return try {
+        return safeApiCallOrDefault(
+            default = emptyList(),
+            tag = "VideoRepo",
+            errorMessage = { "fetchAndCacheRelatedVideos failed: bvid=$cacheKey" }
+        ) {
             val related = api.getRelatedVideos(cacheKey).data ?: emptyList()
             if (related.isNotEmpty()) {
                 relatedVideosCache[cacheKey] = related
                 related.forEach(::cacheVideoPreview)
             }
             related
-        } catch (e: Exception) {
-            emptyList()
         }
     }
 

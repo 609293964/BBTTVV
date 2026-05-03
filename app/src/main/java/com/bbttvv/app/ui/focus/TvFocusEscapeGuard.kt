@@ -5,6 +5,13 @@ import android.view.View
 import androidx.compose.runtime.staticCompositionLocalOf
 import java.util.LinkedHashMap
 
+/**
+ * TV 焦点逃逸防护
+ *
+ * 在 MainActivity.dispatchKeyEvent 中拦截焦点逃逸事件，防止焦点跑到不可预期的 View。
+ * 通过 CompositionLocalProvider 注入 Compose 树，各页面通过 LocalTvFocusEscapeGuard 访问。
+ * 注册 TvFocusEscapeTarget 可声明焦点逃逸恢复策略。
+ */
 internal val LocalTvFocusEscapeGuard = staticCompositionLocalOf<TvFocusEscapeGuard?> { null }
 
 internal enum class TvFocusEscapeReason {

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -70,6 +71,7 @@ internal fun SearchScreen(
     onOpenUp: (Long) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     viewModel: SearchViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -289,6 +291,7 @@ internal fun SearchScreen(
                     scrollResetKey = uiState.searchType,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool,
                     canLoadMore = {
                         uiState.hasMoreResults &&
                             !uiState.isSearching &&

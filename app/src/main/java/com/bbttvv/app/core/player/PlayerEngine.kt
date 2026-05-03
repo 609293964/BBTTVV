@@ -44,7 +44,7 @@ internal class ExoPlayerEngine(
     override var volume: Float
         get() = player.volume
         set(value) {
-            player.volume = value
+            player.volume = value.coerceIn(0f, 2f)
         }
 
     override fun seekTo(positionMs: Long) {

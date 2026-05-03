@@ -1,4 +1,4 @@
-﻿package com.bbttvv.app.core.util
+package com.bbttvv.app.core.util
 
 enum class ClosestTargetFallback {
     NEAREST_HIGHER,
@@ -23,4 +23,3 @@ fun List<Int>.findClosestTarget(
         ClosestTargetFallback.LOWEST_AVAILABLE -> minOrNull()
     }
 }
-

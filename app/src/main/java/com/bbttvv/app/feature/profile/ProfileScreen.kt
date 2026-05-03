@@ -38,6 +38,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -68,11 +69,11 @@ private val profileMenuDisplayOrder = listOf(
     ProfileMenu.FAVORITE,
     ProfileMenu.BANGUMI,
     ProfileMenu.WATCH_LATER,
-    ProfileMenu.SWITCH_ACCOUNT,
-    ProfileMenu.CHANGE_ICON,
     ProfileMenu.SETTINGS,
     ProfileMenu.DANMAKU_SETTINGS,
     ProfileMenu.PLUGINS,
+    ProfileMenu.SWITCH_ACCOUNT,
+    ProfileMenu.CHANGE_ICON,
     ProfileMenu.GUIDE,
     ProfileMenu.LOGOUT
 )
@@ -89,6 +90,7 @@ internal fun ProfileScreen(
     onRequestTopBarFocus: () -> Boolean = { false },
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -166,6 +168,7 @@ internal fun ProfileScreen(
                         onRequestTopBarFocus = onRequestTopBarFocus,
                         focusCoordinator = focusCoordinator,
                         focusTab = focusTab,
+                        videoCardRecycledViewPool = videoCardRecycledViewPool,
                         onSelectMenu = { menu ->
                             if (menu == ProfileMenu.LOGOUT) {
                                 viewModel.logout(removeStoredAccount = false)
@@ -202,6 +205,7 @@ internal fun WatchLaterVideosScreen(
     onRequestTopBarFocus: () -> Boolean = { false },
     focusCoordinator: com.bbttvv.app.ui.home.HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -261,6 +265,7 @@ internal fun WatchLaterVideosScreen(
                 ),
                 focusCoordinator = focusCoordinator,
                 focusTab = focusTab,
+                videoCardRecycledViewPool = videoCardRecycledViewPool,
                 resetGridToTop = true,
                 onBackToTopBar = onRequestTopBarFocus,
                 onRequestSidebarFocus = onRequestTopBarFocus
@@ -278,6 +283,7 @@ private fun LoggedInProfileLayout(
     onRequestTopBarFocus: () -> Boolean,
     focusCoordinator: HomeFocusCoordinator?,
     focusTab: AppTopLevelTab?,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onSelectMenu: (ProfileMenu) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenVideo: (VideoItem) -> Unit,
@@ -358,6 +364,7 @@ private fun LoggedInProfileLayout(
             onPrepareRelogin = onPrepareRelogin,
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
+            videoCardRecycledViewPool = videoCardRecycledViewPool,
             onRequestSidebarFocus = profileFocusCoordinator::requestSidebarFocus
         )
     }
@@ -395,6 +402,7 @@ private fun ProfileContentPanel(
     onPrepareRelogin: () -> Unit,
     focusCoordinator: HomeFocusCoordinator?,
     focusTab: AppTopLevelTab?,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestSidebarFocus: () -> Boolean
 ) {
     Box(modifier = modifier) {
@@ -417,7 +425,8 @@ private fun ProfileContentPanel(
                     onLoadMore = onLoadMoreHistory,
                     onRequestSidebarFocus = onRequestSidebarFocus,
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
                 ProfileMenu.SETTINGS -> ProfileSettingsPanel(
                     focusCoordinator = focusCoordinator,
@@ -440,7 +449,8 @@ private fun ProfileContentPanel(
                     onLoadMore = onLoadMoreFavorites,
                     onRequestSidebarFocus = onRequestSidebarFocus,
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
                 ProfileMenu.BANGUMI -> ProfilePlaceholderPanel("我的追番", "追番/追剧区域入口已经预留。")
                 ProfileMenu.WATCH_LATER -> ProfileWatchLaterPanel(
@@ -452,6 +462,7 @@ private fun ProfileContentPanel(
                     onRemoveVideo = onRemoveWatchLater,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool,
                     focusRegion = HomeFocusRegion.ProfileContent,
                     onRequestSidebarFocus = onRequestSidebarFocus
                 )

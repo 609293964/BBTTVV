@@ -1,4 +1,4 @@
-﻿package com.bbttvv.app.core.store
+package com.bbttvv.app.core.store
 
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -26,11 +26,16 @@ fun resolvePreferredPlaybackSpeed(
 }
 
 const val DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE = 1.0f
-val PLAYER_VOLUME_CALIBRATION_SCALES = listOf(1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f)
+const val PLAYER_VOLUME_CALIBRATION_MIN = 0.0f
+const val PLAYER_VOLUME_CALIBRATION_MAX = 2.0f
+const val PLAYER_VOLUME_CALIBRATION_STEP = 0.1f
+
+val PLAYER_VOLUME_CALIBRATION_SCALES: List<Float> =
+    (20 downTo 0).map { it / 10f }
 
 fun normalizePlayerVolumeCalibrationScale(scale: Float): Float {
     if (!scale.isFinite()) return DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE
-    if (scale < PLAYER_VOLUME_CALIBRATION_SCALES.last() || scale > DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE) {
+    if (scale < PLAYER_VOLUME_CALIBRATION_MIN || scale > PLAYER_VOLUME_CALIBRATION_MAX) {
         return DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE
     }
     return PLAYER_VOLUME_CALIBRATION_SCALES.minByOrNull { option -> abs(option - scale) }
@@ -49,10 +54,11 @@ fun nextPlayerVolumeCalibrationScale(scale: Float): Float {
 
 fun formatPlayerVolumeCalibrationLabel(scale: Float): String {
     val normalized = normalizePlayerVolumeCalibrationScale(scale)
-    return if (abs(normalized - DEFAULT_PLAYER_VOLUME_CALIBRATION_SCALE) < 0.001f) {
-        "关闭"
+    val percent = (normalized * 100).roundToInt()
+    return if (percent == 100) {
+        "正常"
     } else {
-        "${(normalized * 100).roundToInt()}%"
+        "$percent%"
     }
 }
 

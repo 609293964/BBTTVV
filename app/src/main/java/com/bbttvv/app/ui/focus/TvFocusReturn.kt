@@ -6,6 +6,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.focus.FocusRequester
 
+/**
+ * TV 焦点返回
+ *
+ * 通过 CompositionLocal 向下传递，支持跨页面的焦点返回语义。
+ * 各页面注册 TvFocusReturnTarget 声明可恢复的焦点目标，
+ * 调用方通过 capture/restore/clear 管理焦点返回流程。
+ */
 internal val LocalTvFocusReturn = staticCompositionLocalOf<TvFocusReturn?> { null }
 
 internal interface TvFocusReturnTarget {

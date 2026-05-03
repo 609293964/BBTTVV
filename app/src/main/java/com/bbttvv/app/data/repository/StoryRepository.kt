@@ -2,9 +2,11 @@
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.util.Logger
+import com.bbttvv.app.core.util.safeApiCall
+import com.bbttvv.app.core.util.safeApiCallOrNull
 import com.bbttvv.app.data.model.response.StoryItem
 import com.bbttvv.app.data.model.response.getBestAudio
-import com.bbttvv.app.core.util.Logger
 
 /**
  * Story 模式播放 URL 数据类
@@ -33,7 +35,10 @@ object StoryRepository {
         bvid: String = "",
         pageSize: Int = 20
     ): Result<List<StoryItem>> {
-        return try {
+        return safeApiCall(
+            tag = TAG,
+            errorMessage = { "获取故事流异常" }
+        ) {
             val response = NetworkModule.storyApi.getStoryFeed(
                 ps = pageSize,
                 aid = aid,
@@ -43,14 +48,11 @@ object StoryRepository {
             if (response.code == 0 && response.data != null) {
                 val items = response.data.items ?: emptyList()
                 Logger.d(TAG, " 获取故事流成功: ${items.size} 条视频")
-                Result.success(items)
+                items
             } else {
                 Logger.e(TAG, " 获取故事流失败: code=${response.code}, msg=${response.message}")
-                Result.failure(Exception("获取失败: ${response.message}"))
+                throw Exception("获取失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            Logger.e(TAG, " 获取故事流异常", e)
-            Result.failure(e)
         }
     }
     
@@ -64,13 +66,13 @@ object StoryRepository {
             Logger.e(TAG, " bvid 为空，无法获取播放 URL")
             return null
         }
-        return try {
+        return safeApiCallOrNull(
+            tag = TAG,
+            errorMessage = { "获取播放 URL 异常" }
+        ) {
             // 复用 VideoRepository 的播放 URL 获取逻辑
             val playData = PlaybackRepository.getPlayUrlData(bvid, cid, 80)
             extractPlayUrls(playData)?.videoUrl
-        } catch (e: Exception) {
-            Logger.e(TAG, " 获取播放 URL 异常", e)
-            null
         }
     }
     
@@ -85,7 +87,10 @@ object StoryRepository {
             Logger.e(TAG, " aid=$aid 或 cid=$cid 无效")
             return null
         }
-        return try {
+        return safeApiCallOrNull(
+            tag = TAG,
+            errorMessage = { "获取播放 URL 异常" }
+        ) {
             Logger.d(TAG, " 获取播放 URL: aid=$aid, cid=$cid")
             
             // 使用 Legacy API 通过 aid 获取播放地址
@@ -95,14 +100,11 @@ object StoryRepository {
                 val urls = extractPlayUrls(response.data)
                 if (urls != null) {
                     Logger.d(TAG, " 获取播放 URL 成功: video=${urls.videoUrl.take(50)}..., hasAudio=${urls.audioUrl != null}")
-                    return urls
+                    return@safeApiCallOrNull urls
                 }
             }
             
             Logger.e(TAG, " 获取播放 URL 失败: code=${response.code}")
-            null
-        } catch (e: Exception) {
-            Logger.e(TAG, " 获取播放 URL 异常", e)
             null
         }
     }

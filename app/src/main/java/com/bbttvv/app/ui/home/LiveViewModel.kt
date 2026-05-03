@@ -146,15 +146,13 @@ class LiveViewModel : ViewModel() {
         val category = _uiState.value.categories.getOrNull(index) ?: return
         val categoryKey = category.id
         val paging = pagingForCategory(categoryKey)
-        if (refresh) {
-            paging.reset()
-        } else {
-            val snapshot = paging.snapshot()
+        val snapshot = paging.snapshot()
+        if (!refresh) {
             if (snapshot.isLoading || snapshot.endReached) return
         }
 
-        val startGeneration = paging.snapshot().generation
-        val page = paging.snapshot().nextKey
+        val expectedGeneration = if (refresh) snapshot.generation + 1 else snapshot.generation
+        val page = if (refresh) 1 else snapshot.nextKey
         _uiState.update {
             val selectedKey = it.categories.getOrNull(it.selectedCategoryIndex)?.id
             if (selectedKey == categoryKey) {
@@ -170,22 +168,31 @@ class LiveViewModel : ViewModel() {
 
         try {
             Logger.d("LiveViewModel", "Loading live category=${category.label}, parent=${category.parentAreaId}, page=$page")
-            val loadResult = paging.loadNextPage(
-                isRefresh = refresh,
-                fetch = { pageKey ->
+            val fetchPage: suspend (Int) -> List<LiveRoom> = { pageKey ->
                     LiveRepository.getLiveRooms(
                         page = pageKey,
                         parentAreaId = category.parentAreaId
                     ).getOrElse { error -> throw error }
-                },
-                reduce = { pageKey, rooms ->
-                    PagedGridStateMachine.Update(
-                        items = rooms,
-                        nextKey = if (rooms.isNotEmpty()) pageKey + 1 else pageKey,
-                        endReached = rooms.isEmpty()
-                    )
                 }
-            )
+            val reducePage: (Int, List<LiveRoom>) -> PagedGridStateMachine.Update<Int, LiveRoom> = { pageKey, rooms ->
+                PagedGridStateMachine.Update(
+                    items = rooms,
+                    nextKey = if (rooms.isNotEmpty()) pageKey + 1 else pageKey,
+                    endReached = rooms.isEmpty()
+                )
+            }
+            val loadResult = if (refresh) {
+                paging.refresh(
+                    fetch = fetchPage,
+                    reduce = reducePage
+                )
+            } else {
+                paging.loadNextPage(
+                    isRefresh = false,
+                    fetch = fetchPage,
+                    reduce = reducePage
+                )
+            }
 
             val applied = loadResult.appliedOrNull() ?: return
             val mergedRooms = if (refresh) {
@@ -212,7 +219,7 @@ class LiveViewModel : ViewModel() {
             }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            if (paging.snapshot().generation != startGeneration) return
+            if (paging.snapshot().generation != expectedGeneration) return
             Logger.e("LiveViewModel", "Failed to load live category=${category.label}", error)
             _uiState.update { state ->
                 val selectedKey = state.categories.getOrNull(state.selectedCategoryIndex)?.id

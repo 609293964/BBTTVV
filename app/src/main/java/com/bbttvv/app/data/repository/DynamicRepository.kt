@@ -196,7 +196,7 @@ object DynamicRepository {
 
             Result.success(visibleItems)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("DynamicRepo", "getDynamicFeed failed: scope=$scope, refresh=$refresh", e)
             Result.failure(e)
         }
     }
@@ -274,7 +274,7 @@ object DynamicRepository {
 
             Result.success(visibleItems)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("DynamicRepo", "getUserDynamicFeed failed: hostMid=$hostMid, refresh=$refresh", e)
             Result.failure(e)
         }
     }
@@ -323,7 +323,7 @@ object DynamicRepository {
                 )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("DynamicRepo", "getDynamicDetail failed: dynamicId=$dynamicId", e)
             Result.failure(e)
         }
     }
@@ -392,7 +392,7 @@ object DynamicRepository {
                 Result.failure(Exception(response.message.ifBlank { "Failed to fetch followed live" }))
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("DynamicRepo", "getFollowedLiveUsers failed: page=$page, pageSize=$pageSize", e)
             Result.failure(e)
         }
     }
@@ -429,7 +429,7 @@ object DynamicRepository {
                 ?: Exception("关注更新加载失败")
             Result.failure(error)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e(DYNAMIC_FOLLOW_UPDATES_TAG, "getFollowUpdateItems failed", e)
             Result.failure(e)
         }
     }
@@ -446,7 +446,7 @@ object DynamicRepository {
                 Result.failure(Exception(response.message.ifBlank { "关注更新提示同步失败(${response.code})" }))
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e(DYNAMIC_FOLLOW_UPDATES_TAG, "consumeFollowUpdatePrompt failed: mid=$mid", e)
             Result.failure(e)
         }
     }

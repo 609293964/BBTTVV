@@ -13,6 +13,7 @@ import com.bbttvv.app.core.player.BasePlayerViewModel
 import com.bbttvv.app.core.player.PlayerAudioBalanceController
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.CrashReporter
+import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.data.model.response.LivePlayUrlData
 import com.bbttvv.app.data.model.response.LiveQuality
@@ -280,6 +281,18 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     }
 
     @MainThread
+    override fun detachPlayer(player: ExoPlayer?) {
+        ensureMainThread("LivePlayerViewModel.detachPlayer")
+        val currentPlayer = exoPlayer
+        if (player == null || currentPlayer === player) {
+            currentPlayer?.removeListener(playerListener)
+            super.detachPlayer(player)
+        } else {
+            player.removeListener(playerListener)
+        }
+    }
+
+    @MainThread
     fun loadLive(roomId: Long, force: Boolean = false) {
         ensureMainThread("loadLive")
         if (roomId <= 0L) {
@@ -404,7 +417,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                         }
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Logger.e("LivePlayerVM", "Failed to load live room detail fallback: roomId=$roomId", e)
                 }
             }
 

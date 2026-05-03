@@ -309,7 +309,7 @@ object SubtitleAndAuxRepository {
                             IllegalStateException("字幕请求失败: HTTP ${call.code}")
                         )
                     }
-                    val rawJson = call.body?.string().orEmpty()
+                    val rawJson = call.body.string()
                     val cues = com.bbttvv.app.core.util.parseBiliSubtitleBody(rawJson)
                     subtitleCueCache[cacheKey] = cues
                     Result.success(cues)

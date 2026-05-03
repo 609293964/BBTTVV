@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.bbttvv.app.core.player.AudioBalanceLevel
 import com.bbttvv.app.core.store.normalizePlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.normalizePlaybackSpeed
 import com.bbttvv.app.core.store.resolvePreferredPlaybackSpeed
@@ -17,12 +19,16 @@ object PlayerSettingsStore {
     private val keyRememberLastPlaybackSpeed = booleanPreferencesKey("remember_last_playback_speed")
     private val keyLastPlaybackSpeed = floatPreferencesKey("last_playback_speed")
     private val keyVolumeCalibrationScale = floatPreferencesKey("volume_calibration_scale")
+    private val keyAudioBalanceLevel = stringPreferencesKey("audio_balance_level")
+    private val keyAudioPassthrough = booleanPreferencesKey("audio_passthrough")
 
     private const val playbackSpeedCachePrefs = "playback_speed_cache"
     private const val cacheKeyDefaultPlaybackSpeed = "default_speed"
     private const val cacheKeyRememberLastSpeed = "remember_last_speed"
     private const val cacheKeyLastPlaybackSpeed = "last_speed"
     private const val cacheKeyVolumeCalibrationScale = "volume_calibration_scale"
+    private const val cacheKeyAudioBalanceLevel = "audio_balance_level"
+    private const val cacheKeyAudioPassthrough = "audio_passthrough"
 
     fun getDefaultPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
         .map { preferences -> normalizePlaybackSpeed(preferences[keyDefaultPlaybackSpeed] ?: 1.0f) }
@@ -102,5 +108,45 @@ object PlayerSettingsStore {
         return normalizePlayerVolumeCalibrationScale(
             prefs.getFloat(cacheKeyVolumeCalibrationScale, 1.0f)
         )
+    }
+
+    fun getAudioBalanceLevel(context: Context): Flow<AudioBalanceLevel> = context.settingsDataStore.data
+        .map { preferences ->
+            AudioBalanceLevel.fromPrefValue(preferences[keyAudioBalanceLevel] ?: AudioBalanceLevel.Off.prefValue)
+        }
+
+    suspend fun setAudioBalanceLevel(context: Context, level: AudioBalanceLevel) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyAudioBalanceLevel] = level.prefValue
+        }
+        context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+            .edit()
+            .putString(cacheKeyAudioBalanceLevel, level.prefValue)
+            .apply()
+    }
+
+    fun getAudioBalanceLevelSync(context: Context): AudioBalanceLevel {
+        val prefs = context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+        return AudioBalanceLevel.fromPrefValue(
+            prefs.getString(cacheKeyAudioBalanceLevel, AudioBalanceLevel.Off.prefValue) ?: AudioBalanceLevel.Off.prefValue
+        )
+    }
+
+    fun getAudioPassthrough(context: Context): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences -> preferences[keyAudioPassthrough] ?: false }
+
+    suspend fun setAudioPassthrough(context: Context, enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyAudioPassthrough] = enabled
+        }
+        context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(cacheKeyAudioPassthrough, enabled)
+            .apply()
+    }
+
+    fun getAudioPassthroughSync(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+        return prefs.getBoolean(cacheKeyAudioPassthrough, false)
     }
 }

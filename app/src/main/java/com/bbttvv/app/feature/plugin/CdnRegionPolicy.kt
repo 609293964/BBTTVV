@@ -98,14 +98,12 @@ internal fun resolveCdnRegionHosts(
     cachedHosts: List<String>,
     catalog: Map<String, List<String>>
 ): List<String> {
+    if (region.isBlank()) return emptyList()
     val catalogHosts = catalog[region].orEmpty()
-    if (cachedHosts.isEmpty()) return catalogHosts
-    if (catalogHosts.isEmpty()) return cachedHosts.distinct()
-    return if (cachedHosts.all { it in catalogHosts }) {
-        cachedHosts.distinct()
-    } else {
-        catalogHosts
-    }
+    val distinctCachedHosts = cachedHosts.distinct()
+    if (distinctCachedHosts.isEmpty()) return emptyList()
+    if (catalogHosts.isEmpty()) return distinctCachedHosts
+    return distinctCachedHosts.filter { it in catalogHosts }
 }
 
 internal fun hasUsableCdnRegionSelection(

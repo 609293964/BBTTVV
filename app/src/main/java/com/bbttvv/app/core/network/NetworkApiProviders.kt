@@ -143,7 +143,7 @@ internal object MessagingMediaApiProvider {
     }
 }
 
-private fun <T> createNetworkApi(
+private fun <T : Any> createNetworkApi(
     baseUrl: String,
     client: OkHttpClient,
     serviceClass: Class<T>,

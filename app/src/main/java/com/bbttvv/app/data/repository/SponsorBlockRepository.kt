@@ -59,7 +59,7 @@ object SponsorBlockRepository {
             
             when (response.code) {
                 200 -> {
-                    val body = response.body?.string() ?: return@withContext emptyList()
+                    val body = response.body.string()
                     val segments = json.decodeFromString<List<SponsorSegment>>(body)
                     android.util.Log.d(TAG, "获取到 ${segments.size} 个空降片段 for $bvid")
                     segments.filter { it.isSkipType } // 只返回跳过类型的片段

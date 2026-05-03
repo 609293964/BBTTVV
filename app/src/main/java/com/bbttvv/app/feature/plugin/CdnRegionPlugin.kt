@@ -21,6 +21,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.net.InetAddress
 
 const val CDN_REGION_PLUGIN_ID = "cdn_region"
 private const val CdnRegionPluginTag = "CdnRegionPlugin"
@@ -69,7 +70,13 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
     override suspend fun onEnable() {
         val context = PluginManager.getContext()
         val loaded = withContext(Dispatchers.IO) {
-            loadCdnRegionCatalog(context) to CdnRegionPluginStore.read(context)
+            val loadedCatalog = loadCdnRegionCatalog(context)
+            val savedCache = CdnRegionPluginStore.read(context)
+            val storedCache = verifyCachedCdnSelection(savedCache)
+            if (storedCache != savedCache) {
+                CdnRegionPluginStore.write(context, storedCache)
+            }
+            loadedCatalog to storedCache
         }
         catalog = loaded.first
         updateCache(loaded.second)
@@ -124,7 +131,13 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
         }
         if (loadedCatalog.isEmpty()) return
 
-        val current = CdnRegionPluginStore.read(context).also(::updateCache)
+        var current = CdnRegionPluginStore.read(context)
+        val verifiedCurrent = verifyCachedCdnSelection(current)
+        if (verifiedCurrent != current) {
+            current = verifiedCurrent
+            CdnRegionPluginStore.write(context, current)
+        }
+        updateCache(current)
         val hasSelection = hasUsableCdnRegionSelection(
             region = current.selectedRegion,
             cachedHosts = current.selectedHosts,
@@ -167,20 +180,30 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
                         ?: loadedCatalog.keys.first()
                 }
             )
+            val verifiedHosts = filterResolvableCdnHosts(selection.hosts)
             val next = CdnRegionPluginCache(
                 location = location,
-                selectedRegion = selection.region,
-                selectedHosts = selection.hosts,
-                fallbackRegion = if (selection.fallbackUsed) selection.region else current.fallbackRegion,
+                selectedRegion = selection.region.takeIf { verifiedHosts.isNotEmpty() }.orEmpty(),
+                selectedHosts = verifiedHosts,
+                fallbackRegion = if (selection.fallbackUsed && verifiedHosts.isNotEmpty()) {
+                    selection.region
+                } else {
+                    current.fallbackRegion
+                },
                 fallbackUsed = selection.fallbackUsed,
                 refreshedAtMs = System.currentTimeMillis(),
-                lastError = null
+                lastError = if (verifiedHosts.isEmpty()) {
+                    "CDN ${selection.region.ifBlank { "候选" }} 当前不可解析，已保留原始线路。"
+                } else {
+                    null
+                }
             )
             updateCache(next)
             CdnRegionPluginStore.write(context, next)
             Logger.d(
                 CdnRegionPluginTag,
-                "CDN region refreshed: ${location.country}/${location.province}/${location.city} -> ${selection.region}"
+                "CDN region refreshed: ${location.country}/${location.province}/${location.city} -> " +
+                    "${selection.region}, verifiedHosts=${verifiedHosts.size}/${selection.hosts.size}"
             )
         } catch (error: Exception) {
             val preserved = current.copy(lastError = error.message ?: error.javaClass.simpleName)
@@ -194,6 +217,37 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
         cache = next
         _cacheState.value = next
     }
+}
+
+private fun verifyCachedCdnSelection(cache: CdnRegionPluginCache): CdnRegionPluginCache {
+    if (cache.selectedHosts.isEmpty()) return cache
+    val verifiedHosts = filterResolvableCdnHosts(cache.selectedHosts)
+    if (verifiedHosts == cache.selectedHosts) return cache
+    return cache.copy(
+        selectedRegion = cache.selectedRegion.takeIf { verifiedHosts.isNotEmpty() }.orEmpty(),
+        selectedHosts = verifiedHosts,
+        lastError = if (verifiedHosts.isEmpty()) {
+            "已移除不可解析的 CDN 候选，暂时保留原始线路。"
+        } else {
+            null
+        }
+    )
+}
+
+internal fun filterResolvableCdnHosts(
+    hosts: List<String>,
+    resolver: (String) -> Boolean = ::isCdnHostResolvable
+): List<String> {
+    return hosts
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .filter(resolver)
+}
+
+private fun isCdnHostResolvable(host: String): Boolean {
+    return runCatching { InetAddress.getAllByName(host).isNotEmpty() }
+        .getOrDefault(false)
 }
 
 @Serializable

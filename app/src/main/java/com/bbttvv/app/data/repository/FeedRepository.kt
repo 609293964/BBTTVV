@@ -1,21 +1,33 @@
 package com.bbttvv.app.data.repository
 
+import android.content.Context
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.network.AppSignUtils
+import com.bbttvv.app.core.network.BilibiliApi
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiKeyManager
 import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
+import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.*
 import com.bbttvv.app.data.service.video.VideoFeedStateService
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 
-object FeedRepository {
-    private val api get() = NetworkModule.api
+interface HomeFeedRepository {
+    suspend fun getHomeVideos(idx: Int): Result<List<VideoItem>>
+}
+
+open class DefaultFeedRepository(
+    private val apiProvider: () -> BilibiliApi = { NetworkModule.api },
+    private val appContextProvider: () -> Context? = { NetworkModule.appContext },
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) : HomeFeedRepository {
+    private val api get() = apiProvider()
     private var preloadedHomeVideos: Result<List<VideoItem>>?
         get() = VideoFeedStateService.preloadedHomeVideos
         set(value) {
@@ -48,7 +60,7 @@ object FeedRepository {
 
         homePreloadDeferred = scope.async {
             try {
-                val feedApiType = NetworkModule.appContext
+                val feedApiType = appContextProvider()
                     ?.let { SettingsManager.getFeedApiTypeSync(it) }
                     ?: SettingsManager.FeedApiType.WEB
                 if (shouldPrimeBuvidForHomePreload(feedApiType)) {
@@ -78,7 +90,7 @@ object FeedRepository {
         return cached
     }
 
-    suspend fun getHomeVideos(idx: Int = 0): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
+    override suspend fun getHomeVideos(idx: Int): Result<List<VideoItem>> = withContext(ioDispatcher) {
         if (idx == 0) {
             consumePreloadedHomeVideos()?.let { return@withContext it }
 
@@ -97,7 +109,7 @@ object FeedRepository {
 
     private suspend fun getHomeVideosInternal(idx: Int): Result<List<VideoItem>> {
         return try {
-            val context = NetworkModule.appContext
+            val context = appContextProvider()
             val feedApiType = if (context != null) {
                 SettingsManager.getFeedApiTypeSync(context)
             } else {
@@ -126,13 +138,16 @@ object FeedRepository {
     }
 
     private suspend fun fetchWebFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
-        return try {
+        return safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "fetchWebFeed failed: idx=$idx" }
+        ) {
             val cachedKeys = WbiKeyManager.getWbiKeys().getOrNull()
             val navWbiImg = if (cachedKeys == null) api.getNavInfo().data?.wbi_img else null
             val resolvedKeys = resolveHomeFeedWbiKeys(
                 cachedKeys = cachedKeys,
                 navWbiImg = navWbiImg
-            ) ?: return Result.failure(Exception("WBI 密钥获取失败"))
+            ) ?: throw Exception("WBI 密钥获取失败")
 
             val params = mapOf(
                 "ps" to refreshCount.toString(),
@@ -147,18 +162,19 @@ object FeedRepository {
                 ?.map { it.toVideoItem() }
                 ?.filter { it.bvid.isNotEmpty() }
                 ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
     private suspend fun fetchMobileFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
-        return try {
+        return safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "fetchMobileFeed failed: idx=$idx" }
+        ) {
             TokenManager.awaitWarmup()
             val accessToken = TokenManager.accessTokenCache
             if (accessToken.isNullOrEmpty()) {
-                return Result.failure(Exception("需要登录才能使用移动端推荐流"))
+                throw Exception("需要登录才能使用移动端推荐流")
             }
 
             val params = mapOf(
@@ -179,7 +195,7 @@ object FeedRepository {
             val signedParams = AppSignUtils.signForTvLogin(params)
             val feedResp = api.getMobileFeed(signedParams)
             if (feedResp.code != 0) {
-                return Result.failure(Exception(feedResp.message))
+                throw Exception(feedResp.message)
             }
 
             val list = feedResp.data?.items
@@ -187,75 +203,80 @@ object FeedRepository {
                 ?.map { it.toVideoItem() }
                 ?.filter { it.bvid.isNotEmpty() }
                 ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
-    suspend fun getPopularVideos(page: Int = 1): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun getPopularVideos(page: Int = 1): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "getPopularVideos failed: page=$page" }
+        ) {
             val resp = api.getPopularVideos(pn = page, ps = 30)
             val list = resp.data?.list?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
-    suspend fun getRankingVideos(rid: Int = 0, type: String = "all"): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun getRankingVideos(rid: Int = 0, type: String = "all"): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "getRankingVideos failed: rid=$rid, type=$type" }
+        ) {
             val resp = api.getRankingVideos(rid = rid, type = type)
             if (resp.code != 0) {
-                return@withContext Result.failure(Exception(resp.message.ifBlank { "排行榜加载失败(${resp.code})" }))
+                throw Exception(resp.message.ifBlank { "排行榜加载失败(${resp.code})" })
             }
             val list = resp.data?.list?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
-    suspend fun getPreciousVideos(): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun getPreciousVideos(): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "getPreciousVideos failed" }
+        ) {
             val resp = api.getPopularPreciousVideos()
             if (resp.code != 0) {
-                return@withContext Result.failure(Exception(resp.message.ifBlank { "入站必刷加载失败(${resp.code})" }))
+                throw Exception(resp.message.ifBlank { "入站必刷加载失败(${resp.code})" })
             }
             val list = resp.data?.list?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
-    suspend fun getWeeklyMustWatchVideos(number: Int? = null): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun getWeeklyMustWatchVideos(number: Int? = null): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "getWeeklyMustWatchVideos failed: number=$number" }
+        ) {
             val targetNumber = number ?: run {
                 val listResp = api.getWeeklySeriesList()
                 if (listResp.code != 0) {
-                    return@withContext Result.failure(Exception(listResp.message.ifBlank { "每周必看列表加载失败(${listResp.code})" }))
+                    throw Exception(listResp.message.ifBlank { "每周必看列表加载失败(${listResp.code})" })
                 }
                 listResp.data?.list?.map { it.number }?.maxOrNull() ?: 1
             }
             val resp = api.getWeeklySeriesVideos(number = targetNumber)
             if (resp.code != 0) {
-                return@withContext Result.failure(Exception(resp.message.ifBlank { "每周必看加载失败(${resp.code})" }))
+                throw Exception(resp.message.ifBlank { "每周必看加载失败(${resp.code})" })
             }
             val list = resp.data?.list?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 
-    suspend fun getRegionVideos(tid: Int, page: Int = 1): Result<List<VideoItem>> = withContext(Dispatchers.IO) {
-        try {
+    suspend fun getRegionVideos(tid: Int, page: Int = 1): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        safeApiCall(
+            tag = "FeedRepo",
+            errorMessage = { "getRegionVideos failed: tid=$tid, page=$page" }
+        ) {
             val resp = api.getRegionVideos(rid = tid, pn = page, ps = 30)
             val list = resp.data?.archives?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            Result.success(list)
-        } catch (e: Exception) {
-            Result.failure(e)
+            list
         }
     }
 }
+
+object FeedRepository : DefaultFeedRepository()

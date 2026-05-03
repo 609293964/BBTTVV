@@ -6,7 +6,7 @@ import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.plugin.json.JsonPluginManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
-import com.bbttvv.app.data.repository.FeedRepository
+import com.bbttvv.app.data.repository.HomeFeedRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 internal sealed class HomeFeedLoadResult {
     data class Success(
         val videos: List<VideoItem>,
+        val recommendVideoItems: List<HomeRecommendVideoCardItem>,
         val hasMore: Boolean
     ) : HomeFeedLoadResult()
 
@@ -24,12 +25,19 @@ internal sealed class HomeFeedLoadResult {
     data object Ignored : HomeFeedLoadResult()
 }
 
+internal data class HomeRecommendFeedSnapshot(
+    val videos: List<VideoItem>,
+    val recommendVideoItems: List<HomeRecommendVideoCardItem>,
+)
+
 /** Handles recommendation paging and plugin filtering outside HomeViewModel. */
 internal class HomeFeedController(
     private val dismissStore: RecommendDismissStore,
-    private val feedRepository: FeedRepository = FeedRepository
+    private val feedRepository: HomeFeedRepository
 ) {
     private val feed = PagedFeedGridState<Int, VideoItem, VideoItem>(initialKey = 0)
+    private val videoKeyRegistry = HomeRecommendVideoKeyRegistry()
+    private var recommendVideoItems: List<HomeRecommendVideoCardItem> = emptyList()
 
     fun visibleSnapshot(): List<VideoItem> = feed.visibleSnapshot()
 
@@ -54,9 +62,19 @@ internal class HomeFeedController(
                 fetch = { pageKey -> loadPage(pageKey, incremental = true) },
                 reduce = { _, page -> page }
             )
-            loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored
+            val applied = loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored
+            val appendedItems = videoKeyRegistry.append(
+                videos = applied.items,
+                startIndex = recommendVideoItems.size,
+            )
+            recommendVideoItems = if (appendedItems.isEmpty()) {
+                recommendVideoItems
+            } else {
+                recommendVideoItems + appendedItems
+            }
             HomeFeedLoadResult.Success(
                 videos = feed.visibleSnapshot(),
+                recommendVideoItems = recommendVideoItems,
                 hasMore = !feed.snapshot().endReached
             )
         } catch (error: Throwable) {
@@ -67,35 +85,48 @@ internal class HomeFeedController(
         }
     }
 
-    suspend fun refresh(): HomeFeedLoadResult {
-        val startGeneration = feed.snapshot().generation
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun refresh(force: Boolean = true): HomeFeedLoadResult {
+        val refreshGeneration = feed.snapshot().generation + 1
         return try {
-            val loadResult = feed.loadNextPage(
-                isRefresh = true,
+            val loadResult = feed.refresh(
                 fetch = { pageKey -> loadPage(pageKey, incremental = false) },
                 reduce = { _, page -> page }
             )
             loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored
+            val visibleVideos = feed.visibleSnapshot()
+            recommendVideoItems = videoKeyRegistry.resetAndBuild(visibleVideos)
             HomeFeedLoadResult.Success(
-                videos = feed.visibleSnapshot(),
+                videos = visibleVideos,
+                recommendVideoItems = recommendVideoItems,
                 hasMore = !feed.snapshot().endReached
             )
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            if (feed.snapshot().generation != startGeneration) return HomeFeedLoadResult.Ignored
+            if (feed.snapshot().generation != refreshGeneration) return HomeFeedLoadResult.Ignored
             Logger.e("HomeFeedController", "Failed to refresh videos", error)
             HomeFeedLoadResult.Failure(error)
         }
     }
 
-    suspend fun reapplyPluginFilters(): List<VideoItem> {
+    suspend fun reapplyPluginFilters(): HomeRecommendFeedSnapshot {
         val filteredVideos = applyFeedFiltersOffMain(feed.sourceSnapshot(), recordStats = false)
-        return feed.replaceVisible(filteredVideos)
+        val visibleVideos = feed.replaceVisible(filteredVideos)
+        recommendVideoItems = videoKeyRegistry.rebuildReusingAssigned(visibleVideos)
+        return HomeRecommendFeedSnapshot(
+            videos = visibleVideos,
+            recommendVideoItems = recommendVideoItems,
+        )
     }
 
-    fun dismiss(video: VideoItem): List<VideoItem>? {
+    fun dismiss(video: VideoItem): HomeRecommendFeedSnapshot? {
         if (!dismissStore.markDismissed(video)) return null
-        return feed.removeVisibleIf(dismissStore::isDismissed)
+        val visibleVideos = feed.removeVisibleIf(dismissStore::isDismissed)
+        recommendVideoItems = recommendVideoItems.filterNot { dismissStore.isDismissed(it.video) }
+        return HomeRecommendFeedSnapshot(
+            videos = visibleVideos,
+            recommendVideoItems = recommendVideoItems,
+        )
     }
 
     private suspend fun loadPage(

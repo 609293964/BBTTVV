@@ -7,17 +7,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.player.BufferingSpeedMeter
+import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
+import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.util.ScreenUtils
-import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerEvent
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
@@ -25,6 +29,7 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 private const val CONTROLS_AUTO_HIDE_MS = 3500L
 private const val SIMPLE_SEEK_HIDE_MS = 1200L
@@ -40,8 +45,6 @@ internal data class PlayerScreenSession(
 internal data class PlayerScreenEffectArgs(
     val session: PlayerScreenSession,
     val uiState: PlayerUiState,
-    val commentsUiState: PlayerCommentsUiState,
-    val playbackState: PlayerPlaybackState,
     val overlayUiState: PlayerOverlayUiState,
     val panelOptions: List<PanelOption>,
     val panelOptionsFocusKey: String,
@@ -70,17 +73,24 @@ internal fun PlayerScreenEffectHost(
     onDebugSnapshotChange: (PlayerDebugSnapshot) -> Unit,
     args: PlayerScreenEffectArgs,
 ) {
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val isViewingCommentThread by remember(viewModel) {
+        viewModel.commentsUiState
+            .map { commentsUiState -> commentsUiState.isViewingThread }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = false)
     val latestDebugSnapshotChange = rememberUpdatedState(onDebugSnapshotChange)
     val latestExitTrace = rememberUpdatedState(args.exitTrace)
     val latestPlayerView = rememberUpdatedState(args.playerView)
     val latestOnExitPlayer = rememberUpdatedState(onExitPlayer)
+    val playerReleaseGuard = remember(args.exoPlayer) { ExoPlayerReleaseGuard(args.exoPlayer) }
 
     BackHandler {
         when {
             args.uiState.resumePrompt != null -> viewModel.dismissResumePlaybackPrompt()
             args.uiState.autoNextPrompt != null -> viewModel.cancelAutoNextPrompt()
             args.showSponsorSkipNotice -> viewModel.dismissSponsorNotice()
-            args.isCommentsPanelVisible && args.commentsUiState.isViewingThread -> viewModel.closeCommentThread()
+            args.isCommentsPanelVisible && isViewingCommentThread -> viewModel.closeCommentThread()
             args.isCommentsPanelVisible -> presentationState.hideCommentsPanel()
             else -> overlayStateMachine.handleBack(handleOverlayEffect)
         }
@@ -99,14 +109,14 @@ internal fun PlayerScreenEffectHost(
         }
     }
 
-    LaunchedEffect(args.playbackState.isPlaybackActive) {
+    LaunchedEffect(playbackState.isPlaybackActive) {
         ScreenUtils.setPlaybackKeepScreenOn(
             context = context,
-            keepScreenOn = args.playbackState.isPlaybackActive,
+            keepScreenOn = playbackState.isPlaybackActive,
         )
     }
 
-    DisposableEffect(args.exoPlayer) {
+    DisposableEffect(args.exoPlayer, playerReleaseGuard) {
         val perfListener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 AppPerformanceTracker.endSpanOnce(
@@ -122,24 +132,37 @@ internal fun PlayerScreenEffectHost(
             val exitTrace = latestExitTrace.value
             exitTrace.start("screen_dispose")
             try {
-                exitTrace.measure("keepScreenOn:false") {
-                    ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
-                }
-                exitTrace.measure("finishPlaybackSession:dispose") {
-                    viewModel.finishPlaybackSession(reason = "screen_dispose")
-                }
-                exitTrace.measure("viewModel:detachPlayer") {
-                    viewModel.detachPlayer(args.exoPlayer)
-                }
-                exitTrace.measure("listener:remove") {
-                    args.exoPlayer.removeListener(perfListener)
-                }
-                exitTrace.measure("playerView:detach") {
-                    latestPlayerView.value?.player = null
-                }
-                exitTrace.measure("exoPlayer:release") {
-                    args.exoPlayer.release()
-                }
+                playerReleaseGuard.releaseOnce(
+                    finishSession = {
+                        exitTrace.measure("keepScreenOn:false") {
+                            ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
+                        }
+                        exitTrace.measure("finishPlaybackSession:dispose") {
+                            viewModel.finishPlaybackSession(reason = "screen_dispose")
+                        }
+                    },
+                    detachOwner = { player ->
+                        exitTrace.measure("viewModel:detachPlayer") {
+                            viewModel.detachPlayer(player)
+                        }
+                    },
+                    removeListeners = { player ->
+                        exitTrace.measure("listener:remove") {
+                            player.removeListener(perfListener)
+                        }
+                    },
+                    detachPlayerView = {
+                        exitTrace.measure("playerView:detach") {
+                            clearPlayerViewReference(latestPlayerView.value)
+                        }
+                    },
+                    releasePlayer = { player ->
+                        com.bbttvv.app.core.player.VolumeBalanceController.unregisterProcessor()
+                        exitTrace.measure("exoPlayer:release") {
+                            player.release()
+                        }
+                    },
+                )
             } finally {
                 exitTrace.complete("screen_dispose")
             }
@@ -158,14 +181,14 @@ internal fun PlayerScreenEffectHost(
         args.showSponsorSkipNotice,
         args.overlayUiState.activePanel,
         args.isCommentsPanelVisible,
-        args.commentsUiState.isViewingThread,
+        isViewingCommentThread,
     ) {
         val prompt = args.uiState.autoNextPrompt ?: return@LaunchedEffect
         val isBlocked = args.uiState.resumePrompt != null ||
             args.showSponsorSkipNotice ||
             args.overlayUiState.activePanel != null ||
             args.isCommentsPanelVisible ||
-            args.commentsUiState.isViewingThread
+            isViewingCommentThread
         if (isBlocked) return@LaunchedEffect
         delay(AUTO_NEXT_PROMPT_DELAY_MS)
         if (args.latestUiState.value.autoNextPrompt?.id == prompt.id) {
@@ -218,8 +241,8 @@ internal fun PlayerScreenEffectHost(
         }
     }
 
-    LaunchedEffect(args.playbackState.isPlaying) {
-        if (!args.playbackState.isPlaying) {
+    LaunchedEffect(playbackState.isPlaying) {
+        if (!playbackState.isPlaying) {
             overlayStateMachine.onPlaybackPaused()
         }
     }
@@ -250,7 +273,7 @@ internal fun PlayerScreenEffectHost(
         args.overlayUiState.selectedPanelIndex,
         args.panelOptions.size,
         args.isCommentsPanelVisible,
-        args.commentsUiState.isViewingThread,
+        isViewingCommentThread,
     ) {
         val focusIntent = when {
             args.overlayUiState.overlayMode != PlayerOverlayMode.FullControls -> {
@@ -281,24 +304,37 @@ internal fun PlayerScreenEffectHost(
     LaunchedEffect(
         args.overlayUiState.interactionToken,
         args.overlayUiState.overlayMode,
-        args.playbackState.isPlaying,
+        playbackState.isPlaying,
         args.uiState.isLoading,
         args.uiState.errorMessage,
         args.showSponsorSkipNotice,
         args.overlayUiState.activePanel,
         args.isCommentsPanelVisible,
+        args.isDebugOverlayVisible,
     ) {
-        val shouldHide = args.overlayUiState.overlayMode == PlayerOverlayMode.FullControls &&
-            args.overlayUiState.activePanel == null &&
-            !args.isCommentsPanelVisible &&
-            args.playbackState.isPlaying &&
-            !args.uiState.isLoading &&
-            args.uiState.errorMessage.isNullOrBlank() &&
-            !args.showSponsorSkipNotice
+        val shouldHide = shouldAutoHidePlayerControls(
+            overlayUiState = args.overlayUiState,
+            playbackState = playbackState,
+            isLoading = args.uiState.isLoading,
+            errorMessage = args.uiState.errorMessage,
+            showSponsorSkipNotice = args.showSponsorSkipNotice,
+            isCommentsPanelVisible = args.isCommentsPanelVisible,
+            isDebugOverlayVisible = args.isDebugOverlayVisible,
+        )
         if (shouldHide) {
             delay(CONTROLS_AUTO_HIDE_MS)
             val latestOverlayState = overlayStateMachine.uiState
-            if (args.playbackState.isPlaying && latestOverlayState.activePanel == null && !args.isCommentsPanelVisible) {
+            if (
+                shouldAutoHidePlayerControls(
+                    overlayUiState = latestOverlayState,
+                    playbackState = playbackState,
+                    isLoading = args.uiState.isLoading,
+                    errorMessage = args.uiState.errorMessage,
+                    showSponsorSkipNotice = args.showSponsorSkipNotice,
+                    isCommentsPanelVisible = args.isCommentsPanelVisible,
+                    isDebugOverlayVisible = latestOverlayState.showDebugOverlay,
+                )
+            ) {
                 overlayStateMachine.hideOverlay(onEffect = handleOverlayEffect)
             }
         }
@@ -433,4 +469,23 @@ private fun requesterFocusTarget(requester: FocusRequester): PlayerFocusTarget {
             }.getOrDefault(false)
         }
     }
+}
+
+internal fun shouldAutoHidePlayerControls(
+    overlayUiState: PlayerOverlayUiState,
+    playbackState: PlayerPlaybackState,
+    isLoading: Boolean,
+    errorMessage: String?,
+    showSponsorSkipNotice: Boolean,
+    isCommentsPanelVisible: Boolean,
+    isDebugOverlayVisible: Boolean,
+): Boolean {
+    return overlayUiState.overlayMode == PlayerOverlayMode.FullControls &&
+        overlayUiState.activePanel == null &&
+        !isCommentsPanelVisible &&
+        !isDebugOverlayVisible &&
+        playbackState.isPlaying &&
+        !isLoading &&
+        errorMessage.isNullOrBlank() &&
+        !showSponsorSkipNotice
 }

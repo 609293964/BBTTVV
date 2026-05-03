@@ -4,7 +4,9 @@ import androidx.media3.common.Player
 import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.model.response.RelatedVideo
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.data.model.response.SponsorSegment
 import com.bbttvv.app.data.model.response.ViewInfo
+import com.bbttvv.app.feature.plugin.SponsorBlockConfig
 
 private const val PLAYER_COMMENT_PAGE_SIZE = 10
 
@@ -32,6 +34,14 @@ data class PlaybackBadge(
 data class ProgressHeatmapPoint(
     val fraction: Float,
     val intensity: Float,
+)
+
+data class PlayerSponsorUiState(
+    val enabled: Boolean = false,
+    val showSkipNotice: Boolean = false,
+    val currentSegmentUuid: String? = null,
+    val segments: List<SponsorSegment> = emptyList(),
+    val config: SponsorBlockConfig = SponsorBlockConfig(),
 )
 
 data class PlayerPlaybackState(

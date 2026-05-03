@@ -44,6 +44,7 @@ internal fun VideoCardRecyclerGrid(
     scrollResetKey: Any? = null,
     initialScrollPosition: Int = RecyclerView.NO_POSITION,
     allowChildDrawingOutsideBounds: Boolean = true,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     onVerticalScrollOffsetChanged: (Int) -> Unit = {},
     showHistoryProgressOnly: Boolean = false,
     showDanmakuCount: Boolean = true,
@@ -63,6 +64,71 @@ internal fun VideoCardRecyclerGrid(
     onVideoClick: (VideoItem, String) -> Unit,
 ) {
     val items = remember(videos) { videos.toHomeRecommendVideoCardItems() }
+    VideoCardRecyclerGridItems(
+        items = items,
+        modifier = modifier,
+        gridColumnCount = gridColumnCount,
+        contentPadding = contentPadding,
+        focusState = focusState,
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+        focusRegion = focusRegion,
+        scrollResetKey = scrollResetKey,
+        initialScrollPosition = initialScrollPosition,
+        allowChildDrawingOutsideBounds = allowChildDrawingOutsideBounds,
+        videoCardRecycledViewPool = videoCardRecycledViewPool,
+        onVerticalScrollOffsetChanged = onVerticalScrollOffsetChanged,
+        showHistoryProgressOnly = showHistoryProgressOnly,
+        showDanmakuCount = showDanmakuCount,
+        supportingText = supportingText,
+        loadMorePrefetchItems = loadMorePrefetchItems,
+        canLoadMore = canLoadMore,
+        onLoadMore = onLoadMore,
+        onMenuRefresh = onMenuRefresh,
+        onVideoFocused = onVideoFocused,
+        onFocusedRowChanged = onFocusedRowChanged,
+        consumeTopRowDpadUp = consumeTopRowDpadUp,
+        onTopRowDpadUp = onTopRowDpadUp,
+        onBackToTopBar = onBackToTopBar,
+        onLeftEdgeDpadLeft = onLeftEdgeDpadLeft,
+        onVideoMenu = onVideoMenu,
+        onVideoLongClick = onVideoLongClick,
+        onVideoClick = onVideoClick,
+    )
+}
+
+@Composable
+internal fun VideoCardRecyclerGridItems(
+    items: List<HomeRecommendVideoCardItem>,
+    modifier: Modifier = Modifier,
+    gridColumnCount: Int = 4,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
+    focusCoordinator: HomeFocusCoordinator? = null,
+    focusTab: AppTopLevelTab? = null,
+    focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
+    scrollResetKey: Any? = null,
+    initialScrollPosition: Int = RecyclerView.NO_POSITION,
+    allowChildDrawingOutsideBounds: Boolean = true,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
+    onVerticalScrollOffsetChanged: (Int) -> Unit = {},
+    showHistoryProgressOnly: Boolean = false,
+    showDanmakuCount: Boolean = true,
+    supportingText: ((VideoItem) -> String?)? = null,
+    loadMorePrefetchItems: Int = 8,
+    canLoadMore: () -> Boolean = { false },
+    onLoadMore: () -> Unit = {},
+    onMenuRefresh: (() -> Unit)? = null,
+    onVideoFocused: (VideoItem, String) -> Unit = { _, _ -> },
+    onFocusedRowChanged: (Int) -> Unit = {},
+    consumeTopRowDpadUp: Boolean = true,
+    onTopRowDpadUp: () -> Boolean = { false },
+    onBackToTopBar: (() -> Boolean)? = null,
+    onLeftEdgeDpadLeft: (() -> Boolean)? = null,
+    onVideoMenu: ((VideoItem) -> Unit)? = null,
+    onVideoLongClick: ((VideoItem, String) -> Unit)? = null,
+    onVideoClick: (VideoItem, String) -> Unit,
+) {
     val paddingPx = rememberRecyclerPadding(contentPadding)
     val latestCanLoadMore by rememberUpdatedState(canLoadMore)
     val latestOnLoadMore by rememberUpdatedState(onLoadMore)
@@ -296,6 +362,7 @@ internal fun VideoCardRecyclerGrid(
                 focusState.attach(this)
                 dpadGridController.attach(this)
                 configureVideoCardRecycler()
+                videoCardRecycledViewPool?.let(::setRecycledViewPool)
                 applyVideoCardRecyclerOverflowPolicy(allowChildDrawingOutsideBounds)
                 setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
                 layoutManager = GridLayoutManager(context, gridColumnCount)

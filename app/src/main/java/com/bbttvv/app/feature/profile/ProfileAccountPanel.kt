@@ -268,11 +268,177 @@ internal fun ChangeIconPanel(
 
 @Composable
 internal fun ProfileGuidePanel() {
-    Column(modifier = Modifier.fillMaxSize().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(text = "操作说明", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        ProfileInfoCard("方向键换焦点", "顶部把焦点移到推荐或动态时会直接切页，无需回车确认")
-        ProfileInfoCard("扫码登录", "未登录时右侧显示二维码，登入成功后自动刷新我的页面状态")
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        item {
+            Text(text = "操作说明", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        }
+
+        item { GuideSectionTitle("D-Pad 方向键操作") }
+        item {
+            ProfileInfoCard(
+                "上下左右 — 基础导航",
+                "在首页、搜索页、个人页等所有界面中，使用方向键移动焦点。焦点高亮会跟随方向键实时移动，" +
+                    "无需按确认键即可看到当前选中项。在视频网格中，上下键在行间切换，左右键在同行卡片间移动。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "确认键 — 选择与进入",
+                "按确认键（D-Pad 中心键 / Enter）可进入当前焦点所在的内容，如打开视频详情、进入播放器、" +
+                    "切换设置项等。在顶部 Tab 栏移动焦点时会直接切页，无需额外按确认键确认。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "长按确认键 — 长按操作",
+                "在视频卡片上长按确认键可触发上下文菜单（如加入稍后再看、不感兴趣等）。" +
+                    "在详情页操作按钮上长按确认键约 1.5 秒可触发一键三连（点赞、投币、收藏）。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "长按方向键 — 快速滚动",
+                "在视频网格中长按上下方向键可快速连续滚动浏览更多内容。" +
+                    "在播放器中长按左/右方向键可持续快进或快退，松开后定位到目标位置。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "边界行为 — 焦点不会跑丢",
+                "在列表或 Tab 的边缘继续按方向键，焦点会停留在当前项，不会跑到不可控的区域。" +
+                    "即使焦点意外离开当前界面，也会自动恢复到合理位置。"
+            )
+        }
+
+        item { GuideSectionTitle("快捷功能") }
+        item {
+            ProfileInfoCard(
+                "播放/暂停",
+                "在播放器中按确认键或媒体播放键可切换播放与暂停状态。当控制栏隐藏时，按确认键会先显示控制栏，再按切换播放。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "快进 / 快退",
+                "在播放器中按左/右方向键可步进快退 10 秒。长按左/右方向键或快退/快进媒体键可持续快进快退，" +
+                    "松开后自动定位。短视频快进速度约 4 秒/秒，长视频约 10 秒遍历全片。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "MENU 键 — 刷新与菜单",
+                "在首页视频网格中按 MENU 键可触发刷新当前推荐内容。在直播播放器中按 MENU 键可显示控制面板。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "返回键 — 层级返回",
+                "按返回键可逐层返回上一级界面：播放器 → 详情页 → 首页。在弹窗或菜单中按返回键可关闭当前弹窗。" +
+                    "在播放器中，返回键会依次关闭面板 → 关闭调试信息 → 隐藏控制栏 → 退出播放器。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "赞助片段跳过",
+                "当播放器检测到赞助商片段时，屏幕上会显示跳过提示。按确认键可立即跳过该片段，按返回键可关闭提示继续观看。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "扫码登录",
+                "未登录时，\"我的\"页面右侧会显示登录二维码。使用手机 APP 扫码即可登录，登录成功后页面状态自动刷新，无需手动操作。"
+            )
+        }
+
+        item { GuideSectionTitle("核心功能逻辑") }
+        item {
+            ProfileInfoCard(
+                "首页导航流程",
+                "首页由顶部 Tab 栏、二级分类 Tab 和视频网格三层组成。在顶部 Tab 左右移动可直接切换主分类（推荐、热门、直播等），" +
+                    "按方向键下进入二级分类或视频网格。从网格按方向键上可逐层返回顶部 Tab。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "播放器控制栏",
+                "播放器控制栏有三种显示状态：隐藏（仅显示画面）、可见（显示进度条和操作按钮）、面板打开（显示清晰度/倍速等设置选项）。" +
+                    "按方向键上/下在进度条和操作按钮间切换，按确认键打开设置面板。控制栏会在一段时间无操作后自动隐藏。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "返回时自动恢复位置",
+                "从详情页或播放器返回首页时，会自动恢复到之前浏览的视频卡片位置，无需重新查找。" +
+                    "切换 Tab 后再切回，焦点也会恢复到离开时的位置。弹窗关闭后焦点会回到触发弹窗的按钮上。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "自动加载更多",
+                "视频网格向下滚动到接近底部时会自动加载下一页内容。" +
+                    "首页刷新数量可在设置中调整（10~40 条），推荐页数据源也可在设置中切换。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "播放结束行为",
+                "视频播放结束后的行为可在设置中配置：停留等待手动操作 / 自动播放下一分P / 单集循环 / 自动返回上一页。" +
+                    "默认为停留模式，适合连续手动选择。"
+            )
+        }
+
+        item { GuideSectionTitle("常见问题与建议") }
+        item {
+            ProfileInfoCard(
+                "焦点似乎消失了怎么办",
+                "偶尔焦点可能因界面刷新而短暂不可见，稍等片刻会自动恢复。如果长时间无响应，" +
+                    "可尝试按返回键回到上一级再重新进入，或按方向键任意方向重新获取焦点。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "视频加载缓慢或失败",
+                "可尝试在设置中切换推荐页数据源（网页端/移动端）。如果使用双栈网络遇到异常，" +
+                    "可开启\"仅允许使用 IPv4\"选项。清除缓存也可能解决部分加载问题。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "弹幕显示异常",
+                "弹幕设置可在\"我的\"→\"弹幕设置\"中调整，包括字体大小、透明度、显示区域等。" +
+                    "播放进度变化时弹幕可能短暂延迟出现，属于正常现象。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "音量忽大忽小",
+                "可在设置中开启\"音量均衡\"功能，系统会自动调整不同视频的音量差异。" +
+                    "如果整体音量偏大或偏小，可使用\"应用音量校准\"单独调节应用输出音量，不影响电视系统音量。"
+            )
+        }
+        item {
+            ProfileInfoCard(
+                "想从上次位置继续观看",
+                "确保设置中\"自动跳到上次播放位置\"已开启。打开视频时会自动从上次中断处继续播放。" +
+                    "此功能依赖本地观看记录，开启隐私无痕模式后不会记录播放进度。"
+            )
+        }
     }
+}
+
+@Composable
+private fun GuideSectionTitle(title: String) {
+    Text(
+        text = title,
+        color = Color(0x8FFFFFFF),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 6.dp)
+    )
 }
 
 @Composable

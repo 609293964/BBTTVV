@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.recyclerview.widget.RecyclerView
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -83,6 +84,7 @@ internal fun DynamicScreen(
     viewModel: DynamicViewModel,
     onContentRowFocused: (Int) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     gridColumnCount: Int = 4,
     focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
     topBarHeightPx: Int = 0,
@@ -376,6 +378,7 @@ internal fun DynamicScreen(
                     focusCoordinator = focusCoordinator,
                     focusTab = AppTopLevelTab.DYNAMIC,
                     allowChildDrawingOutsideBounds = false,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool,
                     onVerticalScrollOffsetChanged = onScrollOffset,
                     canLoadMore = { !uiState.isLoadingVideos },
                     onLoadMore = viewModel::loadMoreVideos,

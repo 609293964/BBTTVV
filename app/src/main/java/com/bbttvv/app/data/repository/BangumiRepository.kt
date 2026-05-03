@@ -5,6 +5,7 @@ import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiKeyManager
 import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.store.TokenManager
+import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -97,16 +98,16 @@ object BangumiRepository {
      * @param type 1=番剧 4=国创
      */
     suspend fun getTimeline(type: Int = 1): Result<List<TimelineDay>> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "getTimeline error: type=$type" }
+        ) {
             val response = api.getTimeline(types = type)
             if (response.code == 0 && response.result != null) {
-                Result.success(response.result)
+                response.result
             } else {
-                Result.failure(Exception("获取时间表失败: ${response.message}"))
+                throw Exception("获取时间表失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getTimeline error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -119,7 +120,10 @@ object BangumiRepository {
         page: Int = 1,
         pageSize: Int = 20
     ): Result<BangumiIndexData> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "getBangumiIndex error: seasonType=$seasonType, page=$page" }
+        ) {
             val response = api.getBangumiIndex(
                 seasonType = seasonType,
                 st = seasonType,  //  [修复] st 必须与 seasonType 相同
@@ -127,13 +131,10 @@ object BangumiRepository {
                 pageSize = pageSize
             )
             if (response.code == 0 && response.data != null) {
-                Result.success(response.data)
+                response.data
             } else {
-                Result.failure(Exception("获取番剧列表失败: ${response.message}"))
+                throw Exception("获取番剧列表失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getBangumiIndex error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -249,7 +250,10 @@ object BangumiRepository {
         bvid: String? = null,
         seasonId: Long? = null
     ): Result<BangumiVideoInfo> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "getBangumiPlayUrl error: epId=$epId, cid=$cid, seasonId=$seasonId" }
+        ) {
             android.util.Log.d("BangumiRepo", "📡 getBangumiPlayUrl: epId=$epId, cid=$cid, seasonId=$seasonId, qn=$qn")
             val baseParams = buildBangumiPlayUrlParams(
                 epId = epId,
@@ -281,7 +285,7 @@ object BangumiRepository {
             if (response.code == 0 && response.videoInfo != null) {
                 val result = response.videoInfo
                 android.util.Log.d("BangumiRepo", "📹 PlayUrl: quality=${result.quality}, hasDash=${result.dash != null}, hasDurl=${!result.durl.isNullOrEmpty()}")
-                Result.success(result)
+                result
             } else {
                 val errorMsg = when (response.code) {
                     -10403 -> "需要大会员才能观看"
@@ -291,11 +295,8 @@ object BangumiRepository {
                     -403 -> "访问权限不足"
                     else -> "获取播放地址失败: ${response.message} (code=${response.code})"
                 }
-                Result.failure(Exception(errorMsg))
+                throw Exception(errorMsg)
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getBangumiPlayUrl error: ${e.message}", e)
-            Result.failure(e)
         }
     }
     
@@ -303,19 +304,19 @@ object BangumiRepository {
      * 追番/追剧
      */
     suspend fun followBangumi(seasonId: Long): Result<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            val csrf = TokenManager.csrfCache ?: return@withContext Result.failure(Exception("未登录"))
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "followBangumi error: seasonId=$seasonId" }
+        ) {
+            val csrf = TokenManager.csrfCache ?: throw Exception("未登录")
             android.util.Log.w("BangumiRepo", "📌 追番请求: seasonId=$seasonId, csrf=${csrf.take(10)}...")
             val response = api.followBangumi(seasonId = seasonId, csrf = csrf)
             android.util.Log.w("BangumiRepo", "📌 追番响应: code=${response.code}, message=${response.message}")
             if (response.code == 0) {
-                Result.success(true)
+                true
             } else {
-                Result.failure(Exception("追番失败: ${response.message}"))
+                throw Exception("追番失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "followBangumi error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -323,17 +324,17 @@ object BangumiRepository {
      * 取消追番/追剧
      */
     suspend fun unfollowBangumi(seasonId: Long): Result<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            val csrf = TokenManager.csrfCache ?: return@withContext Result.failure(Exception("未登录"))
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "unfollowBangumi error: seasonId=$seasonId" }
+        ) {
+            val csrf = TokenManager.csrfCache ?: throw Exception("未登录")
             val response = api.unfollowBangumi(seasonId = seasonId, csrf = csrf)
             if (response.code == 0) {
-                Result.success(true)
+                true
             } else {
-                Result.failure(Exception("取消追番失败: ${response.message}"))
+                throw Exception("取消追番失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "unfollowBangumi error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -346,7 +347,10 @@ object BangumiRepository {
         pageSize: Int = 20,
         filter: BangumiFilter = BangumiFilter()
     ): Result<BangumiIndexData> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "getBangumiIndexWithFilter error: seasonType=$seasonType, page=$page" }
+        ) {
             val year = filter.toApiYear(seasonType)
             val releaseDate = filter.toApiReleaseDate(seasonType)
             val response = api.getBangumiIndex(
@@ -363,13 +367,10 @@ object BangumiRepository {
                 seasonStatus = filter.seasonStatus
             )
             if (response.code == 0 && response.data != null) {
-                Result.success(response.data)
+                response.data
             } else {
-                Result.failure(Exception("获取番剧列表失败: ${response.message}"))
+                throw Exception("获取番剧列表失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getBangumiIndexWithFilter error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -381,7 +382,10 @@ object BangumiRepository {
         page: Int = 1,
         pageSize: Int = 20
     ): Result<BangumiSearchData> = withContext(Dispatchers.IO) {
-        try {
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "searchBangumi error: keyword=$keyword, page=$page" }
+        ) {
             val navApi = NetworkModule.api
             val searchApi = NetworkModule.searchApi
             
@@ -403,13 +407,10 @@ object BangumiRepository {
             val response = searchApi.searchBangumi(signedParams)
             
             if (response.code == 0 && response.data != null) {
-                Result.success(response.data)
+                response.data
             } else {
-                Result.failure(Exception("搜索番剧失败: ${response.message}"))
+                throw Exception("搜索番剧失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "searchBangumi error: ${e.message}")
-            Result.failure(e)
         }
     }
     
@@ -421,8 +422,11 @@ object BangumiRepository {
         page: Int = 1,
         pageSize: Int = 30
     ): Result<MyFollowBangumiData> = withContext(Dispatchers.IO) {
-        try {
-            val mid = TokenManager.midCache ?: return@withContext Result.failure(Exception("未登录"))
+        safeApiCall(
+            tag = "BangumiRepo",
+            errorMessage = { "getMyFollowBangumi error: type=$type, page=$page" }
+        ) {
+            val mid = TokenManager.midCache ?: throw Exception("未登录")
             val response = api.getMyFollowBangumi(
                 vmid = mid,
                 type = type,
@@ -430,13 +434,10 @@ object BangumiRepository {
                 ps = pageSize
             )
             if (response.code == 0 && response.data != null) {
-                Result.success(response.data)
+                response.data
             } else {
-                Result.failure(Exception("获取追番列表失败: ${response.message}"))
+                throw Exception("获取追番列表失败: ${response.message}")
             }
-        } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getMyFollowBangumi error: ${e.message}")
-            Result.failure(e)
         }
     }
 }

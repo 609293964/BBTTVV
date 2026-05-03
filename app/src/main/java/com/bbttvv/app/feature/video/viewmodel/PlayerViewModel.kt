@@ -1,4 +1,4 @@
-﻿package com.bbttvv.app.feature.video.viewmodel
+package com.bbttvv.app.feature.video.viewmodel
 
 import androidx.annotation.MainThread
 import androidx.lifecycle.viewModelScope
@@ -8,27 +8,20 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.player.BasePlayerViewModel
 import com.bbttvv.app.core.plugin.PluginManager
-import com.bbttvv.app.core.store.PlaybackResumeCandidate
-import com.bbttvv.app.core.store.PlaybackResumeStore
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
-import com.bbttvv.app.core.store.TokenManager
-import com.bbttvv.app.core.store.resolveStoredResumeCandidate
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
-import com.bbttvv.app.core.util.MediaUtils
-import com.bbttvv.app.core.util.NetworkUtils
-import com.bbttvv.app.core.util.resolvePlaybackDefaultQualityId
 import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.model.response.ReplyItem
-import com.bbttvv.app.data.model.response.ViewInfo
-import com.bbttvv.app.data.repository.PlaybackRepository
+import com.bbttvv.app.feature.plugin.SponsorBlockConfig
+import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
-import com.bbttvv.app.feature.video.usecase.PlaybackLoadResult
-import com.bbttvv.app.feature.video.usecase.ResumePlaybackCandidate as RemoteResumePlaybackCandidate
 import com.bbttvv.app.feature.video.usecase.PlaybackSource
 import com.bbttvv.app.feature.video.usecase.VideoPlaybackUseCase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,27 +30,21 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val DANMAKU_RETRY_INTERVAL_MS = 2_500L
-private const val PLAYER_RESUME_MIN_POSITION_MS = 5_000L
-private const val PLAYER_RESUME_END_GUARD_MS = 10_000L
-
-private data class PlaybackRuntimeState(
-    val bvid: String = "",
-    val aid: Long = 0L,
-    val cid: Long = 0L,
-    val source: PlaybackSource? = null,
-) {
-    val sessionKey: String
-        get() = "$bvid:$cid"
-}
 
 internal sealed interface PlayerEvent {
     data class ExitPlayer(val reason: String) : PlayerEvent
 }
+
+private data class PlayerSponsorPluginUiState(
+    val enabled: Boolean = false,
+    val config: SponsorBlockConfig = SponsorBlockConfig(),
+)
 
 class PlayerViewModel : BasePlayerViewModel() {
     private val playbackUseCase = VideoPlaybackUseCase()
@@ -150,17 +137,86 @@ class PlayerViewModel : BasePlayerViewModel() {
         },
         requestExitPlayer = { reason -> requestExitPlayer(reason) },
     )
-    private var playbackLoadJob: Job? = null
-    private var playbackLoadGeneration: Long = 0L
     private var playerPollingJob: Job? = null
     private var settingsObservationJob: Job? = null
+    private var sponsorPluginUiObservationJob: Job? = null
     private var sponsorBlockEnabled: Boolean = true
+    private val sponsorPluginUiState = MutableStateFlow(PlayerSponsorPluginUiState())
+    val sponsorUiState: StateFlow<PlayerSponsorUiState> = combine(
+        sponsorSegments,
+        showSkipButton,
+        currentSponsorSegment,
+        sponsorPluginUiState,
+    ) { segments, showSkipButton, currentSponsorSegment, pluginState ->
+        PlayerSponsorUiState(
+            enabled = pluginState.enabled,
+            showSkipNotice = showSkipButton &&
+                currentSponsorSegment != null &&
+                pluginState.enabled &&
+                pluginState.config.showSkipPrompt,
+            currentSegmentUuid = currentSponsorSegment?.UUID,
+            segments = segments,
+            config = pluginState.config,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
+        initialValue = PlayerSponsorUiState(),
+    )
     private var lastDanmakuCid: Long = 0L
     private var lastDanmakuDurationMs: Long = 0L
     private var lastDanmakuRequestAtMs: Long = 0L
+    private val playbackLoadCoordinator = PlaybackLoadCoordinator(
+        scope = viewModelScope,
+        playbackUseCase = playbackUseCase,
+        ensureMainThread = { caller -> ensureMainThread(caller) },
+        getRuntime = { playbackRuntime },
+        setRuntime = { runtime -> playbackRuntime = runtime },
+        currentUiState = { _uiState.value },
+        updateUiState = { transform -> _uiState.update(transform) },
+        updatePlaybackState = ::updatePlaybackState,
+        playbackHistoryReporter = playbackHistoryReporter,
+        playbackQualityController = playbackQualityController,
+        playbackEndController = playbackEndController,
+        commentController = commentController,
+        videoShotController = videoShotController,
+        progressHeatmapController = progressHeatmapController,
+        resetDanmakuRequestState = {
+            lastDanmakuCid = 0L
+            lastDanmakuDurationMs = 0L
+            lastDanmakuRequestAtMs = 0L
+        },
+        clearDanmaku = ::clearDanmaku,
+        requestDanmakuLoad = { cid, aid, startPositionMs, force ->
+            requestDanmakuLoad(
+                cid = cid,
+                aid = aid,
+                startPositionMs = startPositionMs,
+                force = force,
+            )
+        },
+        isDanmakuEnabled = { isDanmakuEnabled.value },
+        resetSponsorState = ::resetSponsorState,
+        loadSponsorSegments = ::loadSponsorSegments,
+        applyPlaybackSource = { source, seekToMs, resetPlayer, playWhenReady ->
+            applyPlaybackSource(
+                source = source,
+                seekToMs = seekToMs,
+                resetPlayer = resetPlayer,
+                playWhenReady = playWhenReady,
+            )
+        },
+        updatePlaybackDuration = ::updatePlaybackDuration,
+        refreshPlayerSnapshot = ::refreshPlayerSnapshot,
+        loadOnlineCount = ::loadOnlineCount,
+    )
 
     val commentsUiState = commentController.uiState
     val seekPreviewFrame = videoShotController.seekPreviewFrame
+
+    init {
+        startSponsorPluginUiObservation()
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -205,26 +261,6 @@ class PlayerViewModel : BasePlayerViewModel() {
         }
     }
 
-    private fun isCurrentPlaybackLoad(
-        generation: Long,
-        bvid: String,
-        requestedCid: Long,
-    ): Boolean {
-        return generation == playbackLoadGeneration &&
-            playbackRuntime.bvid == bvid &&
-            (requestedCid <= 0L || playbackRuntime.cid == requestedCid)
-    }
-
-    private fun isCurrentPlaybackSession(
-        generation: Long,
-        bvid: String,
-        cid: Long,
-    ): Boolean {
-        return generation == playbackLoadGeneration &&
-            playbackRuntime.bvid == bvid &&
-            playbackRuntime.cid == cid
-    }
-
     @MainThread
     fun loadVideo(
         bvid: String,
@@ -235,185 +271,16 @@ class PlayerViewModel : BasePlayerViewModel() {
         resumeFromPrompt: Boolean = false,
     ) {
         ensureMainThread("loadVideo")
-        val requestBvid = bvid.trim()
-        val requestedCid = cid
-        if (requestBvid.isBlank()) return
-        if (!force && playbackRuntime.bvid == requestBvid && playbackRuntime.cid == requestedCid && _uiState.value.info != null) {
-            return
-        }
-
-        if (playbackHistoryReporter.hasSession) {
-            playbackHistoryReporter.finishSession(reason = "switch_video", closeSession = true)
-        }
-
-        playbackLoadJob?.cancel()
-        playbackQualityController.cancelPending()
-        val loadGeneration = ++playbackLoadGeneration
-        playbackEndController.resetForNewVideo()
-        clearProgressHeatmap()
-        commentController.reset()
-
-        playbackRuntime = PlaybackRuntimeState(
-            bvid = requestBvid,
-            aid = aid,
-            cid = requestedCid
+        playbackLoadCoordinator.load(
+            PlaybackLoadRequest(
+                bvid = bvid,
+                aid = aid,
+                cid = cid,
+                startPositionMs = startPositionMs,
+                force = force,
+                resumeFromPrompt = resumeFromPrompt,
+            )
         )
-        lastDanmakuCid = 0L
-        lastDanmakuDurationMs = 0L
-        lastDanmakuRequestAtMs = 0L
-        clearDanmaku()
-        resetSponsorState()
-        clearVideoShot()
-        updatePlaybackState(PlayerPlaybackState())
-
-        playbackLoadJob = viewModelScope.launch {
-            val appContext = NetworkModule.appContext
-            val hdrSupported = MediaUtils.isHdrSupported(appContext)
-            val dolbyVisionSupported = MediaUtils.isDolbyVisionSupported(appContext)
-            val hevcSupported = MediaUtils.isHevcSupported()
-            val av1Supported = MediaUtils.isAv1Supported()
-            val preferredQuality = resolveInitialPreferredQuality()
-            val cdnPreference = resolvePlayerCdnPreference()
-
-            if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
-                return@launch
-            }
-
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    errorMessage = null,
-                    statusMessage = null,
-                    resumePrompt = null,
-                    autoNextPrompt = null,
-                )
-            }
-
-            when (
-                val result = playbackUseCase.loadVideo(
-                    bvid = requestBvid,
-                    aid = aid,
-                    cid = requestedCid,
-                    preferredQuality = preferredQuality,
-                    cdnPreference = cdnPreference,
-                    isHevcSupported = hevcSupported,
-                    isAv1Supported = av1Supported,
-                    isHdrSupported = hdrSupported,
-                    isDolbyVisionSupported = dolbyVisionSupported
-                )
-            ) {
-                is PlaybackLoadResult.Error -> {
-                    if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
-                        return@launch
-                    }
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
-
-                is PlaybackLoadResult.Success -> {
-                    if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
-                        return@launch
-                    }
-                    playbackRuntime = playbackRuntime.copy(
-                        aid = result.info.aid,
-                        cid = result.info.cid
-                    )
-                    if (!isCurrentPlaybackSession(loadGeneration, result.info.bvid, result.info.cid)) {
-                        return@launch
-                    }
-                    val localResumeCandidate = resolveLocalResumeCandidate(result)
-                    if (
-                        shouldAutoSwitchToResumeCandidate(
-                            explicitStartPositionMs = startPositionMs,
-                            localResumeCandidate = localResumeCandidate,
-                            remoteResumeCandidate = result.resumeCandidate,
-                            resumeFromPrompt = resumeFromPrompt,
-                        )
-                    ) {
-                        loadVideo(
-                            bvid = result.info.bvid,
-                            aid = result.info.aid,
-                            cid = localResumeCandidate!!.cid,
-                            startPositionMs = localResumeCandidate.positionMs,
-                            force = true,
-                            resumeFromPrompt = true,
-                        )
-                        return@launch
-                    }
-                    val resumePrompt = resolveResumePlaybackPrompt(
-                        explicitStartPositionMs = startPositionMs,
-                        result = result,
-                        resumeFromPrompt = resumeFromPrompt,
-                        localResumeCandidate = localResumeCandidate,
-                    )
-                    val initialSeekPositionMs = resolveInitialPlaybackStartPosition(
-                        explicitStartPositionMs = startPositionMs,
-                        sourceResumePositionMs = result.source.resumePositionMs,
-                        resumeFromPrompt = resumeFromPrompt,
-                        localResumePositionMs = localResumeCandidate
-                            ?.takeIf { !it.isCrossPage && it.cid == result.info.cid }
-                            ?.positionMs
-                            ?: 0L,
-                    )
-                    applyPlaybackSource(
-                        source = result.source,
-                        seekToMs = initialSeekPositionMs,
-                        playWhenReady = resumePrompt == null,
-                    )
-                    if (!isCurrentPlaybackSession(loadGeneration, result.info.bvid, result.info.cid)) {
-                        return@launch
-                    }
-                    updatePlaybackDuration(result.source.durationMs)
-                    playbackHistoryReporter.beginSession(
-                        aid = result.info.aid,
-                        bvid = result.info.bvid,
-                        cid = result.info.cid,
-                        creatorMid = result.info.owner.mid,
-                        creatorName = result.info.owner.name
-                    )
-                    if (isDanmakuEnabled.value) {
-                        requestDanmakuLoad(
-                            cid = result.info.cid,
-                            aid = result.info.aid,
-                            startPositionMs = initialSeekPositionMs,
-                            force = true
-                        )
-                    }
-                    loadSponsorSegments(result.info.bvid)
-                    loadVideoShot(result.info.bvid, result.info.cid)
-                    refreshPlayerSnapshot()
-
-                    _uiState.update { state ->
-                        state.withPlaybackSource(
-                            source = result.source,
-                            isLoading = false,
-                            statusMessage = null
-                        ).copy(
-                            errorMessage = null,
-                            info = result.info,
-                            relatedVideos = result.relatedVideos,
-                            pages = result.pages,
-                            currentPageIndex = result.currentPageIndex,
-                            playbackSpeed = state.playbackSpeed,
-                            onlineCountText = "",
-                            resumePrompt = resumePrompt,
-                        )
-                    }
-                    loadProgressHeatmap(
-                        bvid = result.info.bvid,
-                        aid = result.info.aid,
-                        cid = result.info.cid,
-                        durationMs = result.source.durationMs,
-                    )
-                    loadOnlineCount(result.info.bvid, result.info.cid)
-                    playbackEndController.prefetchRelatedVideosForAutoNextIfNeeded(result.info.bvid)
-                }
-            }
-        }
     }
 
     @MainThread
@@ -683,143 +550,6 @@ class PlayerViewModel : BasePlayerViewModel() {
         }
     }
 
-    private suspend fun resolveInitialPreferredQuality(): Int {
-        val appContext = NetworkModule.appContext ?: return 64
-        val storedQuality = NetworkUtils.getDefaultQualityId(appContext)
-        val autoHighestEnabled = SettingsManager.getAutoHighestQualitySync(appContext)
-        val isLoggedIn = !TokenManager.sessDataCache.isNullOrBlank() ||
-            !TokenManager.accessTokenCache.isNullOrBlank()
-        val effectiveVip = PlaybackRepository.refreshVipStatusForPreferredQualityIfNeeded(
-            isLoggedIn = isLoggedIn,
-            cachedIsVip = TokenManager.isVipCache,
-            storedQuality = storedQuality,
-            autoHighestEnabled = autoHighestEnabled
-        )
-        return resolvePlaybackDefaultQualityId(
-            storedQuality = storedQuality,
-            autoHighestEnabled = autoHighestEnabled,
-            isLoggedIn = isLoggedIn,
-            isVip = effectiveVip
-        )
-    }
-
-    private fun resolvePlayerCdnPreference(): SettingsManager.PlayerCdnPreference {
-        return SettingsManager.PlayerCdnPreference.BILIVIDEO
-    }
-
-    private fun resolveInitialPlaybackStartPosition(
-        explicitStartPositionMs: Long,
-        sourceResumePositionMs: Long,
-        resumeFromPrompt: Boolean,
-        localResumePositionMs: Long,
-    ): Long {
-        if (resumeFromPrompt) {
-            return explicitStartPositionMs.takeIf { it >= PLAYER_RESUME_MIN_POSITION_MS } ?: 0L
-        }
-        val appContext = NetworkModule.appContext ?: return 0L
-        if (!SettingsManager.getPlayerAutoResumeEnabledSync(appContext)) return 0L
-        return explicitStartPositionMs
-            .takeIf { it >= PLAYER_RESUME_MIN_POSITION_MS }
-            ?: sourceResumePositionMs.takeIf { it >= PLAYER_RESUME_MIN_POSITION_MS }
-            ?: localResumePositionMs.takeIf { it >= PLAYER_RESUME_MIN_POSITION_MS }
-            ?: 0L
-    }
-
-    private fun resolveResumePlaybackPrompt(
-        explicitStartPositionMs: Long,
-        result: PlaybackLoadResult.Success,
-        resumeFromPrompt: Boolean,
-        localResumeCandidate: PlaybackResumeCandidate?,
-    ): ResumePlaybackPrompt? {
-        if (resumeFromPrompt) return null
-        val appContext = NetworkModule.appContext ?: return null
-        if (SettingsManager.getPlayerAutoResumeEnabledSync(appContext)) return null
-        val explicitResumePositionMs = normalizeResumePromptPosition(
-            positionMs = explicitStartPositionMs,
-            durationMs = result.source.durationMs,
-        )
-        if (explicitResumePositionMs > 0L) {
-            return buildResumePlaybackPrompt(
-                targetCid = result.info.cid,
-                currentCid = result.info.cid,
-                positionMs = explicitResumePositionMs,
-                pages = result.pages,
-            )
-        }
-        val sourceCandidate = result.resumeCandidate
-            ?: localResumeCandidate?.let {
-                RemoteResumePlaybackCandidate(
-                    cid = it.cid,
-                    positionMs = it.positionMs,
-                )
-            }
-            ?: return null
-        return buildResumePlaybackPrompt(
-            targetCid = sourceCandidate.cid,
-            currentCid = result.info.cid,
-            positionMs = sourceCandidate.positionMs,
-            pages = result.pages,
-        )
-    }
-
-    private fun buildResumePlaybackPrompt(
-        targetCid: Long,
-        currentCid: Long,
-        positionMs: Long,
-        pages: List<Page>,
-    ): ResumePlaybackPrompt {
-        val targetPage = pages.firstOrNull { page -> page.cid == targetCid }
-        return ResumePlaybackPrompt(
-            targetCid = targetCid,
-            positionMs = positionMs,
-            pageLabel = targetPage
-                ?.page
-                ?.takeIf { it > 0 && pages.size > 1 }
-                ?.let { "第${it}P" },
-            isCrossPage = targetCid != currentCid,
-        )
-    }
-
-    private fun normalizeResumePromptPosition(
-        positionMs: Long,
-        durationMs: Long,
-    ): Long {
-        if (positionMs < PLAYER_RESUME_MIN_POSITION_MS) return 0L
-        if (durationMs <= 0L) return positionMs
-        val maxAllowedPositionMs = (durationMs - PLAYER_RESUME_END_GUARD_MS).coerceAtLeast(0L)
-        if (positionMs >= maxAllowedPositionMs) return 0L
-        return positionMs.coerceAtMost(maxAllowedPositionMs)
-    }
-
-    private fun resolveLocalResumeCandidate(
-        result: PlaybackLoadResult.Success,
-    ): PlaybackResumeCandidate? {
-        val appContext = NetworkModule.appContext ?: return null
-        val record = PlaybackResumeStore.load(
-            context = appContext,
-            bvid = result.info.bvid,
-        ) ?: return null
-        return resolveStoredResumeCandidate(
-            currentCid = result.info.cid,
-            pages = result.pages,
-            record = record,
-        )
-    }
-
-    private fun shouldAutoSwitchToResumeCandidate(
-        explicitStartPositionMs: Long,
-        localResumeCandidate: PlaybackResumeCandidate?,
-        remoteResumeCandidate: RemoteResumePlaybackCandidate?,
-        resumeFromPrompt: Boolean,
-    ): Boolean {
-        if (resumeFromPrompt) return false
-        if (explicitStartPositionMs >= PLAYER_RESUME_MIN_POSITION_MS) return false
-        val appContext = NetworkModule.appContext ?: return false
-        if (!SettingsManager.getPlayerAutoResumeEnabledSync(appContext)) return false
-        if (remoteResumeCandidate != null) return false
-        return localResumeCandidate?.isCrossPage == true
-    }
-
     private fun switchPlaybackSource(
         source: PlaybackSource,
         statusMessage: String
@@ -861,6 +591,29 @@ class PlayerViewModel : BasePlayerViewModel() {
                 resetPlayer = resetPlayer,
                 playWhenReady = playWhenReady
             )
+        } else if (PlayerSettingsCache.getAudioPassthrough() && source.selectedDashVideo != null) {
+            val manifestContent = com.bbttvv.app.core.util.DashManifestBuilder.buildFromTracks(
+                selectedVideo = source.selectedDashVideo,
+                selectedAudio = source.selectedDashAudio,
+                durationMs = source.durationMs
+            )
+            val played = playDashManifestVideo(
+                manifestContent = manifestContent,
+                seekToMs = seekToMs,
+                resetPlayer = resetPlayer,
+                playWhenReady = playWhenReady
+            )
+            if (!played) {
+                playDashVideo(
+                    videoUrl = source.videoUrl,
+                    audioUrl = source.audioUrl,
+                    videoUrlCandidates = source.videoUrlCandidates,
+                    audioUrlCandidates = source.audioUrlCandidates,
+                    seekToMs = seekToMs,
+                    resetPlayer = resetPlayer,
+                    playWhenReady = playWhenReady
+                )
+            }
         } else {
             playDashVideo(
                 videoUrl = source.videoUrl,
@@ -929,6 +682,27 @@ class PlayerViewModel : BasePlayerViewModel() {
         }
     }
 
+    private fun startSponsorPluginUiObservation() {
+        if (sponsorPluginUiObservationJob != null) return
+        sponsorPluginUiObservationJob = viewModelScope.launch {
+            PluginManager.pluginsFlow.collectLatest { plugins ->
+                val sponsorPluginInfo = plugins.findSponsorBlockPluginInfo()
+                val sponsorPlugin = sponsorPluginInfo?.plugin as? SponsorBlockPlugin
+                val isEnabled = sponsorPluginInfo?.enabled == true
+                if (sponsorPlugin == null) {
+                    sponsorPluginUiState.value = PlayerSponsorPluginUiState()
+                    return@collectLatest
+                }
+                sponsorPlugin.configState.collectLatest { config ->
+                    sponsorPluginUiState.value = PlayerSponsorPluginUiState(
+                        enabled = isEnabled,
+                        config = config,
+                    )
+                }
+            }
+        }
+    }
+
     private fun loadOnlineCount(bvid: String, cid: Long) {
         ensureMainThread("loadOnlineCount")
         if (bvid.isBlank() || cid <= 0L) return
@@ -939,36 +713,6 @@ class PlayerViewModel : BasePlayerViewModel() {
             }
             _uiState.update { it.copy(onlineCountText = onlineCountText) }
         }
-    }
-
-    private fun loadVideoShot(bvid: String, cid: Long) {
-        ensureMainThread("loadVideoShot")
-        videoShotController.load(bvid = bvid, cid = cid)
-    }
-
-    private fun loadProgressHeatmap(
-        bvid: String,
-        aid: Long,
-        cid: Long,
-        durationMs: Long,
-    ) {
-        ensureMainThread("loadProgressHeatmap")
-        progressHeatmapController.load(
-            bvid = bvid,
-            aid = aid,
-            cid = cid,
-            durationMs = durationMs,
-        )
-    }
-
-    private fun clearProgressHeatmap() {
-        ensureMainThread("clearProgressHeatmap")
-        progressHeatmapController.clear()
-    }
-
-    private fun clearVideoShot() {
-        ensureMainThread("clearVideoShot")
-        videoShotController.clear()
     }
 
     private fun refreshPlayerSnapshot() {
@@ -1050,14 +794,14 @@ class PlayerViewModel : BasePlayerViewModel() {
         ensureMainThread("PlayerViewModel.onCleared")
         finishPlaybackSession(reason = "viewmodel_cleared")
         detachPlayer()
-        playbackLoadJob?.cancel()
+        playbackLoadCoordinator.cancel()
         playbackQualityController.cancelPending()
         playerPollingJob?.cancel()
         settingsObservationJob?.cancel()
         playbackEndController.clear()
         commentController.reset()
-        clearProgressHeatmap()
-        clearVideoShot()
+        progressHeatmapController.clear()
+        videoShotController.clear()
         super.onCleared()
     }
 }

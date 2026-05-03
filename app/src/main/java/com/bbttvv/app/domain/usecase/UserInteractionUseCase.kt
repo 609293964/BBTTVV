@@ -2,6 +2,7 @@
 package com.bbttvv.app.domain.usecase
 
 import com.bbttvv.app.data.repository.ActionRepository
+import com.bbttvv.app.data.repository.UserActionRepository
 
 /**
  * 三连操作结果
@@ -26,7 +27,9 @@ data class TripleActionResult(
  * 
  * 将用户交互逻辑从 PlayerViewModel 中抽离
  */
-class UserInteractionUseCase {
+class UserInteractionUseCase(
+    private val actionRepository: UserActionRepository = ActionRepository
+) {
     
     /**
      * 点赞/取消点赞视频
@@ -36,7 +39,7 @@ class UserInteractionUseCase {
      * @return 操作后的点赞状态
      */
     suspend fun toggleLike(aid: Long, isLiked: Boolean): Result<Boolean> {
-        return ActionRepository.likeVideo(aid, !isLiked)
+        return actionRepository.likeVideo(aid, !isLiked)
     }
     
     /**
@@ -48,7 +51,7 @@ class UserInteractionUseCase {
      * @return 投币是否成功
      */
     suspend fun doCoin(aid: Long, count: Int, alsoLike: Boolean): Result<Boolean> {
-        return ActionRepository.coinVideo(aid, count, alsoLike)
+        return actionRepository.coinVideo(aid, count, alsoLike)
     }
     
     /**
@@ -59,7 +62,7 @@ class UserInteractionUseCase {
      * @return 操作后的收藏状态
      */
     suspend fun toggleFavorite(aid: Long, isFavorited: Boolean): Result<Boolean> {
-        return ActionRepository.favoriteVideo(aid, !isFavorited)
+        return actionRepository.favoriteVideo(aid, !isFavorited)
     }
     
     /**
@@ -70,7 +73,7 @@ class UserInteractionUseCase {
      * @return 操作后的关注状态
      */
     suspend fun toggleFollow(mid: Long, isFollowing: Boolean): Result<Boolean> {
-        return ActionRepository.followUser(mid, !isFollowing)
+        return actionRepository.followUser(mid, !isFollowing)
     }
     
     /**
@@ -80,7 +83,7 @@ class UserInteractionUseCase {
      * @return 三连结果
      */
     suspend fun doTripleAction(aid: Long, currentCoinCount: Int = 0): Result<TripleActionResult> {
-        return ActionRepository.tripleAction(aid, currentCoinCount).map { result ->
+        return actionRepository.tripleAction(aid, currentCoinCount).map { result ->
             TripleActionResult(
                 likeSuccess = result.likeSuccess,
                 coinSuccess = result.coinSuccess,
@@ -102,10 +105,10 @@ class UserInteractionUseCase {
         aid: Long,
         upMid: Long
     ): InteractionStatus {
-        val isLiked = try { ActionRepository.checkLikeStatus(aid) } catch (e: Exception) { false }
-        val coinCount = try { ActionRepository.checkCoinStatus(aid) } catch (e: Exception) { 0 }
-        val isFavorited = try { ActionRepository.checkFavoriteStatus(aid) } catch (e: Exception) { false }
-        val isFollowing = try { ActionRepository.checkFollowStatus(upMid) } catch (e: Exception) { false }
+        val isLiked = try { actionRepository.checkLikeStatus(aid) } catch (e: Exception) { false }
+        val coinCount = try { actionRepository.checkCoinStatus(aid) } catch (e: Exception) { 0 }
+        val isFavorited = try { actionRepository.checkFavoriteStatus(aid) } catch (e: Exception) { false }
+        val isFollowing = try { actionRepository.checkFollowStatus(upMid) } catch (e: Exception) { false }
         
         return InteractionStatus(
             isLiked = isLiked,

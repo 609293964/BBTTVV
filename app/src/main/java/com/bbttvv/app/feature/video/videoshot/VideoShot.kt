@@ -154,7 +154,7 @@ class VideoShot private constructor(
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}")
                 }
-                return response.body?.bytes() ?: ByteArray(0)
+                return response.body.bytes()
             }
         }
     }

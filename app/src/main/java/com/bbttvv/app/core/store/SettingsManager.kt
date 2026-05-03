@@ -13,13 +13,6 @@ import kotlinx.coroutines.flow.map
 
 internal val Context.settingsDataStore by preferencesDataStore(name = "settings_prefs")
 
-internal const val DEFAULT_APP_USER_AGENT =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-fun normalizeDanmakuDisplayArea(ratio: Float): Float {
-    return ratio.coerceIn(0.1f, 1.0f)
-}
-
 data class AppNavigationSettings(
     val orderedVisibleTabIds: List<String> = DEFAULT_TOP_LEVEL_TABS,
     val startDestination: String = DEFAULT_TOP_LEVEL_TABS.first()

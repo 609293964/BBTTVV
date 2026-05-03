@@ -185,6 +185,27 @@ object PlayUrlCache {
         cache.evictAll()
         com.bbttvv.app.core.util.Logger.d(TAG, " Cache cleared")
     }
+
+    /**
+     * Trim the in-memory play URL cache without permanently lowering its normal capacity.
+     */
+    @Synchronized
+    fun trimToSize(maxEntries: Int) {
+        if (maxEntries <= 0) {
+            clear()
+            return
+        }
+
+        val target = maxEntries.coerceAtMost(MAX_CACHE_SIZE)
+        if (cache.size() <= target) return
+
+        cache.resize(target)
+        cache.resize(MAX_CACHE_SIZE)
+        com.bbttvv.app.core.util.Logger.d(
+            TAG,
+            " Cache trimmed: target=$target, current=${cache.size()}"
+        )
+    }
     
     /**
      * 获取当前缓存大小

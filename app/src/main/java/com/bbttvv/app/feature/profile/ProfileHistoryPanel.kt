@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.HistoryData
@@ -28,7 +29,8 @@ internal fun ProfileHistoryPanel(
     onLoadMore: () -> Unit,
     onRequestSidebarFocus: () -> Boolean,
     focusCoordinator: HomeFocusCoordinator? = null,
-    focusTab: AppTopLevelTab? = null
+    focusTab: AppTopLevelTab? = null,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null
 ) {
     val videoItems = remember(historyItems) { historyItems.map { item -> item.toVideoItem() } }
     val historyScrollResetKey = remember(historyItems) {
@@ -63,6 +65,7 @@ internal fun ProfileHistoryPanel(
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
             focusRegion = HomeFocusRegion.ProfileContent,
+            videoCardRecycledViewPool = videoCardRecycledViewPool,
             onRequestSidebarFocus = onRequestSidebarFocus,
             modifier = Modifier.weight(1f)
         )

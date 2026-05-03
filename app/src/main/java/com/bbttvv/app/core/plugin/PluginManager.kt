@@ -40,7 +40,7 @@ internal fun consumePendingPluginEnabledState(
  */
 object PluginManager {
     
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val pendingEnabledOverridesLock = Any()
     private val pendingEnabledOverrides = mutableMapOf<String, Boolean>()
     
@@ -82,7 +82,7 @@ object PluginManager {
      * 内置插件在 Application 中注册
      */
     fun register(plugin: Plugin) {
-        scope.launch {
+        applicationScope.launch {
             if (_plugins.any { it.plugin.id == plugin.id }) {
                 Logger.w(TAG, " Plugin already registered: ${plugin.id}")
                 return@launch

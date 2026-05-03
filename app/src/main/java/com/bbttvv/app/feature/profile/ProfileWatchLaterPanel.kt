@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.VideoItem
@@ -39,6 +40,7 @@ internal fun ProfileWatchLaterPanel(
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     showHeader: Boolean = true,
     gridColumnCount: Int = PROFILE_VIDEO_GRID_COLUMNS,
     contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp),
@@ -92,6 +94,7 @@ internal fun ProfileWatchLaterPanel(
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
             focusRegion = focusRegion,
+            videoCardRecycledViewPool = videoCardRecycledViewPool,
             gridColumnCount = gridColumnCount,
             contentPadding = contentPadding,
             resetToTop = resetGridToTop,
@@ -146,6 +149,7 @@ internal fun ProfileVideoGrid(
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     gridColumnCount: Int = PROFILE_VIDEO_GRID_COLUMNS,
     contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp),
     resetToTop: Boolean = false,
@@ -186,6 +190,7 @@ internal fun ProfileVideoGrid(
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     focusRegion = focusRegion,
+                    videoCardRecycledViewPool = videoCardRecycledViewPool,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     showDanmakuCount = false,
                     loadMorePrefetchItems = gridColumnCount + 1,

@@ -73,6 +73,22 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
+    fun `back to top bar reset intent is consumed once`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.POPULAR)
+
+        coordinator.requestTopBarFocus(HomeFocusScene.BackToTopBar)
+
+        assertTrue(coordinator.consumeBackToTopBarResetIntent())
+        assertEquals(HomeFocusScene.TopBarFocused, coordinator.scene)
+        assertFalse(coordinator.consumeBackToTopBarResetIntent())
+
+        coordinator.requestTopBarFocus(HomeFocusScene.BackToRecommend)
+
+        assertFalse(coordinator.consumeBackToTopBarResetIntent())
+        assertEquals(HomeFocusScene.BackToRecommend, coordinator.scene)
+    }
+
+    @Test
     fun `selected content focus restores remembered profile region`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.PROFILE)
         val sidebarTarget = FakeFocusTarget(canFocus = true)

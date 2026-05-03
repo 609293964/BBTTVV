@@ -3,6 +3,7 @@ package com.bbttvv.app.feature.video.screen
 import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -21,24 +22,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.player.createConfiguredPlayer
-import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.core.store.player.toEngineConfig
-import com.bbttvv.app.feature.plugin.SponsorBlockConfig
-import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
-import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
+import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.feature.video.danmaku.DanmakuConfig
+import com.bbttvv.app.feature.video.viewmodel.PlaybackBadge
+import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
+import com.bbttvv.app.feature.video.viewmodel.PlayerSponsorUiState
+import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 
 private const val PLAYER_FOCUS_ESCAPE_PRIORITY = 20
 private const val SPONSOR_SKIP_NOTICE_AUTO_DISMISS_MS = 3_000L
@@ -58,38 +61,14 @@ fun PlayerScreen(
     val hostView = LocalView.current
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
-    val commentsUiState by viewModel.commentsUiState.collectAsStateWithLifecycle()
-    val showSkipButton by viewModel.showSkipButton.collectAsStateWithLifecycle()
-    val currentSponsorSegment by viewModel.currentSponsorSegment.collectAsStateWithLifecycle()
-    val sponsorSegments by viewModel.sponsorSegments.collectAsStateWithLifecycle()
-    val danmakuPayload by viewModel.danmakuPayload.collectAsStateWithLifecycle()
+    val sponsorUiState by viewModel.sponsorUiState.collectAsStateWithLifecycle()
     val isDanmakuEnabled by viewModel.isDanmakuEnabled.collectAsStateWithLifecycle()
     val storedDanmakuSettings by DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
     val presentationState = rememberPlayerOverlayPresentationState(storedDanmakuSettings)
-    val seekPreviewFrame by viewModel.seekPreviewFrame.collectAsStateWithLifecycle()
     val showOnlineCount by SettingsManager.getShowOnlineCount(context)
         .collectAsStateWithLifecycle(initialValue = true)
-    val plugins by PluginManager.pluginsFlow.collectAsStateWithLifecycle(initialValue = PluginManager.plugins)
-    val sponsorPluginInfo = remember(plugins) {
-        plugins.findSponsorBlockPluginInfo()
-    }
-    val sponsorPlugin = sponsorPluginInfo?.plugin as? SponsorBlockPlugin
-    val sponsorBlockEnabled = sponsorPluginInfo?.enabled == true
-    val fallbackSponsorConfigFlow = remember { MutableStateFlow(SponsorBlockConfig()) }
-    val sponsorConfig by (sponsorPlugin?.configState ?: fallbackSponsorConfigFlow).collectAsStateWithLifecycle()
-    val showSponsorSkipNotice = remember(
-        showSkipButton,
-        currentSponsorSegment,
-        sponsorBlockEnabled,
-        sponsorConfig.showSkipPrompt,
-    ) {
-        showSkipButton &&
-            currentSponsorSegment != null &&
-            sponsorBlockEnabled &&
-            sponsorConfig.showSkipPrompt
-    }
+    val showSponsorSkipNotice = sponsorUiState.showSkipNotice
 
     val visualEffectsState = rememberPlayerVisualEffectsState()
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
@@ -117,19 +96,6 @@ fun PlayerScreen(
         )
     }
     val panelOptionsFocusKey = buildPanelOptionsFocusKey(panelOptions)
-    val sponsorMarkers = remember(
-        sponsorSegments,
-        playbackState.durationMs,
-        sponsorBlockEnabled,
-        sponsorConfig,
-    ) {
-        buildSponsorProgressMarks(
-            segments = sponsorSegments,
-            durationMs = playbackState.durationMs,
-            enabled = sponsorBlockEnabled,
-            config = sponsorConfig,
-        )
-    }
     val topRightBadges = remember(uiState, isDanmakuEnabled) {
         buildTopRightBadges(
             uiState = uiState,
@@ -195,25 +161,11 @@ fun PlayerScreen(
             handleSponsorSkipNoticeKey(event) || handleOverlayKey(event)
         }
     }
-    val useRealtimePlaybackState = overlayUiState.overlayMode == PlayerOverlayMode.FullControls ||
-        (danmakuPayload != null && isDanmakuEnabled) ||
-        isDebugOverlayVisible
-    val livePlaybackState = rememberRealtimePlaybackState(
-        exoPlayer = exoPlayer,
-        playbackState = playbackState,
-        enabled = useRealtimePlaybackState,
-    )
-    val bufferingOverlayText by rememberBufferingOverlayText(
-        isBuffering = livePlaybackState.value.isBuffering &&
-            !uiState.isLoading &&
-            uiState.errorMessage.isNullOrBlank(),
-        speedMeter = bufferingSpeedMeter,
-    )
     val isCommentsPanelVisible = presentationState.isCommentsPanelVisible
     val danmakuConfig = remember(presentationState.danmakuSettings) {
         presentationState.danmakuSettings.toEngineConfig()
     }
-    LaunchedEffect(showSponsorSkipNotice, currentSponsorSegment?.UUID) {
+    LaunchedEffect(showSponsorSkipNotice, sponsorUiState.currentSegmentUuid) {
         if (!showSponsorSkipNotice) return@LaunchedEffect
         delay(SPONSOR_SKIP_NOTICE_AUTO_DISMISS_MS)
         viewModel.dismissSponsorNotice()
@@ -254,8 +206,6 @@ fun PlayerScreen(
         args = PlayerScreenEffectArgs(
             session = session,
             uiState = uiState,
-            commentsUiState = commentsUiState,
-            playbackState = playbackState,
             overlayUiState = overlayUiState,
             panelOptions = panelOptions,
             panelOptionsFocusKey = panelOptionsFocusKey,
@@ -281,44 +231,43 @@ fun PlayerScreen(
                 handleSponsorSkipNoticeKey(keyEvent.nativeKeyEvent)
             },
     ) {
-        PlayerSurfaceHost(
+        PlayerSurfaceSection(
+            viewModel = viewModel,
             exoPlayer = exoPlayer,
-            keepScreenOn = playbackState.isPlaybackActive,
             overlayMode = overlayUiState.overlayMode,
-            onHiddenOverlayKey = handlePlayerKey,
+            handlePlayerKey = handlePlayerKey,
+            playerFocusCoordinator = playerFocusCoordinator,
             onViewAvailable = { playerViewRef = it },
-            onPlayerSurfaceFocusNeeded = {
-                playerFocusCoordinator.requestFocus(PlayerFocusIntent.FocusPlayerSurface)
+            onViewReleased = { releasedView ->
+                if (playerViewRef === releasedView) {
+                    playerViewRef = null
+                }
             },
         )
 
-        PlayerDanmakuOverlayHost(
-            payload = danmakuPayload,
+        PlayerDanmakuSection(
+            viewModel = viewModel,
+            exoPlayer = exoPlayer,
             isEnabled = isDanmakuEnabled,
-            playbackState = livePlaybackState,
             config = danmakuConfig,
         )
 
-        PlayerOverlayHost(
+        PlayerOverlaySection(
+            viewModel = viewModel,
+            exoPlayer = exoPlayer,
             uiState = uiState,
-            commentsUiState = commentsUiState,
             overlayUiState = overlayUiState,
-            playbackState = livePlaybackState,
             actions = actions,
             panelOptions = panelOptions,
-            sponsorMarkers = sponsorMarkers,
+            sponsorUiState = sponsorUiState,
             topRightBadges = topRightBadges,
-            seekPreviewFrame = seekPreviewFrame,
             showOnlineCount = showOnlineCount,
             isDebugOverlayVisible = isDebugOverlayVisible,
             isDanmakuEnabled = isDanmakuEnabled,
             isCommentsPanelVisible = isCommentsPanelVisible,
             visualEffectsState = visualEffectsState,
-            progressFocusRequester = focusBindings.progressFocusRequester,
-            actionFocusRequesters = focusBindings.actionFocusRequesters,
-            panelFocusRequesters = focusBindings.panelFocusRequesters,
-            commentsPanelPrimaryFocusRequester = focusBindings.commentsPanelPrimaryFocusRequester,
-            onOverlayKey = handlePlayerKey,
+            focusBindings = focusBindings,
+            handlePlayerKey = handlePlayerKey,
             onToggleCommentSort = viewModel::toggleCommentSort,
             onRetryComments = viewModel::refreshComments,
             onLoadMoreComments = viewModel::loadMoreComments,
@@ -338,9 +287,10 @@ fun PlayerScreen(
             )
         }
 
-        PlayerTransientOverlayMessages(
+        PlayerTransientMessageSection(
+            viewModel = viewModel,
             uiState = uiState,
-            bufferingOverlayText = bufferingOverlayText,
+            bufferingSpeedMeter = bufferingSpeedMeter,
             showDebugOverlay = isDebugOverlayVisible,
             showSponsorSkipNotice = showSponsorSkipNotice,
         )
@@ -353,6 +303,160 @@ fun PlayerScreen(
             onDismiss = viewModel::dismissResumePlaybackPrompt,
         )
     }
+}
+
+@Composable
+private fun PlayerSurfaceSection(
+    viewModel: PlayerViewModel,
+    exoPlayer: ExoPlayer,
+    overlayMode: PlayerOverlayMode,
+    handlePlayerKey: (KeyEvent) -> Boolean,
+    playerFocusCoordinator: PlayerFocusCoordinator,
+    onViewAvailable: (PlayerView) -> Unit,
+    onViewReleased: (PlayerView) -> Unit,
+) {
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+
+    PlayerSurfaceHost(
+        exoPlayer = exoPlayer,
+        keepScreenOn = playbackState.isPlaybackActive,
+        overlayMode = overlayMode,
+        onHiddenOverlayKey = handlePlayerKey,
+        onViewAvailable = onViewAvailable,
+        onViewReleased = onViewReleased,
+        onPlayerSurfaceFocusNeeded = {
+            playerFocusCoordinator.requestFocus(PlayerFocusIntent.FocusPlayerSurface)
+        },
+    )
+}
+
+@Composable
+private fun PlayerDanmakuSection(
+    viewModel: PlayerViewModel,
+    exoPlayer: ExoPlayer,
+    isEnabled: Boolean,
+    config: DanmakuConfig,
+) {
+    val payload by viewModel.danmakuPayload.collectAsStateWithLifecycle()
+    if (payload == null) return
+
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val livePlaybackState = rememberRealtimePlaybackState(
+        exoPlayer = exoPlayer,
+        playbackState = playbackState,
+        enabled = isEnabled,
+    )
+
+    PlayerDanmakuOverlayHost(
+        payload = payload,
+        isEnabled = isEnabled,
+        playbackState = livePlaybackState,
+        config = config,
+    )
+}
+
+@Composable
+private fun BoxScope.PlayerOverlaySection(
+    viewModel: PlayerViewModel,
+    exoPlayer: ExoPlayer,
+    uiState: PlayerUiState,
+    overlayUiState: PlayerOverlayUiState,
+    actions: List<PlayerAction>,
+    panelOptions: List<PanelOption>,
+    sponsorUiState: PlayerSponsorUiState,
+    topRightBadges: List<PlaybackBadge>,
+    showOnlineCount: Boolean,
+    isDebugOverlayVisible: Boolean,
+    isDanmakuEnabled: Boolean,
+    isCommentsPanelVisible: Boolean,
+    visualEffectsState: PlayerVisualEffectsState,
+    focusBindings: PlayerScreenFocusBindings,
+    handlePlayerKey: (KeyEvent) -> Boolean,
+    onToggleCommentSort: () -> Unit,
+    onRetryComments: () -> Unit,
+    onLoadMoreComments: () -> Unit,
+    onOpenCommentThread: (ReplyItem) -> Unit,
+    onBackFromCommentThread: () -> Unit,
+) {
+    if (overlayUiState.overlayMode != PlayerOverlayMode.FullControls) return
+
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val seekPreviewFrame by viewModel.seekPreviewFrame.collectAsStateWithLifecycle()
+    val commentsUiState = if (isCommentsPanelVisible) {
+        val collectedCommentsUiState by viewModel.commentsUiState.collectAsStateWithLifecycle()
+        collectedCommentsUiState
+    } else {
+        remember { PlayerCommentsUiState() }
+    }
+    val livePlaybackState = rememberRealtimePlaybackState(
+        exoPlayer = exoPlayer,
+        playbackState = playbackState,
+        enabled = true,
+    )
+    val sponsorMarkers = remember(
+        sponsorUiState.segments,
+        playbackState.durationMs,
+        sponsorUiState.enabled,
+        sponsorUiState.config,
+    ) {
+        buildSponsorProgressMarks(
+            segments = sponsorUiState.segments,
+            durationMs = playbackState.durationMs,
+            enabled = sponsorUiState.enabled,
+            config = sponsorUiState.config,
+        )
+    }
+
+    PlayerOverlayHost(
+        uiState = uiState,
+        commentsUiState = commentsUiState,
+        overlayUiState = overlayUiState,
+        playbackState = livePlaybackState,
+        actions = actions,
+        panelOptions = panelOptions,
+        sponsorMarkers = sponsorMarkers,
+        topRightBadges = topRightBadges,
+        seekPreviewFrame = seekPreviewFrame,
+        showOnlineCount = showOnlineCount,
+        isDebugOverlayVisible = isDebugOverlayVisible,
+        isDanmakuEnabled = isDanmakuEnabled,
+        isCommentsPanelVisible = isCommentsPanelVisible,
+        visualEffectsState = visualEffectsState,
+        progressFocusRequester = focusBindings.progressFocusRequester,
+        actionFocusRequesters = focusBindings.actionFocusRequesters,
+        panelFocusRequesters = focusBindings.panelFocusRequesters,
+        commentsPanelPrimaryFocusRequester = focusBindings.commentsPanelPrimaryFocusRequester,
+        onOverlayKey = handlePlayerKey,
+        onToggleCommentSort = onToggleCommentSort,
+        onRetryComments = onRetryComments,
+        onLoadMoreComments = onLoadMoreComments,
+        onOpenCommentThread = onOpenCommentThread,
+        onBackFromCommentThread = onBackFromCommentThread,
+    )
+}
+
+@Composable
+private fun BoxScope.PlayerTransientMessageSection(
+    viewModel: PlayerViewModel,
+    uiState: PlayerUiState,
+    bufferingSpeedMeter: BufferingSpeedMeter,
+    showDebugOverlay: Boolean,
+    showSponsorSkipNotice: Boolean,
+) {
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val bufferingOverlayText by rememberBufferingOverlayText(
+        isBuffering = playbackState.isBuffering &&
+            !uiState.isLoading &&
+            uiState.errorMessage.isNullOrBlank(),
+        speedMeter = bufferingSpeedMeter,
+    )
+
+    PlayerTransientOverlayMessages(
+        uiState = uiState,
+        bufferingOverlayText = bufferingOverlayText,
+        showDebugOverlay = showDebugOverlay,
+        showSponsorSkipNotice = showSponsorSkipNotice,
+    )
 }
 
 private fun resolvePlayerEscapeFocusIntent(

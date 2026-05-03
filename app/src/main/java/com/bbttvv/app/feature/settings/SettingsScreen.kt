@@ -126,12 +126,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "设置",
+                        text = "\u8BBE\u7F6E",
                         color = Color.White,
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
-                        text = "设置",
+                        text = "\u8BBE\u7F6E",
                         color = Color(0xB5FFFFFF),
                         fontSize = 15.sp
                     )
@@ -193,10 +193,14 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(initialValue = 1.0f)
     val volumeCalibrationScale by PlayerSettingsStore.getVolumeCalibrationScale(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
+    val audioBalanceLevel by PlayerSettingsStore.getAudioBalanceLevel(context)
+        .collectAsStateWithLifecycle(initialValue = com.bbttvv.app.core.player.AudioBalanceLevel.Off)
+    val audioPassthrough by PlayerSettingsStore.getAudioPassthrough(context)
+        .collectAsStateWithLifecycle(initialValue = false)
     val blockedUps by blockedUpRepository.getAllBlockedUps()
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    var cacheSize by remember { mutableStateOf("计算中...") }
+    var cacheSize by remember { mutableStateOf("\u8BA1\u7B97\u4E2D...") }
     var cacheRefreshTick by remember { mutableIntStateOf(0) }
     var isClearingCache by remember { mutableStateOf(false) }
     var showUserAgentDialog by remember { mutableStateOf(false) }
@@ -217,11 +221,11 @@ fun TvSettingsList(
         verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
         contentPadding = PaddingValues(bottom = if (compact) 20.dp else 32.dp)
     ) {
-        item { SettingsSectionTitle("播放与界面", compact = compact) }
+        item { SettingsSectionTitle("\u64AD\u653E", compact = compact) }
         item {
             SettingsRow(
-                title = "仅加载最高分辨率",
-                subtitle = "播放时优先请求接口返回的最高画质，关闭后按默认画质策略选择。",
+                title = "\u4EC5\u52A0\u8F7D\u6700\u9AD8\u5206\u8FA8\u7387",
+                subtitle = "\u64AD\u653E\u65F6\u4F18\u5148\u8BF7\u6C42\u63A5\u53E3\u8FD4\u56DE\u7684\u6700\u9AD8\u753B\u8D28\uFF0C\u5173\u95ED\u540E\u6309\u9ED8\u8BA4\u753B\u8D28\u7B56\u7565\u9009\u62E9\u3002",
                 value = onOff(autoHighestQuality),
                 compact = compact,
                 onClick = {
@@ -233,21 +237,8 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "在线观看人数",
-                subtitle = "控制播放页右上角是否显示当前视频的在线观看人数。",
-                value = onOff(showOnlineCount),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setShowOnlineCount(context, !showOnlineCount)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "记住上次播放倍速",
-                subtitle = "自动应用上次观看视频时选择的播放速度。",
+                title = "\u8BB0\u4F4F\u4E0A\u6B21\u64AD\u653E\u500D\u901F",
+                subtitle = "\u81EA\u52A8\u5E94\u7528\u4E0A\u6B21\u89C2\u770B\u89C6\u9891\u65F6\u9009\u62E9\u7684\u64AD\u653E\u901F\u5EA6\u3002",
                 value = onOff(rememberLastSpeed),
                 compact = compact,
                 onClick = {
@@ -259,8 +250,8 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "默认倍速",
-                subtitle = "循环切换 0.75x / 1.0x / 1.25x / 1.5x / 2.0x。",
+                title = "\u9ED8\u8BA4\u500D\u901F",
+                subtitle = "\u5FAA\u73AF\u5207\u6362 0.75x / 1.0x / 1.25x / 1.5x / 2.0x\u3002",
                 value = "${preferredSpeed}x",
                 compact = compact,
                 onClick = {
@@ -275,8 +266,8 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "应用音量校准",
-                subtitle = "只降低 BBTTVV 播放输出，不改变电视系统音量。",
+                title = "\u5E94\u7528\u97F3\u91CF\u6821\u51C6",
+                subtitle = "\u8C03\u6574 BBTTVV \u64AD\u653E\u8F93\u51FA\u97F3\u91CF\uFF0C\u4E0D\u6539\u53D8\u7535\u89C6\u7CFB\u7EDF\u97F3\u91CF\u3002\u8D85\u8FC7 100% \u53EF\u80FD\u5931\u771F\u3002",
                 value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
                 compact = compact,
                 onClick = {
@@ -290,8 +281,39 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "自动跳到上次播放位置",
-                subtitle = "打开视频时，自动从上次观看中断处继续播放。",
+                title = "\u97F3\u91CF\u5747\u8861",
+                subtitle = "\u81EA\u52A8\u8C03\u6574\u4E0D\u540C\u89C6\u9891\u7684\u97F3\u91CF\u5DEE\u5F02\uFF0C\u907F\u514D\u5207\u6362\u89C6\u9891\u65F6\u97F3\u91CF\u5FFD\u5927\u5FFD\u5C0F\u3002",
+                value = audioBalanceLevel.label,
+                compact = compact,
+                onClick = {
+                    val nextLevel = nextAudioBalanceLevel(audioBalanceLevel)
+                    com.bbttvv.app.core.player.VolumeBalanceController.setLevel(nextLevel)
+                    PlayerSettingsCache.updateAudioBalanceLevel(nextLevel)
+                    scope.launch {
+                        PlayerSettingsStore.setAudioBalanceLevel(context, nextLevel)
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "\u97F3\u9891\u76F4\u901A [\u5B9E\u9A8C\u6027]",
+                subtitle = "\u5C06\u538B\u7F29\u97F3\u9891\uFF08\u5982\u675C\u6BD4\u5168\u666F\u58F0\u3001Hi-Res\uFF09\u4E0D\u7ECF\u89E3\u7801\u76F4\u63A5\u8F93\u51FA\u5230\u5916\u63A5\u97F3\u9891\u8BBE\u5907\u3002\u5F00\u542F\u540E\u97F3\u91CF\u5747\u8861\u3001\u58F0\u9053\u5E73\u8861\u3001\u500D\u901F\u8C03\u8282\u5C06\u5931\u6548\u3002\u9700\u8981\u8BBE\u5907\u652F\u6301\u5BF9\u5E94\u7F16\u7801\u683C\u5F0F\u3002",
+                value = onOff(audioPassthrough),
+                compact = compact,
+                onClick = {
+                    val newValue = !audioPassthrough
+                    PlayerSettingsCache.updateAudioPassthrough(newValue)
+                    scope.launch {
+                        PlayerSettingsStore.setAudioPassthrough(context, newValue)
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "\u81EA\u52A8\u8DF3\u5230\u4E0A\u6B21\u64AD\u653E\u4F4D\u7F6E",
+                subtitle = "\u6253\u5F00\u89C6\u9891\u65F6\uFF0C\u81EA\u52A8\u4ECE\u4E0A\u6B21\u89C2\u770B\u4E2D\u65AD\u5904\u7EE7\u7EED\u64AD\u653E\u3002",
                 value = onOff(playerAutoResumeEnabled),
                 compact = compact,
                 onClick = {
@@ -306,7 +328,7 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "播放结束后",
+                title = "\u64AD\u653E\u7ED3\u675F\u540E",
                 subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
                 value = playerPlaybackEndAction.label,
                 compact = compact,
@@ -321,11 +343,24 @@ fun TvSettingsList(
             )
         }
 
-        item { SettingsSectionTitle("详情页", compact = compact) }
+        item { SettingsSectionTitle("\u754C\u9762\u663E\u793A", compact = compact) }
         item {
             SettingsRow(
-                title = "视频详情页评论",
-                subtitle = "控制视频详情页底部评论区是否显示和加载。",
+                title = "\u5728\u7EBF\u89C2\u770B\u4EBA\u6570",
+                subtitle = "\u63A7\u5236\u64AD\u653E\u9875\u53F3\u4E0A\u89D2\u662F\u5426\u663E\u793A\u5F53\u524D\u89C6\u9891\u7684\u5728\u7EBF\u89C2\u770B\u4EBA\u6570\u3002",
+                value = onOff(showOnlineCount),
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setShowOnlineCount(context, !showOnlineCount)
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "\u89C6\u9891\u8BE6\u60C5\u9875\u8BC4\u8BBA",
+                subtitle = "\u63A7\u5236\u89C6\u9891\u8BE6\u60C5\u9875\u5E95\u90E8\u8BC4\u8BBA\u533A\u662F\u5426\u663E\u793A\u548C\u52A0\u8F7D\u3002",
                 value = onOff(videoDetailCommentsEnabled),
                 compact = compact,
                 onClick = {
@@ -338,11 +373,9 @@ fun TvSettingsList(
                 }
             )
         }
-
-        item { SettingsSectionTitle("动态与首页", compact = compact) }
         item {
             SettingsRow(
-                title = "动态页显示管理",
+                title = "\u52A8\u6001\u9875\u663E\u793A\u7BA1\u7406",
                 subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
                 value = dynamicPageDisplayMode.label,
                 compact = compact,
@@ -358,40 +391,13 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "推荐页数据源",
-                subtitle = resolveFeedApiTypeDescription(feedApiType),
-                value = resolveFeedApiTypeLabel(feedApiType),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setFeedApiType(context, nextFeedApiType(feedApiType))
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "首页刷新数量",
-                subtitle = "单次刷新时拉取的推荐视频数量。",
-                value = homeRefreshCount.toString(),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        val next = if (homeRefreshCount >= 40) 10 else homeRefreshCount + 5
-                        SettingsManager.setHomeRefreshCount(context, next)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\"我的\"页面焦点刷新",
+                title = "\"\u6211\u7684\"\u9875\u9762\u7126\u70B9\u5237\u65B0",
                 subtitle = if (updateContentOnTabFocusEnabled) {
-                    "已开启：在“我的”页左侧 TAB 上移动焦点时，会立即刷新右侧内容。"
+                    "\u5DF2\u5F00\u542F\uFF1A\u5728\u201C\u6211\u7684\u201D\u9875\u5DE6\u4FA7 TAB \u4E0A\u79FB\u52A8\u7126\u70B9\u65F6\uFF0C\u4F1A\u7ACB\u5373\u5237\u65B0\u53F3\u4FA7\u5185\u5BB9\u3002"
                 } else {
-                    "已关闭：焦点移动只限于 TAB，需按确定键后才刷新右侧内容。"
+                    "\u5DF2\u5173\u95ED\uFF1A\u7126\u70B9\u79FB\u52A8\u53EA\u9650\u4E8E TAB\uFF0C\u9700\u6309\u786E\u5B9A\u952E\u540E\u624D\u5237\u65B0\u53F3\u4FA7\u5185\u5BB9\u3002"
                 },
-                value = if (updateContentOnTabFocusEnabled) "开启" else "关闭",
+                value = if (updateContentOnTabFocusEnabled) "\u5F00\u542F" else "\u5173\u95ED",
                 compact = compact,
                 onClick = {
                     scope.launch {
@@ -405,13 +411,13 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "稍后再看入口位置",
+                title = "\u7A0D\u540E\u518D\u770B\u5165\u53E3\u4F4D\u7F6E",
                 subtitle = if (watchLaterInTopTabsEnabled) {
-                    "当前显示在首页顶部 Tabs 中，并从“我的”左侧菜单隐藏。"
+                    "\u5F53\u524D\u663E\u793A\u5728\u9996\u9875\u9876\u90E8 Tabs \u4E2D\uFF0C\u5E76\u4ECE\u201C\u6211\u7684\u201D\u5DE6\u4FA7\u83DC\u5355\u9690\u85CF\u3002"
                 } else {
-                    "当前显示在“我的”左侧菜单中，并从首页顶部 Tabs 隐藏。"
+                    "\u5F53\u524D\u663E\u793A\u5728\u201C\u6211\u7684\u201D\u5DE6\u4FA7\u83DC\u5355\u4E2D\uFF0C\u5E76\u4ECE\u9996\u9875\u9876\u90E8 Tabs \u9690\u85CF\u3002"
                 },
-                value = if (watchLaterInTopTabsEnabled) "顶部 Tabs" else "我的菜单",
+                value = if (watchLaterInTopTabsEnabled) "\u9876\u90E8 Tabs" else "\u6211\u7684\u83DC\u5355",
                 compact = compact,
                 onClick = {
                     scope.launch {
@@ -424,12 +430,41 @@ fun TvSettingsList(
             )
         }
 
-        item { SettingsSectionTitle("网络访问", compact = compact) }
+        item { SettingsSectionTitle("\u9996\u9875\u4E0E\u63A8\u8350", compact = compact) }
+        item {
+            SettingsRow(
+                title = "\u63A8\u8350\u9875\u6570\u636E\u6E90",
+                subtitle = resolveFeedApiTypeDescription(feedApiType),
+                value = resolveFeedApiTypeLabel(feedApiType),
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setFeedApiType(context, nextFeedApiType(feedApiType))
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "\u9996\u9875\u5237\u65B0\u6570\u91CF",
+                subtitle = "\u5355\u6B21\u5237\u65B0\u65F6\u62C9\u53D6\u7684\u63A8\u8350\u89C6\u9891\u6570\u91CF\u3002",
+                value = homeRefreshCount.toString(),
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        val next = if (homeRefreshCount >= 40) 10 else homeRefreshCount + 5
+                        SettingsManager.setHomeRefreshCount(context, next)
+                    }
+                }
+            )
+        }
+
+        item { SettingsSectionTitle("\u7F51\u7EDC", compact = compact) }
         item {
             SettingsRow(
                 title = "User-Agent",
-                subtitle = "当前：${buildUserAgentPreview(userAgent)}",
-                value = if (userAgent == DEFAULT_APP_USER_AGENT) "默认" else "自定义",
+                subtitle = "\u5F53\u524D\uFF1A${buildUserAgentPreview(userAgent)}",
+                value = if (userAgent == DEFAULT_APP_USER_AGENT) "\u9ED8\u8BA4" else "\u81EA\u5B9A\u4E49",
                 compact = compact,
                 modifier = Modifier.focusRequester(userAgentFocusRequester),
                 onClick = {
@@ -440,8 +475,8 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "是否只允许使用IPV4",
-                subtitle = "开启后只走 IPv4 解析；在双栈网络异常时可作为兼容开关。",
+                title = "\u662F\u5426\u53EA\u5141\u8BB8\u4F7F\u7528IPV4",
+                subtitle = "\u5F00\u542F\u540E\u53EA\u8D70 IPv4 \u89E3\u6790\uFF1B\u5728\u53CC\u6808\u7F51\u7EDC\u5F02\u5E38\u65F6\u53EF\u4F5C\u4E3A\u517C\u5BB9\u5F00\u5173\u3002",
                 value = onOff(ipv4OnlyEnabled),
                 compact = compact,
                 onClick = {
@@ -452,11 +487,11 @@ fun TvSettingsList(
             )
         }
 
-        item { SettingsSectionTitle("隐私与缓存", compact = compact) }
+        item { SettingsSectionTitle("\u9690\u79C1\u4E0E\u7F13\u5B58", compact = compact) }
         item {
             SettingsRow(
-                title = "隐私无痕模式",
-                subtitle = "关闭搜索历史写入，并跳过观看心跳上报。",
+                title = "\u9690\u79C1\u65E0\u75D5\u6A21\u5F0F",
+                subtitle = "\u5173\u95ED\u641C\u7D22\u5386\u53F2\u5199\u5165\uFF0C\u5E76\u8DF3\u8FC7\u89C2\u770B\u5FC3\u8DF3\u4E0A\u62A5\u3002",
                 value = onOff(privacyMode),
                 compact = compact,
                 onClick = {
@@ -468,8 +503,8 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "黑名单数量",
-                subtitle = "当前已屏蔽的 UP 数量。",
+                title = "\u9ED1\u540D\u5355\u6570\u91CF",
+                subtitle = "\u5F53\u524D\u5DF2\u5C4F\u853D\u7684 UP \u6570\u91CF\u3002",
                 value = blockedUps.size.toString(),
                 compact = compact,
                 enabled = false,
@@ -478,13 +513,13 @@ fun TvSettingsList(
         }
         item {
             SettingsRow(
-                title = "清除缓存",
+                title = "\u6E05\u9664\u7F13\u5B58",
                 subtitle = if (isClearingCache) {
-                    "正在清理图片、网络与播放缓存..."
+                    "\u6B63\u5728\u6E05\u7406\u56FE\u7247\u3001\u7F51\u7EDC\u4E0E\u64AD\u653E\u7F13\u5B58..."
                 } else {
-                    "清理预览图、网络缓存和播放器残留。"
+                    "\u6E05\u7406\u9884\u89C8\u56FE\u3001\u7F51\u7EDC\u7F13\u5B58\u548C\u64AD\u653E\u5668\u6B8B\u7559\u3002"
                 },
-                value = if (isClearingCache) "清理中..." else cacheSize,
+                value = if (isClearingCache) "\u6E05\u7406\u4E2D..." else cacheSize,
                 compact = compact,
                 enabled = !isClearingCache,
                 onClick = {
@@ -499,11 +534,11 @@ fun TvSettingsList(
         }
 
         if (showBuildInfo) {
-            item { SettingsSectionTitle("当前构建", compact = compact) }
+            item { SettingsSectionTitle("\u5173\u4E8E", compact = compact) }
             item {
                 SettingsRow(
-                    title = "版本",
-                    subtitle = "当前安装包版本号。",
+                    title = "\u7248\u672C",
+                    subtitle = "\u5F53\u524D\u5B89\u88C5\u5305\u7248\u672C\u53F7\u3002",
                     value = BuildConfig.VERSION_NAME,
                     compact = compact,
                     enabled = false,
@@ -512,8 +547,8 @@ fun TvSettingsList(
             }
             item {
                 SettingsRow(
-                    title = "构建类型",
-                    subtitle = "用于区分 debug / release。",
+                    title = "\u6784\u5EFA\u7C7B\u578B",
+                    subtitle = "\u7528\u4E8E\u533A\u5206 debug / release\u3002",
                     value = BuildConfig.BUILD_TYPE,
                     compact = compact,
                     enabled = false,
@@ -522,8 +557,8 @@ fun TvSettingsList(
             }
             item {
                 SettingsRow(
-                    title = "应用包名",
-                    subtitle = "当前安装在设备上的包标识。",
+                    title = "\u5E94\u7528\u5305\u540D",
+                    subtitle = "\u5F53\u524D\u5B89\u88C5\u5728\u8BBE\u5907\u4E0A\u7684\u5305\u6807\u8BC6\u3002",
                     value = context.packageName,
                     compact = compact,
                     enabled = false,
@@ -535,7 +570,7 @@ fun TvSettingsList(
 
     if (showUserAgentDialog) {
         TvDialog(
-            title = "编辑 User-Agent",
+            title = "\u7F16\u8F91 User-Agent",
             onDismissRequest = { showUserAgentDialog = false },
             returnFocusKey = SettingsFocusReturnKeys.UserAgent,
             returnFocusFallbackKeys = listOf(SettingsFocusReturnKeys.Back),
@@ -544,7 +579,7 @@ fun TvSettingsList(
                     value = userAgentDraft,
                     onValueChange = { userAgentDraft = it },
                     label = "User-Agent",
-                    supportingText = "留空会自动回退到默认浏览器标识。",
+                    supportingText = "\u7559\u7A7A\u4F1A\u81EA\u52A8\u56DE\u9000\u5230\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6807\u8BC6\u3002",
                     singleLine = false,
                     minLines = 3,
                     keyboardType = KeyboardType.Uri
@@ -552,7 +587,7 @@ fun TvSettingsList(
             },
             actions = {
                 TvDialogActionButton(
-                    text = "恢复默认",
+                    text = "\u6062\u590D\u9ED8\u8BA4",
                     onClick = {
                         userAgentDraft = DEFAULT_APP_USER_AGENT
                         scope.launch {
@@ -562,11 +597,11 @@ fun TvSettingsList(
                     }
                 )
                 TvDialogActionButton(
-                    text = "取消",
+                    text = "\u53D6\u6D88",
                     onClick = { showUserAgentDialog = false }
                 )
                 TvDialogActionButton(
-                    text = "保存",
+                    text = "\u4FDD\u5B58",
                     onClick = {
                         scope.launch {
                             SettingsManager.setUserAgent(context, userAgentDraft)
@@ -598,7 +633,7 @@ private fun SettingsBackButton(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "返回", color = Color.White, fontSize = 15.sp)
+            Text(text = "\u8FD4\u56DE", color = Color.White, fontSize = 15.sp)
         }
     }
 }
@@ -712,7 +747,7 @@ internal fun SettingsRow(
     }
 }
 
-internal fun onOff(enabled: Boolean): String = if (enabled) "开" else "关"
+internal fun onOff(enabled: Boolean): String = if (enabled) "\u5F00" else "\u5173"
 
 private fun nextFeedApiType(type: SettingsManager.FeedApiType): SettingsManager.FeedApiType {
     return when (type) {
@@ -724,17 +759,17 @@ private fun nextFeedApiType(type: SettingsManager.FeedApiType): SettingsManager.
 
 private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
     return when (type) {
-        SettingsManager.FeedApiType.WEB -> "网页端 (Web)"
-        SettingsManager.FeedApiType.MOBILE -> "移动端 (App)"
-        SettingsManager.FeedApiType.NORMAL -> "兼容模式"
+        SettingsManager.FeedApiType.WEB -> "\u7F51\u9875\u7AEF (Web)"
+        SettingsManager.FeedApiType.MOBILE -> "\u79FB\u52A8\u7AEF (App)"
+        SettingsManager.FeedApiType.NORMAL -> "\u517C\u5BB9\u6A21\u5F0F"
     }
 }
 
 private fun resolveFeedApiTypeDescription(type: SettingsManager.FeedApiType): String {
     return when (type) {
-        SettingsManager.FeedApiType.WEB -> "推荐页使用网页端推荐接口。"
-        SettingsManager.FeedApiType.MOBILE -> "推荐页优先使用移动端推荐接口，失败后回退网页端。"
-        SettingsManager.FeedApiType.NORMAL -> "推荐页使用兼容模式。"
+        SettingsManager.FeedApiType.WEB -> "\u63A8\u8350\u9875\u4F7F\u7528\u7F51\u9875\u7AEF\u63A8\u8350\u63A5\u53E3\u3002"
+        SettingsManager.FeedApiType.MOBILE -> "\u63A8\u8350\u9875\u4F18\u5148\u4F7F\u7528\u79FB\u52A8\u7AEF\u63A8\u8350\u63A5\u53E3\uFF0C\u5931\u8D25\u540E\u56DE\u9000\u7F51\u9875\u7AEF\u3002"
+        SettingsManager.FeedApiType.NORMAL -> "\u63A8\u8350\u9875\u4F7F\u7528\u517C\u5BB9\u6A21\u5F0F\u3002"
     }
 }
 
@@ -753,10 +788,10 @@ private fun resolveDynamicPageDisplayModeDescription(
     mode: SettingsManager.DynamicPageDisplayMode
 ): String {
     return when (mode) {
-        SettingsManager.DynamicPageDisplayMode.LIVE -> "动态页仅显示关注直播横栏，隐藏关注更新横栏。"
-        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "动态页仅显示关注更新横栏，隐藏关注直播横栏。"
-        SettingsManager.DynamicPageDisplayMode.ALL -> "动态页同时显示关注直播与关注更新横栏。"
-        SettingsManager.DynamicPageDisplayMode.NONE -> "动态页隐藏关注直播与关注更新横栏，只保留视频列表。"
+        SettingsManager.DynamicPageDisplayMode.LIVE -> "\u52A8\u6001\u9875\u4EC5\u663E\u793A\u5173\u6CE8\u76F4\u64AD\u6A2A\u680F\uFF0C\u9690\u85CF\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\u3002"
+        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "\u52A8\u6001\u9875\u4EC5\u663E\u793A\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u6A2A\u680F\u3002"
+        SettingsManager.DynamicPageDisplayMode.ALL -> "\u52A8\u6001\u9875\u540C\u65F6\u663E\u793A\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\u3002"
+        SettingsManager.DynamicPageDisplayMode.NONE -> "\u52A8\u6001\u9875\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u53EA\u4FDD\u7559\u89C6\u9891\u5217\u8868\u3002"
     }
 }
 
@@ -775,10 +810,10 @@ private fun resolvePlayerPlaybackEndActionDescription(
     action: SettingsManager.PlayerPlaybackEndAction
 ): String {
     return when (action) {
-        SettingsManager.PlayerPlaybackEndAction.NONE -> "播放结束后停留在播放器，按确认键可从头播放。"
-        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> "优先播放下一分P，没有下一分P时播放相关推荐。"
-        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> "当前视频结束后自动从头循环播放。"
-        SettingsManager.PlayerPlaybackEndAction.RETURN -> "播放结束后返回上一页；从详情页进入时会回到详情页。"
+        SettingsManager.PlayerPlaybackEndAction.NONE -> "\u64AD\u653E\u7ED3\u675F\u540E\u505C\u7559\u5728\u64AD\u653E\u5668\uFF0C\u6309\u786E\u8BA4\u952E\u53EF\u4ECE\u5934\u64AD\u653E\u3002"
+        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> "\u4F18\u5148\u64AD\u653E\u4E0B\u4E00\u5206P\uFF0C\u6CA1\u6709\u4E0B\u4E00\u5206P\u65F6\u64AD\u653E\u76F8\u5173\u63A8\u8350\u3002"
+        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> "\u5F53\u524D\u89C6\u9891\u7ED3\u675F\u540E\u81EA\u52A8\u4ECE\u5934\u5FAA\u73AF\u64AD\u653E\u3002"
+        SettingsManager.PlayerPlaybackEndAction.RETURN -> "\u64AD\u653E\u7ED3\u675F\u540E\u8FD4\u56DE\u4E0A\u4E00\u9875\uFF1B\u4ECE\u8BE6\u60C5\u9875\u8FDB\u5165\u65F6\u4F1A\u56DE\u5230\u8BE6\u60C5\u9875\u3002"
     }
 }
 
@@ -792,7 +827,12 @@ private fun nextPlaybackSpeed(speed: Float): Float {
     }
 }
 
+private fun nextAudioBalanceLevel(current: com.bbttvv.app.core.player.AudioBalanceLevel): com.bbttvv.app.core.player.AudioBalanceLevel {
+    val ordered = com.bbttvv.app.core.player.AudioBalanceLevel.ordered
+    val index = ordered.indexOf(current)
+    return if (index == -1 || index == ordered.lastIndex) ordered.first() else ordered[index + 1]
+}
+
 private fun buildUserAgentPreview(userAgent: String): String {
     return userAgent.trim().replace(Regex("\\s+"), " ").take(52)
 }
-

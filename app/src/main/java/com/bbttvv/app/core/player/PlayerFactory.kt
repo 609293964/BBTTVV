@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -13,6 +14,7 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
 import com.bbttvv.app.core.store.PlayerSettingsCache
@@ -43,14 +45,30 @@ private fun resolvePlayerBufferPolicy(isOnWifi: Boolean): PlayerBufferPolicy {
     }
 }
 
+/**
+ * 创建配置好的 ExoPlayer 实例
+ *
+ * 配置包括：OkHttp DataSource、WiFi/移动网络不同缓冲策略、
+ * AppRenderersFactory 解码器 fallback、SeekParameters.CLOSEST_SYNC、
+ * VolumeBalanceAudioProcessor 音量均衡。
+ *
+ * @param context Android 上下文
+ * @param transferListener 数据传输监听器
+ * @param audioBalanceLevel 音量均衡级别
+ * @param audioPassthrough 是否音频直通
+ * @return 配置好的 ExoPlayer 实例
+ */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun createConfiguredPlayer(
     context: Context,
-    transferListener: TransferListener? = null
+    transferListener: TransferListener? = null,
+    audioBalanceLevel: AudioBalanceLevel = VolumeBalanceController.getLevel(),
+    audioPassthrough: Boolean = PlayerSettingsCache.getAudioPassthrough(),
 ): ExoPlayer {
+    val appContext = context.applicationContext
     val headers = mapOf(
         "Referer" to "https://www.bilibili.com",
-        "User-Agent" to resolveAppUserAgent(context.applicationContext)
+        "User-Agent" to resolveAppUserAgent(appContext)
     )
     val dataSourceFactory = OkHttpDataSource.Factory(NetworkModule.playbackOkHttpClient)
         .setDefaultRequestProperties(headers)
@@ -66,15 +84,30 @@ fun createConfiguredPlayer(
         .build()
 
     val bufferPolicy = resolvePlayerBufferPolicy(
-        isOnWifi = NetworkUtils.isWifi(context)
+        isOnWifi = NetworkUtils.isWifi(appContext)
     )
 
-    return ExoPlayer.Builder(context)
-        .setRenderersFactory(
-            AppRenderersFactory(context)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-                .setEnableDecoderFallback(true)
-        )
+    val volumeBalanceProcessor = VolumeBalanceAudioProcessor(level = audioBalanceLevel)
+    VolumeBalanceController.registerProcessor(volumeBalanceProcessor)
+
+    val renderersFactory = AppRenderersFactory(appContext, volumeBalanceProcessor, audioPassthrough)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        .setEnableDecoderFallback(true)
+
+    val trackSelector = if (audioPassthrough) {
+        DefaultTrackSelector(appContext).apply {
+            setParameters(
+                buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            )
+        }
+    } else {
+        DefaultTrackSelector(appContext)
+    }
+
+    return ExoPlayer.Builder(appContext)
+        .setRenderersFactory(renderersFactory)
+        .setTrackSelector(trackSelector)
         .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
         .setLoadControl(
             DefaultLoadControl.Builder()
@@ -94,22 +127,33 @@ fun createConfiguredPlayer(
         .build()
         .apply {
             volume = PlayerSettingsCache.getVolumeCalibrationScale()
-            playbackParameters = PlaybackParameters(PlayerSettingsCache.getPreferredPlaybackSpeed())
+            if (!audioPassthrough) {
+                playbackParameters = PlaybackParameters(PlayerSettingsCache.getPreferredPlaybackSpeed())
+            }
             playWhenReady = true
         }
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private class AppRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+private class AppRenderersFactory(
+    context: Context,
+    private val volumeBalanceProcessor: VolumeBalanceAudioProcessor,
+    private val audioPassthrough: Boolean,
+) : DefaultRenderersFactory(context) {
     override fun buildAudioSink(
         context: Context,
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink {
+        val audioProcessors: Array<AudioProcessor> = if (audioPassthrough) {
+            emptyArray()
+        } else {
+            arrayOf(StereoBalanceAudioProcessor(), volumeBalanceProcessor)
+        }
         return DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
-            .setAudioProcessors(arrayOf(StereoBalanceAudioProcessor()))
+            .setAudioProcessors(audioProcessors)
             .build()
     }
 }

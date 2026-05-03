@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.screen
 
+import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,6 +41,44 @@ class PlayerOverlayActionsTest {
 
         assertTrue(stateMachine.uiState.showDebugOverlay)
         assertTrue(effects.isEmpty())
+    }
+
+    @Test
+    fun `debug overlay keeps player controls visible while playback is active`() {
+        val shouldHide = shouldAutoHidePlayerControls(
+            overlayUiState = PlayerOverlayUiState(
+                overlayMode = PlayerOverlayMode.FullControls,
+                activePanel = null,
+                showDebugOverlay = true,
+            ),
+            playbackState = PlayerPlaybackState(isPlaying = true),
+            isLoading = false,
+            errorMessage = null,
+            showSponsorSkipNotice = false,
+            isCommentsPanelVisible = false,
+            isDebugOverlayVisible = true,
+        )
+
+        assertFalse(shouldHide)
+    }
+
+    @Test
+    fun `idle full controls can auto hide when no panel or debug overlay is visible`() {
+        val shouldHide = shouldAutoHidePlayerControls(
+            overlayUiState = PlayerOverlayUiState(
+                overlayMode = PlayerOverlayMode.FullControls,
+                activePanel = null,
+                showDebugOverlay = false,
+            ),
+            playbackState = PlayerPlaybackState(isPlaying = true),
+            isLoading = false,
+            errorMessage = null,
+            showSponsorSkipNotice = false,
+            isCommentsPanelVisible = false,
+            isDebugOverlayVisible = false,
+        )
+
+        assertTrue(shouldHide)
     }
 
     @Test

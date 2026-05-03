@@ -412,8 +412,7 @@ object JsonPluginManager {
                     Exception("下载失败: HTTP ${response.code} ${response.message}")
                 )
             }
-            response.body?.string()
-                ?: return Result.failure(Exception("服务器返回空内容"))
+            response.body.string()
         }
 
         Logger.d(TAG, "📄 下载内容长度: ${content.length}")

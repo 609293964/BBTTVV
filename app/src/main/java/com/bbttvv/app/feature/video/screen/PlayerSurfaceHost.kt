@@ -19,6 +19,7 @@ internal fun PlayerSurfaceHost(
     overlayMode: PlayerOverlayMode,
     onHiddenOverlayKey: (KeyEvent) -> Boolean,
     onViewAvailable: (PlayerView) -> Unit,
+    onViewReleased: (PlayerView) -> Unit = {},
     onPlayerSurfaceFocusNeeded: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -28,6 +29,7 @@ internal fun PlayerSurfaceHost(
         overlayMode = overlayMode,
         onHiddenOverlayKey = onHiddenOverlayKey,
         onViewAvailable = onViewAvailable,
+        onViewReleased = onViewReleased,
         onPlayerSurfaceFocusNeeded = onPlayerSurfaceFocusNeeded,
         modifier = modifier.fillMaxSize(),
     )

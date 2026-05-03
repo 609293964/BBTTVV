@@ -1,5 +1,14 @@
 package com.bbttvv.app.feature.video.screen
 
+/**
+ * 播放器焦点意图密封类
+ *
+ * - [FocusPlayerSurface]: 聚焦播放 Surface
+ * - [FocusProgress]: 聚焦进度条
+ * - [FocusCommentsPanel]: 聚焦评论面板
+ * - [FocusAction]: 聚焦指定索引的操作按钮
+ * - [FocusPanelOption]: 聚焦指定索引的设置面板项
+ */
 internal sealed class PlayerFocusIntent {
     data object FocusPlayerSurface : PlayerFocusIntent()
     data object FocusProgress : PlayerFocusIntent()
@@ -16,6 +25,13 @@ internal fun interface PlayerFocusTargetRegistration {
     fun unregister()
 }
 
+/**
+ * 播放器焦点协调器
+ *
+ * 管理播放器内的焦点，包括播放 Surface、进度条、评论面板、操作按钮和设置面板。
+ * 播放器内不应直接散落 focusRequester.requestFocus()，应通过 PlayerFocusIntent 表达明确意图。
+ * 同文件包含 PlayerCommentFocusCoordinator，管理播放器评论面板中按 key 索引的评论焦点。
+ */
 internal class PlayerFocusCoordinator {
     private var pendingIntent: PlayerFocusIntent? = null
     private var playerSurfaceTarget: PlayerFocusTarget? = null

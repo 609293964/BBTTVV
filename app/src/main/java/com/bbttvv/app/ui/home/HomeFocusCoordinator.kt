@@ -5,6 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.bbttvv.app.ui.components.AppTopLevelTab
 
+/**
+ * 首页焦点区域枚举
+ *
+ * 定义首页所有可聚焦区域，由 [HomeFocusCoordinator] 统一调度。
+ * 新增首页区域时必须注册为对应的 HomeFocusRegion，不要在页面内部直接抢焦点。
+ */
 internal enum class HomeFocusRegion {
     TopBar,
     ContentTabs,
@@ -17,6 +23,16 @@ internal enum class HomeFocusRegion {
     ProfileContent,
 }
 
+/**
+ * 首页焦点意图密封类
+ *
+ * 表达首页各区域间的焦点切换意图，由 [HomeFocusCoordinator] 消费。
+ * - [FocusTopBar]: 聚焦顶部导航栏
+ * - [FocusTopBarTab]: 聚焦顶部导航栏指定 Tab
+ * - [FocusSelectedContent]: 聚焦当前选中 Tab 的内容区域
+ * - [FocusRegion]: 聚焦指定 Tab 的指定区域
+ * - [RestoreVideoKey]: 恢复到指定视频 key 的焦点（用于从详情页/播放页返回）
+ */
 internal sealed class HomeFocusIntent {
     data object FocusTopBar : HomeFocusIntent()
     data class FocusTopBarTab(
@@ -146,6 +162,17 @@ private object HomeFocusRules {
     }
 }
 
+/**
+ * 首页焦点协调器
+ *
+ * 统一调度首页所有区域的焦点切换，包括 TopBar、内容 Tab、Grid、动态用户栏、搜索等。
+ * 通过 [HomeFocusIntent] 表达焦点意图，通过 [HomeFocusTarget] 注册焦点目标。
+ * 每个 Tab 有独立的 [HomeFocusRule]，定义进入优先级、顶部边界行为和恢复优先级。
+ * 记住每个 Tab 最后聚焦的 [HomeFocusRegion]，下次进入时优先恢复。
+ *
+ * 三层焦点架构中的页面层组件，与全局层的 TvFocusEscapeGuard/TvFocusReturn
+ * 和组件层的 HomeRecommendGridFocusState/DpadGridController 协同工作。
+ */
 internal class HomeFocusCoordinator(
     initialSelectedHomeTab: AppTopLevelTab = AppTopLevelTab.RECOMMEND,
 ) {
@@ -163,6 +190,7 @@ internal class HomeFocusCoordinator(
 
     private var pendingIntent: HomeFocusIntent? = HomeFocusIntent.FocusTopBar
     private var pendingRestoreCallback: ((String) -> Unit)? = null
+    private var pendingBackToTopBarReset: Boolean = false
     private var topBarTarget: HomeFocusTarget? = null
     private val lastContentRegionByTab = mutableMapOf<AppTopLevelTab, HomeFocusRegion>()
     private val contentTargets =
@@ -180,6 +208,9 @@ internal class HomeFocusCoordinator(
 
     fun updateScene(scene: HomeFocusScene) {
         this.scene = scene
+        if (scene != HomeFocusScene.BackToTopBar) {
+            pendingBackToTopBarReset = false
+        }
     }
 
     fun prepareForContentFocus(
@@ -187,6 +218,9 @@ internal class HomeFocusCoordinator(
         keepTopBarVisible: Boolean = false,
     ) {
         this.scene = scene
+        if (scene != HomeFocusScene.BackToTopBar) {
+            pendingBackToTopBarReset = false
+        }
         isTopBarVisible = keepTopBarVisible
         isContentFocused = true
     }
@@ -234,6 +268,7 @@ internal class HomeFocusCoordinator(
 
     fun requestTopBarFocus(scene: HomeFocusScene = HomeFocusScene.BackToTopBar) {
         this.scene = scene
+        pendingBackToTopBarReset = scene == HomeFocusScene.BackToTopBar
         clearSelectedContentVisualState()
         isTopBarVisible = true
         isContentFocused = false
@@ -245,10 +280,20 @@ internal class HomeFocusCoordinator(
         scene: HomeFocusScene = HomeFocusScene.TabSwitch,
     ) {
         this.scene = scene
+        pendingBackToTopBarReset = false
         clearSelectedContentVisualState()
         isTopBarVisible = true
         isContentFocused = false
         pendingIntent = HomeFocusIntent.FocusTopBarTab(tab)
+    }
+
+    fun consumeBackToTopBarResetIntent(): Boolean {
+        if (scene != HomeFocusScene.BackToTopBar || !pendingBackToTopBarReset) {
+            return false
+        }
+        pendingBackToTopBarReset = false
+        scene = HomeFocusScene.TopBarFocused
+        return true
     }
 
     fun requestSelectedContentFocus() {

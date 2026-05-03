@@ -15,12 +15,39 @@ object DashManifestBuilder {
         val durationSeconds = dash.duration.takeIf { it > 0 }?.toDouble()
             ?: (fallbackDurationMs.coerceAtLeast(0L) / 1000.0)
         val minBufferSeconds = dash.minBufferTime.takeIf { it > 0f } ?: 1.5f
+        return buildManifest(
+            selectedVideo = selectedVideo,
+            selectedAudio = selectedAudio,
+            durationSeconds = durationSeconds,
+            minBufferSeconds = minBufferSeconds.toDouble()
+        )
+    }
 
+    fun buildFromTracks(
+        selectedVideo: DashVideo,
+        selectedAudio: DashAudio?,
+        durationMs: Long
+    ): String {
+        val durationSeconds = durationMs.coerceAtLeast(0L) / 1000.0
+        return buildManifest(
+            selectedVideo = selectedVideo,
+            selectedAudio = selectedAudio,
+            durationSeconds = durationSeconds,
+            minBufferSeconds = 1.5
+        )
+    }
+
+    private fun buildManifest(
+        selectedVideo: DashVideo,
+        selectedAudio: DashAudio?,
+        durationSeconds: Double,
+        minBufferSeconds: Double
+    ): String {
         return buildString {
             appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
             appendLine("""<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"""")
             appendLine("""     profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"""")
-            appendLine("""     minBufferTime="PT${formatDecimal(minBufferSeconds.toDouble())}S"""")
+            appendLine("""     minBufferTime="PT${formatDecimal(minBufferSeconds)}S"""")
             appendLine("""     type="static"""")
             appendLine("""     mediaPresentationDuration="PT${formatDecimal(durationSeconds)}S">""")
             appendLine("""  <Period>""")
@@ -43,8 +70,27 @@ object DashManifestBuilder {
         appendLine(
             """    <AdaptationSet mimeType="${audio.mimeType.ifBlank { "audio/mp4" }}" contentType="audio" subsegmentAlignment="true" subsegmentStartsWithSAP="1">"""
         )
+        appendAudioChannelConfiguration(audio)
         appendRepresentation(audio = audio)
         appendLine("""    </AdaptationSet>""")
+    }
+
+    private fun StringBuilder.appendAudioChannelConfiguration(audio: DashAudio) {
+        val channelCount = resolveAudioChannelCount(audio)
+        appendLine(
+            """      <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="$channelCount"/>"""
+        )
+    }
+
+    private fun resolveAudioChannelCount(audio: DashAudio): Int {
+        val codecs = audio.codecs.lowercase()
+        return when {
+            codecs.startsWith("ec-3") || codecs.startsWith("eac-3") -> 6
+            codecs.startsWith("ac-3") -> 6
+            codecs.contains("atmos") -> 8
+            codecs.startsWith("flac") -> 2
+            else -> 2
+        }
     }
 
     private fun StringBuilder.appendRepresentation(

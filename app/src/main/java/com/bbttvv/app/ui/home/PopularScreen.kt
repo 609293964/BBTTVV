@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -30,6 +31,7 @@ internal fun PopularScreen(
     onVideoClick: (VideoItem) -> Unit,
     onContentRowFocused: (Int) -> Unit = {},
     focusCoordinator: HomeFocusCoordinator,
+    videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     gridColumnCount: Int = 4,
     focusState: HomeRecommendGridFocusState = remember { HomeRecommendGridFocusState() },
     topBarHeightPx: Int = 0,
@@ -141,6 +143,7 @@ internal fun PopularScreen(
                 focusTab = AppTopLevelTab.POPULAR,
                 scrollResetKey = uiState.selectedCategoryIndex,
                 allowChildDrawingOutsideBounds = false,
+                videoCardRecycledViewPool = videoCardRecycledViewPool,
                 onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },
                 onLoadMore = viewModel::loadMore,

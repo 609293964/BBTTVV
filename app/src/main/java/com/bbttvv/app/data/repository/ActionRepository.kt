@@ -11,7 +11,27 @@ import kotlinx.coroutines.withContext
  * - 关注/取关 UP 主
  * - 收藏/取消收藏视频
  */
-object ActionRepository {
+data class TripleActionRepositoryResult(
+    val likeSuccess: Boolean,
+    val coinSuccess: Boolean,
+    val coinMessage: String?,
+    val favoriteSuccess: Boolean,
+    val coinsAdded: Int
+)
+
+interface UserActionRepository {
+    suspend fun followUser(mid: Long, follow: Boolean): Result<Boolean>
+    suspend fun favoriteVideo(aid: Long, favorite: Boolean): Result<Boolean>
+    suspend fun likeVideo(aid: Long, like: Boolean): Result<Boolean>
+    suspend fun coinVideo(aid: Long, count: Int, alsoLike: Boolean): Result<Boolean>
+    suspend fun tripleAction(aid: Long, currentCoinCount: Int): Result<TripleActionRepositoryResult>
+    suspend fun checkFollowStatus(mid: Long): Boolean
+    suspend fun checkFavoriteStatus(aid: Long): Boolean
+    suspend fun checkLikeStatus(aid: Long): Boolean
+    suspend fun checkCoinStatus(aid: Long): Int
+}
+
+object ActionRepository : UserActionRepository {
     private val api = NetworkModule.api
     private const val SPECIAL_FOLLOW_TAG_ID = -10L
     private const val FOLLOW_GROUP_BATCH_SIZE = 20
@@ -108,7 +128,7 @@ object ActionRepository {
      * @param mid UP 主的用户 ID
      * @param follow true=关注, false=取关
      */
-    suspend fun followUser(mid: Long, follow: Boolean): Result<Boolean> {
+    override suspend fun followUser(mid: Long, follow: Boolean): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 val csrf = TokenManager.csrfCache ?: ""
@@ -141,7 +161,11 @@ object ActionRepository {
      * @param favorite true=收藏, false=取消收藏
      * @param folderId 收藏夹 ID，为空时使用默认收藏夹
      */
-    suspend fun favoriteVideo(aid: Long, favorite: Boolean, folderId: Long? = null): Result<Boolean> {
+    override suspend fun favoriteVideo(aid: Long, favorite: Boolean): Result<Boolean> {
+        return favoriteVideo(aid = aid, favorite = favorite, folderId = null)
+    }
+
+    suspend fun favoriteVideo(aid: Long, favorite: Boolean, folderId: Long?): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 val csrf = TokenManager.csrfCache ?: ""
@@ -224,7 +248,7 @@ object ActionRepository {
     /**
      *  检查是否已关注 UP 主
      */
-    suspend fun checkFollowStatus(mid: Long): Boolean {
+    override suspend fun checkFollowStatus(mid: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = api.getRelation(mid)
@@ -404,7 +428,7 @@ object ActionRepository {
     /**
      *  检查视频是否已收藏
      */
-    suspend fun checkFavoriteStatus(aid: Long): Boolean {
+    override suspend fun checkFavoriteStatus(aid: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = api.checkFavoured(aid)
@@ -476,7 +500,7 @@ object ActionRepository {
     /**
      *  点赞/取消点赞视频
      */
-    suspend fun likeVideo(aid: Long, like: Boolean): Result<Boolean> {
+    override suspend fun likeVideo(aid: Long, like: Boolean): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 val csrf = TokenManager.csrfCache ?: ""
@@ -503,7 +527,7 @@ object ActionRepository {
     /**
      *  检查是否已点赞
      */
-    suspend fun checkLikeStatus(aid: Long): Boolean {
+    override suspend fun checkLikeStatus(aid: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = api.hasLiked(aid)
@@ -524,7 +548,7 @@ object ActionRepository {
     /**
      *  投币
      */
-    suspend fun coinVideo(aid: Long, count: Int, alsoLike: Boolean): Result<Boolean> {
+    override suspend fun coinVideo(aid: Long, count: Int, alsoLike: Boolean): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 val csrf = TokenManager.csrfCache ?: ""
@@ -556,7 +580,7 @@ object ActionRepository {
     /**
      *  检查已投币数
      */
-    suspend fun checkCoinStatus(aid: Long): Int {
+    override suspend fun checkCoinStatus(aid: Long): Int {
         return withContext(Dispatchers.IO) {
             try {
                 val response = api.hasCoined(aid)
@@ -577,15 +601,11 @@ object ActionRepository {
     /**
      *  一键三连 (点赞 + 投币2个 + 收藏)
      */
-    data class TripleResult(
-        val likeSuccess: Boolean,
-        val coinSuccess: Boolean,
-        val coinMessage: String?,
-        val favoriteSuccess: Boolean,
-        val coinsAdded: Int
-    )
-    
-    suspend fun tripleAction(aid: Long, currentCoinCount: Int = 0): Result<TripleResult> {
+    suspend fun tripleAction(aid: Long): Result<TripleActionRepositoryResult> {
+        return tripleAction(aid = aid, currentCoinCount = 0)
+    }
+
+    override suspend fun tripleAction(aid: Long, currentCoinCount: Int): Result<TripleActionRepositoryResult> {
         return withContext(Dispatchers.IO) {
             val csrf = TokenManager.csrfCache ?: ""
             if (csrf.isEmpty()) {
@@ -617,7 +637,7 @@ object ActionRepository {
                 " tripleAction: like=$likeSuccess, coin=$coinSuccess, coinsAdded=$coinsAdded, fav=$favoriteSuccess"
             )
             
-            Result.success(TripleResult(
+            Result.success(TripleActionRepositoryResult(
                 likeSuccess = likeSuccess,
                 coinSuccess = coinSuccess,
                 coinMessage = coinMessage,

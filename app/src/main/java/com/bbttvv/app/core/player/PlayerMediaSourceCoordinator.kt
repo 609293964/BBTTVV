@@ -20,6 +20,16 @@ import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.preferHttpsUrl
 import java.io.File
 
+/**
+ * 播放器 MediaSource 协调器
+ *
+ * 构建 MediaSource，支持：
+ * - CDN 候选 URL fallback（CdnFailoverDataSourceFactory）
+ * - DASH 视频（视频+音频 MergingMediaSource）
+ * - DASH MPD 文件播放
+ * - 多段 ProgressiveMediaSource
+ * - 直播流自动识别 HLS / 渐进式
+ */
 internal class PlayerMediaSourceCoordinator(
     private val playerProvider: () -> PlayerEngine?,
     private val tag: String,

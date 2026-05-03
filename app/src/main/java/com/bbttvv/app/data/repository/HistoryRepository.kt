@@ -1,6 +1,8 @@
 ﻿package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.util.Logger
+import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.HistoryData
 import com.bbttvv.app.data.model.response.HistoryCursor
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,7 @@ internal fun resolveHistoryCursorQuery(
 }
 
 object HistoryRepository {
+    private const val TAG = "HistoryRepo"
     private val api = NetworkModule.api
 
     /**
@@ -57,14 +60,17 @@ object HistoryRepository {
         business: String? = null
     ): Result<HistoryResult> {
         return withContext(Dispatchers.IO) {
-            try {
+            safeApiCall(
+                tag = TAG,
+                errorMessage = { "getHistoryList failed: ps=$ps, max=$max, viewAt=$viewAt" }
+            ) {
                 val cursorQuery = resolveHistoryCursorQuery(
                     max = max,
                     viewAt = viewAt,
                     business = business
                 )
-                com.bbttvv.app.core.util.Logger.d(
-                    "HistoryRepo",
+                Logger.d(
+                    TAG,
                     "🔴 Fetching history: ps=$ps, max=${cursorQuery.max}, viewAt=${cursorQuery.viewAt}, business=${cursorQuery.business}"
                 )
                 val response = api.getHistoryList(
@@ -73,22 +79,19 @@ object HistoryRepository {
                     viewAt = cursorQuery.viewAt,
                     business = cursorQuery.business
                 )
-                com.bbttvv.app.core.util.Logger.d("HistoryRepo", "🔴 Response code=${response.code}, items=${response.data?.list?.size ?: 0}")
+                Logger.d(TAG, "🔴 Response code=${response.code}, items=${response.data?.list?.size ?: 0}")
                 
                 if (response.code == 0) {
                     val list = response.data?.list ?: emptyList()
                     val cursor = response.data?.cursor
-                    com.bbttvv.app.core.util.Logger.d(
-                        "HistoryRepo",
+                    Logger.d(
+                        TAG,
                         "🔴 Cursor: max=${cursor?.max}, view_at=${cursor?.view_at}, business=${cursor?.business}"
                     )
-                    Result.success(HistoryResult(list, cursor))
+                    HistoryResult(list, cursor)
                 } else {
-                    Result.failure(Exception(response.message))
+                    throw Exception(response.message)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("HistoryRepo", " Error: ${e.message}")
-                Result.failure(e)
             }
         }
     }
@@ -98,15 +101,16 @@ object HistoryRepository {
         csrf: String
     ): Result<Unit> {
         return withContext(Dispatchers.IO) {
-            try {
+            safeApiCall(
+                tag = TAG,
+                errorMessage = { "deleteHistoryItem failed: kid=$kid" }
+            ) {
                 val response = api.deleteHistoryItem(kid = kid, csrf = csrf)
                 if (response.code == 0) {
-                    Result.success(Unit)
+                    Unit
                 } else {
-                    Result.failure(Exception(response.message.ifEmpty { "删除历史失败: ${response.code}" }))
+                    throw Exception(response.message.ifEmpty { "删除历史失败: ${response.code}" })
                 }
-            } catch (e: Exception) {
-                Result.failure(e)
             }
         }
     }
