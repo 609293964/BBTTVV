@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="cache_logs" path="logs/" />
+    <files-path name="files_logs" path="logs/" />
+    <external-path name="download_logs" path="Download/BBTTVV/logs/" />
+</paths>

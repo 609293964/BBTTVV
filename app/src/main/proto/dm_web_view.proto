@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package com.bbttvv.app.dmview;
+
+option java_multiple_files = true;
+option java_package = "com.bbttvv.app.proto.dmview";
+
+message DmSegConfig {
+  int64 pageSize = 1;
+  int64 total = 2;
+}
+
+message DanmuWebPlayerConfig {
+  bool dmSwitch = 1;
+  bool aiSwitch = 2;
+  int32 aiLevel = 3;
+  bool blocktop = 4;
+  bool blockscroll = 5;
+  bool blockbottom = 6;
+  bool blockcolor = 7;
+  bool blockspecial = 8;
+  bool preventshade = 9;
+  bool dmask = 10;
+  float opacity = 11;
+  int32 dmarea = 12;
+  float speedplus = 13;
+  float fontsize = 14;
+  bool screensync = 15;
+  bool speedsync = 16;
+  string fontfamily = 17;
+  bool bold = 18;
+  int32 fontborder = 19;
+  string drawType = 20;
+}
+
+message DmWebViewReply {
+  int32 state = 1;
+  string text = 2;
+  string textSide = 3;
+  DmSegConfig dmSge = 4;
+  int64 count = 8;
+  DanmuWebPlayerConfig dmSetting = 10;
+}
