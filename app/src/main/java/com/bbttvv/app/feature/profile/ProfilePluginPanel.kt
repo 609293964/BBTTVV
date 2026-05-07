@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +61,7 @@ import kotlinx.coroutines.launch
 internal fun ProfilePluginCenterPanel(
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
 ) {
     val scope = rememberCoroutineScope()
     val plugins by com.bbttvv.app.core.plugin.PluginManager.pluginsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -83,6 +85,12 @@ internal fun ProfilePluginCenterPanel(
             plugins.firstOrNull { it.plugin.id == id }
         }
     }
+    val firstBuiltInPluginId = builtInPlugins.firstOrNull()?.plugin?.id
+    val firstJsonPluginId = if (firstBuiltInPluginId == null) {
+        jsonPlugins.firstOrNull()?.plugin?.id
+    } else {
+        null
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -91,6 +99,7 @@ internal fun ProfilePluginCenterPanel(
                 state = contentFocusTarget,
                 focusCoordinator = focusCoordinator,
                 focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
             )
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -123,7 +132,12 @@ internal fun ProfilePluginCenterPanel(
                         } else {
                             pluginInfo.plugin.id
                         }
-                    }
+                    },
+                    modifier = if (pluginInfo.plugin.id == firstBuiltInPluginId) {
+                        Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
                 if (expandedPluginId == pluginInfo.plugin.id) {
                     when (val plugin = pluginInfo.plugin) {
@@ -209,7 +223,12 @@ internal fun ProfilePluginCenterPanel(
                         }
                     },
                     value = if (loaded.enabled) "已启用" else "已关闭",
-                    onClick = { JsonPluginManager.setEnabled(loaded.plugin.id, !loaded.enabled) }
+                    onClick = { JsonPluginManager.setEnabled(loaded.plugin.id, !loaded.enabled) },
+                    modifier = if (loaded.plugin.id == firstJsonPluginId) {
+                        Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -937,11 +956,17 @@ private fun PluginCenterStaticInfoCard(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun PluginCenterRowCard(title: String, subtitle: String, value: String, onClick: () -> Unit) {
+private fun PluginCenterRowCard(
+    title: String,
+    subtitle: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = Modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
     ) {

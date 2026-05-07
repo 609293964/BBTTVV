@@ -267,6 +267,13 @@ internal fun VideoCardRecyclerGridItems(
         }
     }
 
+    fun cancelPendingRestoreForUserGridNavigation(keyCode: Int, event: KeyEvent) {
+        if (!latestIsHomeTabActive) return
+        if (event.action != KeyEvent.ACTION_DOWN || keyCode !in GridNavigationKeyCodes) return
+        val tab = latestFocusTab ?: return
+        latestFocusCoordinator?.cancelPendingRestoreVideoKeyForUserNavigation(tab)
+    }
+
     LaunchedEffect(scrollResetKey, scrollResetOnFirstComposition) {
         if (scrollResetKey == null) {
             hasObservedScrollResetKey = false
@@ -292,6 +299,7 @@ internal fun VideoCardRecyclerGridItems(
                             ?.bindingAdapterPosition
                             ?.takeIf { it != NO_POSITION }
                         if (currentPosition != null && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                            cancelPendingRestoreForUserGridNavigation(event.keyCode, event)
                             focusState.noteUserNavigation(event.keyCode, event)
                             if (dpadGridController.handleItemKeyEvent(
                                     itemView = focusedView,
@@ -308,6 +316,7 @@ internal fun VideoCardRecyclerGridItems(
                             focusedView != null &&
                             focusedView.isSameOrDescendantOf(this)
                         ) {
+                            cancelPendingRestoreForUserGridNavigation(event.keyCode, event)
                             focusState.noteUserNavigation(event.keyCode, event)
                             if (dpadGridController.handleItemKeyEvent(
                                     itemView = focusedView,
@@ -459,6 +468,7 @@ internal fun VideoCardRecyclerGridItems(
                         if (!latestIsHomeTabActive) {
                             false
                         } else {
+                            cancelPendingRestoreForUserGridNavigation(keyCode, event)
                             focusState.noteUserNavigation(keyCode, event)
                             dpadGridController.handleItemKeyEvent(
                                 itemView = itemView,

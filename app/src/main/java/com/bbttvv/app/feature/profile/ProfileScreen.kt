@@ -465,11 +465,13 @@ private fun ProfileContentPanel(
                 )
                 ProfileMenu.SETTINGS -> ProfileSettingsPanel(
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.DANMAKU_SETTINGS -> ProfileDanmakuSettingsPanel(
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.FAVORITE -> ProfileFavoritePanel(
                     folders = uiState.favoriteFolders,
@@ -487,7 +489,13 @@ private fun ProfileContentPanel(
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
-                ProfileMenu.BANGUMI -> ProfilePlaceholderPanel("我的追番", "追番/追剧区域入口已经预留。")
+                ProfileMenu.BANGUMI -> ProfilePlaceholderPanel(
+                    title = "我的追番",
+                    subtitle = "追番/追剧区域入口已经预留。",
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
+                )
                 ProfileMenu.WATCH_LATER -> ProfileWatchLaterPanel(
                     items = uiState.watchLaterItems,
                     totalCount = uiState.watchLaterTotalCount,
@@ -513,13 +521,19 @@ private fun ProfileContentPanel(
                 ProfileMenu.CHANGE_ICON -> ChangeIconPanel(
                     onOpenSettings = onOpenSettings,
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.PLUGINS -> ProfilePluginCenterPanel(
                     focusCoordinator = focusCoordinator,
-                    focusTab = focusTab
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
                 )
-                ProfileMenu.GUIDE -> ProfileGuidePanel()
+                ProfileMenu.GUIDE -> ProfileGuidePanel(
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
+                    onRequestSidebarFocus = onRequestSidebarFocus
+                )
                 ProfileMenu.LOGOUT -> LogoutPanel()
             }
         }

@@ -58,6 +58,7 @@ internal fun UpSearchRecyclerGrid(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    onVerticalScrollOffsetChanged: (Int) -> Unit = {},
     canLoadMore: () -> Boolean = { false },
     onLoadMore: () -> Unit = {},
     onTopRowDpadUp: () -> Boolean = { false },
@@ -71,6 +72,7 @@ internal fun UpSearchRecyclerGrid(
     val latestCanLoadMore by rememberUpdatedState(canLoadMore)
     val latestOnLoadMore by rememberUpdatedState(onLoadMore)
     val latestOnTopRowDpadUp by rememberUpdatedState(onTopRowDpadUp)
+    val latestOnVerticalScrollOffsetChanged by rememberUpdatedState(onVerticalScrollOffsetChanged)
     val latestFocusCoordinator by rememberUpdatedState(focusCoordinator)
     val latestFocusTab by rememberUpdatedState(focusTab)
     val latestOnOpenUp by rememberUpdatedState(onOpenUp)
@@ -252,6 +254,7 @@ internal fun UpSearchRecyclerGrid(
                 }
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
                         if (dy <= 0) return
                         val manager = recyclerView.layoutManager as? GridLayoutManager ?: return
                         val totalItemCount = manager.itemCount
@@ -291,6 +294,7 @@ internal fun UpSearchRecyclerGrid(
                     submitList(items) {
                         dpadGridController.onItemsCommitted()
                         focusState.onItemsCommitted()
+                        latestOnVerticalScrollOffsetChanged(computeVerticalScrollOffset())
                         if (latestIsHomeTabActive) {
                             latestFocusCoordinator?.drainPendingFocus()
                         }
@@ -319,6 +323,7 @@ internal fun UpSearchRecyclerGrid(
                 adapter.submitList(items) {
                     dpadGridController.onItemsCommitted()
                     focusState.onItemsCommitted()
+                    latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
                     if (latestIsHomeTabActive) {
                         latestFocusCoordinator?.drainPendingFocus()
                     }

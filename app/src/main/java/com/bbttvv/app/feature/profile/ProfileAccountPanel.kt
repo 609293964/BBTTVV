@@ -1,6 +1,8 @@
 package com.bbttvv.app.feature.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -46,6 +49,7 @@ import com.bbttvv.app.ui.home.HomeFocusCoordinator
 internal fun ProfileSettingsPanel(
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
 ) {
     val contentFocusTarget = rememberProfileContentFocusTargetState(
         focusCoordinator = focusCoordinator,
@@ -63,9 +67,11 @@ internal fun ProfileSettingsPanel(
                     state = contentFocusTarget,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
+                    onDpadLeft = onRequestSidebarFocus,
                 ),
             compact = true,
-            showBuildInfo = false
+            showBuildInfo = false,
+            initialFocusRequester = contentFocusTarget.initialFocusRequester,
         )
     }
 }
@@ -74,6 +80,7 @@ internal fun ProfileSettingsPanel(
 internal fun ProfileDanmakuSettingsPanel(
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
 ) {
     val contentFocusTarget = rememberProfileContentFocusTargetState(
         focusCoordinator = focusCoordinator,
@@ -91,18 +98,63 @@ internal fun ProfileDanmakuSettingsPanel(
                     state = contentFocusTarget,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
+                    onDpadLeft = onRequestSidebarFocus,
                 ),
-            compact = true
+            compact = true,
+            initialFocusRequester = contentFocusTarget.initialFocusRequester,
         )
     }
 }
 
 @Composable
-internal fun ProfilePlaceholderPanel(title: String, subtitle: String) {
-    Column(modifier = Modifier.fillMaxSize().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+internal fun ProfilePlaceholderPanel(
+    title: String,
+    subtitle: String,
+    focusCoordinator: HomeFocusCoordinator? = null,
+    focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
+) {
+    val contentFocusTarget = rememberProfileContentFocusTargetState(
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+    )
+    var focused by remember { mutableStateOf(false) }
+    val cardShape = RoundedCornerShape(28.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .profileContentFocusTarget(
+                state = contentFocusTarget,
+                focusCoordinator = focusCoordinator,
+                focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
+            )
+            .padding(top = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         Text(text = title, color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        Box(modifier = Modifier.fillMaxWidth().background(Color(0x12000000), RoundedCornerShape(28.dp)).padding(24.dp)) {
-            Text(text = subtitle, color = Color(0xD9FFFFFF), lineHeight = 22.sp)
+        Box(
+            modifier = Modifier
+                .focusRequester(contentFocusTarget.initialFocusRequester)
+                .onFocusChanged { focused = it.isFocused }
+                .focusable()
+                .fillMaxWidth()
+                .background(
+                    color = if (focused) Color(0xE9E6EEF4) else Color(0x12000000),
+                    shape = cardShape
+                )
+                .border(
+                    width = if (focused) 1.dp else 0.dp,
+                    color = if (focused) Color.White.copy(alpha = 0.92f) else Color.Transparent,
+                    shape = cardShape
+                )
+                .padding(24.dp)
+        ) {
+            Text(
+                text = subtitle,
+                color = if (focused) Color(0xFF111111) else Color(0xD9FFFFFF),
+                lineHeight = 22.sp
+            )
         }
     }
 }
@@ -145,23 +197,43 @@ internal fun SwitchAccountPanel(
                 items = accounts,
                 key = { account -> account.mid }
             ) { account ->
+                val isFirstAccount = account.mid == accounts.firstOrNull()?.mid
                 AccountRowCard(
                     account = account,
                     active = activeAccountMid == account.mid,
                     onSwitchAccount = onSwitchAccount,
-                    onRemoveStoredAccount = onRemoveStoredAccount
+                    onRemoveStoredAccount = onRemoveStoredAccount,
+                    initialFocusModifier = if (isFirstAccount) {
+                        Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
         item {
-            ProfilePrimaryAction(text = "重新扫码登录", onClick = onPrepareRelogin)
+            ProfilePrimaryAction(
+                text = "重新扫码登录",
+                onClick = onPrepareRelogin,
+                modifier = if (accounts.isEmpty()) {
+                    Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                } else {
+                    Modifier
+                },
+            )
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AccountRowCard(account: StoredAccountSession, active: Boolean, onSwitchAccount: (Long) -> Unit, onRemoveStoredAccount: (Long) -> Unit) {
+private fun AccountRowCard(
+    account: StoredAccountSession,
+    active: Boolean,
+    onSwitchAccount: (Long) -> Unit,
+    onRemoveStoredAccount: (Long) -> Unit,
+    initialFocusModifier: Modifier = Modifier,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -198,13 +270,15 @@ private fun AccountRowCard(account: StoredAccountSession, active: Boolean, onSwi
             AccountActionButton(
                 text = "切换",
                 contentColor = Color.White,
-                onClick = { onSwitchAccount(account.mid) }
+                onClick = { onSwitchAccount(account.mid) },
+                modifier = initialFocusModifier,
             )
         }
         AccountActionButton(
             text = "移除",
             contentColor = Color(0xFFFFBCC8),
-            onClick = { onRemoveStoredAccount(account.mid) }
+            onClick = { onRemoveStoredAccount(account.mid) },
+            modifier = if (active) initialFocusModifier else Modifier,
         )
     }
 }
@@ -214,12 +288,13 @@ private fun AccountRowCard(account: StoredAccountSession, active: Boolean, onSwi
 private fun AccountActionButton(
     text: String,
     contentColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = Modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color(0x14000000),
@@ -244,6 +319,7 @@ internal fun ChangeIconPanel(
     onOpenSettings: () -> Unit,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
 ) {
     val contentFocusTarget = rememberProfileContentFocusTargetState(
         focusCoordinator = focusCoordinator,
@@ -256,20 +332,41 @@ internal fun ChangeIconPanel(
                 state = contentFocusTarget,
                 focusCoordinator = focusCoordinator,
                 focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
             )
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = "更换图标", color = Color.White, style = MaterialTheme.typography.headlineMedium)
         ProfileInfoCard("图标入口已预留", "后续可以在完整设置页中继续接你的 TV 图标方案！")
-        ProfilePrimaryAction(text = "打开设置页", onClick = onOpenSettings)
+        ProfilePrimaryAction(
+            text = "打开设置页",
+            onClick = onOpenSettings,
+            modifier = Modifier.focusRequester(contentFocusTarget.initialFocusRequester),
+        )
     }
 }
 
 @Composable
-internal fun ProfileGuidePanel() {
+internal fun ProfileGuidePanel(
+    focusCoordinator: HomeFocusCoordinator? = null,
+    focusTab: AppTopLevelTab? = null,
+    onRequestSidebarFocus: () -> Boolean = { false },
+) {
+    val contentFocusTarget = rememberProfileContentFocusTargetState(
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+    )
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .profileContentFocusTarget(
+                state = contentFocusTarget,
+                focusCoordinator = focusCoordinator,
+                focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
+            )
+            .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
@@ -282,7 +379,9 @@ internal fun ProfileGuidePanel() {
             ProfileInfoCard(
                 "上下左右 — 基础导航",
                 "在首页、搜索页、个人页等所有界面中，使用方向键移动焦点。焦点高亮会跟随方向键实时移动，" +
-                    "无需按确认键即可看到当前选中项。在视频网格中，上下键在行间切换，左右键在同行卡片间移动。"
+                    "无需按确认键即可看到当前选中项。在视频网格中，上下键在行间切换，左右键在同行卡片间移动。",
+                modifier = Modifier.focusRequester(contentFocusTarget.initialFocusRequester),
+                focusable = true,
             )
         }
         item {
@@ -447,11 +546,35 @@ internal fun LogoutPanel() {
 }
 
 @Composable
-internal fun ProfileInfoCard(title: String, value: String, compact: Boolean = false) {
+internal fun ProfileInfoCard(
+    title: String,
+    value: String,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+    focusable: Boolean = false,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(if (compact) 24.dp else 28.dp)
+    val focusModifier = if (focusable) {
+        Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+    } else {
+        Modifier
+    }
     Box(
-        modifier = Modifier
+        modifier = modifier
+            .then(focusModifier)
             .fillMaxWidth()
-            .background(Color(0x12000000), RoundedCornerShape(if (compact) 24.dp else 28.dp))
+            .background(
+                color = if (focused) Color(0xE9E6EEF4) else Color(0x12000000),
+                shape = shape
+            )
+            .border(
+                width = if (focused) 1.dp else 0.dp,
+                color = if (focused) Color.White.copy(alpha = 0.92f) else Color.Transparent,
+                shape = shape
+            )
             .padding(
                 horizontal = if (compact) 18.dp else 22.dp,
                 vertical = if (compact) 14.dp else 20.dp
@@ -460,13 +583,13 @@ internal fun ProfileInfoCard(title: String, value: String, compact: Boolean = fa
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
             Text(
                 text = title,
-                color = Color.White,
+                color = if (focused) Color(0xFF111111) else Color.White,
                 fontSize = if (compact) 15.sp else 18.sp,
                 fontWeight = FontWeight.Medium
             )
             Text(
                 text = value,
-                color = Color(0xD9FFFFFF),
+                color = if (focused) Color(0xB0000000) else Color(0xD9FFFFFF),
                 fontSize = if (compact) 11.sp else 14.sp,
                 lineHeight = if (compact) 16.sp else 21.sp
             )
@@ -476,11 +599,15 @@ internal fun ProfileInfoCard(title: String, value: String, compact: Boolean = fa
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun ProfilePrimaryAction(text: String, onClick: () -> Unit) {
+internal fun ProfilePrimaryAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = Modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
     ) {

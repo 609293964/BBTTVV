@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.profile
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -11,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRegion
@@ -19,6 +21,7 @@ import com.bbttvv.app.ui.home.LocalHomeTabActive
 
 internal class ProfileContentFocusTargetState {
     val focusRequester = FocusRequester()
+    val initialFocusRequester = FocusRequester()
     private val focusRequestToken = mutableIntStateOf(0)
     private val hasFocusState = mutableStateOf(false)
 
@@ -34,7 +37,7 @@ internal class ProfileContentFocusTargetState {
     }
 
     fun tryRequestFocusNow(): Boolean {
-        return runCatching { focusRequester.requestFocus() }.getOrDefault(false)
+        return requestFocus(initialFocusRequester) || requestFocus(focusRequester)
     }
 
     fun onFocusChanged(hasFocus: Boolean) {
@@ -43,6 +46,10 @@ internal class ProfileContentFocusTargetState {
 
     fun hasFocus(): Boolean {
         return hasFocusState.value
+    }
+
+    private fun requestFocus(requester: FocusRequester): Boolean {
+        return runCatching { requester.requestFocus() }.getOrDefault(false)
     }
 }
 
@@ -96,9 +103,10 @@ internal fun Modifier.profileContentFocusTarget(
     state: ProfileContentFocusTargetState,
     focusCoordinator: HomeFocusCoordinator?,
     focusTab: AppTopLevelTab?,
+    onDpadLeft: (() -> Boolean)? = null,
 ): Modifier {
     val isHomeTabActive = LocalHomeTabActive.current
-    return this.onFocusChanged { focusState ->
+    val focusModifier = this.onFocusChanged { focusState ->
         val hasFocus = focusState.hasFocus || focusState.isFocused
         state.onFocusChanged(hasFocus)
         if (isHomeTabActive && hasFocus && focusCoordinator != null && focusTab != null) {
@@ -106,6 +114,19 @@ internal fun Modifier.profileContentFocusTarget(
             focusCoordinator.onContentRowFocused(0)
         }
     }
+
+    val directionalModifier = if (onDpadLeft == null) {
+        focusModifier
+    } else {
+        focusModifier.onPreviewKeyEvent { keyEvent ->
+            val event = keyEvent.nativeKeyEvent
+            event.action == AndroidKeyEvent.ACTION_DOWN &&
+                event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_LEFT &&
+                onDpadLeft()
+        }
+    }
+
+    return directionalModifier
         .focusRequester(state.focusRequester)
         .focusGroup()
 }

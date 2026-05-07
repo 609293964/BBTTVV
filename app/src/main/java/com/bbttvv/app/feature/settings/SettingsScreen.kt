@@ -151,7 +151,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 fun TvSettingsList(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
-    showBuildInfo: Boolean = true
+    showBuildInfo: Boolean = true,
+    initialFocusRequester: FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -206,6 +207,9 @@ fun TvSettingsList(
     var showUserAgentDialog by remember { mutableStateOf(false) }
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
     val userAgentFocusRequester = remember { FocusRequester() }
+    val initialFocusModifier = initialFocusRequester
+        ?.let { requester -> Modifier.focusRequester(requester) }
+        ?: Modifier
 
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
@@ -228,6 +232,7 @@ fun TvSettingsList(
                 subtitle = "\u64AD\u653E\u65F6\u4F18\u5148\u8BF7\u6C42\u63A5\u53E3\u8FD4\u56DE\u7684\u6700\u9AD8\u753B\u8D28\uFF0C\u5173\u95ED\u540E\u6309\u9ED8\u8BA4\u753B\u8D28\u7B56\u7565\u9009\u62E9\u3002",
                 value = onOff(autoHighestQuality),
                 compact = compact,
+                modifier = initialFocusModifier,
                 onClick = {
                     scope.launch {
                         SettingsManager.setAuto1080p(context, !autoHighestQuality)

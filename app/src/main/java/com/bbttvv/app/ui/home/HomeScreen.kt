@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -71,6 +72,12 @@ fun HomeScreen(
     )
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
     val recyclerPools = remember { HomeRecyclerPools() }
+    DisposableEffect(focusCoordinator, onCancelVideoFocusRestore) {
+        focusCoordinator.setPendingRestoreCancelCallback(onCancelVideoFocusRestore)
+        onDispose {
+            focusCoordinator.setPendingRestoreCancelCallback(null)
+        }
+    }
     RegisterHomeFocusEscapeGuard(focusCoordinator)
     val restoreTargetTab = restoreVideoFocusTab ?: AppTopLevelTab.RECOMMEND
     val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&

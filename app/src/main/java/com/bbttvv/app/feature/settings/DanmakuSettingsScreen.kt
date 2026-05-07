@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,12 +26,16 @@ import kotlinx.coroutines.launch
 fun TvDanmakuSettingsList(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    initialFocusRequester: FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
         .value
+    val initialFocusModifier = initialFocusRequester
+        ?.let { requester -> Modifier.focusRequester(requester) }
+        ?: Modifier
 
     LazyColumn(
         modifier = modifier,
@@ -43,6 +49,7 @@ fun TvDanmakuSettingsList(
                 subtitle = "播放器进入时默认显示弹幕；播放器里的“弹”按钮只影响当前会话。",
                 value = onOff(settings.enabled),
                 compact = compact,
+                modifier = initialFocusModifier,
                 onClick = {
                     scope.launch {
                         DanmakuSettingsStore.updateSettings(context) { current ->

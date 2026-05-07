@@ -167,11 +167,20 @@ internal class DpadGridController(
             }
 
             KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (edge.isLeft) callbacks.onLeftEdge() || config.consumeLeftEdge else false
+                handleDpadLeft(
+                    recycler = recycler,
+                    position = resolvedPosition,
+                    edge = edge,
+                )
             }
 
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (edge.isRight) callbacks.onRightEdge() || config.consumeRightEdge else false
+                handleDpadRight(
+                    recycler = recycler,
+                    position = resolvedPosition,
+                    itemCount = itemCount,
+                    edge = edge,
+                )
             }
 
             KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -198,6 +207,60 @@ internal class DpadGridController(
 
             else -> false
         }
+    }
+
+    private fun handleDpadLeft(
+        recycler: RecyclerView,
+        position: Int,
+        edge: DpadGridEdge,
+    ): Boolean {
+        if (edge.isLeft) {
+            return callbacks.onLeftEdge() || config.consumeLeftEdge
+        }
+        return focusHorizontalNeighbor(
+            recycler = recycler,
+            targetPosition = position - 1,
+        )
+    }
+
+    private fun handleDpadRight(
+        recycler: RecyclerView,
+        position: Int,
+        itemCount: Int,
+        edge: DpadGridEdge,
+    ): Boolean {
+        if (edge.isRight) {
+            return callbacks.onRightEdge() || config.consumeRightEdge
+        }
+        val targetPosition = position + 1
+        if (targetPosition >= itemCount) return config.consumeRightEdge
+        return focusHorizontalNeighbor(
+            recycler = recycler,
+            targetPosition = targetPosition,
+        )
+    }
+
+    private fun focusHorizontalNeighbor(
+        recycler: RecyclerView,
+        targetPosition: Int,
+    ): Boolean {
+        val adapter = recycler.adapter ?: return false
+        if (targetPosition !in 0 until adapter.itemCount) return false
+
+        val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
+        if (targetItem != null && targetItem.isValidFocusTarget()) {
+            if (focusAttachedItemThenScrollIntoView(recycler, targetItem, targetPosition)) {
+                return true
+            }
+        }
+
+        val requestToken = ++focusRequestToken
+        tryFocusAtPosition(
+            recycler = recycler,
+            position = targetPosition,
+            requestToken = requestToken,
+        )
+        return true
     }
 
     private fun handleDpadUp(

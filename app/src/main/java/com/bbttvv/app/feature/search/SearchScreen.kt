@@ -64,8 +64,10 @@ import com.bbttvv.app.ui.home.HomeFocusEntryHint
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.HomeRecommendGridFocusState
+import com.bbttvv.app.ui.home.HomeCollapsingHeaderGrid
 import com.bbttvv.app.ui.home.LocalHomeTabActive
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
+import com.bbttvv.app.ui.home.rememberHomeCollapsingHeaderState
 
 @Composable
 internal fun SearchScreen(
@@ -93,6 +95,7 @@ internal fun SearchScreen(
     var pendingSearchHomeFocus by remember { mutableStateOf(false) }
     val latestSearchInputHasFocus by rememberUpdatedState(searchInputHasFocus)
     val latestSearchCategoryHasFocus by rememberUpdatedState(searchCategoryHasFocus)
+    val searchResultHeaderState = rememberHomeCollapsingHeaderState()
     val hotColumnCount = 2
 
     LaunchedEffect(isHomeTabActive) {
@@ -118,6 +121,7 @@ internal fun SearchScreen(
 
     fun requestSearchInputFocus(): Boolean {
         if (!isHomeTabActive) return false
+        searchResultHeaderState.reset()
         return runCatching {
             val focused = searchBarFocusRequester.requestFocus()
             if (focused) {
@@ -130,6 +134,7 @@ internal fun SearchScreen(
     fun requestSearchCategoryFocus(): Boolean {
         if (!isHomeTabActive) return false
         if (!searchResultsMode) return false
+        searchResultHeaderState.reset()
         val selectedIndex = visibleSearchTypes.indexOf(uiState.searchType)
             .takeIf { index -> index >= 0 }
             ?: 0
@@ -155,6 +160,11 @@ internal fun SearchScreen(
         if (!searchResultsMode) {
             videoGridHasFocus = false
         }
+        searchResultHeaderState.reset()
+    }
+
+    LaunchedEffect(uiState.query, uiState.searchType) {
+        searchResultHeaderState.reset()
     }
 
     BackHandler(enabled = isHomeTabActive && searchResultsMode && videoGridHasFocus) {
@@ -209,38 +219,32 @@ internal fun SearchScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Top Centered Capsule Search Bar
-        Box(
+    val searchBarModifier = Modifier
+        .focusRequester(searchBarFocusRequester)
+        .onFocusChanged { focusState ->
+            searchInputHasFocus = focusState.isFocused
+            if (focusState.isFocused) {
+                videoGridHasFocus = false
+                searchResultHeaderState.reset()
+                noteSearchRegionFocused(HomeFocusRegion.SearchInput)
+            }
+        }
+        .width(400.dp)
+
+    if (!searchResultsMode) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 16.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            CapsuleSearchBar(
+            SearchBarRow(
                 value = uiState.query,
                 placeholder = uiState.defaultSearchHint,
                 onValueChange = viewModel::onQueryChange,
                 onSubmit = viewModel::search,
                 onRequestTopBarFocus = onRequestTopBarFocus,
-                modifier = Modifier
-                    .focusRequester(searchBarFocusRequester)
-                    .onFocusChanged { focusState ->
-                        searchInputHasFocus = focusState.isFocused
-                        if (focusState.isFocused) {
-                            videoGridHasFocus = false
-                            noteSearchRegionFocused(HomeFocusRegion.SearchInput)
-                        }
-                    }
-                    .width(400.dp)
+                modifier = searchBarModifier
             )
-        }
-
-        if (!uiState.hasSubmittedQuery && uiState.query.isBlank()) {
             // Hot Search Mode
             if (uiState.hotList.isNotEmpty()) {
                 Text(
@@ -277,50 +281,76 @@ internal fun SearchScreen(
                     }
                 }
             }
-        } else {
-            // Search Results Mode
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                SearchCategoryTabs(
-                    selected = uiState.searchType,
-                    onSelect = viewModel::setSearchType,
-                    visibleTypes = visibleSearchTypes,
-                    focusRequesters = categoryFocusRequesters,
-                    onFocusUp = ::requestSearchInputFocus,
-                    onFocusDown = { index ->
-                        val tab = focusTab
-                        val coordinator = focusCoordinator
-                        if (isHomeTabActive && tab != null && coordinator != null) {
-                            coordinator.requestRegionFocus(
-                                tab = tab,
-                                region = HomeFocusRegion.Grid,
-                                entryHint = HomeFocusEntryHint(preferredIndex = index),
-                            )
-                            true
-                        } else {
-                            false
+        }
+    } else {
+        HomeCollapsingHeaderGrid(
+            topBarHeightPx = 0,
+            state = searchResultHeaderState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            localHeader = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    SearchBarRow(
+                        value = uiState.query,
+                        placeholder = uiState.defaultSearchHint,
+                        onValueChange = viewModel::onQueryChange,
+                        onSubmit = viewModel::search,
+                        onRequestTopBarFocus = onRequestTopBarFocus,
+                        modifier = searchBarModifier
+                    )
+                    SearchCategoryRow(
+                        selected = uiState.searchType,
+                        onSelect = viewModel::setSearchType,
+                        visibleTypes = visibleSearchTypes,
+                        focusRequesters = categoryFocusRequesters,
+                        onFocusUp = ::requestSearchInputFocus,
+                        onFocusDown = { index ->
+                            val tab = focusTab
+                            val coordinator = focusCoordinator
+                            if (isHomeTabActive && tab != null && coordinator != null) {
+                                coordinator.requestRegionFocus(
+                                    tab = tab,
+                                    region = HomeFocusRegion.Grid,
+                                    entryHint = HomeFocusEntryHint(preferredIndex = index),
+                                )
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        onFocusChanged = { focused ->
+                            searchCategoryHasFocus = focused
+                            if (focused) {
+                                videoGridHasFocus = false
+                                searchResultHeaderState.reset()
+                                noteSearchRegionFocused(HomeFocusRegion.SearchCategory)
+                            }
                         }
-                    },
-                    onFocusChanged = { focused ->
-                        searchCategoryHasFocus = focused
-                        if (focused) {
-                            videoGridHasFocus = false
-                            noteSearchRegionFocused(HomeFocusRegion.SearchCategory)
-                        }
-                    }
-                )
+                    )
+                }
             }
-
+        ) { topPadding, onScrollOffset ->
             if (uiState.isSearching && uiState.currentPage == 1) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(text = "搜索中...", color = Color.White)
                 }
             } else if (!uiState.errorMessage.isNullOrBlank()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(text = uiState.errorMessage ?: "Search failed.", color = Color(0xFFFB7299))
                 }
             } else if (uiState.searchType == SearchType.VIDEO) {
@@ -329,16 +359,19 @@ internal fun SearchScreen(
                     contentPadding = PaddingValues(
                         start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                         end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                        top = topPadding,
                         bottom = AppTopBarDefaults.HeaderContentBottomPadding
                     ),
                     modifier = Modifier.fillMaxSize(),
                     gridColumnCount = 4,
                     scrollResetKey = uiState.searchType,
                     scrollResetOnFirstComposition = false,
+                    allowChildDrawingOutsideBounds = false,
                     focusState = videoGridFocusState,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool,
+                    onVerticalScrollOffsetChanged = onScrollOffset,
                     canLoadMore = {
                         uiState.hasMoreResults &&
                             !uiState.isSearching &&
@@ -366,12 +399,14 @@ internal fun SearchScreen(
                         contentPadding = PaddingValues(
                             start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                             end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                            top = topPadding,
                             bottom = AppTopBarDefaults.HeaderContentBottomPadding
                         ),
                         modifier = Modifier.fillMaxSize(),
                         columns = 4,
                         focusCoordinator = focusCoordinator,
                         focusTab = focusTab,
+                        onVerticalScrollOffsetChanged = onScrollOffset,
                         canLoadMore = {
                             uiState.hasMoreResults &&
                                 !uiState.isSearching &&
@@ -399,6 +434,7 @@ internal fun SearchScreen(
                     contentPadding = PaddingValues(
                         start = AppTopBarDefaults.HeaderContentHorizontalPadding,
                         end = AppTopBarDefaults.HeaderContentHorizontalPadding,
+                        top = topPadding,
                         bottom = AppTopBarDefaults.HeaderContentBottomPadding
                     ),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -427,6 +463,60 @@ internal fun SearchScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SearchBarRow(
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onRequestTopBarFocus: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp, bottom = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        CapsuleSearchBar(
+            value = value,
+            placeholder = placeholder,
+            onValueChange = onValueChange,
+            onSubmit = onSubmit,
+            onRequestTopBarFocus = onRequestTopBarFocus,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun SearchCategoryRow(
+    selected: SearchType,
+    onSelect: (SearchType) -> Unit,
+    visibleTypes: List<SearchType>,
+    focusRequesters: List<FocusRequester>,
+    onFocusUp: () -> Boolean,
+    onFocusDown: (Int) -> Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+                SearchCategoryTabs(
+            selected = selected,
+            onSelect = onSelect,
+            visibleTypes = visibleTypes,
+            focusRequesters = focusRequesters,
+            onFocusUp = onFocusUp,
+            onFocusDown = onFocusDown,
+            onFocusChanged = onFocusChanged
+                )
+            }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

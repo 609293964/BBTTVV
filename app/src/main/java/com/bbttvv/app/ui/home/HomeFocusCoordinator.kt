@@ -191,6 +191,7 @@ internal class HomeFocusCoordinator(
 
     private var pendingIntent: HomeFocusIntent? = HomeFocusIntent.FocusTopBar
     private var pendingRestoreCallback: ((String) -> Unit)? = null
+    private var pendingRestoreCancelCallback: (() -> Unit)? = null
     private var pendingBackToTopBarReset: Boolean = false
     private var pendingTopBarHide: Boolean = false
     private var topBarTarget: HomeFocusTarget? = null
@@ -338,6 +339,23 @@ internal class HomeFocusCoordinator(
         prepareForContentFocus(HomeFocusScene.BackReturn)
         pendingRestoreCallback = onRestored
         enqueueFocusIntent(HomeFocusIntent.RestoreVideoKey(tab = tab, key = key))
+    }
+
+    fun setPendingRestoreCancelCallback(callback: (() -> Unit)?) {
+        pendingRestoreCancelCallback = callback
+    }
+
+    fun cancelPendingRestoreVideoKeyForUserNavigation(tab: AppTopLevelTab?): Boolean {
+        val intent = pendingIntent as? HomeFocusIntent.RestoreVideoKey ?: return false
+        if (tab != null && intent.tab != tab) return false
+        Log.d(
+            "HomeFocus",
+            "cancelPendingRestoreVideoKeyForUserNavigation: tab=$tab key=${intent.key}"
+        )
+        pendingIntent = null
+        pendingRestoreCallback = null
+        pendingRestoreCancelCallback?.invoke()
+        return true
     }
 
     fun handleTopBarDpadDown(): Boolean {

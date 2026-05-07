@@ -49,7 +49,24 @@ internal class HomeVideoCardAdapter(
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(
+            item = getItem(position),
+            showHistoryProgressOnly = showHistoryProgressOnly,
+            showDanmakuCount = showDanmakuCount,
+            fixedItemWidthPx = fixedItemWidthPx,
+            onItemClick = onItemClick,
+            onItemFocused = onItemFocused,
+            onItemMenu = onItemMenu,
+            onItemLongClick = onItemLongClick,
+            onItemKeyEvent = onItemKeyEvent,
+            onBackKeyUp = onBackKeyUp,
+            supportingTextProvider = supportingTextProvider,
+        )
+    }
+
+    override fun onViewRecycled(holder: VideoViewHolder) {
+        holder.clearBinding()
+        super.onViewRecycled(holder)
     }
 
     override fun getItemId(position: Int): Long = getItem(position).stableId
@@ -133,26 +150,31 @@ internal class HomeVideoCardAdapter(
         }
     }
 
-    inner class VideoViewHolder(private val binding: ItemVideoCardBinding) : RecyclerView.ViewHolder(binding.root) {
+    class VideoViewHolder(private val binding: ItemVideoCardBinding) : RecyclerView.ViewHolder(binding.root) {
         private var consumeBackKeyUp = false
+        private var boundItem: HomeRecommendVideoCardItem? = null
+        private var boundOnItemClick: ((HomeRecommendVideoCardItem) -> Unit)? = null
+        private var boundOnItemFocused: ((HomeRecommendVideoCardItem, Int) -> Unit)? = null
+        private var boundOnItemMenu: ((HomeRecommendVideoCardItem) -> Unit)? = null
+        private var boundOnItemLongClick: ((HomeRecommendVideoCardItem) -> Unit)? = null
+        private var boundOnItemKeyEvent: ((View, HomeRecommendVideoCardItem, Int, Int, KeyEvent) -> Boolean)? = null
+        private var boundOnBackKeyUp: (() -> Boolean)? = null
 
         init {
-            applyFixedItemWidth()
             if (binding.root.id == View.NO_ID) {
                 binding.root.id = View.generateViewId()
             }
             binding.root.isFocusable = true
             binding.root.isFocusableInTouchMode = false
             binding.root.isClickable = true
-            binding.root.isLongClickable = onItemLongClick != null
 
             binding.root.setOnClickListener {
-                currentItem()?.let(onItemClick)
+                boundItem?.let { item -> boundOnItemClick?.invoke(item) }
             }
 
             binding.root.setOnLongClickListener {
-                val item = currentItem()
-                val longClickHandler = onItemLongClick
+                val item = boundItem
+                val longClickHandler = boundOnItemLongClick
                 if (item != null && longClickHandler != null) {
                     longClickHandler(item)
                     true
@@ -166,11 +188,13 @@ internal class HomeVideoCardAdapter(
                     binding.root.isSelected = hasFocus
                 }
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
-                val item = currentList.getOrNull(position ?: RecyclerView.NO_POSITION)
+                val item = boundItem
                 if (hasFocus) {
                     val focusedPosition = position ?: return@setOnFocusChangeListener
                     Log.d("HomeFocus", "Card focused: pos=$focusedPosition key=${item?.key}")
-                    item?.let { onItemFocused(it, focusedPosition) }
+                    if (item != null) {
+                        boundOnItemFocused?.invoke(item, focusedPosition)
+                    }
                 }
             }
 
@@ -178,23 +202,24 @@ internal class HomeVideoCardAdapter(
                 if (isVideoCardBackKey(keyCode)) {
                     when (event.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            consumeBackKeyUp = onBackKeyUp != null
+                            consumeBackKeyUp = boundOnBackKeyUp != null
                             return@setOnKeyListener consumeBackKeyUp
                         }
 
                         KeyEvent.ACTION_UP -> {
                             if (consumeBackKeyUp) {
                                 consumeBackKeyUp = false
-                                return@setOnKeyListener onBackKeyUp?.invoke() == true
+                                return@setOnKeyListener boundOnBackKeyUp?.invoke() == true
                             }
                         }
                     }
                 }
 
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
-                val item = currentList.getOrNull(position ?: RecyclerView.NO_POSITION)
+                val item = boundItem
                 if (position != null && item != null) {
-                    val controllerHandled = onItemKeyEvent?.invoke(binding.root, item, position, keyCode, event) == true
+                    val controllerHandled =
+                        boundOnItemKeyEvent?.invoke(binding.root, item, position, keyCode, event) == true
                     if (controllerHandled) {
                         return@setOnKeyListener true
                     }
@@ -204,8 +229,8 @@ internal class HomeVideoCardAdapter(
                     event.action == KeyEvent.ACTION_DOWN &&
                     keyCode == KeyEvent.KEYCODE_MENU
                 ) {
-                    val item = currentItem()
-                    val menuHandler = onItemMenu
+                    val item = boundItem
+                    val menuHandler = boundOnItemMenu
                     if (item != null && menuHandler != null) {
                         menuHandler(item)
                         return@setOnKeyListener true
@@ -215,8 +240,29 @@ internal class HomeVideoCardAdapter(
             }
         }
 
-        fun bind(item: HomeRecommendVideoCardItem) {
-            applyFixedItemWidth()
+        fun bind(
+            item: HomeRecommendVideoCardItem,
+            showHistoryProgressOnly: Boolean,
+            showDanmakuCount: Boolean,
+            fixedItemWidthPx: Int?,
+            onItemClick: (HomeRecommendVideoCardItem) -> Unit,
+            onItemFocused: (HomeRecommendVideoCardItem, Int) -> Unit,
+            onItemMenu: ((HomeRecommendVideoCardItem) -> Unit)?,
+            onItemLongClick: ((HomeRecommendVideoCardItem) -> Unit)?,
+            onItemKeyEvent: ((View, HomeRecommendVideoCardItem, Int, Int, KeyEvent) -> Boolean)?,
+            onBackKeyUp: (() -> Boolean)?,
+            supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)?,
+        ) {
+            boundItem = item
+            boundOnItemClick = onItemClick
+            boundOnItemFocused = onItemFocused
+            boundOnItemMenu = onItemMenu
+            boundOnItemLongClick = onItemLongClick
+            boundOnItemKeyEvent = onItemKeyEvent
+            boundOnBackKeyUp = onBackKeyUp
+
+            binding.root.isLongClickable = onItemLongClick != null
+            applyFixedItemWidth(fixedItemWidthPx)
             val video = item.video
             val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
 
@@ -266,6 +312,18 @@ internal class HomeVideoCardAdapter(
             }
         }
 
+        fun clearBinding() {
+            consumeBackKeyUp = false
+            boundItem = null
+            boundOnItemClick = null
+            boundOnItemFocused = null
+            boundOnItemMenu = null
+            boundOnItemLongClick = null
+            boundOnItemKeyEvent = null
+            boundOnBackKeyUp = null
+            binding.root.isLongClickable = false
+        }
+
         fun clearFocusVisualState() {
             val hasFocus = binding.root.isFocused
             val hasSelectedState = binding.root.isSelected
@@ -288,28 +346,13 @@ internal class HomeVideoCardAdapter(
             }
         }
 
-        private fun currentItem(): HomeRecommendVideoCardItem? {
-            val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return null
-            return currentList.getOrNull(position)
-        }
-
-        private fun applyFixedItemWidth() {
-            val width = fixedItemWidthPx ?: return
+        private fun applyFixedItemWidth(fixedItemWidthPx: Int?) {
+            val width = fixedItemWidthPx ?: ViewGroup.LayoutParams.MATCH_PARENT
             val params = binding.root.layoutParams
             if (params != null && params.width != width) {
                 params.width = width
                 binding.root.layoutParams = params
             }
-        }
-    }
-
-    private fun formatCompact(count: Int): String {
-        return if (count >= 10000) {
-            val w = count / 10000
-            val r = (count % 10000) / 1000
-            if (r == 0) "${w}w" else "$w.${r}w"
-        } else {
-            count.toString()
         }
     }
 
@@ -327,6 +370,16 @@ internal class HomeVideoCardAdapter(
         ): Boolean {
             return oldItem.video == newItem.video
         }
+    }
+}
+
+private fun formatCompact(count: Int): String {
+    return if (count >= 10000) {
+        val w = count / 10000
+        val r = (count % 10000) / 1000
+        if (r == 0) "${w}w" else "$w.${r}w"
+    } else {
+        count.toString()
     }
 }
 
