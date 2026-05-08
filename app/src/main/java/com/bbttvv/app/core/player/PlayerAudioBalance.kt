@@ -272,6 +272,7 @@ class VolumeBalanceAudioProcessor(
         }
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onFlush() {
         resetAdaptiveState()
     }

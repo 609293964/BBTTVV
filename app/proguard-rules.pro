@@ -30,3 +30,13 @@
 
 # Keep Kotlin metadata used by serializers and reflective type resolution.
 -keep class kotlin.Metadata { *; }
+
+# Protobuf / gRPC generated classes.
+-keep class ** extends com.google.protobuf.GeneratedMessageLite { *; }
+-keep class ** extends com.google.protobuf.GeneratedMessageLite$Builder { *; }
+
+# Bilibili protobuf / grpc stubs if present.
+-keep class bilibili.** { *; }
+-keep class common.** { *; }
+-keep class **Grpc { *; }
+-keep class **Grpc$* { *; }

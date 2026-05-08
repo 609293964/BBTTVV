@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.settings
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,6 +48,7 @@ import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.store.DEFAULT_APP_USER_AGENT
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
+import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
 import com.bbttvv.app.core.store.nextPlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
@@ -64,6 +66,10 @@ private object SettingsFocusReturnKeys {
     const val Back = "settings:back"
     const val UserAgent = "settings:user_agent"
 }
+
+private const val MOBILE_FEED_TOKEN_MISSING_MESSAGE =
+    "\u79FB\u52A8\u7AEF\u63A8\u8350\u6D41\u9700\u8981\u91CD\u65B0\u626B\u7801\u767B\u5F55\uFF1B" +
+        "\u5F53\u524D\u4F1A\u81EA\u52A8\u56DE\u9000\u7F51\u9875\u7AEF"
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -444,7 +450,18 @@ fun TvSettingsList(
                 compact = compact,
                 onClick = {
                     scope.launch {
-                        SettingsManager.setFeedApiType(context, nextFeedApiType(feedApiType))
+                        val next = nextFeedApiType(feedApiType)
+                        if (
+                            next == SettingsManager.FeedApiType.MOBILE &&
+                            TokenManager.accessTokenCache.isNullOrBlank()
+                        ) {
+                            Toast.makeText(
+                                context,
+                                MOBILE_FEED_TOKEN_MISSING_MESSAGE,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        SettingsManager.setFeedApiType(context, next)
                     }
                 }
             )
