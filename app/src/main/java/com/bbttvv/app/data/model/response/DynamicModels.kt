@@ -487,7 +487,30 @@ data class ArchiveMajor(
     val desc: String = "",
     val duration_text: String = "", // "10:24"
     val stat: ArchiveStat = ArchiveStat(),
-    val jump_url: String = ""
+    val jump_url: String = "",
+    val badge: DynamicMajorBadge? = null,
+    @SerialName("is_charging_arc")
+    val isChargingArc: Boolean = false,
+    @SerialName("elec_arc_type")
+    val elecArcType: Int = 0,
+    @SerialName("is_ugcpay")
+    val isUgcpay: Boolean = false,
+    @SerialName("ugc_pay")
+    val ugcPay: Int = 0,
+    @SerialName("ugc_pay_preview")
+    val ugcPayPreview: Int = 0,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val epid: Long = 0,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val season_id: Long = 0
+)
+
+@Serializable
+data class DynamicMajorBadge(
+    val text: String = "",
+    val color: String = "",
+    @SerialName("bg_color")
+    val bgColor: String = ""
 )
 
 @Serializable
@@ -540,4 +563,3 @@ enum class DynamicType(val apiValue: String) {
         }
     }
 }
-

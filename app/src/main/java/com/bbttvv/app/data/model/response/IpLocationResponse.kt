@@ -14,5 +14,6 @@ data class IpLocationData(
     val addr: String = "",
     val country: String = "",
     val province: String = "",
-    val city: String = ""
+    val city: String = "",
+    val isp: String = ""
 )

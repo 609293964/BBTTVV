@@ -34,6 +34,9 @@ data class PlaybackSource(
     val videoUrlCandidates: List<String> = emptyList(),
     val audioUrlCandidates: List<String> = emptyList(),
     val segmentUrlCandidates: List<List<String>> = emptyList(),
+    val fallbackVideoUrl: String? = null,
+    val fallbackAudioUrl: String? = null,
+    val playbackCdnRegionLabel: String? = null,
     val actualQuality: Int,
     val qualityOptions: List<PlaybackQualityInfo>,
     val dashVideos: List<DashVideo>,
@@ -82,6 +85,12 @@ class VideoPlaybackUseCase {
         const val TV_SAFE_PRIMARY_CODEC = "avc1"
         const val TV_SAFE_SECONDARY_CODEC = "hev1"
     }
+
+    private data class AppliedPlaybackCdnCandidates(
+        val videoUrls: List<String>,
+        val audioUrls: List<String>,
+        val regionLabel: String? = null
+    )
 
     suspend fun loadOnlineCountText(
         bvid: String,
@@ -248,7 +257,7 @@ class VideoPlaybackUseCase {
                     primaryUrl = segment.url,
                     backupUrls = segment.backupUrl.orEmpty()
                 )
-                applyPlaybackCdnPlugins(videoUrls = rawCandidates).first
+                applyPlaybackCdnPlugins(videoUrls = rawCandidates).videoUrls
             }
             ?.filter { it.isNotEmpty() }
             .orEmpty()
@@ -256,10 +265,12 @@ class VideoPlaybackUseCase {
 
         val rawDashVideoUrlCandidates = dashVideo?.getPreferredUrls(cdnPreference).orEmpty()
         val rawDashAudioUrlCandidates = dashAudio?.getPreferredUrls(cdnPreference).orEmpty()
-        val (dashVideoUrlCandidates, dashAudioUrlCandidates) = applyPlaybackCdnPlugins(
+        val appliedDashCandidates = applyPlaybackCdnPlugins(
             videoUrls = rawDashVideoUrlCandidates,
             audioUrls = rawDashAudioUrlCandidates
         )
+        val dashVideoUrlCandidates = appliedDashCandidates.videoUrls
+        val dashAudioUrlCandidates = appliedDashCandidates.audioUrls
         val dashVideoUrl = dashVideoUrlCandidates.firstOrNull().orEmpty()
         val qualityIds = buildQualityIds(
             acceptQualityIds = playUrlData.accept_quality,
@@ -291,6 +302,12 @@ class VideoPlaybackUseCase {
                 segmentUrls = emptyList(),
                 videoUrlCandidates = dashVideoUrlCandidates,
                 audioUrlCandidates = dashAudioUrlCandidates,
+                fallbackVideoUrl = rawDashVideoUrlCandidates.firstOrNull(),
+                fallbackAudioUrl = resolveFallbackAudioUrl(
+                    selectedAudioUrl = dashAudioUrlCandidates.firstOrNull(),
+                    rawAudioUrls = rawDashAudioUrlCandidates
+                ),
+                playbackCdnRegionLabel = appliedDashCandidates.regionLabel,
                 actualQuality = dashVideo?.id ?: playUrlData.quality,
                 qualityOptions = qualityOptions,
                 dashVideos = playUrlData.dash?.video.orEmpty(),
@@ -377,16 +394,27 @@ class VideoPlaybackUseCase {
             ?: supportedVideos.firstOrNull()
             ?: return null
         val selectedAudio = selectAudioTrack(source.dashAudios, audioQualityId, cdnPreference)
-        val (selectedVideoCandidates, selectedAudioCandidates) = applyPlaybackCdnPlugins(
-            videoUrls = selectedVideo.getPreferredUrls(cdnPreference),
-            audioUrls = selectedAudio?.getPreferredUrls(cdnPreference).orEmpty()
+        val rawSelectedVideoCandidates = selectedVideo.getPreferredUrls(cdnPreference)
+        val rawSelectedAudioCandidates = selectedAudio?.getPreferredUrls(cdnPreference).orEmpty()
+        val appliedCandidates = applyPlaybackCdnPlugins(
+            videoUrls = rawSelectedVideoCandidates,
+            audioUrls = rawSelectedAudioCandidates
         )
+        val selectedVideoCandidates = appliedCandidates.videoUrls
+        val selectedAudioCandidates = appliedCandidates.audioUrls
+        if (selectedVideoCandidates.isEmpty()) return null
 
         return source.copy(
-            videoUrl = selectedVideoCandidates.firstOrNull().orEmpty(),
+            videoUrl = selectedVideoCandidates.first(),
             audioUrl = selectedAudioCandidates.firstOrNull(),
             videoUrlCandidates = selectedVideoCandidates,
             audioUrlCandidates = selectedAudioCandidates,
+            fallbackVideoUrl = rawSelectedVideoCandidates.firstOrNull(),
+            fallbackAudioUrl = resolveFallbackAudioUrl(
+                selectedAudioUrl = selectedAudioCandidates.firstOrNull(),
+                rawAudioUrls = rawSelectedAudioCandidates
+            ),
+            playbackCdnRegionLabel = appliedCandidates.regionLabel,
             actualQuality = selectedVideo.id,
             selectedVideoCodec = resolveCodecLabel(selectedVideo.codecs, selectedVideo.codecid),
             selectedAudioCodec = resolveCodecLabel(selectedAudio?.codecs, selectedAudio?.codecid),
@@ -402,6 +430,24 @@ class VideoPlaybackUseCase {
             selectedDashVideo = selectedVideo,
             selectedDashAudio = selectedAudio
         )
+    }
+
+    private fun resolveFallbackAudioUrl(
+        selectedAudioUrl: String?,
+        rawAudioUrls: List<String>
+    ): String? {
+        val rawCandidates = rawAudioUrls
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (rawCandidates.isEmpty()) return null
+
+        val originalAudioUrl = rawCandidates.first()
+        return if (!selectedAudioUrl.isNullOrBlank() && selectedAudioUrl != originalAudioUrl) {
+            originalAudioUrl
+        } else {
+            rawCandidates.drop(1).firstOrNull() ?: originalAudioUrl
+        }
     }
 
     private fun collectDashAudios(dash: Dash?): List<DashAudio> {
@@ -445,7 +491,7 @@ class VideoPlaybackUseCase {
     private fun applyPlaybackCdnPlugins(
         videoUrls: List<String>,
         audioUrls: List<String> = emptyList()
-    ): Pair<List<String>, List<String>> {
+    ): AppliedPlaybackCdnCandidates {
         var rewrittenVideoUrls = videoUrls
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -454,10 +500,14 @@ class VideoPlaybackUseCase {
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
+        var regionLabel: String? = null
 
         val plugins = PluginManager.getEnabledPlugins(PlaybackCdnPlugin::class)
         if (plugins.isEmpty()) {
-            return rewrittenVideoUrls to rewrittenAudioUrls
+            return AppliedPlaybackCdnCandidates(
+                videoUrls = rewrittenVideoUrls,
+                audioUrls = rewrittenAudioUrls
+            )
         }
 
         plugins.forEach { plugin ->
@@ -481,12 +531,17 @@ class VideoPlaybackUseCase {
                 if (rewrittenAudioUrls.isEmpty() || nextAudioUrls.isNotEmpty()) {
                     rewrittenAudioUrls = nextAudioUrls
                 }
+                regionLabel = result.regionLabel ?: regionLabel
             }.onFailure { error ->
                 Logger.w("VideoPlaybackUseCase", "Playback CDN plugin failed: ${plugin.id}", error)
             }
         }
 
-        return rewrittenVideoUrls to rewrittenAudioUrls
+        return AppliedPlaybackCdnCandidates(
+            videoUrls = rewrittenVideoUrls,
+            audioUrls = rewrittenAudioUrls,
+            regionLabel = regionLabel
+        )
     }
 
     private fun DashVideo.videoCodecSelectionKey(): Int {

@@ -300,7 +300,7 @@ internal class PlayerCommentController(
                     } else {
                         replies
                     }
-                    val totalCount = data.getAllCount().takeIf { it > 0 }
+                    val totalCount = data.getSubReplyCount().takeIf { it > 0 }
                         ?: maxOf(rootReply.rcount, mergedReplies.size)
                     val totalPages = calculateCommentTotalPages(totalCount, current.pageSize)
                     state.copy(

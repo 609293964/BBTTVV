@@ -1,7 +1,10 @@
-﻿package com.bbttvv.app.data.model.response
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
+package com.bbttvv.app.data.model.response
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 // =============== UP主空间 API 响应模型 ===============
 
@@ -85,7 +88,18 @@ data class SpaceAggregateData(
     val live: SpaceLiveRoom? = null,
     val archive: SpaceAggregateArchive? = null,
     val article: SpaceAggregateArticleSection? = null,
-    val audios: SpaceAggregateAudioSection? = null
+    val audios: SpaceAggregateAudioSection? = null,
+    @SerialName("coin_archive")
+    val coinArchive: SpaceAggregateArchive? = null,
+    @SerialName("like_archive")
+    val likeArchive: SpaceAggregateArchive? = null,
+    val season: SpaceAggregateArchive? = null,
+    @SerialName("favourite2")
+    val favourite2: SpaceAggregateFavoriteSection? = null,
+    val comic: SpaceAggregateArchive? = null,
+    @SerialName("ugc_season")
+    val ugcSeason: SpaceAggregateArchive? = null,
+    val tab2: List<SpaceAggregateTab> = emptyList()
 )
 
 @Serializable
@@ -127,15 +141,24 @@ data class SpaceAggregateRelation(
 
 @Serializable
 data class SpaceAggregateImages(
+    @JsonNames("imgUrl", "img_url")
     val imgUrl: String = "",
-    @SerialName("night_imgurl")
+    @JsonNames("night_imgurl", "night_img_url", "nightImgurl")
     val nightImgUrl: String = ""
 )
 
 @Serializable
 data class SpaceAggregateArchive(
+    @SerialName("episodic_button")
+    val episodicButton: SpaceAggregateEpisodicButton? = null,
     val count: Int = 0,
     val item: List<SpaceAggregateArchiveItem> = emptyList()
+)
+
+@Serializable
+data class SpaceAggregateEpisodicButton(
+    val text: String = "",
+    val uri: String = ""
 )
 
 @Serializable
@@ -145,11 +168,28 @@ data class SpaceAggregateArchiveItem(
     val title: String = "",
     val cover: String = "",
     val author: String = "",
+    val subtitle: String = "",
+    @SerialName("cover_icon")
+    val coverIcon: String = "",
+    val uri: String = "",
+    val param: String = "",
+    val goto: String = "",
     val length: String = "",
+    val duration: Int = 0,
     val play: Int = 0,
+    val danmaku: Int = 0,
     val reply: Int = 0,
     val ctime: Long = 0,
-    val tname: String = ""
+    val tname: String = "",
+    @SerialName("first_cid")
+    val firstCid: Long = 0,
+    @SerialName("is_pgc")
+    val isPgc: Boolean = false,
+    @SerialName("publish_time_text")
+    val publishTimeText: String = "",
+    val styles: String = "",
+    val label: String = "",
+    val badges: List<SpaceAggregateBadge> = emptyList()
 )
 
 @Serializable
@@ -162,6 +202,50 @@ data class SpaceAggregateArticleSection(
 data class SpaceAggregateAudioSection(
     val count: Int = 0,
     val item: List<SpaceAudioItem> = emptyList()
+)
+
+@Serializable
+data class SpaceAggregateFavoriteSection(
+    val count: Int = 0,
+    val item: List<SpaceAggregateFavoriteItem> = emptyList()
+)
+
+@Serializable
+data class SpaceAggregateFavoriteItem(
+    val id: Long = 0,
+    val fid: Long = 0,
+    val mid: Long = 0,
+    val title: String = "",
+    val cover: String = "",
+    val count: Int = 0,
+    @SerialName("media_id")
+    val mediaId: Long = 0,
+    @SerialName("media_count")
+    val media_count: Int = 0,
+    @SerialName("is_public")
+    val isPublic: Int = 0
+)
+
+@Serializable
+data class SpaceAggregateBadge(
+    val text: String = ""
+)
+
+@Serializable
+data class SpaceAggregateTab(
+    val title: String = "",
+    val param: String = "",
+    val items: List<SpaceAggregateTabItem> = emptyList()
+)
+
+@Serializable
+data class SpaceAggregateTabItem(
+    val title: String = "",
+    val param: String = "",
+    @SerialName("season_id")
+    val seasonId: Long = 0,
+    @SerialName("series_id")
+    val seriesId: Long = 0
 )
 
 // /x/space/wbi/arc/search UP主投稿视频列表
@@ -203,7 +287,17 @@ data class SpaceVideoItem(
     val created: Long = 0,    // 发布时间戳
     val author: String = "",
     val typeid: Int = 0,      //  分区 ID
-    val typename: String = "" //  分区名称
+    val typename: String = "", //  分区名称
+    @SerialName("is_charging_arc")
+    val isChargingArc: Boolean = false,
+    @SerialName("elec_arc_type")
+    val elecArcType: Int = 0,
+    @SerialName("is_ugcpay")
+    val isUgcpay: Boolean = false,
+    @SerialName("ugc_pay")
+    val ugcPay: Int = 0,
+    @SerialName("ugc_pay_preview")
+    val ugcPayPreview: Int = 0
 )
 
 // /x/relation/stat 粉丝关注数
@@ -332,6 +426,7 @@ data class SeasonArchiveItem(
     val bvid: String = "",
     val title: String = "",
     val pic: String = "",
+    val author: String = "",
     val duration: Int = 0,
     val pubdate: Long = 0,
     val stat: SeasonArchiveStat = SeasonArchiveStat()
@@ -372,6 +467,7 @@ data class SeriesArchiveItem(
     val bvid: String = "",
     val title: String = "",
     val pic: String = "",
+    val author: String = "",
     val duration: Int = 0,
     val pubdate: Long = 0,
     val stat: SeriesArchiveStat = SeriesArchiveStat()
@@ -505,7 +601,8 @@ data class SpaceDynamicMajor(
     val type: String = "",  // MAJOR_TYPE_ARCHIVE, MAJOR_TYPE_DRAW, MAJOR_TYPE_OPUS 等
     val archive: SpaceDynamicArchive? = null,
     val draw: SpaceDynamicDraw? = null,
-    val opus: SpaceDynamicOpus? = null
+    val opus: SpaceDynamicOpus? = null,
+    val article: SpaceDynamicArticle? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -516,7 +613,18 @@ data class SpaceDynamicArchive(
     val cover: String = "",
     val desc: String = "",
     val duration_text: String = "",
-    val stat: SpaceDynamicArchiveStat = SpaceDynamicArchiveStat()
+    val stat: SpaceDynamicArchiveStat = SpaceDynamicArchiveStat(),
+    val badge: DynamicMajorBadge? = null,
+    @SerialName("is_charging_arc")
+    val isChargingArc: Boolean = false,
+    @SerialName("elec_arc_type")
+    val elecArcType: Int = 0,
+    @SerialName("is_ugcpay")
+    val isUgcpay: Boolean = false,
+    @SerialName("ugc_pay")
+    val ugcPay: Int = 0,
+    @SerialName("ugc_pay_preview")
+    val ugcPayPreview: Int = 0
 )
 
 @kotlinx.serialization.Serializable
@@ -549,6 +657,17 @@ data class SpaceDynamicOpus(
 data class SpaceDynamicOpusSummary(
     val text: String = "",
     val rich_text_nodes: List<SpaceDynamicRichText> = emptyList()
+)
+
+@kotlinx.serialization.Serializable
+data class SpaceDynamicArticle(
+    @Serializable(with = FlexibleLongSerializer::class)
+    val id: Long = 0,
+    val title: String = "",
+    val desc: String = "",
+    val covers: List<String> = emptyList(),
+    val jump_url: String = "",
+    val label: String = ""
 )
 
 @kotlinx.serialization.Serializable
@@ -617,28 +736,54 @@ data class SpaceArticleResponse(
 
 @Serializable
 data class SpaceArticleData(
+    @JsonNames("articles", "items")
     val lists: List<SpaceArticleItem> = emptyList(),
     val pn: Int = 1,
     val ps: Int = 30,
-    val total: Int = 0
+    @JsonNames("count")
+    val total: Int = 0,
+    val has_more: Boolean = false,
+    val offset: String = ""
 )
 
 @Serializable
 data class SpaceArticleItem(
+    @JsonNames("opus_id")
+    @Serializable(with = FlexibleLongSerializer::class)
     val id: Long = 0,
     val category: SpaceArticleCategory? = null,
+    @JsonNames("content")
     val title: String = "",
     val summary: String = "",
     val banner_url: String = "",
+    val cover: SpaceArticleCover? = null,
+    val jump_url: String = "",
     val template_id: Int = 0,
     val state: Int = 0,
     val author: SpaceArticleAuthor? = null,
+    @JsonNames("stat")
     val stats: SpaceArticleStats? = null,
     val publish_time: Long = 0,
     val ctime: Long = 0,
     val mtime: Long = 0,
     val is_like: Boolean = false,
     val image_urls: List<String> = emptyList()
+)
+
+fun SpaceArticleItem.displayImageUrls(): List<String> {
+    return image_urls.ifEmpty {
+        listOfNotNull(
+            banner_url.takeIf { it.isNotBlank() },
+            cover?.url?.takeIf { it.isNotBlank() }
+        )
+    }
+}
+
+@Serializable
+data class SpaceArticleCover(
+    val url: String = "",
+    val width: Int = 0,
+    val height: Int = 0
 )
 
 @Serializable
@@ -657,13 +802,19 @@ data class SpaceArticleAuthor(
 
 @Serializable
 data class SpaceArticleStats(
+    @Serializable(with = FlexibleIntSerializer::class)
     val view: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val favorite: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val like: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val dislike: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val reply: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val share: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
     val coin: Int = 0,
     val dynamic: Int = 0
 )
-

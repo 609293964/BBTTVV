@@ -72,7 +72,7 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
         val loaded = withContext(Dispatchers.IO) {
             val loadedCatalog = loadCdnRegionCatalog(context)
             val savedCache = CdnRegionPluginStore.read(context)
-            val storedCache = verifyCachedCdnSelection(savedCache)
+            val storedCache = normalizeCachedCdnSelection(savedCache, loadedCatalog)
             if (storedCache != savedCache) {
                 CdnRegionPluginStore.write(context, storedCache)
             }
@@ -105,7 +105,8 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
         val hosts = resolveCdnRegionHosts(
             region = snapshot.selectedRegion,
             cachedHosts = snapshot.selectedHosts,
-            catalog = catalog
+            catalog = catalog,
+            isp = snapshot.location.isp
         )
 
         if (hosts.isEmpty()) {
@@ -132,7 +133,7 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
         if (loadedCatalog.isEmpty()) return
 
         var current = CdnRegionPluginStore.read(context)
-        val verifiedCurrent = verifyCachedCdnSelection(current)
+        val verifiedCurrent = normalizeCachedCdnSelection(current, loadedCatalog)
         if (verifiedCurrent != current) {
             current = verifiedCurrent
             CdnRegionPluginStore.write(context, current)
@@ -151,7 +152,14 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
                 hasSelection = hasSelection
             )
         ) {
-            val correctedHosts = resolveCdnRegionHosts(current.selectedRegion, current.selectedHosts, loadedCatalog)
+            val correctedHosts = filterResolvableCdnHosts(
+                resolveCdnRegionHosts(
+                    region = current.selectedRegion,
+                    cachedHosts = current.selectedHosts,
+                    catalog = loadedCatalog,
+                    isp = current.location.isp
+                )
+            )
             if (current.selectedHosts != correctedHosts) {
                 val corrected = current.copy(selectedHosts = correctedHosts)
                 updateCache(corrected)
@@ -168,9 +176,11 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
             }
 
             val location = IpLocationSnapshot(
+                addr = data.addr,
                 country = data.country,
                 province = data.province,
-                city = data.city
+                city = data.city,
+                isp = data.isp
             )
             val selection = selectCdnRegionForLocation(
                 location = location,
@@ -203,7 +213,8 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
             Logger.d(
                 CdnRegionPluginTag,
                 "CDN region refreshed: ${location.country}/${location.province}/${location.city} -> " +
-                    "${selection.region}, verifiedHosts=${verifiedHosts.size}/${selection.hosts.size}"
+                    "${selection.region}, isp=${location.isp.ifBlank { "unknown" }}, " +
+                    "ip=${maskIpAddressForLog(location.addr)}, verifiedHosts=${verifiedHosts.size}/${selection.hosts.size}"
             )
         } catch (error: Exception) {
             val preserved = current.copy(lastError = error.message ?: error.javaClass.simpleName)
@@ -219,9 +230,18 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
     }
 }
 
-private fun verifyCachedCdnSelection(cache: CdnRegionPluginCache): CdnRegionPluginCache {
-    if (cache.selectedHosts.isEmpty()) return cache
-    val verifiedHosts = filterResolvableCdnHosts(cache.selectedHosts)
+private fun normalizeCachedCdnSelection(
+    cache: CdnRegionPluginCache,
+    catalog: Map<String, List<String>>
+): CdnRegionPluginCache {
+    if (cache.selectedRegion.isBlank() || cache.selectedHosts.isEmpty()) return cache
+    val resolvedHosts = resolveCdnRegionHosts(
+        region = cache.selectedRegion,
+        cachedHosts = cache.selectedHosts,
+        catalog = catalog,
+        isp = cache.location.isp
+    )
+    val verifiedHosts = filterResolvableCdnHosts(resolvedHosts)
     if (verifiedHosts == cache.selectedHosts) return cache
     return cache.copy(
         selectedRegion = cache.selectedRegion.takeIf { verifiedHosts.isNotEmpty() }.orEmpty(),

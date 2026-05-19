@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets
 object BilibiliUrlParser {
     
     private const val TAG = "BilibiliUrlParser"
+
+    private const val LIKELY_DYNAMIC_ID_MIN_VALUE = 100_000_000_000_000_000L
     
     // BV 号正则表达式
     private val BV_REGEX = Regex("BV([a-zA-Z0-9]{10})", RegexOption.IGNORE_CASE)
@@ -89,6 +91,7 @@ object BilibiliUrlParser {
         VIDEO_AID_PATH_REGEX.find(input)?.let { match ->
             val aid = match.groupValues[1].toLongOrNull()
             if (aid != null) {
+                resolveLikelyDynamicResult(aid, source = "video path")?.let { return it }
                 Logger.d(TAG, "Found numeric video path aid: $aid")
                 return ParseResult(aid = aid, isValid = true)
             }
@@ -194,6 +197,7 @@ object BilibiliUrlParser {
                 pathSegments = pathSegments,
                 allowBareNumericLeading = true
             )?.let { aid ->
+                resolveLikelyDynamicResult(aid, source = "custom scheme video path")?.let { return it }
                 Logger.d(TAG, "Found structured aid from custom scheme path: $aid")
                 return ParseResult(aid = aid, isValid = true)
             }
@@ -325,6 +329,7 @@ object BilibiliUrlParser {
                 pathSegments = pathSegments,
                 allowBareNumericLeading = true
             )?.let { aid ->
+                resolveLikelyDynamicResult(aid, source = "custom URI video path")?.let { return it }
                 Logger.d(TAG, "Found structured aid from custom URI path: $aid")
                 return ParseResult(aid = aid, isValid = true)
             }
@@ -358,6 +363,15 @@ object BilibiliUrlParser {
     }
 
     private fun isNumericId(value: String): Boolean = value.isNotEmpty() && value.all(Char::isDigit)
+
+    private fun isLikelyDynamicId(value: Long): Boolean = value >= LIKELY_DYNAMIC_ID_MIN_VALUE
+
+    private fun resolveLikelyDynamicResult(aid: Long, source: String): ParseResult? {
+        if (!isLikelyDynamicId(aid)) return null
+        val dynamicId = aid.toString()
+        Logger.d(TAG, "Found likely dynamic ID from $source: $dynamicId")
+        return ParseResult(dynamicId = dynamicId, isValid = true)
+    }
     
     /**
      * 解析 b23.tv 短链接 (需要在 IO 线程调用)
@@ -400,4 +414,3 @@ object BilibiliUrlParser {
         return urlRegex.findAll(text).map { it.value }.toList()
     }
 }
-

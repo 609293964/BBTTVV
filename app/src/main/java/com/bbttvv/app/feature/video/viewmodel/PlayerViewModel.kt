@@ -2,8 +2,11 @@ package com.bbttvv.app.feature.video.viewmodel
 
 import androidx.annotation.MainThread
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.player.BasePlayerViewModel
@@ -36,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val DANMAKU_RETRY_INTERVAL_MS = 2_500L
+private const val PLAYBACK_CDN_FIRST_FRAME_FALLBACK_TIMEOUT_MS = 2_500L
 
 internal sealed interface PlayerEvent {
     data class ExitPlayer(val reason: String) : PlayerEvent
@@ -140,6 +144,8 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var playerPollingJob: Job? = null
     private var settingsObservationJob: Job? = null
     private var sponsorPluginUiObservationJob: Job? = null
+    private var playbackCdnFallbackJob: Job? = null
+    private var playbackCdnFallbackState: PlaybackCdnFallbackState = PlaybackCdnFallbackState.Inactive
     private var sponsorBlockEnabled: Boolean = true
     private val sponsorPluginUiState = MutableStateFlow(PlayerSponsorPluginUiState())
     val sponsorUiState: StateFlow<PlayerSponsorUiState> = combine(
@@ -228,10 +234,25 @@ class PlayerViewModel : BasePlayerViewModel() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             ensureMainThread("Player.Listener.onPlaybackStateChanged")
             refreshPlayerSnapshot()
+            if (playbackState == Player.STATE_READY) {
+                markPlaybackCdnReadyIfMediaReady()
+            }
             if (playbackState == Player.STATE_ENDED) {
                 playbackEndController.handlePlaybackEnded()
             } else {
                 playbackEndController.markPlaybackActive()
+            }
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            ensureMainThread("Player.Listener.onTracksChanged")
+            markPlaybackCdnReadyIfMediaReady()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            ensureMainThread("Player.Listener.onPlayerError")
+            if (!fallbackFromCdnRewrite(reason = "player_error", audioRendererError = true)) {
+                refreshPlayerSnapshot()
             }
         }
     }
@@ -255,6 +276,9 @@ class PlayerViewModel : BasePlayerViewModel() {
         val currentPlayer = exoPlayer
         if (player == null || currentPlayer === player) {
             currentPlayer?.removeListener(playerListener)
+            playbackCdnFallbackJob?.cancel()
+            playbackCdnFallbackJob = null
+            playbackCdnFallbackState = PlaybackCdnFallbackState.Inactive
             super.detachPlayer(player)
         } else {
             player.removeListener(playerListener)
@@ -583,6 +607,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     ) {
         ensureMainThread("applyPlaybackSource")
         playbackRuntime = playbackRuntime.copy(source = source)
+        armPlaybackCdnFallback(source = source, playWhenReady = playWhenReady)
         if (source.segmentUrls.isNotEmpty()) {
             playSegmentedVideo(
                 segmentUrls = source.segmentUrls,
@@ -624,6 +649,140 @@ class PlayerViewModel : BasePlayerViewModel() {
                 resetPlayer = resetPlayer,
                 playWhenReady = playWhenReady
             )
+        }
+    }
+
+    private fun armPlaybackCdnFallback(
+        source: PlaybackSource,
+        playWhenReady: Boolean
+    ) {
+        ensureMainThread("armPlaybackCdnFallback")
+        val state = buildPlaybackCdnFallbackState(source)
+        playbackCdnFallbackJob?.cancel()
+        playbackCdnFallbackJob = null
+        playbackCdnFallbackState = state
+        if (!playWhenReady || !state.usesCdnRewrite) return
+
+        playbackCdnFallbackJob = viewModelScope.launch {
+            delay(PLAYBACK_CDN_FIRST_FRAME_FALLBACK_TIMEOUT_MS)
+            if (playbackCdnFallbackState != state) return@launch
+            val player = exoPlayer
+            val playbackReady = player?.playbackState == Player.STATE_READY
+            val expectedAudioTrack = state.selectedAudioUrl != null
+            val hasSelectedAudioTrack = hasSelectedAudioTrack(player)
+            if (
+                shouldFallbackFromCdnRewrite(
+                    state = state,
+                    playbackReady = playbackReady,
+                    expectedAudioTrack = expectedAudioTrack,
+                    hasSelectedAudioTrack = hasSelectedAudioTrack,
+                    audioRendererError = false
+                )
+            ) {
+                val reason = if (playbackReady && expectedAudioTrack && !hasSelectedAudioTrack) {
+                    "audio_track_timeout"
+                } else {
+                    "first_frame_timeout"
+                }
+                fallbackFromCdnRewrite(reason = reason)
+            }
+        }
+    }
+
+    private fun markPlaybackCdnReadyIfMediaReady() {
+        ensureMainThread("markPlaybackCdnReadyIfMediaReady")
+        val state = playbackCdnFallbackState
+        if (!state.usesCdnRewrite) return
+        if (state.selectedAudioUrl != null && !hasSelectedAudioTrack(exoPlayer)) {
+            com.bbttvv.app.core.util.Logger.d(
+                "PlayerViewModel",
+                "CDN fallback remains armed: region=${state.regionLabel ?: "unknown"}, " +
+                    "audio=${hostForPlaybackLog(state.selectedAudioUrl)}, fallbackAudio=${hostForPlaybackLog(state.fallbackAudioUrl)}"
+            )
+            return
+        }
+        playbackCdnFallbackJob?.cancel()
+        playbackCdnFallbackJob = null
+    }
+
+    private fun fallbackFromCdnRewrite(
+        reason: String,
+        audioRendererError: Boolean = false
+    ): Boolean {
+        ensureMainThread("fallbackFromCdnRewrite")
+        val state = playbackCdnFallbackState
+        val player = exoPlayer
+        val playbackReady = player?.playbackState == Player.STATE_READY
+        if (
+            !shouldFallbackFromCdnRewrite(
+                state = state,
+                playbackReady = playbackReady,
+                expectedAudioTrack = state.selectedAudioUrl != null,
+                hasSelectedAudioTrack = hasSelectedAudioTrack(player),
+                audioRendererError = audioRendererError
+            )
+        ) {
+            return false
+        }
+
+        val fallbackVideoUrl = state.fallbackVideoUrl ?: return false
+        val source = playbackRuntime.source ?: return false
+        val currentPos = player?.currentPosition?.coerceAtLeast(0L) ?: getPlayerCurrentPosition()
+        val playWhenReadyAfterFallback = player?.playWhenReady ?: playerEngine?.playWhenReady ?: true
+        val consumedState = state.markFallbackConsumed()
+        playbackCdnFallbackState = consumedState
+        playbackCdnFallbackJob?.cancel()
+        playbackCdnFallbackJob = null
+
+        com.bbttvv.app.core.util.Logger.w(
+            "PlayerViewModel",
+            "CDN fallback: reason=$reason, region=${state.regionLabel ?: "unknown"}, " +
+                "selected=${hostForPlaybackLog(state.selectedVideoUrl)}, fallback=${hostForPlaybackLog(fallbackVideoUrl)}, " +
+                "audio=${hostForPlaybackLog(state.selectedAudioUrl)}, fallbackAudio=${hostForPlaybackLog(state.fallbackAudioUrl)}"
+        )
+
+        val fallbackSource = source.copy(
+            videoUrl = fallbackVideoUrl,
+            audioUrl = state.fallbackAudioUrl,
+            videoUrlCandidates = buildFallbackCandidates(fallbackVideoUrl, source.videoUrlCandidates),
+            audioUrlCandidates = buildFallbackCandidates(state.fallbackAudioUrl, source.audioUrlCandidates),
+            fallbackVideoUrl = null,
+            fallbackAudioUrl = null
+        )
+        applyPlaybackSource(
+            source = fallbackSource,
+            seekToMs = currentPos,
+            resetPlayer = false,
+            playWhenReady = playWhenReadyAfterFallback
+        )
+        updatePlaybackDuration(fallbackSource.durationMs)
+        _uiState.update {
+            it.withPlaybackSource(
+                source = fallbackSource,
+                isLoading = false,
+                statusMessage = "已切回原始播放线路"
+            )
+        }
+        refreshPlayerSnapshot()
+        return true
+    }
+
+    private fun buildFallbackCandidates(
+        preferredUrl: String?,
+        existingCandidates: List<String>
+    ): List<String> {
+        return buildList {
+            preferredUrl?.trim()?.takeIf { it.isNotBlank() }?.let(::add)
+            existingCandidates
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach(::add)
+        }.distinct()
+    }
+
+    private fun hasSelectedAudioTrack(player: Player?): Boolean {
+        return player?.currentTracks?.groups.orEmpty().any { group ->
+            group.type == C.TRACK_TYPE_AUDIO && group.isSelected
         }
     }
 
@@ -798,6 +957,7 @@ class PlayerViewModel : BasePlayerViewModel() {
         playbackQualityController.cancelPending()
         playerPollingJob?.cancel()
         settingsObservationJob?.cancel()
+        playbackCdnFallbackJob?.cancel()
         playbackEndController.clear()
         commentController.reset()
         progressHeatmapController.clear()

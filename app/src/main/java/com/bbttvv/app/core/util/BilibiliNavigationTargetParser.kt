@@ -13,6 +13,7 @@ sealed interface BilibiliNavigationTarget {
     data class BangumiSeason(val seasonId: Long) : BilibiliNavigationTarget
     data class BangumiEpisode(val epId: Long) : BilibiliNavigationTarget
     data class Music(val musicId: String) : BilibiliNavigationTarget
+    data class Article(val articleId: Long) : BilibiliNavigationTarget
 }
 
 object BilibiliNavigationTargetParser {
@@ -23,6 +24,7 @@ object BilibiliNavigationTargetParser {
         "www.bilibili.com",
         "m.bilibili.com",
         "space.bilibili.com",
+        "search.bilibili.com",
         "live.bilibili.com",
         "t.bilibili.com",
         "music.bilibili.com"
@@ -98,11 +100,9 @@ object BilibiliNavigationTargetParser {
             }
 
             host == "search" -> {
-                return BilibiliNavigationTarget.Search(
-                    keyword = queryMap["keyword"]
-                        ?.takeIf { it.isNotBlank() }
-                        ?: queryMap["query"].orEmpty()
-                )
+                resolveSearchKeyword(queryMap)?.let {
+                    return BilibiliNavigationTarget.Search(keyword = it)
+                }
             }
 
             host == "live" -> {
@@ -129,6 +129,10 @@ object BilibiliNavigationTargetParser {
 
             host == "pgc" -> {
                 resolvePgcTarget(pathSegments)?.let { return it }
+            }
+
+            host == "read" -> {
+                resolveArticleTarget(pathSegments, queryMap, allowBareReadPath = true)?.let { return it }
             }
 
             host == "music" -> {
@@ -159,6 +163,13 @@ object BilibiliNavigationTargetParser {
                 }
             }
 
+            host == "search.bilibili.com" ||
+                (host.contains("bilibili.com") && pathSegments.firstOrNull()?.equals("search", ignoreCase = true) == true) -> {
+                resolveSearchKeyword(queryMap)?.let {
+                    return BilibiliNavigationTarget.Search(keyword = it)
+                }
+            }
+
             host == "music.bilibili.com" &&
                 pathSegments.contains("music-detail") -> {
                 queryMap["music_id"]?.takeIf { it.isNotBlank() }?.let {
@@ -167,6 +178,7 @@ object BilibiliNavigationTargetParser {
             }
 
             host.contains("bilibili.com") -> {
+                resolveArticleTarget(pathSegments, queryMap, allowBareReadPath = false)?.let { return it }
                 resolveBangumiTarget(pathSegments)?.let { return it }
             }
         }
@@ -198,6 +210,54 @@ object BilibiliNavigationTargetParser {
         }
 
         return null
+    }
+
+    private fun resolveArticleTarget(
+        pathSegments: List<String>,
+        queryMap: Map<String, String>,
+        allowBareReadPath: Boolean
+    ): BilibiliNavigationTarget? {
+        val readIndex = pathSegments.indexOfFirst { it.equals("read", ignoreCase = true) }
+        if (readIndex < 0 && !allowBareReadPath) return null
+
+        val firstReadValue = if (readIndex >= 0) {
+            pathSegments.getOrNull(readIndex + 1)
+        } else {
+            pathSegments.firstOrNull()
+        }
+
+        firstReadValue?.let { value ->
+            parseArticleId(value)?.let { return BilibiliNavigationTarget.Article(it) }
+            if (value.equals("mobile", ignoreCase = true)) {
+                resolveArticleIdFromQuery(queryMap)?.let {
+                    return BilibiliNavigationTarget.Article(it)
+                }
+            }
+        }
+
+        if (readIndex >= 0 || allowBareReadPath) {
+            resolveArticleIdFromQuery(queryMap)?.let { return BilibiliNavigationTarget.Article(it) }
+        }
+        return null
+    }
+
+    private fun resolveArticleIdFromQuery(queryMap: Map<String, String>): Long? {
+        return listOf("id", "cvid", "cv_id", "article_id")
+            .firstNotNullOfOrNull { key -> queryMap[key]?.let(::parseArticleId) }
+    }
+
+    private fun parseArticleId(value: String): Long? {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return null
+        val normalized = trimmed
+            .removePrefix("cv")
+            .removePrefix("CV")
+        return normalized.toLongOrNull()?.takeIf { it > 0L }
+    }
+
+    private fun resolveSearchKeyword(queryMap: Map<String, String>): String? {
+        return listOf("keyword", "query", "search", "q")
+            .firstNotNullOfOrNull { key -> queryMap[key]?.trim()?.takeIf { it.isNotEmpty() } }
     }
 
     private fun resolvePgcTarget(pathSegments: List<String>): BilibiliNavigationTarget? {
@@ -292,4 +352,3 @@ object BilibiliNavigationTargetParser {
 
     private fun isNumericId(value: String): Boolean = value.isNotEmpty() && value.all(Char::isDigit)
 }
-

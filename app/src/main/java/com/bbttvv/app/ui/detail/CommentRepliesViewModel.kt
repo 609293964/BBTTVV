@@ -99,7 +99,7 @@ class CommentRepliesViewModel : ViewModel() {
             result.onSuccess { data ->
                 val replies = data.replies.orEmpty().take(previous.pageSize)
                 _uiState.update { state ->
-                    val totalCount = data.getAllCount().takeIf { it > 0 }
+                    val totalCount = data.getSubReplyCount().takeIf { it > 0 }
                         ?: state.rootComment?.rcount
                         ?: replies.size
                     state.copy(

@@ -5,9 +5,11 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class IpLocationSnapshot(
+    val addr: String = "",
     val country: String = "",
     val province: String = "",
-    val city: String = ""
+    val city: String = "",
+    val isp: String = ""
 )
 
 data class CdnRegionSelection(
@@ -24,6 +26,7 @@ data class CdnRewriteResult(
 internal fun selectCdnRegionForLocation(
     location: IpLocationSnapshot,
     catalog: Map<String, List<String>>,
+    @Suppress("UNUSED_PARAMETER")
     fallbackRegion: () -> String
 ): CdnRegionSelection {
     val available = catalog.filterValues { it.isNotEmpty() }
@@ -40,21 +43,36 @@ internal fun selectCdnRegionForLocation(
 
     directCandidates.firstNotNullOfOrNull { candidate ->
         available[candidate]?.let { hosts ->
-            return CdnRegionSelection(candidate, hosts, fallbackUsed = false)
+            return CdnRegionSelection(
+                candidate,
+                sortCdnRegionHostsForIsp(hosts, location.isp),
+                fallbackUsed = false
+            )
         }
     }
 
     if (normalizedCountry.isNotBlank() && normalizedCountry !in mainlandCountryNames) {
-        overseasHosts?.let { return CdnRegionSelection("海外", it, fallbackUsed = false) }
+        overseasHosts?.let {
+            return CdnRegionSelection(
+                "海外",
+                sortCdnRegionHostsForIsp(it, location.isp),
+                fallbackUsed = false
+            )
+        }
     }
 
     val alias = resolveMainlandRegionAlias(location)
     if (alias != null) {
-        available[alias]?.let { return CdnRegionSelection(alias, it, fallbackUsed = false) }
+        available[alias]?.let {
+            return CdnRegionSelection(
+                alias,
+                sortCdnRegionHostsForIsp(it, location.isp),
+                fallbackUsed = false
+            )
+        }
     }
 
-    val fallback = fallbackRegion().takeIf { it in available } ?: available.keys.first()
-    return CdnRegionSelection(fallback, available.getValue(fallback), fallbackUsed = true)
+    return CdnRegionSelection(region = "", hosts = emptyList(), fallbackUsed = true)
 }
 
 internal fun rewriteCdnUrlCandidates(
@@ -96,14 +114,19 @@ internal fun shouldRefreshCdnIpLocation(
 internal fun resolveCdnRegionHosts(
     region: String,
     cachedHosts: List<String>,
-    catalog: Map<String, List<String>>
+    catalog: Map<String, List<String>>,
+    isp: String = ""
 ): List<String> {
     if (region.isBlank()) return emptyList()
     val catalogHosts = catalog[region].orEmpty()
     val distinctCachedHosts = cachedHosts.distinct()
     if (distinctCachedHosts.isEmpty()) return emptyList()
-    if (catalogHosts.isEmpty()) return distinctCachedHosts
-    return distinctCachedHosts.filter { it in catalogHosts }
+    if (catalogHosts.isEmpty()) return sortCdnRegionHostsForIsp(distinctCachedHosts, isp)
+    return if (distinctCachedHosts.all { it in catalogHosts }) {
+        sortCdnRegionHostsForIsp(distinctCachedHosts, isp)
+    } else {
+        sortCdnRegionHostsForIsp(catalogHosts, isp)
+    }
 }
 
 internal fun hasUsableCdnRegionSelection(
@@ -118,6 +141,31 @@ internal fun hasUsableCdnRegionSelection(
 }
 
 internal const val CDN_REGION_LOCATION_TTL_MS: Long = 24L * 60L * 60L * 1000L
+
+internal fun sortCdnRegionHostsForIsp(
+    hosts: List<String>,
+    isp: String
+): List<String> {
+    val carrier = resolveCarrierKey(isp)
+    if (carrier == null) return hosts.distinct()
+    return hosts.distinct().sortedWith(
+        compareByDescending<String> { host -> scoreHostForCarrier(host, carrier) }
+    )
+}
+
+internal fun maskIpAddressForLog(addr: String): String {
+    val trimmed = addr.trim()
+    if (trimmed.isBlank()) return ""
+    val ipv4Parts = trimmed.split(".")
+    if (ipv4Parts.size == 4 && ipv4Parts.all { it.isNotBlank() }) {
+        return "${ipv4Parts[0]}.${ipv4Parts[1]}.*.*"
+    }
+    val ipv6Parts = trimmed.split(":")
+    if (ipv6Parts.size > 2) {
+        return ipv6Parts.take(2).joinToString(":") + ":*"
+    }
+    return "***"
+}
 
 private val mainlandCountryNames = setOf(
     "中国",
@@ -153,6 +201,30 @@ private val cityRegionAliases = mapOf(
     "香港" to "香港",
     "澳门" to "澳门"
 )
+
+private fun resolveCarrierKey(isp: String): String? {
+    val normalized = isp.trim().lowercase()
+    return when {
+        normalized.contains("电信") || normalized.contains("chinanet") ||
+            normalized.contains("telecom") -> "ct"
+        normalized.contains("移动") || normalized.contains("cmcc") ||
+            normalized.contains("mobile") -> "cm"
+        normalized.contains("联通") || normalized.contains("unicom") -> "cu"
+        normalized.contains("广电") || normalized.contains("broadcast") -> "gd"
+        else -> null
+    }
+}
+
+private fun scoreHostForCarrier(host: String, carrier: String): Int {
+    val normalized = host.lowercase()
+    return when {
+        normalized.contains("-$carrier-") -> 3
+        normalized.contains("-$carrier.") -> 3
+        normalized.contains("$carrier-") -> 2
+        normalized.contains(carrier) -> 1
+        else -> 0
+    }
+}
 
 private fun resolveMainlandRegionAlias(location: IpLocationSnapshot): String? {
     val city = normalizeRegionName(location.city)

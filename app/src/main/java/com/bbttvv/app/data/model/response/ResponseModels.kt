@@ -48,6 +48,8 @@ data class ReplyData(
     val config: ReplyConfig? = null,
     //  普通评论列表
     val replies: List<ReplyItem>? = emptyList(),
+    //  二级评论详情接口会返回根评论，里面的 rcount 可作为详情页数量兜底。
+    val root: ReplyItem? = null,
     //  [新增] 置顶评论列表 (WBI API)
     @SerialName("top_replies")
     val topReplies: List<ReplyItem>? = null,
@@ -58,13 +60,22 @@ data class ReplyData(
     //  [新增] UP主信息（包含 UP 置顶评论）
     val upper: ReplyUpper? = null,
     //  [新增] 评论输入控制（占位文案/图片上传开关）
-    val control: ReplyPageControl? = null
+    val control: ReplyPageControl? = null,
+    @SerialName("grpc_next_offset")
+    val grpcNextOffset: String = ""
 ) {
     //  统一获取总评论数
     fun getAllCount(): Int = when {
         cursor.allCount > 0 -> cursor.allCount
         page.acount > 0 -> page.acount
         else -> page.count
+    }
+
+    fun getSubReplyCount(): Int = when {
+        getAllCount() > 0 -> getAllCount()
+        (root?.rcount ?: 0) > 0 -> root?.rcount ?: 0
+        (root?.count ?: 0) > 0 -> root?.count ?: 0
+        else -> 0
     }
     //  统一获取是否结束
     fun getIsEnd(currentPage: Int, currentSize: Int): Boolean {
@@ -555,4 +566,3 @@ data class UploadCommentImageData(
 data class ReplyControl(
     val location: String = ""  // IP 属地，如 "IP属地：北京"
 )
-
