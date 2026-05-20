@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -266,50 +268,6 @@ internal fun DetailHeroSection(
                             )
                         }
                     )
-                    if (viewInfo.pages.size > 1) {
-                        DetailPillButton(
-                            label = "${viewInfo.pages.size} 个分P",
-                            onClick = {},
-                            leadingContent = { tint ->
-                                Text(
-                                    text = "P",
-                                    color = tint,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (viewInfo.pages.size > 1) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "分P",
-                        fontSize = 16.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        LazyRow(
-                            modifier = Modifier.detailHorizontalFocusRail(
-                                horizontalContainerWidth = maxWidth,
-                                onHorizontalRailFocusChanged = onHorizontalRailFocusChanged
-                            ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(
-                                items = viewInfo.pages,
-                                key = { page -> page.cid }
-                            ) { page ->
-                                DetailPillButton(
-                                    label = "P${page.page} ${page.part.ifBlank { "分段 ${page.page}" }}",
-                                    onClick = { onPlay(viewInfo.bvid, viewInfo.aid, page.cid) }
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -490,9 +448,13 @@ internal fun RelatedVideosSection(
     onRailFocusChanged: (Boolean) -> Unit,
     onHorizontalRailFocusChanged: (Dp?) -> Unit,
     onVideoFocus: (RelatedVideo) -> Unit,
-    onVideoClick: (RelatedVideo) -> Unit
+    onVideoClick: (RelatedVideo) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         Text(
             text = "相关视频",
             fontSize = 20.sp,
@@ -516,7 +478,8 @@ internal fun RelatedVideosSection(
                         horizontalContainerWidth = maxWidth,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(relatedCardWidth * 0.7f + 92.dp),
+                            .height(relatedCardWidth * 0.7f + 92.dp)
+                            .then(modifier),
                         onRailFocusChanged = onRailFocusChanged,
                         onHorizontalRailFocusChanged = onHorizontalRailFocusChanged,
                         onVideoFocused = { video, _ ->
@@ -982,3 +945,80 @@ private fun RelatedVideo.toVideoItem(): VideoItem {
     )
 }
 
+@Composable
+internal fun DetailPagesSection(
+    viewInfo: ViewInfo,
+    firstPageFocusRequester: FocusRequester,
+    playButtonFocusRequester: FocusRequester,
+    relatedVideosFocusRequester: FocusRequester,
+    onPlay: (String, Long, Long) -> Unit,
+    onRailFocusChanged: (Boolean) -> Unit = {},
+    onPageFocus: () -> Unit = {},
+    onHorizontalRailFocusChanged: (Dp?) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(
+            text = "分P",
+            fontSize = 20.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            LazyRow(
+                modifier = Modifier
+                    .detailHorizontalFocusRail(
+                        horizontalContainerWidth = maxWidth,
+                        onRailFocusChanged = onRailFocusChanged,
+                        onHorizontalRailFocusChanged = onHorizontalRailFocusChanged
+                    )
+                    .focusProperties {
+                        up = playButtonFocusRequester
+                        down = relatedVideosFocusRequester
+                    },
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(end = 48.dp)
+            ) {
+                itemsIndexed(
+                    items = viewInfo.pages,
+                    key = { _, page -> page.cid }
+                ) { index, page ->
+                    val baseModifier = if (page.page == 1) {
+                        Modifier.focusRequester(firstPageFocusRequester)
+                    } else {
+                        Modifier
+                    }
+                    val isFirst = index == 0
+                    val isLast = index == viewInfo.pages.lastIndex
+                    val edgeKeyModifier = Modifier.onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                            val keyCode = event.nativeKeyEvent.keyCode
+                            if (isFirst && keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+                                return@onPreviewKeyEvent true
+                            }
+                            if (isLast && keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+                                return@onPreviewKeyEvent true
+                            }
+                        }
+                        false
+                    }
+                    val pillModifier = baseModifier
+                        .then(edgeKeyModifier)
+                        .onFocusChanged { focusState ->
+                            if (focusState.hasFocus) {
+                                onPageFocus()
+                            }
+                        }
+                        .focusProperties {
+                            up = playButtonFocusRequester
+                            down = relatedVideosFocusRequester
+                        }
+                    DetailPillButton(
+                        label = "P${page.page} ${page.part.ifBlank { "分段 ${page.page}" }}",
+                        onClick = { onPlay(viewInfo.bvid, viewInfo.aid, page.cid) },
+                        modifier = pillModifier
+                    )
+                }
+            }
+        }
+    }
+}

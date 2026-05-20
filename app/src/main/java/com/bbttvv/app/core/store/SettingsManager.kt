@@ -108,6 +108,7 @@ object SettingsManager {
     private const val CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
     private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
+    private const val CACHE_SINGLE_BACK_TO_HOME = "single_back_to_home"
 
     private val keyPrivacyMode = booleanPreferencesKey(CACHE_PRIVACY_MODE)
     private val keySponsorBlockEnabled = booleanPreferencesKey(CACHE_SPONSOR_BLOCK_ENABLED)
@@ -134,6 +135,7 @@ object SettingsManager {
     private val keyUpdateContentOnTabFocusEnabled = booleanPreferencesKey(CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
+    private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
 
     fun getWatchLaterInTopTabsEnabled(context: Context): Flow<Boolean> {
         return context.settingsDataStore.data.map { preferences ->
@@ -162,6 +164,19 @@ object SettingsManager {
             preferences[keyDynamicPageDisplayMode] = mode.value
         }
         updateSyncCache(context) { putString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, mode.value) }
+    }
+
+    fun getSingleBackToHomeEnabled(context: Context): Flow<Boolean> {
+        return context.settingsDataStore.data.map { preferences ->
+            preferences[keySingleBackToHome] ?: false
+        }
+    }
+
+    suspend fun setSingleBackToHomeEnabled(context: Context, enabled: Boolean) {
+        updatePreference(context) { preferences ->
+            preferences[keySingleBackToHome] = enabled
+        }
+        updateSyncCache(context) { putBoolean(CACHE_SINGLE_BACK_TO_HOME, enabled) }
     }
 
     fun observeAppNavigationSettings(context: Context): Flow<AppNavigationSettings> {
@@ -541,6 +556,10 @@ object SettingsManager {
         return DynamicPageDisplayMode.fromValue(
             context.syncPrefs().getString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, DynamicPageDisplayMode.ALL.value)
         )
+    }
+
+    fun getSingleBackToHomeEnabledSync(context: Context): Boolean {
+        return context.syncPrefs().getBoolean(CACHE_SINGLE_BACK_TO_HOME, false)
     }
 
     internal fun mapNavigationSettingsFromPreferences(preferences: Preferences): AppNavigationSettings {

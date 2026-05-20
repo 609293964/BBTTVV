@@ -4,27 +4,33 @@
 build/
 **/build/
 captures/
+*.apk
+*.ap_
+*.aab
+*.aar
+*.jar
+*.class
 
-# Local Android SDK and IDE state
+# Local Android SDK and IDE state (Android Studio & IntelliJ)
 local.properties
-.idea/caches/
-.idea/shelf/
-.idea/workspace.xml
-.idea/tasks.xml
-.idea/usage.statistics.xml
-.idea/dictionaries/
-.idea/libraries/
+.idea/
 
 # VS Code local state
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
 
-# Signing credentials and private release config
+# Signing credentials and private release config (CRITICAL SECURITY)
 *.jks
 *.keystore
+*.p12
+*.pem
+*.pkcs12
+*.key
 keystore.properties
 signing.properties
+local-plugins.json
+secrets.properties
 
 # Logs, diagnostics, and temporary dumps
 logs/
@@ -33,22 +39,31 @@ tmp/
 *.logcat
 *logcat*.txt
 build_log.txt
+focus_capture.txt
 focus_repro_*.txt
 focus-repro-*.txt
 focus-refactor-*.txt
 window_dump*.xml
 *.hprof
 *.tmp
+*.temp
 *.bak
 *.trace
+
+# Media / Screenshots / Screen recordings (Android TV debugging)
 /emu-*.png
 /screenshot*.png
 /screen-*.png
 /debug-*.png
+*.mp4
+*.gif
 
 # OS and editor noise
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
 *.swp
 *.swo
 *~
+

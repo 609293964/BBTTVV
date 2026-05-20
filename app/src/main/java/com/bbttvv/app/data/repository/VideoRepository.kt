@@ -434,6 +434,7 @@ object VideoRepository {
     fun prefetchDetailSummary(video: VideoItem, scope: CoroutineScope = AppScope.ioScope) {
         val cacheKey = video.bvid.trim()
         if (cacheKey.isBlank()) return
+        if (cacheKey.startsWith("ss") || cacheKey.startsWith("ep")) return
         cacheVideoPreview(video)
         prefetchVideoInfo(cacheKey, scope)
     }
@@ -441,6 +442,7 @@ object VideoRepository {
     fun prefetchDetailSummary(video: RelatedVideo, scope: CoroutineScope = AppScope.ioScope) {
         val cacheKey = video.bvid.trim()
         if (cacheKey.isBlank()) return
+        if (cacheKey.startsWith("ss") || cacheKey.startsWith("ep")) return
         cacheVideoPreview(video)
         prefetchVideoInfo(cacheKey, scope)
     }

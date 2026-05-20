@@ -20,7 +20,7 @@ class DanmakuSettingsStoreTest {
             )
         )
 
-        assertEquals(0.9f, normalized.opacity, 0.0001f)
+        assertEquals(1.0f, normalized.opacity, 0.0001f)
         assertEquals(38, normalized.textSizeSp)
         assertEquals(4, normalized.strokeWidthPx)
         assertEquals(0.6f, normalized.areaRatio, 0.0001f)
@@ -31,7 +31,7 @@ class DanmakuSettingsStoreTest {
     @Test
     fun `toEngineConfig maps supported settings onto danmaku engine config`() {
         val config = DanmakuSettings(
-            opacity = 0.75f,
+            opacity = 0.8f,
             textSizeSp = 42,
             fontWeight = DanmakuFontWeightPreset.Bold,
             strokeWidthPx = 0,
@@ -40,7 +40,7 @@ class DanmakuSettingsStoreTest {
             speedLevel = 8
         ).toEngineConfig()
 
-        assertEquals(0.75f, config.opacity, 0.0001f)
+        assertEquals(0.8f, config.opacity, 0.0001f)
         assertEquals(1.0f, config.fontScale, 0.0001f)
         assertEquals(6, config.fontWeight)
         assertFalse(config.strokeEnabled)

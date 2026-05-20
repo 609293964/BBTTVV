@@ -67,7 +67,14 @@ internal fun VideoCardRecyclerGrid(
     onVideoLongClick: ((VideoItem, String) -> Unit)? = null,
     onVideoClick: (VideoItem, String) -> Unit,
 ) {
-    val items = remember(videos) { videos.toHomeRecommendVideoCardItems() }
+    val keyRegistry = remember { HomeRecommendVideoKeyRegistry() }
+    val items = remember(videos, scrollResetKey) {
+        if (scrollResetKey != null) {
+            keyRegistry.resetAndBuild(videos)
+        } else {
+            keyRegistry.rebuildReusingAssigned(videos)
+        }
+    }
     VideoCardRecyclerGridItems(
         items = items,
         modifier = modifier,
@@ -205,12 +212,20 @@ internal fun VideoCardRecyclerGridItems(
                 onBack = {
                     latestIsHomeTabActive && latestOnBackToTopBar?.invoke() == true
                 },
+                onFocusSettled = {
+                    focusState.cancelAllPendingRequests()
+                    dpadGridController.cancelAllPendingRequests()
+                },
             )
         )
     }
 
     DisposableEffect(dpadGridController, focusState) {
+        focusState.setPhysicalScrollAllowedProvider {
+            !dpadGridController.hasPendingLoadMoreFocus()
+        }
         onDispose {
+            focusState.setPhysicalScrollAllowedProvider(null)
             recyclerViewRef.value?.let(focusState::detach)
             recyclerViewRef.value = null
             preloadThrottler.cancel()
@@ -230,18 +245,22 @@ internal fun VideoCardRecyclerGridItems(
                 region = focusRegion,
                 target = object : HomeFocusTarget {
                     override fun tryRequestFocus(): Boolean {
+                        dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusVisibleItem()
                     }
 
                     override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
+                        dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusEntryItem(entryHint.preferredIndex)
                     }
 
                     override fun tryRequestFocusKey(key: String): Boolean {
+                        dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusKey(key)
                     }
 
                     override fun tryRequestFocusKeyOrFallback(key: String): Boolean {
+                        dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusKeyOrFallback(key)
                     }
 
@@ -298,7 +317,7 @@ internal fun VideoCardRecyclerGridItems(
                             ?.let(::findContainingViewHolder)
                             ?.bindingAdapterPosition
                             ?.takeIf { it != NO_POSITION }
-                        if (currentPosition != null && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        if (currentPosition != null && (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
                             cancelPendingRestoreForUserGridNavigation(event.keyCode, event)
                             focusState.noteUserNavigation(event.keyCode, event)
                             if (dpadGridController.handleItemKeyEvent(
@@ -352,7 +371,8 @@ internal fun VideoCardRecyclerGridItems(
                         if (
                             currentPosition != null &&
                             ((spanCount != null && currentPosition + spanCount >= itemCount) ||
-                                (nextPosition != null && nextPosition <= currentPosition))
+                                (nextPosition != null && nextPosition <= currentPosition) ||
+                                (nextPosition == null && canScrollVertically(1)))
                         ) {
                             return focused
                         }
@@ -431,6 +451,8 @@ internal fun VideoCardRecyclerGridItems(
                     onItemFocused = { item, position ->
                         if (dpadGridController.onItemFocused(position = position)) {
                             focusState.onItemFocused(item.key, position)
+                            dpadGridController.cancelAllPendingRequests()
+                            focusState.cancelAllPendingRequests()
                             if (latestIsHomeTabActive) {
                                 recyclerViewRef.value?.let { recyclerView ->
                                     preloadThrottler.preloadRowsAhead(
@@ -466,6 +488,8 @@ internal fun VideoCardRecyclerGridItems(
                     },
                     onItemKeyEvent = { itemView, _, position, keyCode, event ->
                         if (!latestIsHomeTabActive) {
+                            false
+                        } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                             false
                         } else {
                             cancelPendingRestoreForUserGridNavigation(keyCode, event)
@@ -522,7 +546,10 @@ internal fun VideoCardRecyclerGridItems(
                     return@let
                 }
                 if (!dpadGridController.hasPendingLoadMoreFocus()) {
+                    dpadGridController.cancelAllPendingRequests()
                     focusState.prepareForDataSetChange(items)
+                } else {
+                    focusState.cancelAllPendingRequests()
                 }
                 adapter.submitList(items) {
                     recyclerView.applyInitialScrollPosition(initialScrollPosition)
@@ -551,7 +578,8 @@ internal fun VideoCardRecyclerRow(
     onVideoFocused: (VideoItem, String) -> Unit = { _, _ -> },
     onVideoClick: (VideoItem, String) -> Unit,
 ) {
-    val items = remember(videos) { videos.toHomeRecommendVideoCardItems() }
+    val keyRegistry = remember { HomeRecommendVideoKeyRegistry() }
+    val items = remember(videos) { keyRegistry.rebuildReusingAssigned(videos) }
     val paddingPx = rememberRecyclerPadding(contentPadding)
     val isHomeTabActive = LocalHomeTabActive.current
     val density = LocalDensity.current

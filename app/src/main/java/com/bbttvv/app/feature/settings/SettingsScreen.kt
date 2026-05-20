@@ -194,6 +194,10 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
         )
+    val singleBackToHomeEnabled by SettingsManager.getSingleBackToHomeEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getSingleBackToHomeEnabledSync(context)
+        )
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
@@ -435,6 +439,22 @@ fun TvSettingsList(
                         SettingsManager.setWatchLaterInTopTabsEnabled(
                             context,
                             !watchLaterInTopTabsEnabled
+                        )
+                    }
+                }
+            )
+        }
+        item {
+            SettingsRow(
+                title = "\u76F8\u5173\u89C6\u9891\u4E00\u952E\u56DE\u9996\u9875",
+                subtitle = "\u5F00\u542F\u540E\uFF0C\u5728\u76F8\u5173\u89C6\u9891\u591A\u6B21\u8DF3\u8F6C\u65F6\uFF0C\u70B9\u51FB\u4E00\u6B21\u8FD4\u56DE\u952E\u5373\u53EF\u76F4\u63A5\u56DE\u5230\u9996\u9875\u3002",
+                value = onOff(singleBackToHomeEnabled),
+                compact = compact,
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setSingleBackToHomeEnabled(
+                            context,
+                            !singleBackToHomeEnabled
                         )
                     }
                 }

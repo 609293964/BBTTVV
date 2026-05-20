@@ -78,7 +78,7 @@ private val FollowUpdateCardShape = RoundedCornerShape(8.dp)
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun DynamicScreen(
-    onVideoClick: (VideoItem) -> Unit,
+    onVideoClick: (String, VideoItem) -> Unit,
     onLiveClick: (Long) -> Unit = {},
     onOpenUp: (Long) -> Unit = {},
     viewModel: DynamicViewModel,
@@ -434,9 +434,9 @@ internal fun DynamicScreen(
                         focusState.resetRememberedFocusToTopForTopBarReturn()
                         focusCoordinator.handleContentWantsTopBar()
                     },
-                    onVideoClick = { videoItem, _ ->
+                    onVideoClick = { videoItem, key ->
                         viewModel.primeVideoDetail(videoItem)
-                        onVideoClick(videoItem)
+                        onVideoClick(key, videoItem)
                     }
                 )
             }

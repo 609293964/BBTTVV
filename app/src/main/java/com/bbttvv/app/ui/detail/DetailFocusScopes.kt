@@ -17,6 +17,11 @@ import kotlin.math.abs
 
 internal const val DetailContainerSizeTolerancePx = 2f
 
+internal object DetailDpadDirectionTracker {
+    @Volatile
+    var activeDirection = 0 // 0: 未知/未激活, 1: 水平移动(Left/Right), 2: 垂直移动(Up/Down)
+}
+
 internal val DetailNoScrollBringIntoViewSpec = object : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         return 0f
@@ -25,9 +30,17 @@ internal val DetailNoScrollBringIntoViewSpec = object : BringIntoViewSpec {
 
 internal class DetailHorizontalOnlyBringIntoViewSpec(
     private val delegate: BringIntoViewSpec,
-    private val horizontalContainerSizePx: Float
+    private val horizontalContainerSizePx: Float,
+    private val isEnabled: () -> Boolean
 ) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        // 若最近一次是垂直移动（Up/Down），代表焦点在上下跳转，我们应当绝对同步地解冻垂直滚动，允许其正常滚动出来！
+        if (DetailDpadDirectionTracker.activeDirection == 2) {
+            return delegate.calculateScrollDistance(offset, size, containerSize)
+        }
+        if (!isEnabled()) {
+            return delegate.calculateScrollDistance(offset, size, containerSize)
+        }
         return if (abs(containerSize - horizontalContainerSizePx) <= DetailContainerSizeTolerancePx) {
             delegate.calculateScrollDistance(offset, size, containerSize)
         } else {
@@ -40,6 +53,7 @@ internal class DetailHorizontalOnlyBringIntoViewSpec(
 internal fun DetailInitialFocusScrollScope(
     disableTvFocusPivot: Boolean,
     horizontalFocusContainerWidth: Dp?,
+    horizontalRailHasFocus: () -> Boolean = { true },
     content: @Composable () -> Unit
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
@@ -54,7 +68,8 @@ internal fun DetailInitialFocusScrollScope(
         horizontalContainerSizePx?.let { containerSizePx ->
             DetailHorizontalOnlyBringIntoViewSpec(
                 delegate = defaultBringIntoViewSpec,
-                horizontalContainerSizePx = containerSizePx
+                horizontalContainerSizePx = containerSizePx,
+                isEnabled = horizontalRailHasFocus
             )
         }
     }
@@ -89,11 +104,13 @@ internal fun Modifier.detailHorizontalFocusRail(
             when (event.nativeKeyEvent.keyCode) {
                 AndroidKeyEvent.KEYCODE_DPAD_LEFT,
                 AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    DetailDpadDirectionTracker.activeDirection = 1
                     onHorizontalRailFocusChanged(horizontalContainerWidth)
                 }
 
                 AndroidKeyEvent.KEYCODE_DPAD_UP,
                 AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                    DetailDpadDirectionTracker.activeDirection = 2
                     onHorizontalRailFocusChanged(null)
                 }
             }

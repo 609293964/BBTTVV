@@ -7,8 +7,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val HomeFocusSummaryPrefetchDelayMs = 300L
-
 /** Debounces TV focus-driven detail prefetches for the home grid. */
 internal class HomeDetailPrefetcher(
     private val scope: CoroutineScope
@@ -16,12 +14,14 @@ internal class HomeDetailPrefetcher(
     private var detailPrefetchJob: Job? = null
     private var pendingPrefetchBvid: String? = null
     private var lastPrefetchedBvid: String? = null
+    private var lastFocusRequestAtMs: Long? = null
 
     fun prime(video: VideoItem) {
         if (video.bvid == pendingPrefetchBvid) {
             detailPrefetchJob?.cancel()
             pendingPrefetchBvid = null
         }
+        lastFocusRequestAtMs = System.currentTimeMillis()
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
         VideoDetailRepository.prefetchDetailSummary(video)
     }
@@ -29,10 +29,15 @@ internal class HomeDetailPrefetcher(
     fun prefetch(video: VideoItem) {
         if (video.bvid.isBlank()) return
         if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
+        val now = System.currentTimeMillis()
+        val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
+        lastFocusRequestAtMs = now
         detailPrefetchJob?.cancel()
         pendingPrefetchBvid = video.bvid
         detailPrefetchJob = scope.launch {
-            delay(HomeFocusSummaryPrefetchDelayMs)
+            if (delayMs > 0L) {
+                delay(delayMs)
+            }
             VideoDetailRepository.prefetchDetailSummary(video)
             lastPrefetchedBvid = video.bvid
             if (pendingPrefetchBvid == video.bvid) {
@@ -45,5 +50,6 @@ internal class HomeDetailPrefetcher(
         detailPrefetchJob?.cancel()
         detailPrefetchJob = null
         pendingPrefetchBvid = null
+        lastFocusRequestAtMs = null
     }
 }

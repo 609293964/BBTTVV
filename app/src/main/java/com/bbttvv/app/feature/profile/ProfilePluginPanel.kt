@@ -1,6 +1,14 @@
 package com.bbttvv.app.feature.profile
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +63,33 @@ import com.bbttvv.app.ui.components.TvDialogActionButton
 import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import kotlinx.coroutines.launch
+
+@Composable
+private fun SubPluginConfigContainer(
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, top = 2.dp, bottom = 4.dp)
+            .background(
+                color = Color(0x06FFFFFF),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = Color(0x0FFFFFFF),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 4.dp, vertical = 4.dp)
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            content()
+        }
+    }
+}
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -139,65 +174,71 @@ internal fun ProfilePluginCenterPanel(
                         Modifier
                     },
                 )
-                if (expandedPluginId == pluginInfo.plugin.id) {
-                    when (val plugin = pluginInfo.plugin) {
-                        is com.bbttvv.app.feature.plugin.SponsorBlockPlugin -> {
-                            SponsorBlockPluginPanel(
-                                plugin = plugin,
-                                enabled = pluginInfo.enabled,
-                                onToggleEnabled = {
-                                    scope.launch {
-                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                AnimatedVisibility(
+                    visible = expandedPluginId == pluginInfo.plugin.id,
+                    enter = expandVertically(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
+                    exit = shrinkVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(150))
+                ) {
+                    SubPluginConfigContainer {
+                        when (val plugin = pluginInfo.plugin) {
+                            is com.bbttvv.app.feature.plugin.SponsorBlockPlugin -> {
+                                SponsorBlockPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        is com.bbttvv.app.feature.plugin.AdFilterPlugin -> {
-                            AdFilterPluginPanel(
-                                plugin = plugin,
-                                enabled = pluginInfo.enabled,
-                                onToggleEnabled = {
-                                    scope.launch {
-                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                )
+                            }
+                            is com.bbttvv.app.feature.plugin.AdFilterPlugin -> {
+                                AdFilterPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        is com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin -> {
-                            DanmakuEnhancePluginPanel(
-                                plugin = plugin,
-                                enabled = pluginInfo.enabled,
-                                onToggleEnabled = {
-                                    scope.launch {
-                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                )
+                            }
+                            is com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin -> {
+                                DanmakuEnhancePluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        is com.bbttvv.app.feature.plugin.TodayWatchPlugin -> {
-                            TodayWatchPluginPanel(
-                                plugin = plugin,
-                                enabled = pluginInfo.enabled,
-                                onToggleEnabled = {
-                                    scope.launch {
-                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                )
+                            }
+                            is com.bbttvv.app.feature.plugin.TodayWatchPlugin -> {
+                                TodayWatchPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        is CdnRegionPlugin -> {
-                            CdnRegionPluginPanel(
-                                plugin = plugin,
-                                enabled = pluginInfo.enabled,
-                                onToggleEnabled = {
-                                    scope.launch {
-                                        com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                )
+                            }
+                            is CdnRegionPlugin -> {
+                                CdnRegionPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        else -> {
-                            ProfileInfoCard("暂不支持的插件类型", "这个插件已经注册进插件系统，但当前插件中心还没有给它单独的 TV 配置面板。", compact = true)
+                                )
+                            }
+                            else -> {
+                                ProfileInfoCard("暂不支持的插件类型", "这个插件已经注册进插件系统，但当前插件中心还没有给它单独的 TV 配置面板。", compact = true)
+                            }
                         }
                     }
                 }
@@ -247,71 +288,82 @@ private fun SponsorBlockPluginPanel(
         modes[(modes.indexOf(config.markerMode) + 1).mod(modes.size)]
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
             title = "插件状态",
             subtitle = "控制空降助手是否参与视频详情页的 SponsorBlock 跳过逻辑。",
             value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
             title = "手动跳过",
             subtitle = "命中片头、片尾或恰饭片段时直接跳过；关闭后会显示手动跳过提示。",
             value = if (config.autoSkip) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setAutoSkip(!config.autoSkip) }
         )
         PluginCenterRowCard(
             title = "进度条提示",
             subtitle = "切换 SponsorBlock 片段在进度条上的提示策略，便于后续预览标记。",
             value = "${config.markerMode.displayLabel()} -> ${nextMarkerMode.displayLabel()}",
+            isSubItem = true,
             onClick = { plugin.setMarkerMode(nextMarkerMode) }
         )
         PluginCenterRowCard(
             title = "手动跳过提示",
             subtitle = "关闭后不再显示右下角“按确认键跳过”提示，但不会影响进度条标记和自动跳过。",
             value = if (config.showSkipPrompt) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setShowSkipPrompt(!config.showSkipPrompt) }
         )
         PluginCenterRowCard(
             title = "广告 / 恰饭",
             subtitle = "命中 SponsorBlock 的赞助片段时参与跳过。",
             value = if (config.skipSponsor) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipSponsor(!config.skipSponsor) }
         )
         PluginCenterRowCard(
             title = "片头动画",
             subtitle = "跳过视频Logo、开场口播和长片头。",
             value = if (config.skipIntro) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipIntro(!config.skipIntro) }
         )
         PluginCenterRowCard(
             title = "片尾动画",
             subtitle = "跳过结尾彩蛋前的常规片尾片段。",
             value = if (config.skipOutro) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipOutro(!config.skipOutro) }
         )
         PluginCenterRowCard(
             title = "互动提示",
-            subtitle = "跳过无意义的连播投币点赞和下一期提示等互动片段。",
+            subtitle = "跳过无意义的连播投币点赞 and 下一期提示等互动片段。",
             value = if (config.skipInteraction) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipInteraction(!config.skipInteraction) }
         )
         PluginCenterRowCard(
             title = "互动推广",
             subtitle = "跳过关注、群号、店铺和其他互动推广口播。",
             value = if (config.skipSelfPromo) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipSelfPromo(!config.skipSelfPromo) }
         )
         PluginCenterRowCard(
             title = "预告 / 回顾",
             subtitle = "默认跳过片尾广告和重复回顾，默认关闭以免误伤剧情内容。",
             value = if (config.skipPreview) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipPreview(!config.skipPreview) }
         )
         PluginCenterRowCard(
             title = "无关片段",
             subtitle = "默认跳过跑题片段，默认关闭，适合你想更激进一点的时候。",
             value = if (config.skipFiller) "已跳过" else "已保留",
+            isSubItem = true,
             onClick = { plugin.setSkipFiller(!config.skipFiller) }
         )
         ProfileInfoCard("已接入播放链路", "现在插件管理器里的空降助手和实际播放器走的是同一套开关，打开后会直接作用到视频播放。", compact = true)
@@ -340,35 +392,40 @@ private fun AdFilterPluginPanel(
         config.blockedUpMids.filterNot { it in blockedUpMidSet }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
             title = "插件状态",
             subtitle = "首页推荐、热门分区会先经过去广告增强再展示。",
             value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
             title = "营销推广过滤",
             subtitle = "过滤商业合作、恰饭推广、官方活动等营销内容。",
             value = if (config.filterSponsored) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setFilterSponsored(!config.filterSponsored) }
         )
         PluginCenterRowCard(
             title = "标题党过滤",
             subtitle = "过滤夸张标题、震惊体和常见钓鱼式标题。",
             value = if (config.filterClickbait) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setFilterClickbait(!config.filterClickbait) }
         )
         PluginCenterRowCard(
             title = "低播放量过滤",
             subtitle = "默认过滤播放量低于 1000 的内容，适合你想让瀑布流更干净时开启。",
             value = if (config.filterLowQuality) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setFilterLowQuality(!config.filterLowQuality) }
         )
         PluginCenterRowCard(
             title = "低播放量阈值",
             subtitle = "低播放量过滤的实际生效，当前小于这个值的视频会被隐藏。",
             value = "${config.minViewCount}",
+            isSubItem = true,
             onClick = {
                 inputMinViewCount = config.minViewCount.toString()
                 showMinViewCountDialog = true
@@ -377,19 +434,22 @@ private fun AdFilterPluginPanel(
         PluginCenterRowCard(
             title = "添加名称黑名单",
             subtitle = "按 UP 名称做模糊匹配拉黑，适合先用遥控器快速录入关键字。",
-            value = if (config.blockedUpNames.isEmpty()) "去添加" else "个",
+            value = if (config.blockedUpNames.isEmpty()) "去添加" else "${config.blockedUpNames.size} 个",
+            isSubItem = true,
             onClick = { showAddNameDialog = true }
         )
         PluginCenterRowCard(
             title = "添加 MID 黑名单",
             subtitle = "按 UID/MID 精确拉黑，适合你已经知道该 UP 主数字 ID 的情况。",
-            value = if (manualBlockedMids.isEmpty()) "去添加" else "个",
+            value = if (manualBlockedMids.isEmpty()) "去添加" else "${manualBlockedMids.size} 个",
+            isSubItem = true,
             onClick = { showAddMidDialog = true }
         )
         PluginCenterRowCard(
             title = "标题屏蔽词",
             subtitle = "按关键字直接过滤标题，适合屏蔽某类长期不想看的内容。",
-            value = if (config.blockedKeywords.isEmpty()) "去添加" else "个",
+            value = if (config.blockedKeywords.isEmpty()) "去添加" else "${config.blockedKeywords.size} 个",
+            isSubItem = true,
             onClick = { showAddKeywordDialog = true }
         )
         if (config.blockedUpNames.isNotEmpty()) {
@@ -399,6 +459,7 @@ private fun AdFilterPluginPanel(
                     title = blockedName,
                     subtitle = "按名称匹配的黑名单规则，点按后移除。",
                     value = "移除",
+                    isSubItem = true,
                     onClick = { plugin.removeBlockedUpName(blockedName) }
                 )
             }
@@ -410,6 +471,7 @@ private fun AdFilterPluginPanel(
                     title = "MID $blockedMid",
                     subtitle = "按数字 MID 精确匹配，命中后首页和热门都会直接隐藏。",
                     value = "移除",
+                    isSubItem = true,
                     onClick = { plugin.removeBlockedUpMid(blockedMid) }
                 )
             }
@@ -421,6 +483,7 @@ private fun AdFilterPluginPanel(
                     title = blocked.name,
                     subtitle = "· 这类拉黑会直接命中 UID",
                     value = "移除",
+                    isSubItem = true,
                     onClick = {
                         scope.launch {
                             plugin.unblockUploader(blocked.mid)
@@ -436,6 +499,7 @@ private fun AdFilterPluginPanel(
                     title = blockedKeyword,
                     subtitle = "命中这个关键词的标题会被直接过滤，点按后移除。",
                     value = "移除",
+                    isSubItem = true,
                     onClick = { plugin.removeBlockedKeyword(blockedKeyword) }
                 )
             }
@@ -608,41 +672,47 @@ private fun DanmakuEnhancePluginPanel(
         editingValue = value
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
             title = "插件状态",
             subtitle = "会作用到当前播放器的弹幕载入链路，打开后支持热刷新。",
             value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
             title = "关键词屏蔽",
             subtitle = "按关键字隐藏剧透、前方高能等你不想看到的弹幕。",
             value = if (config.enableFilter) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setEnableFilter(!config.enableFilter) }
         )
         PluginCenterRowCard(
             title = "同传高亮",
             subtitle = "把同传、翻译类弹幕高亮出来，方便电视端远距离阅读。",
             value = if (config.enableHighlight) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setEnableHighlight(!config.enableHighlight) }
         )
         PluginCenterRowCard(
             title = "屏蔽关键字",
             subtitle = config.blockedKeywords.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
+            isSubItem = true,
             onClick = { openEditor("blocked_keywords", config.blockedKeywords) }
         )
         PluginCenterRowCard(
             title = "屏蔽用户 ID",
             subtitle = config.blockedUserIds.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
+            isSubItem = true,
             onClick = { openEditor("blocked_users", config.blockedUserIds) }
         )
         PluginCenterRowCard(
             title = "高亮关键字",
             subtitle = config.highlightKeywords.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
+            isSubItem = true,
             onClick = { openEditor("highlight_keywords", config.highlightKeywords) }
         )
     }
@@ -739,53 +809,61 @@ private fun TodayWatchPluginPanel(
         nextCycledOption(config.historySampleLimit, listOf(40, 80, 120))
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
             title = "插件状态",
             subtitle = "启用后，会在首页导航栏最外挂载「推荐单」版块。",
             value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
             title = "默认模式",
             subtitle = "进入推荐单页时默认选中的二级标签。",
             value = "${config.currentMode.label} -> ${nextMode.label}",
+            isSubItem = true,
             onClick = { plugin.setCurrentMode(nextMode) }
         )
         PluginCenterRowCard(
             title = "偏好 UP 榜数量",
             subtitle = "控制头部摘要里显示多少位近期偏好创作者。",
             value = "${config.upRankLimit} -> $nextUpRankLimit",
+            isSubItem = true,
             onClick = { plugin.setUpRankLimit(nextUpRankLimit) }
         )
         PluginCenterRowCard(
             title = "队列生成长度",
             subtitle = "用于算法内部排序的种子队列规模，越大越容易补齐多样性。",
             value = "${config.queueBuildLimit} -> $nextQueueBuildLimit",
+            isSubItem = true,
             onClick = { plugin.setQueueBuildLimit(nextQueueBuildLimit) }
         )
         PluginCenterRowCard(
             title = "预览展示条数",
             subtitle = "推荐单页当前行展示前几条视频卡片。",
             value = "${config.queuePreviewLimit} -> $nextQueuePreviewLimit",
+            isSubItem = true,
             onClick = { plugin.setQueuePreviewLimit(nextQueuePreviewLimit) }
         )
         PluginCenterRowCard(
             title = "历史样本数",
             subtitle = "冷启动生成推荐单时最多抽取最近多少条历史记录。",
             value = "${config.historySampleLimit} -> $nextHistorySampleLimit",
+            isSubItem = true,
             onClick = { plugin.setHistorySampleLimit(nextHistorySampleLimit) }
         )
         PluginCenterRowCard(
             title = "显示偏好 UP 榜",
             subtitle = "在推荐单头部展示你近期更偏好的创作者摘要。",
             value = if (config.showUpRank) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setShowUpRank(!config.showUpRank) }
         )
         PluginCenterRowCard(
             title = "显示推荐理由",
             subtitle = "在视频卡片下方显示轻松向 / 学习向等推荐理由。",
             value = if (config.showReasonHint) "已开启" else "已关闭",
+            isSubItem = true,
             onClick = { plugin.setShowReasonHint(!config.showReasonHint) }
         )
         TodayWatchTasteInsightSection(insightState)
@@ -793,24 +871,30 @@ private fun TodayWatchPluginPanel(
             title = "清空画像与反馈",
             subtitle = "清空后台学到的创作者偏好和不感兴趣反馈，推荐会重新学习。",
             value = "立即清空",
+            isSubItem = true,
             onClick = { showResetDialog = true }
         )
         ProfileInfoCard("已接入独立推荐页", "当前插件不是推荐单页顶部卡片，而是独立的外置 Tab，支持模式切换、手动刷新和 MENU 不感兴趣。", compact = true)
     }
 
     if (showResetDialog) {
-        TvConfirmDialog(
-            title = "清空推荐画像",
-            message = "确认清空当前推荐画像与不感兴趣反馈吗？",
+        TvDialog(
+            title = "确认清空画像与反馈？",
             onDismissRequest = { showResetDialog = false },
+            content = {
+                Text(
+                    text = "该操作将清空本地记录的近期观看画像与“不感兴趣”视频列表，推荐偏好算法将重置到初始状态重新学习。",
+                    color = Color(0xB3FFFFFF),
+                    fontSize = 14.sp
+                )
+            },
             actions = {
                 TvDialogActionButton(
                     text = "取消",
                     onClick = { showResetDialog = false }
                 )
                 TvDialogActionButton(
-                    text = "确认",
-                    contentColor = Color(0xFFFFD0D8),
+                    text = "确认清空",
                     onClick = {
                         plugin.clearPersonalizationData()
                         showResetDialog = false
@@ -828,7 +912,8 @@ private fun TodayWatchTasteInsightSection(
     Text(text = "推荐依据", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
     PluginCenterStaticInfoCard(
         title = state.modeTitle,
-        subtitle = state.modeSummary
+        subtitle = state.modeSummary,
+        isSubItem = true
     )
     if (state.preferredCreators.isNotEmpty()) {
         Text(text = "近期偏好 UP", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
@@ -836,7 +921,8 @@ private fun TodayWatchTasteInsightSection(
             PluginCenterStaticInfoCard(
                 title = signal.label,
                 subtitle = "本地观看画像信号",
-                value = signal.value
+                value = signal.value,
+                isSubItem = true
             )
         }
     }
@@ -844,14 +930,16 @@ private fun TodayWatchTasteInsightSection(
     if (state.recentDislikedVideos.isEmpty()) {
         PluginCenterStaticInfoCard(
             title = "还没有负反馈样本",
-            subtitle = "在推荐单视频菜单里选择“不感兴趣”后，这里会显示近期样本。"
+            subtitle = "在推荐单视频菜单里选择“不感兴趣”后，这里会显示近期样本。",
+            isSubItem = true
         )
     } else {
         state.recentDislikedVideos.forEach { item ->
             PluginCenterStaticInfoCard(
                 title = item.title,
                 subtitle = item.subtitle,
-                value = "已降权"
+                value = "已降权",
+                isSubItem = true
             )
         }
     }
@@ -860,8 +948,9 @@ private fun TodayWatchTasteInsightSection(
         state.negativeSignals.forEach { signal ->
             PluginCenterStaticInfoCard(
                 title = signal.label,
-                subtitle = "用于降低相近内容排序权重",
-                value = signal.value
+                subtitle = "用于降低相近 content 排序权重",
+                value = signal.value,
+                isSubItem = true
             )
         }
     }
@@ -877,27 +966,31 @@ private fun CdnRegionPluginPanel(
     val locationLabel = buildCdnRegionLocationLabel(cache)
     val selectedHosts = cache.selectedHosts.take(3).joinToString("、").ifBlank { "尚未命中属地线路" }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
             title = "插件状态",
             subtitle = "启用后，播放地址会先尝试同属地 bilivideo CDN，原始线路仍保留兜底。",
             value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterStaticInfoCard(
             title = "当前属地",
             subtitle = locationLabel,
-            value = cache.selectedRegion.ifBlank { "未刷新" }
+            value = cache.selectedRegion.ifBlank { "未刷新" },
+            isSubItem = true
         )
         PluginCenterStaticInfoCard(
             title = "候选线路",
             subtitle = selectedHosts,
-            value = "${cache.selectedHosts.size} 条"
+            value = "${cache.selectedHosts.size} 条",
+            isSubItem = true
         )
         PluginCenterRowCard(
             title = "刷新属地",
             subtitle = if (enabled) "重新请求 B 站 IP 属地接口并更新本地 CDN 候选缓存。" else "开启插件后再刷新属地缓存。",
             value = if (enabled) "立即刷新" else "未启用",
+            isSubItem = true,
             onClick = {
                 if (enabled) {
                     plugin.refreshNow()
@@ -908,7 +1001,8 @@ private fun CdnRegionPluginPanel(
             PluginCenterStaticInfoCard(
                 title = "最近刷新失败",
                 subtitle = error,
-                value = "保留旧缓存"
+                value = "保留旧缓存",
+                isSubItem = true
             )
         }
         ProfileInfoCard("已接入播放链路", "该插件只重排播放候选 URL，不删除原始 baseUrl / backupUrl；线路异常时播放器仍会继续尝试后续候选。", compact = true)
@@ -929,26 +1023,52 @@ private fun PluginCenterSummaryCard(title: String, value: String, modifier: Modi
 private fun PluginCenterStaticInfoCard(
     title: String,
     subtitle: String,
-    value: String? = null
+    value: String? = null,
+    isSubItem: Boolean = false
 ) {
+    val containerColor = if (isSubItem) Color.Transparent else Color(0x12000000)
+    val cardShape = RoundedCornerShape(if (isSubItem) 14.dp else 24.dp)
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0x12000000), RoundedCornerShape(24.dp))
-            .padding(horizontal = 18.dp, vertical = 14.dp)
+            .background(containerColor, cardShape)
+            .padding(
+                horizontal = if (isSubItem) 14.dp else 18.dp,
+                vertical = if (isSubItem) 8.dp else 14.dp
+            )
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(text = subtitle, color = Color(0xB3FFFFFF), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(if (isSubItem) 2.dp else 4.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = if (isSubItem) 14.sp else 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = subtitle,
+                    color = Color(0xB3FFFFFF),
+                    fontSize = if (isSubItem) 10.sp else 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             value?.takeIf { it.isNotBlank() }?.let {
                 Spacer(modifier = Modifier.width(14.dp))
-                Text(text = it, color = Color(0xE8FFFFFF), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    text = it,
+                    color = Color(0xE8FFFFFF),
+                    fontSize = if (isSubItem) 12.sp else 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -962,26 +1082,65 @@ private fun PluginCenterRowCard(
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isSubItem: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
+    
+    val containerColor = if (isSubItem) Color.Transparent else Color(0x12000000)
+    val focusedContainerColor = if (isSubItem) Color(0x1EFFFFFF) else Color(0xE9E6EEF4)
+    val cardShape = RoundedCornerShape(if (isSubItem) 14.dp else 24.dp)
+    
+    val titleColor = when {
+        isSubItem -> Color.White
+        focused -> Color(0xFF111111)
+        else -> Color.White
+    }
+    
+    val subtitleColor = when {
+        isSubItem -> Color(0xB3FFFFFF)
+        focused -> Color(0xB0000000)
+        else -> Color(0xB3FFFFFF)
+    }
+    
+    val valueTextColor = when {
+        isSubItem -> Color(0xE8FFFFFF)
+        focused -> Color(0xCC000000)
+        else -> Color(0xE8FFFFFF)
+    }
+
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
+        shape = ClickableSurfaceDefaults.shape(cardShape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = containerColor,
+            focusedContainerColor = focusedContainerColor
+        )
     ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = if (isSubItem) 14.dp else 18.dp,
+                    vertical = if (isSubItem) 8.dp else 14.dp
+                ),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(if (isSubItem) 2.dp else 4.dp)
+            ) {
                 Text(
                     text = title,
-                    color = if (focused) Color(0xFF111111) else Color.White,
-                    fontSize = 15.sp,
+                    color = titleColor,
+                    fontSize = if (isSubItem) 14.sp else 15.sp,
                     fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium
                 )
                 Text(
                     text = subtitle,
-                    color = if (focused) Color(0xB0000000) else Color(0xB3FFFFFF),
-                    fontSize = 11.sp,
+                    color = subtitleColor,
+                    fontSize = if (isSubItem) 10.sp else 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -989,8 +1148,8 @@ private fun PluginCenterRowCard(
             Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = value,
-                color = if (focused) Color(0xCC000000) else Color(0xE8FFFFFF),
-                fontSize = 13.sp,
+                color = valueTextColor,
+                fontSize = if (isSubItem) 12.sp else 13.sp,
                 fontWeight = FontWeight.Medium
             )
         }

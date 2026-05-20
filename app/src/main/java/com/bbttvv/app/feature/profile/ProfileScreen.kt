@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,7 +88,7 @@ internal const val WATCH_LATER_VIDEO_GRID_COLUMNS = 4
 @Composable
 internal fun ProfileScreen(
     onOpenSettings: () -> Unit,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onRequestTopBarFocus: () -> Boolean = { false },
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
@@ -103,7 +104,7 @@ internal fun ProfileScreen(
         .collectAsStateWithLifecycle(initialValue = true)
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
         .collectAsStateWithLifecycle(initialValue = false)
-    var selectedMenu by remember { mutableStateOf(ProfileMenu.HISTORY) }
+    var selectedMenu by rememberSaveable { mutableStateOf(ProfileMenu.HISTORY) }
     val profileMenus = remember(watchLaterInTopTabsEnabled) {
         if (watchLaterInTopTabsEnabled) {
             profileMenuDisplayOrder.filterNot { menu -> menu == ProfileMenu.WATCH_LATER }
@@ -130,6 +131,7 @@ internal fun ProfileScreen(
         when (selectedMenu) {
             ProfileMenu.HISTORY -> viewModel.ensureHistoryLoaded(force = true)
             ProfileMenu.FAVORITE -> viewModel.ensureFavoriteLoaded()
+            ProfileMenu.BANGUMI -> viewModel.ensureBangumiLoaded()
             ProfileMenu.WATCH_LATER -> viewModel.ensureWatchLaterLoaded(force = true)
             else -> Unit
         }
@@ -191,13 +193,15 @@ internal fun ProfileScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
-                        onOpenVideo = { video ->
+                        onOpenVideo = { focusKey, video ->
                             viewModel.primeVideoDetail(video)
-                            onOpenVideo(video)
+                            onOpenVideo(focusKey, video)
                         },
                         onLoadMoreHistory = viewModel::loadMoreHistory,
                         onSelectFavoriteFolder = viewModel::selectFavoriteFolder,
                         onLoadMoreFavorites = viewModel::loadMoreFavorites,
+                        onLoadMoreBangumi = viewModel::loadMoreBangumi,
+                        onUnfollowBangumi = viewModel::unfollowBangumiInProfile,
                         onRemoveWatchLater = viewModel::removeWatchLater,
                         onSwitchAccount = { mid -> viewModel.switchAccount(mid) },
                         onRemoveStoredAccount = { mid -> viewModel.removeStoredAccount(mid) },
@@ -275,9 +279,9 @@ internal fun WatchLaterVideosScreen(
                 totalCount = uiState.watchLaterTotalCount,
                 isLoading = uiState.isWatchLaterLoading,
                 errorMessage = uiState.watchLaterErrorMessage,
-                onOpenVideo = { video ->
+                onOpenVideo = { focusKey, video ->
                     viewModel.primeVideoDetail(video)
-                    onOpenVideo(video.bvid.ifBlank { video.aid.toString() }, video)
+                    onOpenVideo(focusKey, video)
                 },
                 onRemoveVideo = viewModel::removeWatchLater,
                 showHeader = false,
@@ -311,10 +315,12 @@ private fun LoggedInProfileLayout(
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onSelectMenu: (ProfileMenu) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMoreHistory: () -> Unit,
     onSelectFavoriteFolder: (String) -> Unit,
     onLoadMoreFavorites: () -> Unit,
+    onLoadMoreBangumi: () -> Unit,
+    onUnfollowBangumi: (Long) -> Unit,
     onRemoveWatchLater: (VideoItem) -> Unit,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
@@ -393,6 +399,8 @@ private fun LoggedInProfileLayout(
             onLoadMoreHistory = onLoadMoreHistory,
             onSelectFavoriteFolder = onSelectFavoriteFolder,
             onLoadMoreFavorites = onLoadMoreFavorites,
+            onLoadMoreBangumi = onLoadMoreBangumi,
+            onUnfollowBangumi = onUnfollowBangumi,
             onRemoveWatchLater = onRemoveWatchLater,
             onSwitchAccount = onSwitchAccount,
             onRemoveStoredAccount = onRemoveStoredAccount,
@@ -427,10 +435,12 @@ private fun ProfileContentPanel(
     uiState: ProfileUiState,
     selectedMenu: ProfileMenu,
     onOpenSettings: () -> Unit,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMoreHistory: () -> Unit,
     onSelectFavoriteFolder: (String) -> Unit,
     onLoadMoreFavorites: () -> Unit,
+    onLoadMoreBangumi: () -> Unit,
+    onUnfollowBangumi: (Long) -> Unit,
     onRemoveWatchLater: (VideoItem) -> Unit,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
@@ -489,12 +499,19 @@ private fun ProfileContentPanel(
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
-                ProfileMenu.BANGUMI -> ProfilePlaceholderPanel(
-                    title = "我的追番",
-                    subtitle = "追番/追剧区域入口已经预留。",
+                ProfileMenu.BANGUMI -> ProfileBangumiPanel(
+                    items = uiState.bangumiItems,
+                    isLoading = uiState.isBangumiLoading,
+                    isLoadingMore = uiState.isBangumiLoadingMore,
+                    hasMore = uiState.bangumiHasMore,
+                    errorMessage = uiState.bangumiErrorMessage,
+                    onOpenVideo = onOpenVideo,
+                    onLoadMore = onLoadMoreBangumi,
+                    onUnfollowBangumi = onUnfollowBangumi,
+                    onRequestSidebarFocus = onRequestSidebarFocus,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
-                    onRequestSidebarFocus = onRequestSidebarFocus
+                    videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
                 ProfileMenu.WATCH_LATER -> ProfileWatchLaterPanel(
                     items = uiState.watchLaterItems,

@@ -32,6 +32,7 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBar
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
@@ -52,6 +53,7 @@ fun HomeScreen(
     onTabSelected: (AppTopLevelTab) -> Unit,
     onRecommendVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
     onSearchVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
+    onDynamicVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, com.bbttvv.app.data.model.response.VideoItem) -> Unit = { _, _, _ -> },
     onOpenUp: (Long) -> Unit = {}
@@ -79,6 +81,9 @@ fun HomeScreen(
         }
     }
     RegisterHomeFocusEscapeGuard(focusCoordinator)
+    RegisterLifecycleFocusDrain(key = focusCoordinator) {
+        focusCoordinator.drainPendingFocus()
+    }
     val restoreTargetTab = restoreVideoFocusTab ?: AppTopLevelTab.RECOMMEND
     val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&
         hasPendingVideoFocusRestore &&
@@ -328,6 +333,7 @@ fun HomeScreen(
                 onLiveClick = onLiveClick,
                 onRecommendVideoClick = onRecommendVideoClick,
                 onSearchVideoClick = onSearchVideoClick,
+                onDynamicVideoClick = onDynamicVideoClick,
                 onOpenSettings = onOpenSettings,
                 onProfileVideoClick = onProfileVideoClick,
                 onOpenUp = onOpenUp,
@@ -379,7 +385,16 @@ fun HomeScreen(
                         } else {
                             -effectiveTopBarHeightPx.toFloat()
                         }
-                        alpha = if (focusCoordinator.isTopBarVisible) 1f else 0f
+                        alpha = if (usesCollapsingHomeHeader) {
+                            if (effectiveTopBarHeightPx > 0) {
+                                val collapseProgress = topBarCollapseOffsetPx.toFloat() / effectiveTopBarHeightPx.toFloat()
+                                (1f - collapseProgress).coerceIn(0f, 1f)
+                            } else {
+                                1f
+                            }
+                        } else {
+                            if (focusCoordinator.isTopBarVisible) 1f else 0f
+                        }
                     }
             )
         }

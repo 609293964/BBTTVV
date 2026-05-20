@@ -44,7 +44,7 @@ internal fun ProfileFavoritePanel(
     hasMore: Boolean,
     errorMessage: String?,
     onSelectFolder: (String) -> Unit,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMore: () -> Unit,
     onRequestSidebarFocus: () -> Boolean,
     focusCoordinator: HomeFocusCoordinator? = null,

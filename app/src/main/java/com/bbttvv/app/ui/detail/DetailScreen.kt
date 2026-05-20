@@ -22,18 +22,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,8 +48,11 @@ import androidx.tv.material3.Text
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
+import com.bbttvv.app.ui.focus.TvFocusSandboxAnchor
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import com.bbttvv.app.ui.focus.rememberTvFocusAnchorState
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 
@@ -80,6 +87,9 @@ fun DetailScreen(
             initialValue = SettingsManager.getVideoDetailCommentsEnabledSync(context)
         )
     val playButtonFocusRequester = remember { FocusRequester() }
+    val firstPageFocusRequester = remember { FocusRequester() }
+    val relatedVideosFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
     val handlePlayRequest: (String, Long, Long) -> Unit = { playBvid, playAid, playCid ->
         viewModel.prefetchPlaybackDanmaku(playCid)
         onPlay(playBvid, playAid, playCid)
@@ -132,9 +142,15 @@ fun DetailScreen(
             ) { hasFullDetail ->
                 when {
                     uiState.isError && !hasFullDetail -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        val statusFocusAnchor = rememberTvFocusAnchorState()
+                        TvFocusSandboxAnchor(
+                            state = statusFocusAnchor,
+                            requestInitialFocus = true,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
                             Text(
                                 text = uiState.errorMsg ?: "加载详情失败",
+                                modifier = Modifier.align(Alignment.Center),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
@@ -145,8 +161,17 @@ fun DetailScreen(
                         if (previewInfo != null) {
                             DetailPreviewShell(previewInfo = previewInfo)
                         } else if (uiState.isLoading) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = "正在加载详情...", color = Color.White)
+                            val statusFocusAnchor = rememberTvFocusAnchorState()
+                            TvFocusSandboxAnchor(
+                                state = statusFocusAnchor,
+                                requestInitialFocus = true,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Text(
+                                    text = "正在加载详情...",
+                                    modifier = Modifier.align(Alignment.Center),
+                                    color = Color.White
+                                )
                             }
                         }
                     }
@@ -166,6 +191,9 @@ fun DetailScreen(
                 }
                 val detailFocusCoordinator = remember(viewInfo.bvid) {
                     DetailFocusCoordinator()
+                }
+                RegisterLifecycleFocusDrain(key = detailFocusCoordinator) {
+                    detailFocusCoordinator.drainPendingFocus()
                 }
                 RegisterTvFocusEscapeTarget(
                     key = "video_detail_${viewInfo.bvid}",
@@ -210,12 +238,27 @@ fun DetailScreen(
                 var heroActionRowHasFocus by remember(viewInfo.bvid) {
                     mutableStateOf(false)
                 }
+                var horizontalRailHasFocus by remember(viewInfo.bvid) {
+                    mutableStateOf(false)
+                }
                 var activeHorizontalFocusRailWidth by remember(viewInfo.bvid) {
                     mutableStateOf<Dp?>(null)
+                }
+                var pagesRailHasFocus by remember(viewInfo.bvid) {
+                    mutableStateOf(false)
+                }
+                var pagesFocusGeneration by remember(viewInfo.bvid) {
+                    mutableStateOf(0)
                 }
                 var relatedVideosRailHasFocus by remember(viewInfo.bvid) {
                     mutableStateOf(false)
                 }
+                var relatedVideosFocusGeneration by remember(viewInfo.bvid) {
+                    mutableStateOf(0)
+                }
+                val relatedVideosSectionIndex = detailRelatedVideosSectionIndex(
+                    hasPagesSection = viewInfo.pages.size > 1
+                )
                 val hasRestoreCommentFocusTarget = restoreCommentFocusRpid?.let { targetRpid ->
                     uiState.comments.items.any { comment -> comment.rpid == targetRpid }
                 } ?: false
@@ -247,6 +290,9 @@ fun DetailScreen(
                 LaunchedEffect(heroActionRowHasFocus) {
                     if (heroActionRowHasFocus) {
                         activeHorizontalFocusRailWidth = null
+                        horizontalRailHasFocus = false
+                        pagesRailHasFocus = false
+                        relatedVideosRailHasFocus = false
                         if (detailListState.firstVisibleItemIndex > 0 ||
                             detailListState.firstVisibleItemScrollOffset > 0
                         ) {
@@ -256,32 +302,35 @@ fun DetailScreen(
                 }
 
                 LaunchedEffect(
+                    pagesRailHasFocus,
+                    pagesFocusGeneration,
+                    viewInfo.pages.size
+                ) {
+                    if (pagesRailHasFocus && viewInfo.pages.size > 1) {
+                        detailListState.scrollDetailSectionIntoComfortableView(
+                            sectionIndex = DetailPagesSectionIndex,
+                            density = density,
+                            forceLowPlacement = false,
+                        )
+                    }
+                }
+
+                LaunchedEffect(
                     relatedVideosRailHasFocus,
+                    relatedVideosFocusGeneration,
                     videoDetailCommentsEnabled,
-                    uiState.relatedVideos.size
+                    uiState.relatedVideos.size,
+                    relatedVideosSectionIndex
                 ) {
                     if (
                         relatedVideosRailHasFocus &&
-                        !videoDetailCommentsEnabled &&
                         uiState.relatedVideos.isNotEmpty()
                     ) {
-                        withFrameNanos { }
-                        val relatedItemInfo = detailListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { item -> item.index == 1 }
-                            ?: return@LaunchedEffect
-                        val bottomMarginPx = with(density) { 40.dp.roundToPx() }
-                        val minTopMarginPx = with(density) { 96.dp.roundToPx() }
-                        val desiredTopOffset = (
-                            detailListState.layoutInfo.viewportEndOffset -
-                                relatedItemInfo.size -
-                                bottomMarginPx
-                            ).coerceAtLeast(minTopMarginPx)
-                        val scrollDelta = relatedItemInfo.offset - desiredTopOffset
-                        if (abs(scrollDelta) > DetailContainerSizeTolerancePx) {
-                            // Keep the related rail fully visible, but pin it as low as possible
-                            // so the detail page does not open a large empty gap beneath it.
-                            detailListState.scrollBy(scrollDelta.toFloat())
-                        }
+                        detailListState.scrollDetailSectionIntoComfortableView(
+                            sectionIndex = relatedVideosSectionIndex,
+                            density = density,
+                            forceLowPlacement = !videoDetailCommentsEnabled,
+                        )
                     }
                 }
 
@@ -300,7 +349,8 @@ fun DetailScreen(
                         suppressInitialFocusBringIntoView &&
                             restoreCommentFocusRpid == null
                         ) || heroActionRowHasFocus,
-                    horizontalFocusContainerWidth = activeHorizontalFocusRailWidth
+                    horizontalFocusContainerWidth = activeHorizontalFocusRailWidth,
+                    horizontalRailHasFocus = { horizontalRailHasFocus }
                 ) {
                     LazyColumn(
                         modifier = Modifier
@@ -375,23 +425,69 @@ fun DetailScreen(
                             )
                         }
 
+                        if (viewInfo.pages.size > 1) {
+                            item(key = "pages") {
+                                DetailPagesSection(
+                                    viewInfo = viewInfo,
+                                    firstPageFocusRequester = firstPageFocusRequester,
+                                    playButtonFocusRequester = playButtonFocusRequester,
+                                    relatedVideosFocusRequester = relatedVideosFocusRequester,
+                                    onPlay = handlePlayRequest,
+                                    onRailFocusChanged = { hasFocus ->
+                                        pagesRailHasFocus = hasFocus
+                                        horizontalRailHasFocus = hasFocus
+                                        if (hasFocus) {
+                                            relatedVideosRailHasFocus = false
+                                        }
+                                    },
+                                    onPageFocus = {
+                                        pagesRailHasFocus = true
+                                        horizontalRailHasFocus = true
+                                        relatedVideosRailHasFocus = false
+                                        pagesFocusGeneration += 1
+                                    },
+                                    onHorizontalRailFocusChanged = { width ->
+                                        activeHorizontalFocusRailWidth = width
+                                    }
+                                )
+                            }
+                        }
+
                         item(key = "related") {
                             RelatedVideosSection(
                                 videos = uiState.relatedVideos,
                                 isLoading = uiState.isRelatedLoading,
                                 onRailFocusChanged = { hasFocus ->
                                     relatedVideosRailHasFocus = hasFocus
+                                    horizontalRailHasFocus = hasFocus
+                                    if (hasFocus) {
+                                        pagesRailHasFocus = false
+                                    }
                                 },
                                 onHorizontalRailFocusChanged = { width ->
                                     activeHorizontalFocusRailWidth = width
                                 },
-                                onVideoFocus = { },
+                                onVideoFocus = {
+                                    relatedVideosRailHasFocus = true
+                                    horizontalRailHasFocus = true
+                                    pagesRailHasFocus = false
+                                    relatedVideosFocusGeneration += 1
+                                },
                                 onVideoClick = { related ->
                                     if (related.bvid.isNotBlank()) {
                                         viewModel.prefetchDetail(related)
                                         onRelatedVideoClick(related.bvid)
                                     }
-                                }
+                                },
+                                modifier = Modifier
+                                    .focusRequester(relatedVideosFocusRequester)
+                                    .focusProperties {
+                                        up = if (viewInfo.pages.size > 1) {
+                                            firstPageFocusRequester
+                                        } else {
+                                            playButtonFocusRequester
+                                        }
+                                    }
                             )
                         }
 
@@ -441,5 +537,42 @@ fun DetailScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 72.dp),
         )
+    }
+}
+
+private suspend fun LazyListState.scrollDetailSectionIntoComfortableView(
+    sectionIndex: Int,
+    density: Density,
+    forceLowPlacement: Boolean,
+) {
+    withFrameNanos { }
+    var itemInfo = layoutInfo.visibleItemsInfo
+        .firstOrNull { item -> item.index == sectionIndex }
+    if (itemInfo == null) {
+        scrollToItem(sectionIndex)
+        withFrameNanos { }
+        itemInfo = layoutInfo.visibleItemsInfo
+            .firstOrNull { item -> item.index == sectionIndex }
+    }
+    itemInfo ?: return
+
+    val bottomMarginPx = with(density) { 40.dp.roundToPx() }
+    val minTopMarginPx = with(density) { 96.dp.roundToPx() }
+    val viewportStartOffset = layoutInfo.viewportStartOffset
+    val viewportEndOffset = layoutInfo.viewportEndOffset
+    val desiredTopOffset = (
+        viewportEndOffset -
+            itemInfo.size -
+            bottomMarginPx
+        ).coerceAtLeast(viewportStartOffset + minTopMarginPx)
+    val comfortableTopOffset = viewportStartOffset + minTopMarginPx
+    val comfortableBottomOffset = viewportEndOffset - bottomMarginPx
+    val shouldScroll = forceLowPlacement ||
+        itemInfo.offset < comfortableTopOffset ||
+        itemInfo.offset + itemInfo.size > comfortableBottomOffset
+    val scrollDelta = itemInfo.offset - desiredTopOffset
+    if (shouldScroll && abs(scrollDelta) > DetailContainerSizeTolerancePx) {
+        // Keep the focused TV rail fully visible without adding a large blank gap below it.
+        scrollBy(scrollDelta.toFloat())
     }
 }

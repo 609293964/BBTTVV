@@ -34,6 +34,7 @@ internal class DpadGridController(
         val parkFocusForScroll: (Int) -> Boolean = { _ -> false },
         val onMenu: () -> Boolean = { false },
         val onBack: () -> Boolean = { false },
+        val onFocusSettled: () -> Unit = {},
     )
 
     private var recyclerView: RecyclerView? = null
@@ -117,6 +118,11 @@ internal class DpadGridController(
         return applyPendingLoadMoreFocus()
     }
 
+    fun cancelAllPendingRequests() {
+        focusRequestToken++
+        clearPendingLoadMoreFocus()
+    }
+
     fun hasPendingLoadMoreFocus(): Boolean {
         return pendingLoadMoreFocus != null
     }
@@ -130,6 +136,7 @@ internal class DpadGridController(
         if (!callbacks.isEnabled()) return false
         if (handleCenterLongPress(itemView, keyCode, event)) return true
         if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (shouldConsumeLoadMorePendingKey(keyCode)) return true
         markVerticalNavigation(keyCode)
         val resolvedPosition = resolveAdapterPosition(itemView = itemView, fallbackPosition = position)
         return handleItemKeyDown(
@@ -140,6 +147,7 @@ internal class DpadGridController(
 
     fun handleItemKeyDown(position: Int, keyCode: Int): Boolean {
         if (!callbacks.isEnabled()) return false
+        if (shouldConsumeLoadMorePendingKey(keyCode)) return true
         val recycler = recyclerView ?: return false
         val adapter = recycler.adapter ?: return false
         val gridLayoutManager = recycler.layoutManager as? GridLayoutManager ?: return false
@@ -207,6 +215,10 @@ internal class DpadGridController(
 
             else -> false
         }
+    }
+
+    private fun shouldConsumeLoadMorePendingKey(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_DPAD_DOWN && pendingLoadMoreFocus != null
     }
 
     private fun handleDpadLeft(
@@ -404,7 +416,7 @@ internal class DpadGridController(
             if (callbacks.onBottomEdge(position)) {
                 return true
             }
-            if (callbacks.canLoadMore()) {
+            if (callbacks.canLoadMore() && pendingLoadMoreFocus == null) {
                 prepareLoadMoreFocus(
                     anchorPosition = position,
                     anchorOffsetPx = currentItem?.let { focusedItem ->
@@ -705,12 +717,13 @@ internal class DpadGridController(
                 unparkFocusInRecyclerViewIfNeeded(recycler)
                 if (itemView.requestFocus()) {
                     onFocused?.invoke()
+                    callbacks.onFocusSettled()
                     return true
                 }
             }
         }
 
-        if (!isPositionVisible(recycler, position)) {
+        if (attemptsLeft == FocusRetryMaxAttempts && !isPositionVisible(recycler, position)) {
             if (scrollOffsetPx != null) {
                 (recycler.layoutManager as? GridLayoutManager)
                     ?.scrollToPositionWithOffset(position, scrollOffsetPx)
@@ -723,6 +736,33 @@ internal class DpadGridController(
         if (attemptsLeft <= 0) {
             clearPendingIfTarget(position)
             clearDirectionalScrollParkingForRequest(requestToken, recycler)
+            clearPendingLoadMoreFocus()
+            val layoutManager = recycler.layoutManager as? GridLayoutManager
+            if (layoutManager != null) {
+                var closestView: View? = null
+                var minDistance = Int.MAX_VALUE
+                var closestPosition = RecyclerView.NO_POSITION
+                for (i in 0 until layoutManager.childCount) {
+                    val child = layoutManager.getChildAt(i) ?: continue
+                    if (child.isValidFocusTarget()) {
+                        val childPos = layoutManager.getPosition(child)
+                        if (childPos != RecyclerView.NO_POSITION) {
+                            val distance = Math.abs(childPos - position)
+                            if (distance < minDistance) {
+                                minDistance = distance
+                                closestView = child
+                                closestPosition = childPos
+                            }
+                        }
+                    }
+                }
+                if (closestView != null && closestView.requestFocus()) {
+                    onFocused?.invoke()
+                    callbacks.onFocusSettled()
+                    android.util.Log.d("HomeFocus", "DpadGridController Fallback SUCCESS: expected=$position, actual=$closestPosition")
+                    return true
+                }
+            }
             return false
         }
 
@@ -756,6 +796,10 @@ internal class DpadGridController(
                 onSettled()
             }
             return true
+        }
+
+        if (recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
+            recycler.stopScroll()
         }
 
         lateinit var listener: RecyclerView.OnScrollListener

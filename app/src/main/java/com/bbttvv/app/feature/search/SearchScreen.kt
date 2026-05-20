@@ -88,6 +88,7 @@ internal fun SearchScreen(
         List(visibleSearchTypes.size) { FocusRequester() }
     }
     val videoGridFocusState = remember { HomeRecommendGridFocusState() }
+    val firstHotSearchFocusRequester = remember { FocusRequester() }
     val searchResultsMode = uiState.hasSubmittedQuery || uiState.query.isNotBlank()
     var searchInputHasFocus by remember { mutableStateOf(false) }
     var searchCategoryHasFocus by remember { mutableStateOf(false) }
@@ -219,11 +220,10 @@ internal fun SearchScreen(
         }
     }
 
-    val searchBarModifier = Modifier
-        .focusRequester(searchBarFocusRequester)
+    val searchBarModifier = Modifier.focusRequester(searchBarFocusRequester)
         .onFocusChanged { focusState ->
-            searchInputHasFocus = focusState.isFocused
-            if (focusState.isFocused) {
+            searchInputHasFocus = focusState.isFocused || focusState.hasFocus
+            if (focusState.isFocused || focusState.hasFocus) {
                 videoGridHasFocus = false
                 searchResultHeaderState.reset()
                 noteSearchRegionFocused(HomeFocusRegion.SearchInput)
@@ -243,6 +243,13 @@ internal fun SearchScreen(
                 onValueChange = viewModel::onQueryChange,
                 onSubmit = viewModel::search,
                 onRequestTopBarFocus = onRequestTopBarFocus,
+                onMoveFocusDown = {
+                    if (uiState.hotList.isNotEmpty()) {
+                        runCatching { firstHotSearchFocusRequester.requestFocus() }.getOrDefault(false)
+                    } else {
+                        false
+                    }
+                },
                 modifier = searchBarModifier
             )
             // Hot Search Mode
@@ -276,7 +283,8 @@ internal fun SearchScreen(
                                 } else {
                                     false
                                 }
-                            }
+                            },
+                            modifier = if (index == 0) Modifier.focusRequester(firstHotSearchFocusRequester) else Modifier
                         )
                     }
                 }
@@ -301,6 +309,7 @@ internal fun SearchScreen(
                         onValueChange = viewModel::onQueryChange,
                         onSubmit = viewModel::search,
                         onRequestTopBarFocus = onRequestTopBarFocus,
+                        onMoveFocusDown = ::requestSearchCategoryFocus,
                         modifier = searchBarModifier
                     )
                     SearchCategoryRow(
@@ -472,6 +481,7 @@ private fun SearchBarRow(
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onRequestTopBarFocus: () -> Unit,
+    onMoveFocusDown: (() -> Boolean)? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -486,6 +496,7 @@ private fun SearchBarRow(
             onValueChange = onValueChange,
             onSubmit = onSubmit,
             onRequestTopBarFocus = onRequestTopBarFocus,
+            onMoveFocusDown = onMoveFocusDown,
             modifier = modifier
         )
     }
@@ -527,6 +538,7 @@ private fun CapsuleSearchBar(
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onRequestTopBarFocus: () -> Unit,
+    onMoveFocusDown: (() -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
     TvTextInput(
@@ -539,6 +551,7 @@ private fun CapsuleSearchBar(
             onRequestTopBarFocus()
             true
         },
+        onMoveFocusDown = onMoveFocusDown,
         shape = RoundedCornerShape(999.dp),
         containerColor = Color(0xFF222733),
         focusedContainerColor = Color.White,
@@ -674,7 +687,8 @@ private fun HotSearchKeywordPill(
     keyword: String,
     rank: Int,
     onClick: () -> Unit,
-    onFocusUp: () -> Boolean
+    onFocusUp: () -> Boolean,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -703,7 +717,7 @@ private fun HotSearchKeywordPill(
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale

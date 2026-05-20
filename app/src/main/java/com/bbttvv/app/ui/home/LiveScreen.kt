@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.home
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -131,23 +130,32 @@ internal fun LiveScreen(
         }
     ) { topPadding, onScrollOffset ->
         if (uiState.liveRooms.isEmpty() && uiState.isLoading) {
-            Box(
+            HomeEmptyFocusTarget(
+                tab = AppTopLevelTab.LIVE,
+                focusCoordinator = focusCoordinator,
+                isActive = isHomeTabActive,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = topPadding),
-                contentAlignment = Alignment.Center
             ) {
-                Text(text = "正在加载直播列表...", color = MaterialTheme.colorScheme.onBackground)
+                Text(
+                    text = "正在加载直播列表...",
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
             }
         } else if (uiState.isError && uiState.liveRooms.isEmpty()) {
-            Box(
+            HomeEmptyFocusTarget(
+                tab = AppTopLevelTab.LIVE,
+                focusCoordinator = focusCoordinator,
+                isActive = isHomeTabActive,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = topPadding),
-                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "加载失败：${uiState.errorMsg ?: "未知错误"}",
+                    modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.error
                 )
             }

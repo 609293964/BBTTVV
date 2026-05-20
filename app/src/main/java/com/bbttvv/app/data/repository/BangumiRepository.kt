@@ -1,4 +1,4 @@
-﻿// 文件路径: data/repository/BangumiRepository.kt
+// 文件路径: data/repository/BangumiRepository.kt
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
@@ -16,6 +16,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 internal data class BangumiPlayUrlPayload(
     val code: Int,
@@ -158,9 +159,9 @@ object BangumiRepository {
 
             var jsonString = responseBody.string()
             
-            //  [关键修复] 在解析前预处理 JSON，限制 episodes 数组大小
+            //  [关键修复] 在解析前预处理 JSON，限制 episodes 数组大小，同时保留目标/历史剧集
             // 这是防止 OOM 的核心：在字符串级别截断，避免解析时占用大量内存
-            jsonString = limitEpisodesInJson(jsonString, maxEpisodes = 200)
+            jsonString = limitEpisodesInJson(jsonString, maxEpisodes = 200, targetEpId = epId)
             
             // 使用 kotlinx.serialization.json 手动解析
             val json = kotlinx.serialization.json.Json { 
@@ -192,16 +193,16 @@ object BangumiRepository {
             System.gc() // 尝试触发 GC 回收内存
             Result.failure(Exception("加载失败：番剧数据过大，请稍后重试"))
         } catch (e: Exception) {
-            android.util.Log.e("BangumiRepo", "getSeasonDetail error: ${e.message}")
+            android.util.Log.e("BangumiRepo", "getSeasonDetail error", e)
             Result.failure(e)
         }
     }
     
     /**
-     *  [修复工具] 在 JSON 字符串级别限制 episodes 数组大小
+     *  [修复工具] 在 JSON 字符串级别限制 episodes 数组大小，并根据 targetEpId/历史进度 过滤保留目标集数
      * 这是防止 OOM 的关键：在解析前截断超大数组
      */
-    private fun limitEpisodesInJson(json: String, maxEpisodes: Int): String {
+    internal fun limitEpisodesInJson(json: String, maxEpisodes: Int, targetEpId: Long = 0L): String {
         try {
             // 使用 JsonElement 进行轻量级解析和修改
             val jsonParser = kotlinx.serialization.json.Json { 
@@ -218,10 +219,55 @@ object BangumiRepository {
                 return json // 不需要截断
             }
             
-            android.util.Log.w("BangumiRepo", " 番剧剧集过多 (${episodes.size}集)，截取前 $maxEpisodes 集以防止内存溢出")
+            // 优先使用传入的 targetEpId，若为 0 则尝试从 user_status.progress.last_ep_id 中读取历史进度
+            val finalTargetEpId = if (targetEpId > 0L) {
+                targetEpId
+            } else {
+                val userStatus = result["user_status"]?.jsonObject
+                val progress = userStatus?.get("progress")?.jsonObject
+                val lastEpIdVal = progress?.get("last_ep_id")
+                if (lastEpIdVal is kotlinx.serialization.json.JsonPrimitive) {
+                    lastEpIdVal.longOrNull ?: 0L
+                } else {
+                    0L
+                }
+            }
             
-            // 构建新的 episodes 数组 (只保留前 maxEpisodes 个)
-            val limitedEpisodes = kotlinx.serialization.json.JsonArray(episodes.take(maxEpisodes))
+            android.util.Log.w("BangumiRepo", " 番剧剧集过多 (${episodes.size}集)，截取 $maxEpisodes 集以防止 OOM，目标 epId: $finalTargetEpId")
+            
+            val limitedEpisodes = if (finalTargetEpId > 0L) {
+                // 查找 targetEpId 对应的索引
+                val targetIndex = episodes.indexOfFirst {
+                    val idVal = ((it as? kotlinx.serialization.json.JsonObject)?.get("id") as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull ?: 0L
+                    idVal == finalTargetEpId
+                }
+                
+                if (targetIndex == -1 || targetIndex < maxEpisodes) {
+                    // 如果没找到，或者目标在前 maxEpisodes 内，直接截取前 maxEpisodes
+                    kotlinx.serialization.json.JsonArray(episodes.take(maxEpisodes))
+                } else {
+                    // 目标在 maxEpisodes 之外，保留前 10 集，并围绕目标集数做窗口截取
+                    val head = episodes.take(10)
+                    val remainingCount = maxEpisodes - 10
+                    var start = targetIndex - remainingCount / 2
+                    var end = targetIndex + (remainingCount - remainingCount / 2)
+                    
+                    if (start < 10) {
+                        start = 10
+                        end = start + remainingCount
+                    }
+                    if (end > episodes.size) {
+                        end = episodes.size
+                        start = end - remainingCount
+                        if (start < 10) start = 10
+                    }
+                    
+                    val middleAndTail = episodes.subList(start, end)
+                    kotlinx.serialization.json.JsonArray(head + middleAndTail)
+                }
+            } else {
+                kotlinx.serialization.json.JsonArray(episodes.take(maxEpisodes))
+            }
             
             // 构建新的 result 对象
             val newResult = kotlinx.serialization.json.JsonObject(result.toMutableMap().apply {

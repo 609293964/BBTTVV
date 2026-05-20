@@ -1,7 +1,6 @@
 package com.bbttvv.app.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -130,23 +129,32 @@ internal fun PopularScreen(
         }
     ) { topPadding, onScrollOffset ->
         if (uiState.videos.isEmpty() && uiState.isLoading) {
-            Box(
+            HomeEmptyFocusTarget(
+                tab = AppTopLevelTab.POPULAR,
+                focusCoordinator = focusCoordinator,
+                isActive = isHomeTabActive,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = topPadding),
-                contentAlignment = Alignment.Center
             ) {
-                Text(text = "正在加载热门内容...", color = MaterialTheme.colorScheme.onBackground)
+                Text(
+                    text = "正在加载热门内容...",
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
             }
         } else if (uiState.videos.isEmpty() && uiState.isError) {
-            Box(
+            HomeEmptyFocusTarget(
+                tab = AppTopLevelTab.POPULAR,
+                focusCoordinator = focusCoordinator,
+                isActive = isHomeTabActive,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = topPadding),
-                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "加载失败：${uiState.errorMsg ?: "未知错误"}",
+                    modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.error
                 )
             }

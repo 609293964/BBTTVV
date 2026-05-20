@@ -38,7 +38,7 @@ internal fun NavGraphBuilder.videoDetailRoutes(
             navController = navController,
             bvid = backStackEntry.arguments?.getString("bvid").orEmpty(),
             openMode = openMode,
-            onBack = { navController.navigateBackOrHome() },
+            onBack = { navController.navigateDetailBackOrHome() },
         )
     }
 
@@ -159,6 +159,25 @@ private fun NavHostController.navigateBackOrHome() {
     if (!popBackStack()) {
         navigate(ScreenRoutes.Home.route) {
             launchSingleTop = true
+        }
+    }
+}
+
+private fun NavHostController.navigateDetailBackOrHome() {
+    val singleBack = com.bbttvv.app.core.store.SettingsManager.getSingleBackToHomeEnabledSync(context)
+    if (singleBack) {
+        if (!popBackStack(ScreenRoutes.Home.route, inclusive = false)) {
+            if (!popBackStack()) {
+                navigate(ScreenRoutes.Home.route) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    } else {
+        if (!popBackStack()) {
+            navigate(ScreenRoutes.Home.route) {
+                launchSingleTop = true
+            }
         }
     }
 }

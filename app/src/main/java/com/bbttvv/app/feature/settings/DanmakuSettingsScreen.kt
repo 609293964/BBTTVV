@@ -62,7 +62,7 @@ fun TvDanmakuSettingsList(
         item {
             SettingsRow(
                 title = "弹幕透明度",
-                subtitle = "循环切换 0.05 到 1.00，直接映射到当前渲染透明度。",
+                subtitle = "循环切换 20% 到 100%，直接映射到当前渲染透明度。",
                 value = formatOpacity(settings.opacity),
                 compact = compact,
                 onClick = {
@@ -77,8 +77,8 @@ fun TvDanmakuSettingsList(
         item {
             SettingsRow(
                 title = "弹幕字体大小",
-                subtitle = "按现有渲染基准换算，范围 10 到 60。",
-                value = settings.textSizeSp.toString(),
+                subtitle = "以字号 22 为 100%，范围 40% 到 290%。",
+                value = "${100 + (settings.textSizeSp - 22) * 5}%",
                 compact = compact,
                 onClick = {
                     scope.launch {
@@ -295,7 +295,7 @@ fun TvDanmakuSettingsList(
     }
 }
 
-private fun formatOpacity(value: Float): String = String.format(Locale.US, "%.2f", value)
+private fun formatOpacity(value: Float): String = String.format(Locale.US, "%.0f%%", value * 100)
 
 private fun formatFontWeight(value: DanmakuFontWeightPreset): String {
     return when (value) {

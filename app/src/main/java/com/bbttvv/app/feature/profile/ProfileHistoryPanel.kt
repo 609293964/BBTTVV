@@ -25,7 +25,7 @@ internal fun ProfileHistoryPanel(
     isLoadingMore: Boolean,
     hasMore: Boolean,
     errorMessage: String?,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMore: () -> Unit,
     onRequestSidebarFocus: () -> Boolean,
     focusCoordinator: HomeFocusCoordinator? = null,

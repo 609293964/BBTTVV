@@ -76,7 +76,12 @@ data class ProfileUiState(
     val watchLaterItems: List<VideoItem> = emptyList(),
     val watchLaterTotalCount: Int = 0,
     val isWatchLaterLoading: Boolean = false,
-    val watchLaterErrorMessage: String? = null
+    val watchLaterErrorMessage: String? = null,
+    val bangumiItems: List<com.bbttvv.app.data.model.response.FollowBangumiItem> = emptyList(),
+    val bangumiHasMore: Boolean = false,
+    val isBangumiLoading: Boolean = false,
+    val isBangumiLoadingMore: Boolean = false,
+    val bangumiErrorMessage: String? = null
 )
 
 class ProfileViewModel(
@@ -95,7 +100,9 @@ class ProfileViewModel(
     private var historyEnrichmentJob: Job? = null
     private var favoriteLoadedForMid: Long? = null
     private var watchLaterLoadedForMid: Long? = null
+    private var bangumiLoadedForMid: Long? = null
     private val favoritePaging = PagedGridStateMachine(initialKey = 1)
+    private val bangumiPaging = PagedGridStateMachine(initialKey = 1)
     private var favoriteSelectedFolder: FavFolder? = null
     private var initialLoadStarted = false
 
@@ -150,7 +157,12 @@ class ProfileViewModel(
                         watchLaterItems = emptyList(),
                         watchLaterTotalCount = 0,
                         isWatchLaterLoading = false,
-                        watchLaterErrorMessage = null
+                        watchLaterErrorMessage = null,
+                        bangumiItems = emptyList(),
+                        bangumiHasMore = false,
+                        isBangumiLoading = false,
+                        isBangumiLoadingMore = false,
+                        bangumiErrorMessage = null
                     )
                 }
                 return@launch
@@ -160,9 +172,11 @@ class ProfileViewModel(
                 historyLoadedForMid = null
                 favoriteLoadedForMid = null
                 watchLaterLoadedForMid = null
+                bangumiLoadedForMid = null
                 resetHistoryState()
                 resetFavoriteState()
                 resetWatchLaterState()
+                resetBangumiState()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -191,6 +205,7 @@ class ProfileViewModel(
             val shouldReloadHistory = historyLoadedForMid != navData.mid
             val shouldReloadFavorite = favoriteLoadedForMid != navData.mid
             val shouldReloadWatchLater = watchLaterLoadedForMid != navData.mid
+            val shouldReloadBangumi = bangumiLoadedForMid != navData.mid
             if (shouldReloadHistory) {
                 historyLoadedForMid = null
                 resetHistoryState()
@@ -202,6 +217,10 @@ class ProfileViewModel(
             if (shouldReloadWatchLater) {
                 watchLaterLoadedForMid = null
                 resetWatchLaterState()
+            }
+            if (shouldReloadBangumi) {
+                bangumiLoadedForMid = null
+                resetBangumiState()
             }
 
             _uiState.update {
@@ -324,9 +343,11 @@ class ProfileViewModel(
             historyLoadedForMid = null
             favoriteLoadedForMid = null
             watchLaterLoadedForMid = null
+            bangumiLoadedForMid = null
             resetHistoryState()
             resetFavoriteState()
             resetWatchLaterState()
+            resetBangumiState()
             refresh()
         }
     }
@@ -361,9 +382,11 @@ class ProfileViewModel(
             historyLoadedForMid = null
             favoriteLoadedForMid = null
             watchLaterLoadedForMid = null
+            bangumiLoadedForMid = null
             resetHistoryState()
             resetFavoriteState()
             resetWatchLaterState()
+            resetBangumiState()
 
             val accounts = AccountSessionStore.getAccounts(context)
             _uiState.update {
@@ -994,6 +1017,154 @@ class ProfileViewModel(
                 watchLaterTotalCount = 0,
                 isWatchLaterLoading = false,
                 watchLaterErrorMessage = null
+            )
+        }
+    }
+
+    fun ensureBangumiLoaded(force: Boolean = false) {
+        val navData = _uiState.value.navData ?: return
+        if (!navData.isLogin) return
+
+        if (!force) {
+            if (_uiState.value.isBangumiLoading || _uiState.value.isBangumiLoadingMore) return
+            if (bangumiLoadedForMid == navData.mid) return
+        }
+
+        viewModelScope.launch {
+            loadBangumiItems(reset = true, expectedMid = navData.mid)
+        }
+    }
+
+    fun loadMoreBangumi() {
+        val state = _uiState.value
+        val navData = state.navData ?: return
+        if (!navData.isLogin) return
+        if (!state.bangumiHasMore || state.isBangumiLoading || state.isBangumiLoadingMore) return
+
+        viewModelScope.launch {
+            loadBangumiItems(reset = false, expectedMid = navData.mid)
+        }
+    }
+
+    private suspend fun loadBangumiItems(reset: Boolean, expectedMid: Long) {
+        if (reset) {
+            bangumiPaging.reset()
+            _uiState.update {
+                it.copy(
+                    bangumiItems = emptyList(),
+                    bangumiHasMore = false,
+                    isBangumiLoading = true,
+                    isBangumiLoadingMore = false,
+                    bangumiErrorMessage = null
+                )
+            }
+        } else {
+            val snapshot = bangumiPaging.snapshot()
+            if (snapshot.isLoading || snapshot.endReached) return
+            _uiState.update {
+                it.copy(
+                    isBangumiLoadingMore = true,
+                    bangumiErrorMessage = null
+                )
+            }
+        }
+
+        val startGeneration = bangumiPaging.snapshot().generation
+        try {
+            val loadResult = bangumiPaging.loadNextPage(
+                isRefresh = reset,
+                fetch = { pageKey ->
+                    com.bbttvv.app.data.repository.BangumiRepository.getMyFollowBangumi(
+                        type = 1,
+                        page = pageKey,
+                        pageSize = 30
+                    ).getOrElse { error -> throw error }
+                },
+                reduce = { pageKey, bangumiData ->
+                    val incomingItems = bangumiData.list.orEmpty()
+                    val hasMore = (bangumiData.list?.size ?: 0) >= 30
+                    PagedGridStateMachine.Update(
+                        items = incomingItems,
+                        nextKey = if (hasMore) pageKey + 1 else pageKey,
+                        endReached = !hasMore
+                    )
+                }
+            )
+
+            val applied = loadResult.appliedOrNull() ?: return
+            if (_uiState.value.navData?.mid != expectedMid) {
+                return
+            }
+
+            val mergedItems = if (reset) {
+                applied.items
+            } else {
+                val seenKeys = _uiState.value.bangumiItems.map { it.seasonId }.toMutableSet()
+                val uniqueAppended = applied.items.filter { seenKeys.add(it.seasonId) }
+                _uiState.value.bangumiItems + uniqueAppended
+            }
+
+            bangumiLoadedForMid = expectedMid
+            _uiState.update {
+                it.copy(
+                    bangumiItems = mergedItems,
+                    bangumiHasMore = !bangumiPaging.snapshot().endReached,
+                    isBangumiLoading = false,
+                    isBangumiLoadingMore = false,
+                    bangumiErrorMessage = null
+                )
+            }
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            if (bangumiPaging.snapshot().generation != startGeneration ||
+                _uiState.value.navData?.mid != expectedMid
+            ) {
+                return
+            }
+            _uiState.update {
+                it.copy(
+                    isBangumiLoading = false,
+                    isBangumiLoadingMore = false,
+                    bangumiErrorMessage = error.message ?: "加载追番内容失败"
+                )
+            }
+        }
+    }
+
+    fun unfollowBangumiInProfile(seasonId: Long) {
+        val navData = _uiState.value.navData ?: return
+        if (!navData.isLogin) return
+
+        viewModelScope.launch {
+            val previousItems = _uiState.value.bangumiItems
+            _uiState.update { state ->
+                state.copy(
+                    bangumiItems = state.bangumiItems.filterNot { it.seasonId == seasonId }
+                )
+            }
+
+            val result = com.bbttvv.app.data.repository.BangumiRepository.unfollowBangumi(seasonId)
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        bangumiItems = previousItems,
+                        bangumiErrorMessage = result.exceptionOrNull()?.message ?: "取消追番失败"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun resetBangumiState() {
+        bangumiPaging.reset()
+        bangumiLoadedForMid = null
+        _uiState.update {
+            it.copy(
+                bangumiItems = emptyList(),
+                bangumiHasMore = false,
+                isBangumiLoading = false,
+                isBangumiLoadingMore = false,
+                bangumiErrorMessage = null
             )
         }
     }

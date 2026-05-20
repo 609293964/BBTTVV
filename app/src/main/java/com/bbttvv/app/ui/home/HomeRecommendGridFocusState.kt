@@ -23,6 +23,13 @@ internal class HomeRecommendGridFocusState {
     private var lastUserNavigationUptimeMs: Long = 0L
     private var suppressRecyclerFocusRestoreUntilUptimeMs: Long = 0L
     private var onFocusTargetAvailabilityChanged: (() -> Unit)? = null
+    private var canPerformPhysicalScroll: () -> Boolean = { true }
+
+    fun cancelAllPendingRequests() {
+        nextFocusRequestToken()
+        pendingDataSetFocus = null
+        clearPendingDirectionalScrollFocus()
+    }
 
     fun attach(recyclerView: RecyclerView) {
         if (this.recyclerView === recyclerView) return
@@ -42,6 +49,10 @@ internal class HomeRecommendGridFocusState {
 
     fun setOnFocusTargetAvailabilityChanged(callback: (() -> Unit)?) {
         onFocusTargetAvailabilityChanged = callback
+    }
+
+    fun setPhysicalScrollAllowedProvider(provider: (() -> Boolean)?) {
+        canPerformPhysicalScroll = provider ?: { true }
     }
 
     fun onRecyclerFocusChanged(hasFocus: Boolean) {
@@ -423,6 +434,7 @@ internal class HomeRecommendGridFocusState {
                 }
             },
             retryCount = PendingFocusRetryCount,
+            requireRecyclerFocusOwnership = true,
         )
     }
 
@@ -464,11 +476,16 @@ internal class HomeRecommendGridFocusState {
         onFocused: (() -> Unit)? = null,
         requestToken: Int = nextFocusRequestToken(),
         retryCount: Int = DefaultFocusRetryCount,
+        requireRecyclerFocusOwnership: Boolean = false,
     ): Boolean {
         if (!isFocusRequestTokenCurrent(requestToken)) {
             return false
         }
         if (!recycler.isValidFocusTarget()) {
+            return false
+        }
+        if (requireRecyclerFocusOwnership && !recyclerOwnsPhysicalFocus(recycler)) {
+            pendingDataSetFocus = null
             return false
         }
         val adapter = recycler.adapter ?: return false
@@ -484,14 +501,18 @@ internal class HomeRecommendGridFocusState {
             return true
         }
 
-        if (!isPositionVisible(recycler, position)) {
+        if (!isPositionVisible(recycler, position) && canPerformPhysicalScroll()) {
             android.util.Log.d("HomeFocus", "tryFocusPosition: scrollToPosition pos=$position (not visible)")
             recycler.scrollToPosition(position)
         }
 
         if (retryCount > 0) {
             recycler.postOnAnimation {
-                if (recyclerView === recycler && isFocusRequestTokenCurrent(requestToken)) {
+                if (
+                    recyclerView === recycler &&
+                    isFocusRequestTokenCurrent(requestToken) &&
+                    (!requireRecyclerFocusOwnership || recyclerOwnsPhysicalFocus(recycler))
+                ) {
                     tryFocusPosition(
                         recycler = recycler,
                         position = position,
@@ -499,10 +520,45 @@ internal class HomeRecommendGridFocusState {
                         onFocused = onFocused,
                         requestToken = requestToken,
                         retryCount = retryCount - 1,
+                        requireRecyclerFocusOwnership = requireRecyclerFocusOwnership,
                     )
+                } else if (requireRecyclerFocusOwnership) {
+                    pendingDataSetFocus = null
                 }
             }
         } else {
+            if (!isPositionVisible(recycler, position) && !canPerformPhysicalScroll()) {
+                return false
+            }
+            val layoutManager = recycler.layoutManager as? GridLayoutManager
+            if (layoutManager != null) {
+                var closestView: View? = null
+                var minDistance = Int.MAX_VALUE
+                var closestPosition = RecyclerView.NO_POSITION
+                for (i in 0 until layoutManager.childCount) {
+                    val child = layoutManager.getChildAt(i) ?: continue
+                    if (child.isValidFocusTarget()) {
+                        val childPos = layoutManager.getPosition(child)
+                        if (childPos != RecyclerView.NO_POSITION) {
+                            val distance = Math.abs(childPos - position)
+                            if (distance < minDistance) {
+                                minDistance = distance
+                                closestView = child
+                                closestPosition = childPos
+                            }
+                        }
+                    }
+                }
+                if (closestView != null && closestView.requestFocus()) {
+                    if (expectedKey != null) {
+                        val fallbackKey = (recycler.adapter as? HomeVideoCardAdapter)?.keyAt(closestPosition)
+                        onItemFocused(fallbackKey ?: expectedKey, closestPosition)
+                    }
+                    onFocused?.invoke()
+                    android.util.Log.d("HomeFocus", "tryFocusPosition Fallback SUCCESS: expected=$position, actual=$closestPosition")
+                    return true
+                }
+            }
             onFocusTargetAvailabilityChanged?.invoke()
         }
 
@@ -511,6 +567,11 @@ internal class HomeRecommendGridFocusState {
 
     private fun currentRecyclerView(): RecyclerView? {
         return attachedRecyclerView(recyclerView)
+    }
+
+    private fun recyclerOwnsPhysicalFocus(recycler: RecyclerView): Boolean {
+        val currentFocused = recycler.rootView?.findFocus() ?: return true
+        return currentFocused === recycler || currentFocused.isSameOrDescendantOf(recycler)
     }
 
     private fun rememberFocusedPosition(
@@ -628,8 +689,8 @@ internal class HomeRecommendGridFocusState {
         private const val UserNavigationFocusWindowMs = 250L
         private const val DirectionalScrollFocusParkingWindowMs = 700L
         private const val DirectionalScrollFocusTargetWindowMs = 1_500L
-        private const val DefaultFocusRetryCount = 2
-        private const val PendingFocusRetryCount = 4
+        private const val DefaultFocusRetryCount = 5
+        private const val PendingFocusRetryCount = 8
         private val DirectionalKeyCodes = setOf(
             KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_DPAD_DOWN,

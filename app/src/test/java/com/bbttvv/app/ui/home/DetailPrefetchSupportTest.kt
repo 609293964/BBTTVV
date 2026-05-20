@@ -59,6 +59,14 @@ class DetailPrefetchSupportTest {
         assertEquals(listOf("BV2", "BV3", "BV1"), candidates.map { it.bvid })
     }
 
+    @Test
+    fun `focus summary prefetch delay adapts to dpad cadence`() {
+        assertEquals(0L, FocusSummaryPrefetchDelayPolicy.delayMillis(null, currentFocusAtMs = 1_000L))
+        assertEquals(250L, FocusSummaryPrefetchDelayPolicy.delayMillis(950L, currentFocusAtMs = 1_000L))
+        assertEquals(100L, FocusSummaryPrefetchDelayPolicy.delayMillis(800L, currentFocusAtMs = 1_000L))
+        assertEquals(0L, FocusSummaryPrefetchDelayPolicy.delayMillis(700L, currentFocusAtMs = 1_000L))
+    }
+
     private fun video(
         bvid: String,
         aid: Long = bvid.removePrefix("BV").toLongOrNull() ?: 0L,

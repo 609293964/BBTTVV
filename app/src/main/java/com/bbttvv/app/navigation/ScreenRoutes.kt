@@ -47,4 +47,10 @@ sealed class ScreenRoutes(val route: String) {
             return "live_player/$roomId"
         }
     }
+
+    data object BangumiDetail : ScreenRoutes("bangumi_detail?seasonId={seasonId}&epId={epId}") {
+        fun createRoute(seasonId: Long = 0L, epId: Long = 0L): String {
+            return "bangumi_detail?seasonId=$seasonId&epId=$epId"
+        }
+    }
 }

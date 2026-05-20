@@ -29,6 +29,7 @@ import com.bbttvv.app.feature.plugin.TodayWatchPlugin
 import com.bbttvv.app.feature.settings.SettingsScreen
 import com.bbttvv.app.feature.live.LivePlayerScreen
 import com.bbttvv.app.feature.publisher.PublisherScreen
+import com.bbttvv.app.feature.bangumi.BangumiDetailScreen
 import com.bbttvv.app.feature.video.screen.PlayerScreen
 
 import com.bbttvv.app.ui.components.AppTopLevelTab
@@ -98,6 +99,16 @@ fun AppNavigation() {
     ) {
         val safeBvid = video.bvid.trim()
         if (safeBvid.isBlank()) return
+        if (safeBvid.startsWith("ss") || safeBvid.startsWith("ep")) {
+            prepareNavigation()
+            val id = safeBvid.substring(2).toLongOrNull() ?: 0L
+            if (safeBvid.startsWith("ss")) {
+                navController.navigate(ScreenRoutes.BangumiDetail.createRoute(seasonId = id, epId = 0L))
+            } else {
+                navController.navigate(ScreenRoutes.BangumiDetail.createRoute(seasonId = 0L, epId = id))
+            }
+            return
+        }
         prepareNavigation()
         VideoDetailRepository.cacheVideoPreview(video.copy(bvid = safeBvid))
         navController.navigate(ScreenRoutes.VideoDetail.createRoute(safeBvid))
@@ -153,16 +164,17 @@ fun AppNavigation() {
                         navigationState.prepareForHomeTabDetailOpen(AppTopLevelTab.SEARCH, focusKey)
                     }
                 },
+                onDynamicVideoClick = { focusKey, video ->
+                    openVideoDetail(video) {
+                        navigationState.prepareForHomeTabDetailOpen(AppTopLevelTab.DYNAMIC, focusKey)
+                    }
+                },
                 onOpenSettings = {
                     navController.navigate(ScreenRoutes.Settings.route)
                 },
                 onProfileVideoClick = { tab, focusKey, video ->
                     if (video.view_at > 0L) {
-                        if (tab == AppTopLevelTab.WATCH_LATER) {
-                            navigationState.prepareForInternalHomeTabPlayerOpen(tab, focusKey)
-                        } else {
-                            navigationState.clearDetailCommentFocusRestore()
-                        }
+                        navigationState.prepareForInternalHomeTabPlayerOpen(tab, focusKey)
                         navController.navigate(
                             ScreenRoutes.VideoPlayer.createRoute(
                                 bvid = video.bvid,
@@ -176,11 +188,7 @@ fun AppNavigation() {
                         )
                     } else {
                         openVideoDetail(video) {
-                            if (tab == AppTopLevelTab.WATCH_LATER) {
-                                navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
-                            } else {
-                                navigationState.clearDetailCommentFocusRestore()
-                            }
+                            navigationState.prepareForHomeTabDetailOpen(tab, focusKey)
                         }
                     }
                 },
@@ -258,6 +266,38 @@ fun AppNavigation() {
                 aid = aid,
                 startPositionMs = startPositionMs,
                 onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ScreenRoutes.BangumiDetail.route,
+            arguments = listOf(
+                navArgument("seasonId") {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+                navArgument("epId") {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                }
+            )
+        ) { backStackEntry ->
+            val seasonId = backStackEntry.arguments?.getLong("seasonId") ?: 0L
+            val epId = backStackEntry.arguments?.getLong("epId") ?: 0L
+            BangumiDetailScreen(
+                seasonId = seasonId,
+                epId = epId,
+                onBack = { navController.popBackStack() },
+                onPlayEpisode = { targetEpId, cid, aid ->
+                    navController.navigate(
+                        ScreenRoutes.VideoPlayer.createRoute(
+                            bvid = "ep$targetEpId",
+                            cid = cid,
+                            aid = aid,
+                            startPositionMs = 0L
+                        )
+                    )
+                }
             )
         }
     }

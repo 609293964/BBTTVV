@@ -27,7 +27,7 @@ enum class DanmakuLaneDensityPreset {
 
 data class DanmakuSettings(
     val enabled: Boolean = true,
-    val opacity: Float = 0.9f,
+    val opacity: Float = 0.8f,
     val textSizeSp: Int = 20,
     val fontWeight: DanmakuFontWeightPreset = DanmakuFontWeightPreset.Normal,
     val strokeWidthPx: Int = 2,
@@ -44,7 +44,7 @@ data class DanmakuSettings(
     val allowSpecial: Boolean = true,
 )
 
-val DANMAKU_OPACITY_VALUES: List<Float> = (1..20).map { it * 0.05f }
+val DANMAKU_OPACITY_VALUES: List<Float> = listOf(0.2f, 0.4f, 0.6f, 0.8f, 1.0f)
 val DANMAKU_TEXT_SIZE_VALUES: List<Int> = (10..60 step 2).toList()
 val DANMAKU_STROKE_WIDTH_VALUES: List<Int> = listOf(0, 2, 4, 6)
 val DANMAKU_AREA_RATIO_VALUES: List<Float> = listOf(

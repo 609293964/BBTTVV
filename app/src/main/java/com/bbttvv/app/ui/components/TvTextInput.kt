@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -57,6 +58,7 @@ fun TvTextInput(
     imeAction: ImeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
     onSubmit: (() -> Unit)? = null,
     onMoveFocusUp: (() -> Boolean)? = null,
+    onMoveFocusDown: (() -> Boolean)? = null,
     shape: Shape = RoundedCornerShape(18.dp),
     containerColor: Color = Color(0x161E2732),
     focusedContainerColor: Color = Color(0xF2EEF6FB),
@@ -70,6 +72,7 @@ fun TvTextInput(
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
     var focused by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
 
@@ -165,13 +168,45 @@ fun TvTextInput(
                         }
 
                         AndroidKeyEvent.KEYCODE_DPAD_UP -> {
+                            val wasEditing = editing
                             leaveEditing()
-                            onMoveFocusUp?.invoke() ?: focusManager.moveFocus(FocusDirection.Up)
+                            if (wasEditing) {
+                                view.post {
+                                    val handled = onMoveFocusUp?.invoke() ?: false
+                                    if (!handled) {
+                                        focusManager.moveFocus(FocusDirection.Up)
+                                    }
+                                }
+                                true
+                            } else {
+                                val handled = onMoveFocusUp?.invoke() ?: false
+                                if (handled) {
+                                    true
+                                } else {
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                }
+                            }
                         }
 
                         AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                            val wasEditing = editing
                             leaveEditing()
-                            focusManager.moveFocus(FocusDirection.Down)
+                            if (wasEditing) {
+                                view.post {
+                                    val handled = onMoveFocusDown?.invoke() ?: false
+                                    if (!handled) {
+                                        focusManager.moveFocus(FocusDirection.Down)
+                                    }
+                                }
+                                true
+                            } else {
+                                val handled = onMoveFocusDown?.invoke() ?: false
+                                if (handled) {
+                                    true
+                                } else {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                }
+                            }
                         }
 
                         else -> false

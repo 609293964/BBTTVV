@@ -1,8 +1,16 @@
-﻿// 文件路径: data/model/response/BangumiModels.kt
+// 文件路径: data/model/response/BangumiModels.kt
 package com.bbttvv.app.data.model.response
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
 
 // ========== 番剧/影视响应模型 ==========
 
@@ -188,6 +196,7 @@ data class BangumiEpisode(
     val badgeType: Int = 0,
     val status: Int = 0,              // 状态
     @SerialName("pub_time")
+    @Serializable(with = FlexibleLongOrDateSerializer::class)
     val pubTime: Long = 0,
     val skip: EpisodeSkip? = null     // 跳过片头片尾信息
 )
@@ -526,6 +535,64 @@ data class BangumiFilter(
             "[1980,1990)" to "80年代",
             "[,1980)" to "更早"
         )
+    }
+}
+
+/**
+ * 能够兼容 Long 时间戳、纯数字 String 以及常见格式化日期 String 的 Serializer
+ */
+object FlexibleLongOrDateSerializer : KSerializer<Long> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleLongOrDate", PrimitiveKind.LONG)
+
+    override fun serialize(encoder: Encoder, value: Long) {
+        encoder.encodeLong(value)
+    }
+
+    override fun deserialize(decoder: Decoder): Long {
+        if (decoder !is JsonDecoder) return decoder.decodeLong()
+        val element = decoder.decodeJsonElement()
+        val primitive = element as? JsonPrimitive ?: return 0L
+        val content = runCatching { primitive.content }.getOrNull() ?: return 0L
+        
+        // 1. 尝试直接作为数字解析
+        val longVal = content.toLongOrNull()
+        if (longVal != null) {
+            return longVal
+        }
+        
+        // 2. 尝试作为 Double 解析然后转 Long (兼容科学计数法或带小数点)
+        val doubleVal = content.toDoubleOrNull()
+        if (doubleVal != null) {
+            return doubleVal.toLong()
+        }
+
+        // 3. 尝试作为日期字符串解析
+        return parseDateStringToTimestamp(content)
+    }
+
+    private fun parseDateStringToTimestamp(dateStr: String): Long {
+        val formats = listOf(
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd",
+            "yyyy/MM/dd HH:mm:ss",
+            "yyyy/MM/dd HH:mm",
+            "yyyy/MM/dd"
+        )
+        for (format in formats) {
+            try {
+                val sdf = java.text.SimpleDateFormat(format, java.util.Locale.getDefault())
+                sdf.timeZone = java.util.TimeZone.getTimeZone("GMT+8")
+                val date = sdf.parse(dateStr)
+                if (date != null) {
+                    return date.time / 1000L
+                }
+            } catch (e: Exception) {
+                // 继续尝试下一个
+            }
+        }
+        return 0L
     }
 }
 

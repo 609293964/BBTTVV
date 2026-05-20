@@ -38,6 +38,7 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerSponsorUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import kotlinx.coroutines.delay
@@ -104,6 +105,9 @@ fun PlayerScreen(
         panelOptionsCount = panelOptions.size,
     )
     val playerFocusCoordinator = remember { PlayerFocusCoordinator() }
+    RegisterLifecycleFocusDrain(key = playerFocusCoordinator) {
+        playerFocusCoordinator.drainPendingFocus()
+    }
     var debugSnapshot by remember { mutableStateOf(PlayerDebugSnapshot()) }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     val session = remember(bvid, cid, aid, startPositionMs) {

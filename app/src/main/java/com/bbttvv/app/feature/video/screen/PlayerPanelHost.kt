@@ -1,4 +1,4 @@
-﻿package com.bbttvv.app.feature.video.screen
+package com.bbttvv.app.feature.video.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,8 +42,23 @@ internal fun PlayerOptionsPanel(
 ) {
     val usesSettingRows = options.any { it.presentation == PanelOptionPresentation.Setting }
     val panelWidth = if (usesSettingRows) 236.dp else 168.dp
-    val panelMaxHeight = if (usesSettingRows) 156.dp else 118.dp
+    val panelMaxHeight = if (usesSettingRows) 380.dp else 240.dp
     val panelCorner = if (usesSettingRows) 18.dp else 16.dp
+
+    val listState = rememberLazyListState()
+    val panelIdentity = title + ":" + options.joinToString(separator = "|") { option -> option.key }
+    LaunchedEffect(panelIdentity, selectedIndex) {
+        if (selectedIndex in options.indices) {
+            if (!listState.isItemVisible(selectedIndex)) {
+                listState.scrollToItem(selectedIndex)
+            }
+            withFrameNanos { }
+            runCatching {
+                optionFocusRequesters[selectedIndex].requestFocus()
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .width(panelWidth)
@@ -64,10 +83,14 @@ internal fun PlayerOptionsPanel(
             )
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.heightIn(max = panelMaxHeight),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                itemsIndexed(options) { index, option ->
+                itemsIndexed(
+                    items = options,
+                    key = { _, option -> option.key },
+                ) { index, option ->
                     PlayerOptionRow(
                         option = option,
                         selected = index == selectedIndex,
@@ -79,6 +102,10 @@ internal fun PlayerOptionsPanel(
             }
         }
     }
+}
+
+private fun LazyListState.isItemVisible(index: Int): Boolean {
+    return layoutInfo.visibleItemsInfo.any { item -> item.index == index }
 }
 
 @Composable
@@ -224,5 +251,3 @@ private fun PlayerSettingOptionRow(
         }
     }
 }
-
-

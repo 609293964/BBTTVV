@@ -164,6 +164,8 @@ internal fun TodayWatchScreen(
                 previewVideos.isEmpty() && isLoading -> {
                     TodayWatchStatus(
                         text = "正在生成推荐单...",
+                        focusCoordinator = focusCoordinator,
+                        isHomeTabActive = isHomeTabActive,
                         modifier = Modifier.padding(top = topPadding)
                     )
                 }
@@ -171,6 +173,8 @@ internal fun TodayWatchScreen(
                 previewVideos.isEmpty() && !errorMessage.isNullOrBlank() -> {
                     TodayWatchStatus(
                         text = errorMessage,
+                        focusCoordinator = focusCoordinator,
+                        isHomeTabActive = isHomeTabActive,
                         modifier = Modifier.padding(top = topPadding)
                     )
                 }
@@ -178,6 +182,8 @@ internal fun TodayWatchScreen(
                 previewVideos.isEmpty() -> {
                     TodayWatchStatus(
                         text = "暂时没有可展示的推荐单",
+                        focusCoordinator = focusCoordinator,
+                        isHomeTabActive = isHomeTabActive,
                         modifier = Modifier.padding(top = topPadding)
                     )
                 }
@@ -260,14 +266,19 @@ internal fun TodayWatchScreen(
 @Composable
 private fun TodayWatchStatus(
     text: String,
+    focusCoordinator: HomeFocusCoordinator,
+    isHomeTabActive: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    HomeEmptyFocusTarget(
+        tab = AppTopLevelTab.TODAY_WATCH,
+        focusCoordinator = focusCoordinator,
+        isActive = isHomeTabActive,
         modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
+            modifier = Modifier.align(Alignment.Center),
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium
         )

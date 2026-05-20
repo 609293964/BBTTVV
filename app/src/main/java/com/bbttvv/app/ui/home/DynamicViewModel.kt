@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-private const val DynamicFocusSummaryPrefetchDelayMs = 300L
-
 data class DynamicUiState(
     val liveUsers: List<FollowedLiveRoom> = emptyList(),
     val followUpdateItems: List<DynamicFollowUpdateItem> = defaultDynamicFollowUpdateItems(),
@@ -47,6 +45,7 @@ class DynamicViewModel : ViewModel() {
     private var detailPrefetchJob: Job? = null
     private var pendingPrefetchBvid: String? = null
     private var lastPrefetchedBvid: String? = null
+    private var lastFocusRequestAtMs: Long? = null
     private var liveUsersRequestGeneration: Long = 0L
     private var followUpdatesRequestGeneration: Long = 0L
     private var handledRefreshRequestId: Int = 0
@@ -261,6 +260,7 @@ class DynamicViewModel : ViewModel() {
             detailPrefetchJob?.cancel()
             pendingPrefetchBvid = null
         }
+        lastFocusRequestAtMs = System.currentTimeMillis()
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
         VideoDetailRepository.prefetchDetailSummary(video)
     }
@@ -268,10 +268,15 @@ class DynamicViewModel : ViewModel() {
     fun prefetchVideoDetail(video: VideoItem) {
         if (video.bvid.isBlank()) return
         if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
+        val now = System.currentTimeMillis()
+        val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
+        lastFocusRequestAtMs = now
         detailPrefetchJob?.cancel()
         pendingPrefetchBvid = video.bvid
         detailPrefetchJob = viewModelScope.launch {
-            delay(DynamicFocusSummaryPrefetchDelayMs)
+            if (delayMs > 0L) {
+                delay(delayMs)
+            }
             VideoDetailRepository.prefetchDetailSummary(video)
             lastPrefetchedBvid = video.bvid
             if (pendingPrefetchBvid == video.bvid) {

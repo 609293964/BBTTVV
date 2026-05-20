@@ -22,8 +22,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val PopularFocusSummaryPrefetchDelayMs = 300L
-
 data class PopularCategory(
     val label: String,
     val tid: Int? = null
@@ -63,6 +61,7 @@ class PopularViewModel : ViewModel() {
     private var detailPrefetchJob: Job? = null
     private var pendingPrefetchBvid: String? = null
     private var lastPrefetchedBvid: String? = null
+    private var lastFocusRequestAtMs: Long? = null
     private var initialLoadStarted = false
 
     init {
@@ -112,6 +111,7 @@ class PopularViewModel : ViewModel() {
             detailPrefetchJob?.cancel()
             pendingPrefetchBvid = null
         }
+        lastFocusRequestAtMs = System.currentTimeMillis()
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
         VideoDetailRepository.prefetchDetailSummary(video)
     }
@@ -119,10 +119,15 @@ class PopularViewModel : ViewModel() {
     fun prefetchVideoDetail(video: VideoItem) {
         if (video.bvid.isBlank()) return
         if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
+        val now = System.currentTimeMillis()
+        val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
+        lastFocusRequestAtMs = now
         detailPrefetchJob?.cancel()
         pendingPrefetchBvid = video.bvid
         detailPrefetchJob = viewModelScope.launch {
-            delay(PopularFocusSummaryPrefetchDelayMs)
+            if (delayMs > 0L) {
+                delay(delayMs)
+            }
             VideoDetailRepository.prefetchDetailSummary(video)
             lastPrefetchedBvid = video.bvid
             if (pendingPrefetchBvid == video.bvid) {

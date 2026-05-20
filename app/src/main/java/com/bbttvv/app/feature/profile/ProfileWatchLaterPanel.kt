@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,7 +36,7 @@ internal fun ProfileWatchLaterPanel(
     totalCount: Int,
     isLoading: Boolean,
     errorMessage: String?,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onRemoveVideo: (VideoItem) -> Unit,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
@@ -140,7 +141,7 @@ internal fun ProfileVideoGrid(
     hasMore: Boolean,
     errorMessage: String?,
     emptyText: String,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMore: () -> Unit,
     onVideoLongClick: ((VideoItem) -> Unit)? = null,
     showHistoryProgressOnly: Boolean = false,
@@ -151,7 +152,7 @@ internal fun ProfileVideoGrid(
     focusRegion: HomeFocusRegion = HomeFocusRegion.Grid,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null,
     gridColumnCount: Int = PROFILE_VIDEO_GRID_COLUMNS,
-    contentPadding: PaddingValues = PaddingValues(top = 4.dp, bottom = 24.dp),
+    contentPadding: PaddingValues = PaddingValues(top = 12.dp, bottom = 24.dp),
     resetToTop: Boolean = false,
     onBackToTopBar: (() -> Boolean)? = null,
     onRequestSidebarFocus: () -> Boolean = { false }
@@ -163,7 +164,7 @@ internal fun ProfileVideoGrid(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().clipToBounds()) {
         when {
             isLoading && items.isEmpty() -> {
                 Text("正在加载内容...", color = Color(0xD9FFFFFF))
@@ -190,6 +191,7 @@ internal fun ProfileVideoGrid(
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     focusRegion = focusRegion,
+                    allowChildDrawingOutsideBounds = false,
                     videoCardRecycledViewPool = videoCardRecycledViewPool,
                     showHistoryProgressOnly = showHistoryProgressOnly,
                     showDanmakuCount = false,
@@ -203,10 +205,10 @@ internal fun ProfileVideoGrid(
                     onVideoLongClick = onVideoLongClick?.let { longClick ->
                         { video, _ -> longClick(video) }
                     },
-                    onVideoClick = { video, _ ->
+                    onVideoClick = { video, focusKey ->
                         val bvid = video.bvid.trim()
                         if (bvid.isNotEmpty()) {
-                            onOpenVideo(video)
+                            onOpenVideo(focusKey, video)
                         }
                     }
                 )

@@ -614,6 +614,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 segmentUrlCandidates = source.segmentUrlCandidates,
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
+                referer = source.referer,
                 playWhenReady = playWhenReady
             )
         } else if (PlayerSettingsCache.getAudioPassthrough() && source.selectedDashVideo != null) {
@@ -626,6 +627,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 manifestContent = manifestContent,
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
+                referer = source.referer,
                 playWhenReady = playWhenReady
             )
             if (!played) {
@@ -636,6 +638,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                     audioUrlCandidates = source.audioUrlCandidates,
                     seekToMs = seekToMs,
                     resetPlayer = resetPlayer,
+                    referer = source.referer,
                     playWhenReady = playWhenReady
                 )
             }
@@ -647,6 +650,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 audioUrlCandidates = source.audioUrlCandidates,
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
+                referer = source.referer,
                 playWhenReady = playWhenReady
             )
         }

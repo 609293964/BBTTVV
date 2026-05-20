@@ -97,6 +97,7 @@ internal fun HomeContentDispatcher(
     onLiveClick: (Long, String?) -> Unit,
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onSearchVideoClick: (String, VideoItem) -> Unit,
+    onDynamicVideoClick: (String, VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit = {},
@@ -149,6 +150,7 @@ internal fun HomeContentDispatcher(
                     onLiveClick = onLiveClick,
                     onRecommendVideoClick = onRecommendVideoClick,
                     onSearchVideoClick = onSearchVideoClick,
+                    onDynamicVideoClick = onDynamicVideoClick,
                     onOpenSettings = onOpenSettings,
                     onProfileVideoClick = onProfileVideoClick,
                     onOpenUp = onOpenUp,
@@ -228,6 +230,7 @@ private fun HomeTabContent(
     onLiveClick: (Long, String?) -> Unit,
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onSearchVideoClick: (String, VideoItem) -> Unit,
+    onDynamicVideoClick: (String, VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit,
@@ -306,7 +309,7 @@ private fun HomeTabContent(
             DynamicTabContent(
                 selectedHomeTab = tab,
                 viewModel = viewModel,
-                onVideoClick = onVideoClick,
+                onVideoClick = onDynamicVideoClick,
                 onLiveClick = { roomId -> onLiveClick(roomId, null) },
                 onOpenUp = onOpenUp,
                 dynamicRefreshRequestId = dynamicRefreshRequestId,
@@ -388,7 +391,7 @@ private fun TodayWatchTabContent(
 private fun DynamicTabContent(
     selectedHomeTab: AppTopLevelTab,
     viewModel: HomeViewModel,
-    onVideoClick: (VideoItem) -> Unit,
+    onVideoClick: (String, VideoItem) -> Unit,
     onLiveClick: (Long) -> Unit,
     onOpenUp: (Long) -> Unit,
     dynamicRefreshRequestId: Int,
@@ -472,6 +475,7 @@ private fun RecommendTabContent(
         if (recommendVideoItems.isEmpty()) {
             RecommendEmptyState(
                 viewModel = viewModel,
+                focusCoordinator = focusCoordinator,
                 topPadding = topPadding,
             )
         } else {
@@ -530,24 +534,36 @@ private fun RecommendTabContent(
 @Composable
 private fun RecommendEmptyState(
     viewModel: HomeViewModel,
+    focusCoordinator: HomeFocusCoordinator,
     topPadding: Dp,
 ) {
     val loadState by viewModel.recommendLoadState.collectAsStateWithLifecycle()
-    Box(
+    HomeEmptyFocusTarget(
+        tab = AppTopLevelTab.RECOMMEND,
+        focusCoordinator = focusCoordinator,
+        isActive = LocalHomeTabActive.current,
         modifier = Modifier
             .fillMaxSize()
             .padding(top = topPadding),
-        contentAlignment = Alignment.Center
     ) {
         if (loadState.isLoading) {
-            Text(text = "正在加载推荐内容...", color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                text = "正在加载推荐内容...",
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.onBackground
+            )
         } else if (loadState.isError) {
             Text(
                 text = "加载失败：${loadState.errorMsg ?: "未知错误"}",
+                modifier = Modifier.align(Alignment.Center),
                 color = MaterialTheme.colorScheme.error
             )
         } else {
-            Text(text = "暂无推荐内容", color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                text = "暂无推荐内容",
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.onBackground
+            )
         }
     }
 }
@@ -618,8 +634,8 @@ private fun ProfileTabContent(
     TabViewModelScope(selectedHomeTab, viewModel) {
         com.bbttvv.app.feature.profile.ProfileScreen(
             onOpenSettings = onOpenSettings,
-            onOpenVideo = { video ->
-                onProfileVideoClick(AppTopLevelTab.PROFILE, video.bvid.ifBlank { video.aid.toString() }, video)
+            onOpenVideo = { focusKey, video ->
+                onProfileVideoClick(AppTopLevelTab.PROFILE, focusKey, video)
             },
             onRequestTopBarFocus = { onRequestTopBarFocus(HomeFocusScene.BackToTopBar) },
             focusCoordinator = focusCoordinator,

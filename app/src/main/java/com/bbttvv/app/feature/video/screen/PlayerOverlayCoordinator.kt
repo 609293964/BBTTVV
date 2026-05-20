@@ -50,7 +50,17 @@ internal class PlayerOverlayPresentationState(
     var isCommentsPanelVisible by mutableStateOf(false)
         private set
 
+    private var pendingSettings: DanmakuSettings? = null
+
     fun syncStoredDanmakuSettings(storedSettings: DanmakuSettings) {
+        val currentPending = pendingSettings
+        if (currentPending != null) {
+            if (storedSettings == currentPending) {
+                pendingSettings = null
+            } else {
+                return
+            }
+        }
         if (storedSettings != danmakuSettings) {
             danmakuSettings = storedSettings
         }
@@ -75,6 +85,7 @@ internal class PlayerOverlayPresentationState(
     }
 
     fun updateDanmakuSettings(settings: DanmakuSettings) {
+        pendingSettings = settings
         danmakuSettings = settings
     }
 }
@@ -216,15 +227,15 @@ private fun buildDanmakuPanelOptions(
         PanelOption(
             key = DANMAKU_PANEL_OPACITY,
             label = "弹幕透明度",
-            subtitle = "范围 0.05 到 1.00。",
+            subtitle = "范围 20% 到 100%。",
             valueText = formatDanmakuOpacity(danmakuSettings.opacity),
             presentation = PanelOptionPresentation.Setting,
         ),
         PanelOption(
             key = DANMAKU_PANEL_TEXT_SIZE,
             label = "弹幕字体大小",
-            subtitle = "按当前 TV 渲染基准生效。",
-            valueText = danmakuSettings.textSizeSp.toString(),
+            subtitle = "范围 40% 到 290%。",
+            valueText = "${100 + (danmakuSettings.textSizeSp - 22) * 5}%",
             presentation = PanelOptionPresentation.Setting,
         ),
         PanelOption(
@@ -401,7 +412,7 @@ private fun handleDanmakuPanelAction(
 
 private fun onOff(value: Boolean): String = if (value) "开" else "关"
 
-private fun formatDanmakuOpacity(value: Float): String = String.format(Locale.US, "%.2f", value)
+private fun formatDanmakuOpacity(value: Float): String = String.format(Locale.US, "%.0f%%", value * 100)
 
 private fun formatDanmakuFontWeight(value: DanmakuFontWeightPreset): String {
     return when (value) {

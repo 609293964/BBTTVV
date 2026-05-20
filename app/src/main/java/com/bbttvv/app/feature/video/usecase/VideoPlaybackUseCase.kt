@@ -13,6 +13,11 @@ import com.bbttvv.app.data.model.response.RelatedVideo
 import com.bbttvv.app.data.model.response.ViewInfo
 import com.bbttvv.app.data.model.response.getBestAudio
 import com.bbttvv.app.data.model.response.getBestVideo
+import com.bbttvv.app.data.model.response.BangumiDetail
+import com.bbttvv.app.data.model.response.BangumiEpisode
+import com.bbttvv.app.data.model.response.BangumiVideoInfo
+import com.bbttvv.app.data.model.response.Owner
+import com.bbttvv.app.data.model.response.Stat
 import com.bbttvv.app.data.repository.PlaybackRepository
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
 import com.bbttvv.app.data.repository.resolveAutoResumePositionMs
@@ -59,7 +64,8 @@ data class PlaybackSource(
     val capabilityHints: List<String>,
     val resumePositionMs: Long = 0L,
     val selectedDashVideo: DashVideo? = null,
-    val selectedDashAudio: DashAudio? = null
+    val selectedDashAudio: DashAudio? = null,
+    val referer: String = "https://www.bilibili.com"
 )
 
 data class ResumePlaybackCandidate(
@@ -110,52 +116,155 @@ class VideoPlaybackUseCase {
         isHdrSupported: Boolean = true,
         isDolbyVisionSupported: Boolean = true
     ): PlaybackLoadResult = coroutineScope {
-        val detailDeferred = async {
-            PlaybackRepository.getVideoDetails(
-                bvid = bvid,
-                aid = aid,
-                requestedCid = cid,
-                targetQuality = preferredQuality
+        if (bvid.startsWith("ep") || bvid.startsWith("ss")) {
+            val epId = if (bvid.startsWith("ep")) bvid.substring(2).toLongOrNull() ?: 0L else 0L
+            val seasonId = if (bvid.startsWith("ss")) bvid.substring(2).toLongOrNull() ?: 0L else 0L
+
+            val detailResult = com.bbttvv.app.data.repository.BangumiRepository.getSeasonDetail(
+                seasonId = seasonId,
+                epId = epId
+            )
+
+            detailResult.fold(
+                onSuccess = { detail ->
+                    val currentEpisode = when {
+                        epId > 0L -> detail.episodes?.find { it.id == epId }
+                        cid > 0L -> detail.episodes?.find { it.cid == cid }
+                        else -> null
+                    } ?: detail.episodes?.firstOrNull()
+
+                    if (currentEpisode == null) {
+                        return@coroutineScope PlaybackLoadResult.Error("未找到可播放的剧集")
+                    }
+
+                    val playUrlResult = com.bbttvv.app.data.repository.BangumiRepository.getBangumiPlayUrl(
+                        epId = currentEpisode.id,
+                        qn = preferredQuality,
+                        cid = currentEpisode.cid,
+                        bvid = currentEpisode.bvid,
+                        seasonId = detail.seasonId
+                    )
+
+                    playUrlResult.fold(
+                        onSuccess = { bangumiPlayData ->
+                            val info = detail.toViewInfo(currentEpisode)
+                            val playData = bangumiPlayData.toPlayUrlData(
+                                lastPlayTimeSec = detail.userStatus?.progress?.lastTime?.toInt(),
+                                lastPlayCid = detail.userStatus?.progress?.lastEpId
+                            )
+
+                            val pages = info.pages.ifEmpty {
+                                listOf(Page(cid = info.cid, page = 1, part = info.title))
+                            }
+
+                            val resumeCandidate = if (cid == 0L) {
+                                val progress = detail.userStatus?.progress
+                                val lastEpId = progress?.lastEpId ?: 0L
+                                val lastTimeSec = progress?.lastTime ?: 0L
+                                if (lastEpId > 0L && lastEpId != currentEpisode.id) {
+                                    val resumeEpisode = detail.episodes?.find { it.id == lastEpId }
+                                    if (resumeEpisode != null) {
+                                        ResumePlaybackCandidate(
+                                            cid = resumeEpisode.cid,
+                                            positionMs = lastTimeSec * 1000L
+                                        )
+                                    } else null
+                                } else if (progress?.lastTime != null && progress.lastTime > 0L && lastEpId == currentEpisode.id) {
+                                    ResumePlaybackCandidate(
+                                        cid = currentEpisode.cid,
+                                        positionMs = progress.lastTime * 1000L
+                                    )
+                                } else null
+                            } else {
+                                val progress = detail.userStatus?.progress
+                                if (progress != null && progress.lastTime > 0L && progress.lastEpId == currentEpisode.id) {
+                                    ResumePlaybackCandidate(
+                                        cid = currentEpisode.cid,
+                                        positionMs = progress.lastTime * 1000L
+                                    )
+                                } else null
+                            }
+
+                            val source = resolvePlaybackSource(
+                                playUrlData = playData,
+                                currentCid = info.cid,
+                                preferredQuality = preferredQuality,
+                                cdnPreference = cdnPreference,
+                                isHevcSupported = isHevcSupported,
+                                isAv1Supported = isAv1Supported,
+                                isHdrSupported = isHdrSupported,
+                                isDolbyVisionSupported = isDolbyVisionSupported,
+                                referer = "https://www.bilibili.com/bangumi/play/ep${currentEpisode.id}"
+                            ) ?: return@fold PlaybackLoadResult.Error("未找到可播放的流")
+
+                            val currentPageIndex = pages.indexOfFirst { it.cid == info.cid }.takeIf { it >= 0 } ?: 0
+
+                            PlaybackLoadResult.Success(
+                                info = info,
+                                pages = pages,
+                                currentPageIndex = currentPageIndex,
+                                relatedVideos = emptyList(),
+                                source = source,
+                                resumeCandidate = resumeCandidate
+                            )
+                        },
+                        onFailure = { error ->
+                            PlaybackLoadResult.Error(error.message ?: "加载番剧播放地址失败")
+                        }
+                    )
+                },
+                onFailure = { error ->
+                    PlaybackLoadResult.Error(error.message ?: "加载番剧详情失败")
+                }
+            )
+        } else {
+            val detailDeferred = async {
+                PlaybackRepository.getVideoDetails(
+                    bvid = bvid,
+                    aid = aid,
+                    requestedCid = cid,
+                    targetQuality = preferredQuality
+                )
+            }
+
+            detailDeferred.await().fold(
+                onSuccess = { (info, playData) ->
+                    val pages = info.pages.ifEmpty {
+                        listOf(Page(cid = info.cid, page = 1, part = info.title))
+                    }
+                    val resumeCandidate = resolveResumePlaybackCandidate(
+                        bvid = info.bvid,
+                        requestedCid = cid,
+                        currentCid = info.cid,
+                        availablePages = pages,
+                        playUrlData = playData,
+                        preferredQuality = preferredQuality,
+                    )
+                    val source = resolvePlaybackSource(
+                        playUrlData = playData,
+                        currentCid = info.cid,
+                        preferredQuality = preferredQuality,
+                        cdnPreference = cdnPreference,
+                        isHevcSupported = isHevcSupported,
+                        isAv1Supported = isAv1Supported,
+                        isHdrSupported = isHdrSupported,
+                        isDolbyVisionSupported = isDolbyVisionSupported
+                    ) ?: return@fold PlaybackLoadResult.Error("No playable stream found.")
+                    val currentPageIndex = pages.indexOfFirst { it.cid == info.cid }.takeIf { it >= 0 } ?: 0
+                    PlaybackLoadResult.Success(
+                        info = info,
+                        pages = pages,
+                        currentPageIndex = currentPageIndex,
+                        relatedVideos = emptyList(),
+                        source = source,
+                        resumeCandidate = resumeCandidate,
+                    )
+                },
+                onFailure = { error ->
+                    PlaybackLoadResult.Error(error.message ?: "Load playback failed.")
+                }
             )
         }
-
-        detailDeferred.await().fold(
-            onSuccess = { (info, playData) ->
-                val pages = info.pages.ifEmpty {
-                    listOf(Page(cid = info.cid, page = 1, part = info.title))
-                }
-                val resumeCandidate = resolveResumePlaybackCandidate(
-                    bvid = info.bvid,
-                    requestedCid = cid,
-                    currentCid = info.cid,
-                    availablePages = pages,
-                    playUrlData = playData,
-                    preferredQuality = preferredQuality,
-                )
-                val source = resolvePlaybackSource(
-                    playUrlData = playData,
-                    currentCid = info.cid,
-                    preferredQuality = preferredQuality,
-                    cdnPreference = cdnPreference,
-                    isHevcSupported = isHevcSupported,
-                    isAv1Supported = isAv1Supported,
-                    isHdrSupported = isHdrSupported,
-                    isDolbyVisionSupported = isDolbyVisionSupported
-                ) ?: return@fold PlaybackLoadResult.Error("No playable stream found.")
-                val currentPageIndex = pages.indexOfFirst { it.cid == info.cid }.takeIf { it >= 0 } ?: 0
-                PlaybackLoadResult.Success(
-                    info = info,
-                    pages = pages,
-                    currentPageIndex = currentPageIndex,
-                    relatedVideos = emptyList(),
-                    source = source,
-                    resumeCandidate = resumeCandidate,
-                )
-            },
-            onFailure = { error ->
-                PlaybackLoadResult.Error(error.message ?: "Load playback failed.")
-            }
-        )
     }
 
     suspend fun changeQuality(
@@ -168,11 +277,26 @@ class VideoPlaybackUseCase {
         isHdrSupported: Boolean = true,
         isDolbyVisionSupported: Boolean = true
     ): PlaybackSource? {
-        val playUrlData = PlaybackRepository.getPlayUrlData(
-            bvid = bvid,
-            cid = cid,
-            qn = qualityId
-        ) ?: return null
+        val playUrlData = if (bvid.startsWith("ep") || bvid.startsWith("ss")) {
+            val epId = if (bvid.startsWith("ep")) bvid.substring(2).toLongOrNull() ?: 0L else 0L
+            val result = com.bbttvv.app.data.repository.BangumiRepository.getBangumiPlayUrl(
+                epId = epId,
+                qn = qualityId,
+                cid = cid
+            ).getOrNull()
+            result?.toPlayUrlData()
+        } else {
+            PlaybackRepository.getPlayUrlData(
+                bvid = bvid,
+                cid = cid,
+                qn = qualityId
+            )
+        } ?: return null
+        val referer = if (bvid.startsWith("ep") || bvid.startsWith("ss")) {
+            "https://www.bilibili.com/bangumi/play/$bvid"
+        } else {
+            "https://www.bilibili.com"
+        }
         return resolvePlaybackSource(
             playUrlData = playUrlData,
             currentCid = cid,
@@ -181,7 +305,8 @@ class VideoPlaybackUseCase {
             isHevcSupported = isHevcSupported,
             isAv1Supported = isAv1Supported,
             isHdrSupported = isHdrSupported,
-            isDolbyVisionSupported = isDolbyVisionSupported
+            isDolbyVisionSupported = isDolbyVisionSupported,
+            referer = referer
         )
     }
 
@@ -235,7 +360,8 @@ class VideoPlaybackUseCase {
         isHevcSupported: Boolean = true,
         isAv1Supported: Boolean = false,
         isHdrSupported: Boolean = true,
-        isDolbyVisionSupported: Boolean = true
+        isDolbyVisionSupported: Boolean = true,
+        referer: String = "https://www.bilibili.com"
     ): PlaybackSource? {
         val resumePositionMs = resolveAutoResumePositionMs(
             currentCid = currentCid,
@@ -330,7 +456,8 @@ class VideoPlaybackUseCase {
                 capabilityHints = capabilityHints,
                 resumePositionMs = resumePositionMs,
                 selectedDashVideo = dashVideo,
-                selectedDashAudio = dashAudio
+                selectedDashAudio = dashAudio,
+                referer = referer
             )
 
             segmentUrls.isNotEmpty() -> PlaybackSource(
@@ -358,7 +485,8 @@ class VideoPlaybackUseCase {
                 hasDolbyVisionTrack = hasDolbyVisionTrack,
                 hasDolbyAudioTrack = hasDolbyAudioTrack,
                 capabilityHints = capabilityHints,
-                resumePositionMs = resumePositionMs
+                resumePositionMs = resumePositionMs,
+                referer = referer
             )
 
             else -> null
@@ -654,4 +782,65 @@ class VideoPlaybackUseCase {
             else -> codecs.orEmpty()
         }
     }
+}
+
+private fun BangumiDetail.toViewInfo(currentEpisode: BangumiEpisode): ViewInfo {
+    val pageList = this.episodes?.mapIndexed { index, ep ->
+        Page(
+            cid = ep.cid,
+            page = index + 1,
+            from = "bangumi",
+            part = ep.title + " " + ep.longTitle,
+            duration = ep.duration / 1000L
+        )
+    } ?: emptyList()
+
+    return ViewInfo(
+        bvid = currentEpisode.bvid.ifBlank { "ep${currentEpisode.id}" },
+        aid = currentEpisode.aid,
+        cid = currentEpisode.cid,
+        title = this.title,
+        desc = this.evaluate,
+        pic = this.cover,
+        pubdate = currentEpisode.pubTime,
+        tname = this.seasonTypeName.ifBlank { "番剧" },
+        owner = Owner(
+            mid = 0L,
+            name = this.title,
+            face = this.squareCover
+        ),
+        stat = Stat(
+            view = this.stat?.views?.toInt() ?: 0,
+            danmaku = this.stat?.danmakus?.toInt() ?: 0,
+            favorite = this.stat?.favorites?.toInt() ?: 0,
+            coin = this.stat?.coins?.toInt() ?: 0,
+            share = this.stat?.share?.toInt() ?: 0,
+            like = this.stat?.likes?.toInt() ?: 0,
+            reply = this.stat?.reply?.toInt() ?: 0
+        ),
+        pages = pageList,
+        isSteinGate = 0,
+        dimension = null,
+        ugc_season = null
+    )
+}
+
+private fun BangumiVideoInfo.toPlayUrlData(lastPlayTimeSec: Int? = null, lastPlayCid: Long? = null): PlayUrlData {
+    return PlayUrlData(
+        quality = this.quality,
+        format = this.format,
+        timelength = this.timelength,
+        acceptFormat = this.acceptFormat,
+        acceptDescription = this.acceptDescription.orEmpty(),
+        acceptQuality = this.acceptQuality.orEmpty(),
+        videoCodecid = this.videoCodecid,
+        durl = this.durl ?: this.durls,
+        dash = this.dash,
+        supportFormats = this.supportFormats,
+        lastPlayTime = lastPlayTimeSec,
+        lastPlayCid = lastPlayCid,
+        curLanguage = null,
+        dolbyType = null,
+        aiAudio = null
+    )
 }

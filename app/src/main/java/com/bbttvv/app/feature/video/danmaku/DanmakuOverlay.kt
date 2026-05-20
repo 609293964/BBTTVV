@@ -193,7 +193,7 @@ fun DanmakuOverlay(
     AndroidView(
         factory = { context ->
             DanmakuView(context).apply {
-                alpha = if (isEnabled) 1f else 0f
+                alpha = if (isEnabled) config.opacity else 0f
                 visibility = if (isEnabled) View.VISIBLE else View.INVISIBLE
                 isClickable = false
                 isFocusable = false
@@ -214,7 +214,7 @@ fun DanmakuOverlay(
             val viewportHeight = view.height.coerceAtLeast(0)
             val viewportReady = viewportWidth > 0 && viewportHeight > 0
 
-            val targetAlpha = if (isEnabled) 1f else 0f
+            val targetAlpha = if (isEnabled) config.opacity else 0f
             if (view.alpha != targetAlpha) {
                 view.alpha = targetAlpha
             }
