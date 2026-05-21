@@ -147,7 +147,10 @@ class VideoPlaybackUseCase {
 
                     playUrlResult.fold(
                         onSuccess = { bangumiPlayData ->
-                            val info = detail.toViewInfo(currentEpisode)
+                            val info = detail.toBangumiPlaybackViewInfo(
+                                currentEpisode = currentEpisode,
+                                playbackBvid = bvid
+                            )
                             val playData = bangumiPlayData.toPlayUrlData(
                                 lastPlayTimeSec = detail.userStatus?.progress?.lastTime?.toInt(),
                                 lastPlayCid = detail.userStatus?.progress?.lastEpId
@@ -784,7 +787,10 @@ class VideoPlaybackUseCase {
     }
 }
 
-private fun BangumiDetail.toViewInfo(currentEpisode: BangumiEpisode): ViewInfo {
+internal fun BangumiDetail.toBangumiPlaybackViewInfo(
+    currentEpisode: BangumiEpisode,
+    playbackBvid: String
+): ViewInfo {
     val pageList = this.episodes?.mapIndexed { index, ep ->
         Page(
             cid = ep.cid,
@@ -796,7 +802,8 @@ private fun BangumiDetail.toViewInfo(currentEpisode: BangumiEpisode): ViewInfo {
     } ?: emptyList()
 
     return ViewInfo(
-        bvid = currentEpisode.bvid.ifBlank { "ep${currentEpisode.id}" },
+        // Keep the ep/ss playback key so player reloads stay on the Bangumi path.
+        bvid = playbackBvid.trim().ifBlank { "ep${currentEpisode.id}" },
         aid = currentEpisode.aid,
         cid = currentEpisode.cid,
         title = this.title,

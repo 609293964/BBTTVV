@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,17 +69,20 @@ import kotlinx.coroutines.launch
 private fun SubPluginConfigContainer(
     content: @Composable () -> Unit
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val bgColor = if (isLightTheme) Color(0x08000000) else Color(0x06FFFFFF)
+    val borderColor = if (isLightTheme) Color(0x0D000000) else Color(0x0FFFFFFF)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, top = 2.dp, bottom = 4.dp)
+            .padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 4.dp)
             .background(
-                color = Color(0x06FFFFFF),
+                color = bgColor,
                 shape = RoundedCornerShape(20.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0x0FFFFFFF),
+                color = borderColor,
                 shape = RoundedCornerShape(20.dp)
             )
             .padding(horizontal = 4.dp, vertical = 4.dp)
@@ -127,7 +131,48 @@ internal fun ProfilePluginCenterPanel(
         null
     }
 
+    var lastFocusedKey by remember { mutableStateOf<String?>(null) }
+    val defaultFirstKey = firstBuiltInPluginId ?: firstJsonPluginId ?: "plugin_summary"
+    val targetFirstKey = lastFocusedKey ?: defaultFirstKey
+
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var isFocusedInRightPanel by remember { mutableStateOf(false) }
+
+    val getIndexForPluginKey: (String) -> Int = { key ->
+        if (key == "plugin_summary") {
+            1
+        } else {
+            val builtinIndex = builtInPlugins.indexOfFirst { it.plugin.id == key }
+            if (builtinIndex >= 0) {
+                3 + builtinIndex
+            } else {
+                val jsonIndex = jsonPlugins.indexOfFirst { it.plugin.id == key }
+                if (jsonIndex >= 0) {
+                    4 + builtInPlugins.size + jsonIndex
+                } else {
+                    0
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(targetFirstKey, isFocusedInRightPanel) {
+        if (!isFocusedInRightPanel) {
+            val targetIndex = getIndexForPluginKey(targetFirstKey)
+            if (targetIndex >= 0) {
+                runCatching {
+                    listState.scrollToItem(targetIndex)
+                }
+            }
+        }
+    }
+
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val titleTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val sectionHeaderColor = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .profileContentFocusTarget(
@@ -136,23 +181,40 @@ internal fun ProfilePluginCenterPanel(
                 focusTab = focusTab,
                 onDpadLeft = onRequestSidebarFocus,
             )
+            .onFocusChanged { state ->
+                isFocusedInRightPanel = state.hasFocus
+            }
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        item { Text(text = "插件中心", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { Text(text = "插件中心", color = titleTextColor, style = MaterialTheme.typography.headlineMedium) }
+        item(key = "plugin_summary") {
+            Row(
+                modifier = Modifier.onFocusChanged { state ->
+                    if (state.hasFocus) {
+                        lastFocusedKey = "plugin_summary"
+                    }
+                },
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 PluginCenterSummaryCard("内置插件", builtInPlugins.size.toString(), Modifier.weight(1f))
                 PluginCenterSummaryCard("已启用", (builtInPlugins.count { it.enabled } + jsonPlugins.count { it.enabled }).toString(), Modifier.weight(1f))
                 PluginCenterSummaryCard("最近过期", lastFilteredCount.toString(), Modifier.weight(1f))
             }
         }
-        item {
-            Text(text = "内置插件", color = Color(0xB3FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        item(key = "plugin_builtin_title") {
+            Text(text = "内置插件", color = sectionHeaderColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
         items(builtInPlugins, key = { it.plugin.id }) { pluginInfo ->
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.onFocusChanged { state ->
+                    if (state.hasFocus) {
+                        lastFocusedKey = pluginInfo.plugin.id
+                    }
+                },
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 PluginCenterRowCard(
                     title = pluginInfo.plugin.name,
                     subtitle = pluginInfo.plugin.description,
@@ -168,7 +230,7 @@ internal fun ProfilePluginCenterPanel(
                             pluginInfo.plugin.id
                         }
                     },
-                    modifier = if (pluginInfo.plugin.id == firstBuiltInPluginId) {
+                    modifier = if (pluginInfo.plugin.id == targetFirstKey) {
                         Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
                     } else {
                         Modifier
@@ -244,33 +306,41 @@ internal fun ProfilePluginCenterPanel(
                 }
             }
         }
-        item {
-            Text(text = "外部规则插件", color = Color(0xB3FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        item(key = "plugin_external_title") {
+            Text(text = "外部规则插件", color = sectionHeaderColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
         if (jsonPlugins.isEmpty()) {
             item { ProfileInfoCard("当前还没有导入外部插件", "内置规则插件已经就位，后续如果还有外部 JSON 规则插件，可以继续在这里向下扩展。", compact = true) }
         } else {
             items(jsonPlugins, key = { it.plugin.id }) { loaded ->
-                PluginCenterRowCard(
-                    title = loaded.plugin.name,
-                    subtitle = buildString {
-                        append(resolveJsonPluginTypeLabel(loaded.plugin.type))
-                        append(" · ")
-                        append(loaded.plugin.version)
-                        filterStats[loaded.plugin.id]?.takeIf { it > 0 }?.let { count ->
-                            append(" · 过滤 ")
-                            append(count)
-                            append("已")
+                Column(
+                    modifier = Modifier.onFocusChanged { state ->
+                        if (state.hasFocus) {
+                            lastFocusedKey = loaded.plugin.id
                         }
-                    },
-                    value = if (loaded.enabled) "已启用" else "已关闭",
-                    onClick = { JsonPluginManager.setEnabled(loaded.plugin.id, !loaded.enabled) },
-                    modifier = if (loaded.plugin.id == firstJsonPluginId) {
-                        Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
-                    } else {
-                        Modifier
-                    },
-                )
+                    }
+                ) {
+                    PluginCenterRowCard(
+                        title = loaded.plugin.name,
+                        subtitle = buildString {
+                            append(resolveJsonPluginTypeLabel(loaded.plugin.type))
+                            append(" · ")
+                            append(loaded.plugin.version)
+                            filterStats[loaded.plugin.id]?.takeIf { it > 0 }?.let { count ->
+                                append(" · 过滤 ")
+                                append(count)
+                                append("已")
+                            }
+                        },
+                        value = if (loaded.enabled) "已启用" else "已关闭",
+                        onClick = { JsonPluginManager.setEnabled(loaded.plugin.id, !loaded.enabled) },
+                        modifier = if (loaded.plugin.id == targetFirstKey) {
+                            Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                        } else {
+                            Modifier
+                        },
+                    )
+                }
             }
         }
     }
@@ -793,9 +863,6 @@ private fun TodayWatchPluginPanel(
             com.bbttvv.app.ui.home.TodayWatchMode.LEARN -> com.bbttvv.app.ui.home.TodayWatchMode.RELAX
         }
     }
-    val nextUpRankLimit = remember(config.upRankLimit) {
-        nextCycledOption(config.upRankLimit, listOf(3, 5, 8, 10))
-    }
     val nextQueueBuildLimit = remember(config.queueBuildLimit) {
         nextCycledOption(config.queueBuildLimit, listOf(12, 20, 30, 40))
     }
@@ -825,13 +892,6 @@ private fun TodayWatchPluginPanel(
             onClick = { plugin.setCurrentMode(nextMode) }
         )
         PluginCenterRowCard(
-            title = "偏好 UP 榜数量",
-            subtitle = "控制头部摘要里显示多少位近期偏好创作者。",
-            value = "${config.upRankLimit} -> $nextUpRankLimit",
-            isSubItem = true,
-            onClick = { plugin.setUpRankLimit(nextUpRankLimit) }
-        )
-        PluginCenterRowCard(
             title = "队列生成长度",
             subtitle = "用于算法内部排序的种子队列规模，越大越容易补齐多样性。",
             value = "${config.queueBuildLimit} -> $nextQueueBuildLimit",
@@ -852,13 +912,7 @@ private fun TodayWatchPluginPanel(
             isSubItem = true,
             onClick = { plugin.setHistorySampleLimit(nextHistorySampleLimit) }
         )
-        PluginCenterRowCard(
-            title = "显示偏好 UP 榜",
-            subtitle = "在推荐单头部展示你近期更偏好的创作者摘要。",
-            value = if (config.showUpRank) "已开启" else "已关闭",
-            isSubItem = true,
-            onClick = { plugin.setShowUpRank(!config.showUpRank) }
-        )
+
         PluginCenterRowCard(
             title = "显示推荐理由",
             subtitle = "在视频卡片下方显示轻松向 / 学习向等推荐理由。",
@@ -909,14 +963,16 @@ private fun TodayWatchPluginPanel(
 private fun TodayWatchTasteInsightSection(
     state: TodayWatchTasteInsightState
 ) {
-    Text(text = "推荐依据", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val headerColor = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF)
+    Text(text = "推荐依据", color = headerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     PluginCenterStaticInfoCard(
         title = state.modeTitle,
         subtitle = state.modeSummary,
         isSubItem = true
     )
     if (state.preferredCreators.isNotEmpty()) {
-        Text(text = "近期偏好 UP", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(text = "近期偏好 UP", color = headerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         state.preferredCreators.forEach { signal ->
             PluginCenterStaticInfoCard(
                 title = signal.label,
@@ -926,7 +982,7 @@ private fun TodayWatchTasteInsightSection(
             )
         }
     }
-    Text(text = "最近不感兴趣", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    Text(text = "最近不感兴趣", color = headerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     if (state.recentDislikedVideos.isEmpty()) {
         PluginCenterStaticInfoCard(
             title = "还没有负反馈样本",
@@ -944,7 +1000,7 @@ private fun TodayWatchTasteInsightSection(
         }
     }
     if (state.negativeSignals.isNotEmpty()) {
-        Text(text = "已降权信号", color = Color(0xE6FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(text = "已降权信号", color = headerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         state.negativeSignals.forEach { signal ->
             PluginCenterStaticInfoCard(
                 title = signal.label,
@@ -1011,10 +1067,14 @@ private fun CdnRegionPluginPanel(
 
 @Composable
 private fun PluginCenterSummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.background(Color(0x12000000), RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 14.dp)) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val bgColor = if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+    val titleColor = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
+    val valueColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    Box(modifier = modifier.background(bgColor, RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(text = title, color = Color(0xB3FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Text(text = value, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+            Text(text = title, color = titleColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text(text = value, color = valueColor, fontSize = 18.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -1026,9 +1086,18 @@ private fun PluginCenterStaticInfoCard(
     value: String? = null,
     isSubItem: Boolean = false
 ) {
-    val containerColor = if (isSubItem) Color.Transparent else Color(0x12000000)
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val containerColor = if (isSubItem) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+    }
     val cardShape = RoundedCornerShape(if (isSubItem) 14.dp else 24.dp)
     
+    val titleColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val subtitleColor = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
+    val valueColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xE8FFFFFF)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1049,13 +1118,13 @@ private fun PluginCenterStaticInfoCard(
             ) {
                 Text(
                     text = title,
-                    color = Color.White,
+                    color = titleColor,
                     fontSize = if (isSubItem) 14.sp else 15.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = subtitle,
-                    color = Color(0xB3FFFFFF),
+                    color = subtitleColor,
                     fontSize = if (isSubItem) 10.sp else 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -1065,7 +1134,7 @@ private fun PluginCenterStaticInfoCard(
                 Spacer(modifier = Modifier.width(14.dp))
                 Text(
                     text = it,
-                    color = Color(0xE8FFFFFF),
+                    color = valueColor,
                     fontSize = if (isSubItem) 12.sp else 13.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -1085,33 +1154,42 @@ private fun PluginCenterRowCard(
     isSubItem: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     
-    val containerColor = if (isSubItem) Color.Transparent else Color(0x12000000)
-    val focusedContainerColor = if (isSubItem) Color(0x1EFFFFFF) else Color(0xE9E6EEF4)
+    val containerColor = if (isSubItem) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+    }
+    
+    val focusedContainerColor = if (isLightTheme) {
+        Color(0xFFFB7299)
+    } else {
+        if (isSubItem) Color(0x1EFFFFFF) else Color(0xE9E6EEF4)
+    }
+    
     val cardShape = RoundedCornerShape(if (isSubItem) 14.dp else 24.dp)
     
     val titleColor = when {
-        isSubItem -> Color.White
-        focused -> Color(0xFF111111)
-        else -> Color.White
+        focused -> if (isLightTheme) Color.White else (if (isSubItem) Color.White else Color(0xFF111111))
+        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
     }
     
     val subtitleColor = when {
-        isSubItem -> Color(0xB3FFFFFF)
-        focused -> Color(0xB0000000)
-        else -> Color(0xB3FFFFFF)
+        focused -> if (isLightTheme) Color(0xB3FFFFFF) else (if (isSubItem) Color(0xB3FFFFFF) else Color(0xB0000000))
+        else -> if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
     }
     
     val valueTextColor = when {
-        isSubItem -> Color(0xE8FFFFFF)
-        focused -> Color(0xCC000000)
-        else -> Color(0xE8FFFFFF)
+        focused -> if (isLightTheme) Color.White else (if (isSubItem) Color(0xE8FFFFFF) else Color(0xCC000000))
+        else -> if (isLightTheme) Color(0xFFFB7299) else Color(0xE8FFFFFF)
     }
 
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(cardShape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = containerColor,
             focusedContainerColor = focusedContainerColor

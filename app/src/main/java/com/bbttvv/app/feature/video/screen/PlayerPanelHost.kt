@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
+
 @Composable
 internal fun PlayerOptionsPanel(
     title: String,
@@ -59,45 +61,62 @@ internal fun PlayerOptionsPanel(
         }
     }
 
-    Column(
+    val isLightTheme = LocalIsLightTheme.current
+    val panelBgColor = if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.65f)
+    val panelBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f)
+    val titleTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+
+    Box(
         modifier = modifier
             .width(panelWidth)
-            .clip(RoundedCornerShape(panelCorner))
-            .playerPanelSurfaceEffect(visualEffectsState)
-            .background(Color.Black.copy(alpha = 0.65f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(panelCorner))
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+        // 1. 隔离的背景层：只负责模糊与背景填充
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(panelCorner))
+                .playerPanelSurfaceEffect(visualEffectsState)
+                .background(panelBgColor)
+                .border(1.dp, panelBorderColor, RoundedCornerShape(panelCorner))
         )
-        if (options.isEmpty()) {
+
+        // 2. 清晰的前景层：负责展示内容，完全不受模糊影响
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text(
-                text = "当前格式不支持切换",
-                color = Color.White.copy(alpha = 0.72f),
-                fontSize = 10.sp,
+                text = title,
+                color = titleTextColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
             )
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.heightIn(max = panelMaxHeight),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                itemsIndexed(
-                    items = options,
-                    key = { _, option -> option.key },
-                ) { index, option ->
-                    PlayerOptionRow(
-                        option = option,
-                        selected = index == selectedIndex,
-                        modifier = Modifier
-                            .focusRequester(optionFocusRequesters[index])
-                            .focusable(enabled = option.isEnabled),
-                    )
+            if (options.isEmpty()) {
+                Text(
+                    text = "当前格式不支持切换",
+                    color = if (isLightTheme) Color(0xFF18191C).copy(alpha = 0.62f) else Color.White.copy(alpha = 0.72f),
+                    fontSize = 10.sp,
+                )
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.heightIn(max = panelMaxHeight),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    itemsIndexed(
+                         items = options,
+                         key = { _, option -> option.key },
+                    ) { index, option ->
+                        PlayerOptionRow(
+                            option = option,
+                            selected = index == selectedIndex,
+                            modifier = Modifier
+                                .focusRequester(optionFocusRequesters[index])
+                                .focusable(enabled = option.isEnabled),
+                        )
+                    }
                 }
             }
         }
@@ -122,17 +141,32 @@ private fun PlayerOptionRow(
         )
         return
     }
+
+    val isLightTheme = LocalIsLightTheme.current
     val contentColor = when {
-        selected -> Color(0xFF111111)
-        option.isEnabled -> Color.White
-        else -> Color.White.copy(alpha = 0.42f)
+        selected -> {
+            if (isLightTheme) Color.White else Color(0xFF111111)
+        }
+        option.isEnabled -> {
+            if (isLightTheme) Color(0xFF18191C) else Color.White
+        }
+        else -> {
+            if (isLightTheme) Color(0xFF18191C).copy(alpha = 0.38f) else Color.White.copy(alpha = 0.42f)
+        }
     }
+
+    val rowBgColor = if (selected) {
+        if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.94f)
+    } else {
+        Color.Transparent
+    }
+
     Row(
         modifier = Modifier
             .then(modifier)
             .fillMaxWidth()
             .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Color.White.copy(alpha = 0.94f) else Color.Transparent)
+            .background(rowBgColor)
             .padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -172,31 +206,52 @@ private fun PlayerSettingOptionRow(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val titleColor = when {
-        selected -> Color.White
-        option.isEnabled -> Color(0xF2FFFFFF)
-        else -> Color.White.copy(alpha = 0.42f)
+        selected -> {
+            Color.White
+        }
+        option.isEnabled -> {
+            if (isLightTheme) Color(0xFF18191C) else Color(0xF2FFFFFF)
+        }
+        else -> {
+            if (isLightTheme) Color(0xFF18191C).copy(alpha = 0.38f) else Color.White.copy(alpha = 0.42f)
+        }
     }
+
     val subtitleColor = when {
-        selected -> Color(0xFFB9D1FF)
-        option.isEnabled -> Color(0x99E4EBF5)
-        else -> Color.White.copy(alpha = 0.32f)
+        selected -> {
+            if (isLightTheme) Color.White.copy(alpha = 0.85f) else Color(0xFFB9D1FF)
+        }
+        option.isEnabled -> {
+            if (isLightTheme) Color(0xFF61666D) else Color(0x99E4EBF5)
+        }
+        else -> {
+            if (isLightTheme) Color(0xFF18191C).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.32f)
+        }
     }
+
+    val rowBgColor = if (selected) {
+        if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.20f)
+    } else {
+        if (isLightTheme) Color.Black.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.05f)
+    }
+
+    val rowBorderColor = if (selected) {
+        if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.40f)
+    } else {
+        Color.Transparent
+    }
+
     Row(
         modifier = Modifier
             .then(modifier)
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (selected) {
-                    Color.White.copy(alpha = 0.20f)
-                } else {
-                    Color.White.copy(alpha = 0.05f)
-                }
-            )
+            .background(rowBgColor)
             .border(
                 width = 1.dp,
-                color = if (selected) Color.White.copy(alpha = 0.40f) else Color.Transparent,
+                color = rowBorderColor,
                 shape = RoundedCornerShape(14.dp),
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -227,22 +282,36 @@ private fun PlayerSettingOptionRow(
             }
         }
         option.valueText?.let {
+            val pillBgColor = if (selected) {
+                if (isLightTheme) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.18f)
+            } else {
+                if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.24f)
+            }
+            val pillBorderColor = if (selected) {
+                if (isLightTheme) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.24f)
+            } else {
+                if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.10f)
+            }
+            val pillTextColor = if (selected) {
+                Color.White
+            } else {
+                if (isLightTheme) Color(0xFF18191C) else Color(0xFFE5ECF7)
+            }
+
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        if (selected) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.24f),
-                    )
+                    .background(pillBgColor)
                     .border(
                         width = 1.dp,
-                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.White.copy(alpha = 0.10f),
+                        color = pillBorderColor,
                         shape = RoundedCornerShape(999.dp),
                     )
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Text(
                     text = it,
-                    color = if (selected) Color.White else Color(0xFFE5ECF7),
+                    color = pillTextColor,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

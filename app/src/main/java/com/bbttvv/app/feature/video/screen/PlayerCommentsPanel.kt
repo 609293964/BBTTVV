@@ -51,6 +51,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @Composable
 internal fun PlayerCommentsPanel(
@@ -122,6 +123,12 @@ internal fun PlayerCommentsPanel(
             }
     }
 
+    val isLightTheme = LocalIsLightTheme.current
+    val panelBgColor = if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.65f)
+    val panelBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f)
+    val mainTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val subTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f)
+
     Column(
         modifier = modifier
             .fillMaxWidth(0.4f)
@@ -131,8 +138,8 @@ internal fun PlayerCommentsPanel(
                 onExit = { cancelFocusChange() }
             }
             .clip(RoundedCornerShape(28.dp))
-            .background(Color.Black.copy(alpha = 0.65f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
+            .background(panelBgColor)
+            .border(1.dp, panelBorderColor, RoundedCornerShape(28.dp))
             .padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -148,13 +155,13 @@ internal fun PlayerCommentsPanel(
                 ) {
                     Text(
                         text = "认证回复",
-                        color = Color.White,
+                        color = mainTextColor,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = "共 ${formatCount(totalCount)} 条回复",
-                        color = Color.White.copy(alpha = 0.72f),
+                        color = subTextColor,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 2.dp),
                     )
@@ -177,13 +184,13 @@ internal fun PlayerCommentsPanel(
                 ) {
                     Text(
                         text = "视频评论",
-                        color = Color.White,
+                        color = mainTextColor,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = "共 ${formatCount(totalCount)} 条评论",
-                        color = Color.White.copy(alpha = 0.72f),
+                        color = subTextColor,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 2.dp),
                     )
@@ -200,7 +207,7 @@ internal fun PlayerCommentsPanel(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "主评论",
-                    color = Color.White.copy(alpha = 0.72f),
+                    color = subTextColor,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -345,39 +352,45 @@ private fun PlayerCommentPillButton(
     selected: Boolean = false,
     focusRequester: FocusRequester? = null,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     var isFocused by remember { mutableStateOf(false) }
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
     } else {
         modifier
     }
+    
+    val containerColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.95f)
+        selected -> if (isLightTheme) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.24f)
+        else -> if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.12f)
+    }
+    
+    val borderStrokeColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        selected -> if (isLightTheme) Color.Black.copy(alpha = 0.24f) else Color.White.copy(alpha = 0.62f)
+        else -> if (isLightTheme) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.24f)
+    }
+
     Surface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = when {
-                isFocused -> Color.White.copy(alpha = 0.95f)
-                selected -> Color.White.copy(alpha = 0.24f)
-                else -> Color.White.copy(alpha = 0.12f)
-            },
-            focusedContainerColor = Color.White.copy(alpha = 0.95f),
-            pressedContainerColor = Color.White.copy(alpha = 0.82f),
+            containerColor = containerColor,
+            focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.95f),
+            pressedContainerColor = if (isLightTheme) Color(0xFFE25E83) else Color.White.copy(alpha = 0.82f),
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
                 border = androidx.compose.foundation.BorderStroke(
                     if (isFocused) 2.dp else 1.dp,
-                    when {
-                        isFocused -> Color.White
-                        selected -> Color.White.copy(alpha = 0.62f)
-                        else -> Color.White.copy(alpha = 0.24f)
-                    },
+                    borderStrokeColor,
                 ),
                 shape = RoundedCornerShape(999.dp),
             ),
             focusedBorder = Border(
-                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                border = androidx.compose.foundation.BorderStroke(2.dp, if (isLightTheme) Color(0xFFFB7299) else Color.White),
                 shape = RoundedCornerShape(999.dp),
             ),
         ),
@@ -388,9 +401,14 @@ private fun PlayerCommentPillButton(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val textColor = when {
+                isFocused -> Color.White
+                selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+                else -> if (isLightTheme) Color(0xFF18191C) else Color.White
+            }
             Text(
                 text = label,
-                color = if (isFocused) Color(0xFF111111) else Color.White,
+                color = textColor,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -408,6 +426,7 @@ private fun PlayerCommentCard(
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val hasReplies = reply.rcount > 0 || reply.replies.orEmpty().isNotEmpty()
     val dateText = remember(reply.ctime) { formatCommentDate(reply.ctime) }
     var isFocused by remember { mutableStateOf(false) }
@@ -416,6 +435,18 @@ private fun PlayerCommentCard(
     } else {
         modifier
     }
+    
+    val containerColor = when {
+        isFocused -> if (isLightTheme) Color.White else Color.White.copy(alpha = 0.24f)
+        else -> if (isLightTheme) Color.Black.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.14f)
+    }
+    
+    val borderStroke = if (isFocused) {
+        androidx.compose.foundation.BorderStroke(2.dp, if (isLightTheme) Color(0xFFFB7299) else Color.White)
+    } else {
+        androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.18f))
+    }
+
     Surface(
         onClick = {
             if (showReplyAction && hasReplies) {
@@ -425,16 +456,16 @@ private fun PlayerCommentCard(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.14f),
-            focusedContainerColor = Color.White.copy(alpha = 0.24f),
+            containerColor = containerColor,
+            focusedContainerColor = if (isLightTheme) Color.White else Color.White.copy(alpha = 0.24f),
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                border = borderStroke,
                 shape = RoundedCornerShape(20.dp),
             ),
             focusedBorder = Border(
-                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                border = androidx.compose.foundation.BorderStroke(2.dp, if (isLightTheme) Color(0xFFFB7299) else Color.White),
                 shape = RoundedCornerShape(20.dp),
             ),
         ),
@@ -460,7 +491,9 @@ private fun PlayerCommentCard(
             ) {
                 Text(
                     text = reply.member.uname.ifBlank { "评论用户" },
-                    color = Color.White,
+                    color = if (isLightTheme) {
+                        if (isFocused) Color(0xFFFB7299) else Color(0xFF18191C)
+                    } else Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -470,14 +503,14 @@ private fun PlayerCommentCard(
                 if (dateText.isNotEmpty()) {
                     Text(
                         text = dateText,
-                        color = Color.White.copy(alpha = 0.62f),
+                        color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
                         fontSize = 10.sp,
                     )
                 }
             }
             Text(
                 text = reply.content.message.ifBlank { "此条评论暂时没有正文内容" },
-                color = Color.White.copy(alpha = 0.92f),
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White.copy(alpha = 0.92f),
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
                 maxLines = if (showReplyAction) 6 else 8,
@@ -494,13 +527,13 @@ private fun PlayerCommentCard(
                 ) {
                     Text(
                         text = "点赞 ${formatCount(reply.like)}",
-                        color = Color.White.copy(alpha = 0.62f),
+                        color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
                         fontSize = 10.sp,
                     )
                     if (showReplyAction) {
                         Text(
                             text = "回复 ${formatCount(reply.rcount)}",
-                            color = Color.White.copy(alpha = 0.62f),
+                            color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
                             fontSize = 10.sp,
                         )
                     }
@@ -508,7 +541,11 @@ private fun PlayerCommentCard(
                 if (showReplyAction && hasReplies) {
                     Text(
                         text = "查看回复",
-                        color = if (isFocused) Color.White else Color(0xFFDDEBFF),
+                        color = if (isLightTheme) {
+                            if (isFocused) Color(0xFFFB7299) else Color(0xFF1D5AA5)
+                        } else {
+                            if (isFocused) Color.White else Color(0xFFDDEBFF)
+                        },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -523,17 +560,18 @@ private fun PlayerCommentMessageCard(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.12f))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+            .background(if (isLightTheme) Color.Black.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.12f))
+            .border(1.dp, if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Text(
             text = text,
-            color = Color.White.copy(alpha = 0.82f),
+            color = if (isLightTheme) Color(0xFF18191C) else Color.White.copy(alpha = 0.82f),
             fontSize = 12.sp,
             lineHeight = 17.sp,
         )
@@ -542,6 +580,7 @@ private fun PlayerCommentMessageCard(
 
 @Composable
 private fun PlayerCommentFooterHint(text: String) {
+    val isLightTheme = LocalIsLightTheme.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -550,7 +589,7 @@ private fun PlayerCommentFooterHint(text: String) {
     ) {
         Text(
             text = text,
-            color = Color.White.copy(alpha = 0.72f),
+            color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f),
             fontSize = 11.sp,
         )
     }

@@ -1,6 +1,9 @@
 package com.bbttvv.app.ui.detail
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -38,7 +41,6 @@ internal fun NavGraphBuilder.videoDetailRoutes(
             navController = navController,
             bvid = backStackEntry.arguments?.getString("bvid").orEmpty(),
             openMode = openMode,
-            onBack = { navController.navigateDetailBackOrHome() },
         )
     }
 
@@ -81,11 +83,15 @@ private fun VideoDetailDestination(
     navController: NavHostController,
     bvid: String,
     openMode: DetailOpenMode,
-    onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val singleBack by androidx.compose.runtime.remember(context) {
+        com.bbttvv.app.core.store.SettingsManager.getSingleBackToHomeEnabled(context)
+    }.collectAsStateWithLifecycle(initialValue = false)
+
     DetailScreen(
         bvid = bvid,
-        onBack = onBack,
+        onBack = { navController.navigateDetailBackOrHome(singleBack) },
         onPlay = { playBvid, aid, cid ->
             navController.navigate(
                 ScreenRoutes.VideoPlayer.createRoute(
@@ -163,8 +169,7 @@ private fun NavHostController.navigateBackOrHome() {
     }
 }
 
-private fun NavHostController.navigateDetailBackOrHome() {
-    val singleBack = com.bbttvv.app.core.store.SettingsManager.getSingleBackToHomeEnabledSync(context)
+private fun NavHostController.navigateDetailBackOrHome(singleBack: Boolean) {
     if (singleBack) {
         if (!popBackStack(ScreenRoutes.Home.route, inclusive = false)) {
             if (!popBackStack()) {

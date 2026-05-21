@@ -20,6 +20,8 @@ import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusTarget
 
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
+
 @Composable
 internal fun AppTopBar(
     tabs: List<AppTopLevelTab>,
@@ -32,6 +34,7 @@ internal fun AppTopBar(
     onTopBarFocusChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val tabsKey = remember(tabs) {
         tabs.joinToString(separator = "|") { tab -> tab.name }
     }
@@ -112,6 +115,7 @@ internal fun AppTopBar(
             }
         },
         update = {
+            controller.adapter?.setIsLightTheme(isLightTheme)
             controller.adapter?.updateCallbacks(
                 updateSelectedTabOnFocus = updateSelectedTabOnFocus,
                 onTabSelected = latestOnTabSelected,

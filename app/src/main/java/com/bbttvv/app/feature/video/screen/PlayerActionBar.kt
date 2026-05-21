@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Settings
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -34,10 +35,11 @@ internal fun PlayerActionBar(
     isDanmakuEnabled: Boolean,
     actionFocusRequesters: List<FocusRequester>,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.15f))
+            .background(if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.15f))
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -62,16 +64,23 @@ private fun PlayerActionButton(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
+    val buttonBgColor = if (selected) {
+        if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.94f)
+    } else {
+        Color.Transparent
+    }
+    
+    val iconColor = when {
+        selected -> if (isLightTheme) Color.White else Color(0xFF111111)
+        isLightTheme -> if (active) Color(0xFF18191C) else Color(0xFF18191C).copy(alpha = 0.45f)
+        else -> if (active) Color.White else Color.White.copy(alpha = 0.54f)
+    }
+
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(
-                if (selected) {
-                    Color.White.copy(alpha = 0.94f)
-                } else {
-                    Color.Transparent
-                }
-            )
+            .background(buttonBgColor)
             .size(40.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -79,11 +88,7 @@ private fun PlayerActionButton(
         Icon(
             imageVector = actionIcon(action),
             contentDescription = action.label,
-            tint = when {
-                selected -> Color(0xFF111111)
-                active -> Color.White
-                else -> Color.White.copy(alpha = 0.54f)
-            },
+            tint = iconColor,
             modifier = Modifier.size(18.dp),
         )
     }
@@ -98,3 +103,4 @@ private fun actionIcon(action: PlayerAction): ImageVector {
         PlayerAction.Debug -> Icons.Outlined.Info
     }
 }
+

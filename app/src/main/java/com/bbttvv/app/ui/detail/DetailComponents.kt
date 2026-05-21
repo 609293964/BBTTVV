@@ -1,6 +1,7 @@
 package com.bbttvv.app.ui.detail
 
 import android.content.Context
+import com.bbttvv.app.core.util.BlurTransformation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,9 +41,9 @@ import com.bbttvv.app.core.util.FormatUtils
 import java.util.Locale
 
 internal val DetailBackdropGradientColors = listOf(
-    Color(0xE00F0F0F),
-    Color(0xC60F0F0F),
-    Color(0xE6101010)
+    Color(0x950A0A0C),
+    Color(0xC00C0C0E),
+    Color(0xED101012)
 )
 internal val DetailPrimaryPillColor = Color(0xFFF4F6F8)
 internal val DetailPrimaryTextColor = Color(0xFF121212)
@@ -80,14 +81,17 @@ internal val DetailCompactActionPillMetrics = DetailPillMetrics(
 
 @Composable
 internal fun DetailMessageCard(text: String) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val cardBg = if (isLightTheme) Color(0x0D000000) else DetailCardColor
+    val textColor = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(DetailCardColor)
+            .background(cardBg)
             .padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
-        Text(text = text, color = DetailMutedTextColor, fontSize = 14.sp)
+        Text(text = text, color = textColor, fontSize = 14.sp)
     }
 }
 
@@ -103,11 +107,16 @@ internal fun DetailPillButton(
     focusRequester: FocusRequester? = null,
     leadingContent: (@Composable (Color) -> Unit)? = null
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     var isFocused by remember { mutableStateOf(false) }
     val contentColor = when {
-        selected || isFocused -> DetailPrimaryTextColor
+        selected || isFocused -> {
+            if (isLightTheme) Color.White else DetailPrimaryTextColor
+        }
         active -> DetailAccentColor
-        else -> Color.White
+        else -> {
+            if (isLightTheme) Color(0xFF18191C) else Color.White
+        }
     }.copy(alpha = if (enabled) 1f else 0.62f)
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
@@ -116,12 +125,18 @@ internal fun DetailPillButton(
     }
 
     val containerColor = when {
-        selected || isFocused -> DetailPrimaryPillColor
+        selected || isFocused -> {
+            if (isLightTheme) DetailAccentColor else DetailPrimaryPillColor
+        }
         else -> Color.Transparent
     }
 
     val borderWidth = if (selected || isFocused) 0.dp else 1.5.dp
-    val borderColor = if (selected || isFocused) Color.Transparent else Color(0x66FFFFFF)
+    val borderColor = if (selected || isFocused) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0xFFCCCCCC) else Color(0x66FFFFFF)
+    }
 
     Box(
         modifier = composedModifier
@@ -166,6 +181,9 @@ internal fun DetailDisabledPill(
     modifier: Modifier = Modifier,
     metrics: DetailPillMetrics = DetailDefaultPillMetrics
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val borderColor = if (isLightTheme) Color(0x22000000) else Color(0x33FFFFFF)
+    val textColor = if (isLightTheme) Color(0x7718191C) else Color.White.copy(alpha = 0.45f)
     Box(
         modifier = modifier
             .height(metrics.height)
@@ -173,7 +191,7 @@ internal fun DetailDisabledPill(
             .background(Color.Transparent)
             .border(
                 width = 1.5.dp,
-                color = Color(0x33FFFFFF),
+                color = borderColor,
                 shape = RoundedCornerShape(999.dp)
             )
             .padding(horizontal = metrics.horizontalPadding),
@@ -181,7 +199,7 @@ internal fun DetailDisabledPill(
     ) {
         Text(
             text = label,
-            color = Color.White.copy(alpha = 0.45f),
+            color = textColor,
             fontSize = metrics.textSize,
             fontWeight = FontWeight.Medium
         )
@@ -198,6 +216,22 @@ internal fun buildSizedImageRequest(
         .data(FormatUtils.buildSizedImageUrl(url, widthPx, heightPx))
         .crossfade(false)
         .allowHardware(true)
+        .precision(Precision.INEXACT)
+        .size(widthPx, heightPx)
+        .build()
+}
+
+internal fun buildBlurredImageRequest(
+    context: Context,
+    url: String,
+    widthPx: Int,
+    heightPx: Int
+): ImageRequest {
+    return ImageRequest.Builder(context)
+        .data(FormatUtils.buildSizedImageUrl(url, widthPx, heightPx))
+        .crossfade(false)
+        .allowHardware(false) // Required for BlurTransformation to fetch Bitmap on RenderScript
+        .transformations(BlurTransformation(context, radius = 12f, sampling = 4f))
         .precision(Precision.INEXACT)
         .size(widthPx, heightPx)
         .build()

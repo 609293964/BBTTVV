@@ -63,7 +63,9 @@ internal class DpadGridController(
         }
 
     private val childAttachListener = object : RecyclerView.OnChildAttachStateChangeListener {
-        override fun onChildViewAttachedToWindow(view: View) = Unit
+        override fun onChildViewAttachedToWindow(view: View) {
+            maybeFocusDirectionalScrollTargetOnAttach(view)
+        }
 
         override fun onChildViewDetachedFromWindow(view: View) {
             maybeProtectFocusOnChildDetach(view)
@@ -908,6 +910,57 @@ internal class DpadGridController(
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 lastVerticalNavAtMs = SystemClock.uptimeMillis()
                 lastVerticalNavDirection = View.FOCUS_DOWN
+            }
+        }
+    }
+
+    private fun maybeFocusDirectionalScrollTargetOnAttach(attachedChild: View) {
+        val recycler = recyclerView ?: return
+        if (!callbacks.isEnabled()) return
+        val requestToken = directionalScrollRequestToken
+        val targetPosition = directionalScrollTargetPosition
+        if (
+            requestToken == 0 ||
+            focusRequestToken != requestToken ||
+            targetPosition == RecyclerView.NO_POSITION ||
+            !isDirectionalScrollParked()
+        ) {
+            return
+        }
+
+        val attachedPosition = validAdapterPosition(recycler.getChildAdapterPosition(attachedChild))
+            ?: validAdapterPosition(recycler.getChildLayoutPosition(attachedChild))
+            ?: return
+        if (attachedPosition != targetPosition) return
+
+        recycler.postOnAnimation {
+            if (
+                this.recyclerView !== recycler ||
+                focusRequestToken != requestToken ||
+                !isDirectionalScrollParked()
+            ) {
+                return@postOnAnimation
+            }
+
+            val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
+                ?: return@postOnAnimation
+            if (!targetItem.isValidFocusTarget()) return@postOnAnimation
+
+            val focusedView = recycler.rootView?.findFocus()
+            if (
+                focusedView != null &&
+                focusedView !== recycler &&
+                !focusedView.isSameOrDescendantOf(recycler)
+            ) {
+                clearDirectionalScrollParkingForRequest(requestToken, recycler)
+                return@postOnAnimation
+            }
+
+            unparkFocusInRecyclerViewIfNeeded(recycler)
+            if (targetItem.requestFocus()) {
+                scrollAttachedItemIntoView(recycler, targetItem)
+            } else {
+                parkFocusInRecyclerViewForScroll(recycler)
             }
         }
     }

@@ -55,11 +55,12 @@ internal fun ProfileSettingsPanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
         modifier = Modifier.fillMaxSize().padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = "设置", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "设置", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         TvSettingsList(
             modifier = Modifier
                 .fillMaxSize()
@@ -86,11 +87,12 @@ internal fun ProfileDanmakuSettingsPanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
         modifier = Modifier.fillMaxSize().padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = "弹幕设置", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "弹幕设置", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         TvDanmakuSettingsList(
             modifier = Modifier
                 .fillMaxSize()
@@ -118,6 +120,7 @@ internal fun ProfilePlaceholderPanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     var focused by remember { mutableStateOf(false) }
     val cardShape = RoundedCornerShape(28.dp)
     Column(
@@ -132,7 +135,7 @@ internal fun ProfilePlaceholderPanel(
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = title, color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = title, color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         Box(
             modifier = Modifier
                 .focusRequester(contentFocusTarget.initialFocusRequester)
@@ -140,19 +143,31 @@ internal fun ProfilePlaceholderPanel(
                 .focusable()
                 .fillMaxWidth()
                 .background(
-                    color = if (focused) Color(0xE9E6EEF4) else Color(0x12000000),
+                    color = if (focused) {
+                        if (isLightTheme) Color(0xFFFB7299) else Color(0xE9E6EEF4)
+                    } else {
+                        if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+                    },
                     shape = cardShape
                 )
                 .border(
                     width = if (focused) 1.dp else 0.dp,
-                    color = if (focused) Color.White.copy(alpha = 0.92f) else Color.Transparent,
+                    color = if (focused) {
+                        if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.92f)
+                    } else {
+                        Color.Transparent
+                    },
                     shape = cardShape
                 )
                 .padding(24.dp)
         ) {
             Text(
                 text = subtitle,
-                color = if (focused) Color(0xFF111111) else Color(0xD9FFFFFF),
+                color = if (focused) {
+                    Color.White
+                } else {
+                    if (isLightTheme) Color(0xFF61666D) else Color(0xD9FFFFFF)
+                },
                 lineHeight = 22.sp
             )
         }
@@ -173,6 +188,7 @@ internal fun SwitchAccountPanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -186,7 +202,7 @@ internal fun SwitchAccountPanel(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item {
-            Text(text = "切换账号", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+            Text(text = "切换账号", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         }
         if (accounts.isEmpty()) {
             item {
@@ -234,11 +250,16 @@ private fun AccountRowCard(
     onRemoveStoredAccount: (Long) -> Unit,
     initialFocusModifier: Modifier = Modifier,
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                color = if (active) Color(0x1FFFF0F5) else Color(0x12000000),
+                color = if (active) {
+                    if (isLightTheme) Color(0x14FB7299) else Color(0x1FFFF0F5)
+                } else {
+                    if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+                },
                 shape = RoundedCornerShape(28.dp)
             )
             .padding(horizontal = 20.dp, vertical = 18.dp),
@@ -256,27 +277,27 @@ private fun AccountRowCard(
             contentScale = ContentScale.Crop
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(text = account.name.ifBlank { "UID ${account.mid}" }, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = "UID ${account.mid}", color = Color(0xB3FFFFFF), fontSize = 13.sp)
+            Text(text = account.name.ifBlank { "UID ${account.mid}" }, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = "UID ${account.mid}", color = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF), fontSize = 13.sp)
         }
         if (active) {
             Box(
                 modifier = Modifier.widthIn(min = 82.dp).padding(horizontal = 6.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "当前账号", color = Color(0xFFFFE7EF), fontWeight = FontWeight.Medium)
+                Text(text = "当前账号", color = if (isLightTheme) Color(0xFFFB7299) else Color(0xFFFFE7EF), fontWeight = FontWeight.Medium)
             }
         } else {
             AccountActionButton(
                 text = "切换",
-                contentColor = Color.White,
+                contentColor = if (isLightTheme) Color(0xFFFB7299) else Color.White,
                 onClick = { onSwitchAccount(account.mid) },
                 modifier = initialFocusModifier,
             )
         }
         AccountActionButton(
             text = "移除",
-            contentColor = Color(0xFFFFBCC8),
+            contentColor = if (isLightTheme) Color(0xFFE03E5F) else Color(0xFFFFBCC8),
             onClick = { onRemoveStoredAccount(account.mid) },
             modifier = if (active) initialFocusModifier else Modifier,
         )
@@ -292,13 +313,14 @@ private fun AccountActionButton(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x14000000),
-            focusedContainerColor = Color(0xF2EEF6FB)
+            containerColor = if (isLightTheme) Color(0x0A000000) else Color(0x14000000),
+            focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xF2EEF6FB)
         )
     ) {
         Box(
@@ -307,7 +329,7 @@ private fun AccountActionButton(
         ) {
             Text(
                 text = text,
-                color = if (focused) Color(0xFF111111) else contentColor,
+                color = if (focused) Color.White else contentColor,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -325,6 +347,7 @@ internal fun ChangeIconPanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -337,7 +360,7 @@ internal fun ChangeIconPanel(
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "更换图标", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "更换图标", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         ProfileInfoCard("图标入口已预留", "后续可以在完整设置页中继续接你的 TV 图标方案！")
         ProfilePrimaryAction(
             text = "打开设置页",
@@ -357,6 +380,7 @@ internal fun ProfileGuidePanel(
         focusCoordinator = focusCoordinator,
         focusTab = focusTab,
     )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -371,7 +395,7 @@ internal fun ProfileGuidePanel(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item {
-            Text(text = "操作说明", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+            Text(text = "操作说明", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         }
 
         item { GuideSectionTitle("D-Pad 方向键操作") }
@@ -531,9 +555,10 @@ internal fun ProfileGuidePanel(
 
 @Composable
 private fun GuideSectionTitle(title: String) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Text(
         text = title,
-        color = Color(0x8FFFFFFF),
+        color = if (isLightTheme) Color(0xFF61666D) else Color(0x8FFFFFFF),
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 6.dp)
@@ -554,6 +579,7 @@ internal fun ProfileInfoCard(
     focusable: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     val shape = RoundedCornerShape(if (compact) 24.dp else 28.dp)
     val focusModifier = if (focusable) {
         Modifier
@@ -567,12 +593,20 @@ internal fun ProfileInfoCard(
             .then(focusModifier)
             .fillMaxWidth()
             .background(
-                color = if (focused) Color(0xE9E6EEF4) else Color(0x12000000),
+                color = if (focused) {
+                    if (isLightTheme) Color(0xFFFB7299) else Color(0xE9E6EEF4)
+                } else {
+                    if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+                },
                 shape = shape
             )
             .border(
                 width = if (focused) 1.dp else 0.dp,
-                color = if (focused) Color.White.copy(alpha = 0.92f) else Color.Transparent,
+                color = if (focused) {
+                    if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.92f)
+                } else {
+                    Color.Transparent
+                },
                 shape = shape
             )
             .padding(
@@ -583,13 +617,21 @@ internal fun ProfileInfoCard(
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
             Text(
                 text = title,
-                color = if (focused) Color(0xFF111111) else Color.White,
+                color = if (focused) {
+                    Color.White
+                } else {
+                    if (isLightTheme) Color(0xFF18191C) else Color.White
+                },
                 fontSize = if (compact) 15.sp else 18.sp,
                 fontWeight = FontWeight.Medium
             )
             Text(
                 text = value,
-                color = if (focused) Color(0xB0000000) else Color(0xD9FFFFFF),
+                color = if (focused) {
+                    Color.White.copy(alpha = 0.85f)
+                } else {
+                    if (isLightTheme) Color(0xFF61666D) else Color(0xD9FFFFFF)
+                },
                 fontSize = if (compact) 11.sp else 14.sp,
                 lineHeight = if (compact) 16.sp else 21.sp
             )
@@ -605,16 +647,24 @@ internal fun ProfilePrimaryAction(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x12000000), focusedContainerColor = Color(0xE9E6EEF4))
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isLightTheme) Color(0x0C000000) else Color(0x12000000),
+            focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xE9E6EEF4)
+        )
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), contentAlignment = Alignment.Center) {
             Text(
                 text = text,
-                color = if (focused) Color(0xFF111111) else Color.White,
+                color = if (focused) {
+                    Color.White
+                } else {
+                    if (isLightTheme) Color(0xFFFB7299) else Color.White
+                },
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )

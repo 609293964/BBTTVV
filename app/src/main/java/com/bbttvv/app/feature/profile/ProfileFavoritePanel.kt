@@ -47,15 +47,29 @@ internal fun ProfileFavoritePanel(
     onOpenVideo: (String, VideoItem) -> Unit,
     onLoadMore: () -> Unit,
     onRequestSidebarFocus: () -> Boolean,
+    onBackToTopBar: (() -> Boolean)? = null,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null
 ) {
+    val contentFocusTarget = rememberProfileContentFocusTargetState(
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+    )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .profileContentFocusTarget(
+                state = contentFocusTarget,
+                focusCoordinator = focusCoordinator,
+                focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
+            )
+            .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "我的收藏", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "我的收藏", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         if (folders.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -89,6 +103,7 @@ internal fun ProfileFavoritePanel(
             focusTab = focusTab,
             focusRegion = HomeFocusRegion.ProfileContent,
             videoCardRecycledViewPool = videoCardRecycledViewPool,
+            onBackToTopBar = onBackToTopBar,
             onRequestSidebarFocus = onRequestSidebarFocus,
             modifier = Modifier.weight(1f)
         )
@@ -104,14 +119,18 @@ private fun FavoriteFolderChip(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val selectedOrFocused = selected || focused
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Surface(
         onClick = onClick,
         modifier = Modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(22.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) Color(0xE8E5EEF4) else Color(0x12000000),
-            focusedContainerColor = Color(0xF2EEF6FB)
+            containerColor = if (selected) {
+                if (isLightTheme) Color(0x14FB7299) else Color(0xE8E5EEF4)
+            } else {
+                if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+            },
+            focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xF2EEF6FB)
         )
     ) {
         Row(
@@ -121,16 +140,24 @@ private fun FavoriteFolderChip(
         ) {
             Text(
                 text = title,
-                color = if (selectedOrFocused) Color(0xFF111111) else Color.White,
+                color = when {
+                    focused -> if (isLightTheme) Color.White else Color(0xFF111111)
+                    selected -> if (isLightTheme) Color(0xFFFB7299) else Color(0xFF111111)
+                    else -> if (isLightTheme) Color(0xFF18191C) else Color.White
+                },
                 fontSize = 15.sp,
-                fontWeight = if (selectedOrFocused) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (count > 0) {
                 Text(
                     text = count.toString(),
-                    color = if (selectedOrFocused) Color(0x99000000) else Color(0xB3FFFFFF),
+                    color = when {
+                        focused -> if (isLightTheme) Color.White.copy(alpha = 0.85f) else Color(0x99000000)
+                        selected -> if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.75f) else Color(0x99000000)
+                        else -> if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
+                    },
                     fontSize = 12.sp
                 )
             }

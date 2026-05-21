@@ -63,8 +63,21 @@ internal fun ProfileWatchLaterPanel(
         items.firstOrNull()?.let { item -> item.bvid.ifBlank { item.aid.toString() } }
     }
 
+    val contentFocusTarget = rememberProfileContentFocusTargetState(
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+    )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .profileContentFocusTarget(
+                state = contentFocusTarget,
+                focusCoordinator = focusCoordinator,
+                focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
+            )
+            .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (showHeader) {
@@ -72,9 +85,9 @@ internal fun ProfileWatchLaterPanel(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "稍后再看", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+                Text(text = "稍后再看", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
                 if (totalCount > 0) {
-                    Text(text = "共 $totalCount 个", color = Color(0xB3FFFFFF), fontSize = 13.sp)
+                    Text(text = "共 $totalCount 个", color = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF), fontSize = 13.sp)
                 }
             }
         }
@@ -198,8 +211,8 @@ internal fun ProfileVideoGrid(
                     loadMorePrefetchItems = gridColumnCount + 1,
                     canLoadMore = { hasMore && !isLoading && !isLoadingMore },
                     onLoadMore = onLoadMore,
-                    onTopRowDpadUp = onRequestSidebarFocus,
-                    consumeTopRowDpadUp = false,
+                    onTopRowDpadUp = onBackToTopBar ?: onRequestSidebarFocus,
+                    consumeTopRowDpadUp = true,
                     onBackToTopBar = onBackToTopBar,
                     onLeftEdgeDpadLeft = onRequestSidebarFocus,
                     onVideoLongClick = onVideoLongClick?.let { longClick ->

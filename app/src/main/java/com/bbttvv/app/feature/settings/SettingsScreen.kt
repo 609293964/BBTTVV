@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,13 +31,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +67,15 @@ import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import kotlinx.coroutines.launch
 
+enum class SettingsCategory(val title: String) {
+    PLAYBACK("播放设置"),
+    AUDIO("音频配置"),
+    UI_UX("界面交互"),
+    FEED("推荐数据"),
+    NETWORK("网络连接"),
+    SYSTEM("系统关于")
+}
+
 private object SettingsFocusReturnKeys {
     const val Back = "settings:back"
     const val UserAgent = "settings:user_agent"
@@ -77,11 +91,33 @@ fun SettingsScreen(onBack: () -> Unit) {
     val hostView = LocalView.current
     val backFocusRequester = remember { FocusRequester() }
 
+    val categories = SettingsCategory.values()
+    var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
+    val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
+
+    val playbackFirstFocus = remember { FocusRequester() }
+    val audioFirstFocus = remember { FocusRequester() }
+    val uiFirstFocus = remember { FocusRequester() }
+    val feedFirstFocus = remember { FocusRequester() }
+    val networkFirstFocus = remember { FocusRequester() }
+    val systemFirstFocus = remember { FocusRequester() }
+
+    var isFocusedInRightPanel by remember { mutableStateOf(false) }
+
     fun requestBackFocus(): Boolean {
         return runCatching { backFocusRequester.requestFocus() }.getOrDefault(false)
     }
 
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = true) {
+        if (isFocusedInRightPanel) {
+            runCatching {
+                categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+            }
+        } else {
+            onBack()
+        }
+    }
+
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.Back,
         focusRequester = backFocusRequester,
@@ -106,14 +142,21 @@ fun SettingsScreen(onBack: () -> Unit) {
         requestBackFocus()
     }
 
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val backgroundModifier = if (isLightTheme) {
+        Modifier.background(Color(0xFFF0F1F5))
+    } else {
+        Modifier.background(
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF11151C), Color(0xFF0F1311), Color(0xFF090A0C))
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(Color(0xFF11151C), Color(0xFF0F1311), Color(0xFF090A0C))
-                )
-            )
+            .then(backgroundModifier)
     ) {
         Column(
             modifier = Modifier
@@ -132,33 +175,131 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "\u8BBE\u7F6E",
-                        color = Color.White,
+                        text = "设置",
+                        color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
-                        text = "\u8BBE\u7F6E",
-                        color = Color(0xB5FFFFFF),
-                        fontSize = 15.sp
+                        text = "系统与个性化配置",
+                        color = if (isLightTheme) Color(0xFF61666D) else Color(0xB5FFFFFF),
+                        fontSize = 13.sp
                     )
                 }
             }
 
-            TvSettingsList(
-                modifier = Modifier.fillMaxSize(),
-                compact = false,
-                showBuildInfo = true
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(32.dp)
+            ) {
+                // 左侧导航分类栏
+                Column(
+                    modifier = Modifier
+                        .width(180.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    categories.forEachIndexed { index, category ->
+                        val isSelected = selectedCategory == category
+                        var isFocused by remember { mutableStateOf(false) }
+
+                        Surface(
+                            onClick = { selectedCategory = category },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(categoryFocusRequesters[index])
+                                .onFocusChanged { state ->
+                                    isFocused = state.isFocused
+                                    if (state.isFocused) {
+                                        selectedCategory = category
+                                    }
+                                }
+                                .focusProperties {
+                                    right = when (category) {
+                                        SettingsCategory.PLAYBACK -> playbackFirstFocus
+                                        SettingsCategory.AUDIO -> audioFirstFocus
+                                        SettingsCategory.UI_UX -> uiFirstFocus
+                                        SettingsCategory.FEED -> feedFirstFocus
+                                        SettingsCategory.NETWORK -> networkFirstFocus
+                                        SettingsCategory.SYSTEM -> systemFirstFocus
+                                    }
+                                },
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(
+                                containerColor = if (isLightTheme) {
+                                    if (isSelected) Color(0x14FB7299) else Color(0x0C000000)
+                                } else {
+                                    if (isSelected) Color(0x1AFFFFFF) else Color(0x05FFFFFF)
+                                },
+                                focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xFF26354A)
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Text(
+                                    text = category.title,
+                                    color = if (isFocused) {
+                                        Color.White
+                                    } else if (isSelected) {
+                                        if (isLightTheme) Color(0xFFFB7299) else Color(0xFF00AEEC)
+                                    } else {
+                                        if (isLightTheme) Color(0xFF18191C) else Color(0xB5FFFFFF)
+                                    },
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected || isFocused) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 右侧选项详情面板
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .onFocusChanged { state ->
+                            isFocusedInRightPanel = state.hasFocus
+                        }
+                ) {
+                    TvSettingsList(
+                        selectedCategory = selectedCategory,
+                        modifier = Modifier.fillMaxSize(),
+                        compact = true,
+                        showBuildInfo = true,
+                        categoryFocusRequesters = categoryFocusRequesters,
+                        playbackFirstFocus = playbackFirstFocus,
+                        audioFirstFocus = audioFirstFocus,
+                        uiFirstFocus = uiFirstFocus,
+                        feedFirstFocus = feedFirstFocus,
+                        networkFirstFocus = networkFirstFocus,
+                        systemFirstFocus = systemFirstFocus
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 fun TvSettingsList(
+    selectedCategory: SettingsCategory? = null,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     showBuildInfo: Boolean = true,
-    initialFocusRequester: FocusRequester? = null,
+    categoryFocusRequesters: List<FocusRequester> = emptyList(),
+    playbackFirstFocus: FocusRequester = remember { FocusRequester() },
+    audioFirstFocus: FocusRequester = remember { FocusRequester() },
+    uiFirstFocus: FocusRequester = remember { FocusRequester() },
+    feedFirstFocus: FocusRequester = remember { FocusRequester() },
+    networkFirstFocus: FocusRequester = remember { FocusRequester() },
+    systemFirstFocus: FocusRequester = remember { FocusRequester() },
+    initialFocusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -198,6 +339,10 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getSingleBackToHomeEnabledSync(context)
         )
+    val themeMode by SettingsManager.getThemeMode(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getThemeModeSync(context)
+        )
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
     val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
@@ -217,395 +362,512 @@ fun TvSettingsList(
     var showUserAgentDialog by remember { mutableStateOf(false) }
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
     val userAgentFocusRequester = remember { FocusRequester() }
-    val initialFocusModifier = initialFocusRequester
-        ?.let { requester -> Modifier.focusRequester(requester) }
-        ?: Modifier
 
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
         focusRequester = userAgentFocusRequester,
     )
 
-    LaunchedEffect(cacheRefreshTick) {
-        cacheSize = CacheUtils.getTotalCacheSize(context)
+    var lastFocusedKey by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(selectedCategory) {
+        lastFocusedKey = null
+    }
+
+    val defaultFirstKey = when (selectedCategory) {
+        null -> "settings_auto_highest_quality"
+        SettingsCategory.PLAYBACK -> "settings_auto_highest_quality"
+        SettingsCategory.AUDIO -> "settings_volume_calibration"
+        SettingsCategory.UI_UX -> "settings_show_online_count"
+        SettingsCategory.FEED -> "settings_feed_api_type"
+        SettingsCategory.NETWORK -> "settings_user_agent"
+        SettingsCategory.SYSTEM -> "settings_privacy_mode"
+    }
+
+    val targetFirstKey = lastFocusedKey ?: defaultFirstKey
+
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var isFocusedInRightPanel by remember { mutableStateOf(false) }
+
+    val currentCategoryFocusRequester = when (selectedCategory) {
+        SettingsCategory.PLAYBACK -> playbackFirstFocus
+        SettingsCategory.AUDIO -> audioFirstFocus
+        SettingsCategory.UI_UX -> uiFirstFocus
+        SettingsCategory.FEED -> feedFirstFocus
+        SettingsCategory.NETWORK -> networkFirstFocus
+        SettingsCategory.SYSTEM -> systemFirstFocus
+        null -> null
+    }
+
+    LaunchedEffect(targetFirstKey, selectedCategory, isFocusedInRightPanel) {
+        if (!isFocusedInRightPanel && selectedCategory != null) {
+            val targetIndex = getIndexForKey(targetFirstKey, selectedCategory)
+            runCatching {
+                listState.scrollToItem(targetIndex)
+            }
+        }
     }
 
     LazyColumn(
-        modifier = modifier,
+        state = listState,
+        modifier = modifier.onFocusChanged { state ->
+            isFocusedInRightPanel = state.hasFocus
+        },
         verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
         contentPadding = PaddingValues(bottom = if (compact) 20.dp else 32.dp)
     ) {
-        item { SettingsSectionTitle("\u64AD\u653E", compact = compact) }
-        item {
-            SettingsRow(
-                title = "\u4EC5\u52A0\u8F7D\u6700\u9AD8\u5206\u8FA8\u7387",
-                subtitle = "\u64AD\u653E\u65F6\u4F18\u5148\u8BF7\u6C42\u63A5\u53E3\u8FD4\u56DE\u7684\u6700\u9AD8\u753B\u8D28\uFF0C\u5173\u95ED\u540E\u6309\u9ED8\u8BA4\u753B\u8D28\u7B56\u7565\u9009\u62E9\u3002",
-                value = onOff(autoHighestQuality),
-                compact = compact,
-                modifier = initialFocusModifier,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setAuto1080p(context, !autoHighestQuality)
-                    }
-                }
-            )
+        val leftFocus = if (selectedCategory != null && categoryFocusRequesters.size > selectedCategory.ordinal) {
+            categoryFocusRequesters[selectedCategory.ordinal]
+        } else {
+            null
         }
-        item {
-            SettingsRow(
-                title = "\u8BB0\u4F4F\u4E0A\u6B21\u64AD\u653E\u500D\u901F",
-                subtitle = "\u81EA\u52A8\u5E94\u7528\u4E0A\u6B21\u89C2\u770B\u89C6\u9891\u65F6\u9009\u62E9\u7684\u64AD\u653E\u901F\u5EA6\u3002",
-                value = onOff(rememberLastSpeed),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        PlayerSettingsStore.setRememberLastPlaybackSpeed(context, !rememberLastSpeed)
-                    }
+        val leftModifier = leftFocus?.let { requester ->
+            Modifier.focusProperties { left = requester }
+        } ?: Modifier
+
+        val getRowModifier: (String, Modifier) -> Modifier = { key, customBase ->
+            var itemModifier = customBase
+            if (initialFocusRequester != null && targetFirstKey == key) {
+                itemModifier = itemModifier.focusRequester(initialFocusRequester)
+            }
+            if (currentCategoryFocusRequester != null && targetFirstKey == key) {
+                itemModifier = itemModifier.focusRequester(currentCategoryFocusRequester)
+            }
+            itemModifier.onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    lastFocusedKey = key
                 }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u9ED8\u8BA4\u500D\u901F",
-                subtitle = "\u5FAA\u73AF\u5207\u6362 0.75x / 1.0x / 1.25x / 1.5x / 2.0x\u3002",
-                value = "${preferredSpeed}x",
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        PlayerSettingsStore.setDefaultPlaybackSpeed(
-                            context,
-                            nextPlaybackSpeed(preferredSpeed)
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u5E94\u7528\u97F3\u91CF\u6821\u51C6",
-                subtitle = "\u8C03\u6574 BBTTVV \u64AD\u653E\u8F93\u51FA\u97F3\u91CF\uFF0C\u4E0D\u6539\u53D8\u7535\u89C6\u7CFB\u7EDF\u97F3\u91CF\u3002\u8D85\u8FC7 100% \u53EF\u80FD\u5931\u771F\u3002",
-                value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        val nextScale = nextPlayerVolumeCalibrationScale(volumeCalibrationScale)
-                        PlayerSettingsCache.updateVolumeCalibrationScale(nextScale)
-                        PlayerSettingsStore.setVolumeCalibrationScale(context, nextScale)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u97F3\u91CF\u5747\u8861",
-                subtitle = "\u81EA\u52A8\u8C03\u6574\u4E0D\u540C\u89C6\u9891\u7684\u97F3\u91CF\u5DEE\u5F02\uFF0C\u907F\u514D\u5207\u6362\u89C6\u9891\u65F6\u97F3\u91CF\u5FFD\u5927\u5FFD\u5C0F\u3002",
-                value = audioBalanceLevel.label,
-                compact = compact,
-                onClick = {
-                    val nextLevel = nextAudioBalanceLevel(audioBalanceLevel)
-                    com.bbttvv.app.core.player.VolumeBalanceController.setLevel(nextLevel)
-                    PlayerSettingsCache.updateAudioBalanceLevel(nextLevel)
-                    scope.launch {
-                        PlayerSettingsStore.setAudioBalanceLevel(context, nextLevel)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u97F3\u9891\u76F4\u901A [\u5B9E\u9A8C\u6027]",
-                subtitle = "\u5C06\u538B\u7F29\u97F3\u9891\uFF08\u5982\u675C\u6BD4\u5168\u666F\u58F0\u3001Hi-Res\uFF09\u4E0D\u7ECF\u89E3\u7801\u76F4\u63A5\u8F93\u51FA\u5230\u5916\u63A5\u97F3\u9891\u8BBE\u5907\u3002\u5F00\u542F\u540E\u97F3\u91CF\u5747\u8861\u3001\u58F0\u9053\u5E73\u8861\u3001\u500D\u901F\u8C03\u8282\u5C06\u5931\u6548\u3002\u9700\u8981\u8BBE\u5907\u652F\u6301\u5BF9\u5E94\u7F16\u7801\u683C\u5F0F\u3002",
-                value = onOff(audioPassthrough),
-                compact = compact,
-                onClick = {
-                    val newValue = !audioPassthrough
-                    PlayerSettingsCache.updateAudioPassthrough(newValue)
-                    scope.launch {
-                        PlayerSettingsStore.setAudioPassthrough(context, newValue)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u81EA\u52A8\u8DF3\u5230\u4E0A\u6B21\u64AD\u653E\u4F4D\u7F6E",
-                subtitle = "\u6253\u5F00\u89C6\u9891\u65F6\uFF0C\u81EA\u52A8\u4ECE\u4E0A\u6B21\u89C2\u770B\u4E2D\u65AD\u5904\u7EE7\u7EED\u64AD\u653E\u3002",
-                value = onOff(playerAutoResumeEnabled),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setPlayerAutoResumeEnabled(
-                            context,
-                            !playerAutoResumeEnabled
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u64AD\u653E\u7ED3\u675F\u540E",
-                subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
-                value = playerPlaybackEndAction.label,
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setPlayerPlaybackEndAction(
-                            context,
-                            nextPlayerPlaybackEndAction(playerPlaybackEndAction)
-                        )
-                    }
-                }
-            )
+            }
         }
 
-        item { SettingsSectionTitle("\u754C\u9762\u663E\u793A", compact = compact) }
-        item {
-            SettingsRow(
-                title = "\u5728\u7EBF\u89C2\u770B\u4EBA\u6570",
-                subtitle = "\u63A7\u5236\u64AD\u653E\u9875\u53F3\u4E0A\u89D2\u662F\u5426\u663E\u793A\u5F53\u524D\u89C6\u9891\u7684\u5728\u7EBF\u89C2\u770B\u4EBA\u6570\u3002",
-                value = onOff(showOnlineCount),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setShowOnlineCount(context, !showOnlineCount)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u89C6\u9891\u8BE6\u60C5\u9875\u8BC4\u8BBA",
-                subtitle = "\u63A7\u5236\u89C6\u9891\u8BE6\u60C5\u9875\u5E95\u90E8\u8BC4\u8BBA\u533A\u662F\u5426\u663E\u793A\u548C\u52A0\u8F7D\u3002",
-                value = onOff(videoDetailCommentsEnabled),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setVideoDetailCommentsEnabled(
-                            context,
-                            !videoDetailCommentsEnabled
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u52A8\u6001\u9875\u663E\u793A\u7BA1\u7406",
-                subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
-                value = dynamicPageDisplayMode.label,
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setDynamicPageDisplayMode(
-                            context,
-                            nextDynamicPageDisplayMode(dynamicPageDisplayMode)
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\"\u6211\u7684\"\u9875\u9762\u7126\u70B9\u5237\u65B0",
-                subtitle = if (updateContentOnTabFocusEnabled) {
-                    "\u5DF2\u5F00\u542F\uFF1A\u5728\u201C\u6211\u7684\u201D\u9875\u5DE6\u4FA7 TAB \u4E0A\u79FB\u52A8\u7126\u70B9\u65F6\uFF0C\u4F1A\u7ACB\u5373\u5237\u65B0\u53F3\u4FA7\u5185\u5BB9\u3002"
-                } else {
-                    "\u5DF2\u5173\u95ED\uFF1A\u7126\u70B9\u79FB\u52A8\u53EA\u9650\u4E8E TAB\uFF0C\u9700\u6309\u786E\u5B9A\u952E\u540E\u624D\u5237\u65B0\u53F3\u4FA7\u5185\u5BB9\u3002"
-                },
-                value = if (updateContentOnTabFocusEnabled) "\u5F00\u542F" else "\u5173\u95ED",
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setUpdateContentOnTabFocusEnabled(
-                            context,
-                            !updateContentOnTabFocusEnabled
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u7A0D\u540E\u518D\u770B\u5165\u53E3\u4F4D\u7F6E",
-                subtitle = if (watchLaterInTopTabsEnabled) {
-                    "\u5F53\u524D\u663E\u793A\u5728\u9996\u9875\u9876\u90E8 Tabs \u4E2D\uFF0C\u5E76\u4ECE\u201C\u6211\u7684\u201D\u5DE6\u4FA7\u83DC\u5355\u9690\u85CF\u3002"
-                } else {
-                    "\u5F53\u524D\u663E\u793A\u5728\u201C\u6211\u7684\u201D\u5DE6\u4FA7\u83DC\u5355\u4E2D\uFF0C\u5E76\u4ECE\u9996\u9875\u9876\u90E8 Tabs \u9690\u85CF\u3002"
-                },
-                value = if (watchLaterInTopTabsEnabled) "\u9876\u90E8 Tabs" else "\u6211\u7684\u83DC\u5355",
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setWatchLaterInTopTabsEnabled(
-                            context,
-                            !watchLaterInTopTabsEnabled
-                        )
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u76F8\u5173\u89C6\u9891\u4E00\u952E\u56DE\u9996\u9875",
-                subtitle = "\u5F00\u542F\u540E\uFF0C\u5728\u76F8\u5173\u89C6\u9891\u591A\u6B21\u8DF3\u8F6C\u65F6\uFF0C\u70B9\u51FB\u4E00\u6B21\u8FD4\u56DE\u952E\u5373\u53EF\u76F4\u63A5\u56DE\u5230\u9996\u9875\u3002",
-                value = onOff(singleBackToHomeEnabled),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setSingleBackToHomeEnabled(
-                            context,
-                            !singleBackToHomeEnabled
-                        )
-                    }
-                }
-            )
-        }
-
-        item { SettingsSectionTitle("\u9996\u9875\u4E0E\u63A8\u8350", compact = compact) }
-        item {
-            SettingsRow(
-                title = "\u63A8\u8350\u9875\u6570\u636E\u6E90",
-                subtitle = resolveFeedApiTypeDescription(feedApiType),
-                value = resolveFeedApiTypeLabel(feedApiType),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        val next = nextFeedApiType(feedApiType)
-                        if (
-                            next == SettingsManager.FeedApiType.MOBILE &&
-                            TokenManager.accessTokenCache.isNullOrBlank()
-                        ) {
-                            Toast.makeText(
-                                context,
-                                MOBILE_FEED_TOKEN_MISSING_MESSAGE,
-                                Toast.LENGTH_LONG
-                            ).show()
+        if (selectedCategory == null || selectedCategory == SettingsCategory.PLAYBACK) {
+            item(key = "settings_playback_title") { SettingsSectionTitle("播放设置", compact = compact) }
+            item(key = "settings_auto_highest_quality") {
+                SettingsRow(
+                    title = "仅加载最高分辨率",
+                    subtitle = "播放时优先请求接口返回的最高画质，关闭后按默认画质策略选择。",
+                    value = onOff(autoHighestQuality),
+                    compact = compact,
+                    modifier = getRowModifier("settings_auto_highest_quality", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setAuto1080p(context, !autoHighestQuality)
                         }
-                        SettingsManager.setFeedApiType(context, next)
                     }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u9996\u9875\u5237\u65B0\u6570\u91CF",
-                subtitle = "\u5355\u6B21\u5237\u65B0\u65F6\u62C9\u53D6\u7684\u63A8\u8350\u89C6\u9891\u6570\u91CF\u3002",
-                value = homeRefreshCount.toString(),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        val next = if (homeRefreshCount >= 40) 10 else homeRefreshCount + 5
-                        SettingsManager.setHomeRefreshCount(context, next)
-                    }
-                }
-            )
-        }
-
-        item { SettingsSectionTitle("\u7F51\u7EDC", compact = compact) }
-        item {
-            SettingsRow(
-                title = "User-Agent",
-                subtitle = "\u5F53\u524D\uFF1A${buildUserAgentPreview(userAgent)}",
-                value = if (userAgent == DEFAULT_APP_USER_AGENT) "\u9ED8\u8BA4" else "\u81EA\u5B9A\u4E49",
-                compact = compact,
-                modifier = Modifier.focusRequester(userAgentFocusRequester),
-                onClick = {
-                    userAgentDraft = userAgent
-                    showUserAgentDialog = true
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u662F\u5426\u53EA\u5141\u8BB8\u4F7F\u7528IPV4",
-                subtitle = "\u5F00\u542F\u540E\u53EA\u8D70 IPv4 \u89E3\u6790\uFF1B\u5728\u53CC\u6808\u7F51\u7EDC\u5F02\u5E38\u65F6\u53EF\u4F5C\u4E3A\u517C\u5BB9\u5F00\u5173\u3002",
-                value = onOff(ipv4OnlyEnabled),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setIpv4OnlyEnabled(context, !ipv4OnlyEnabled)
-                    }
-                }
-            )
-        }
-
-        item { SettingsSectionTitle("\u9690\u79C1\u4E0E\u7F13\u5B58", compact = compact) }
-        item {
-            SettingsRow(
-                title = "\u9690\u79C1\u65E0\u75D5\u6A21\u5F0F",
-                subtitle = "\u5173\u95ED\u641C\u7D22\u5386\u53F2\u5199\u5165\uFF0C\u5E76\u8DF3\u8FC7\u89C2\u770B\u5FC3\u8DF3\u4E0A\u62A5\u3002",
-                value = onOff(privacyMode),
-                compact = compact,
-                onClick = {
-                    scope.launch {
-                        SettingsManager.setPrivacyModeEnabled(context, !privacyMode)
-                    }
-                }
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u9ED1\u540D\u5355\u6570\u91CF",
-                subtitle = "\u5F53\u524D\u5DF2\u5C4F\u853D\u7684 UP \u6570\u91CF\u3002",
-                value = blockedUps.size.toString(),
-                compact = compact,
-                enabled = false,
-                onClick = {}
-            )
-        }
-        item {
-            SettingsRow(
-                title = "\u6E05\u9664\u7F13\u5B58",
-                subtitle = if (isClearingCache) {
-                    "\u6B63\u5728\u6E05\u7406\u56FE\u7247\u3001\u7F51\u7EDC\u4E0E\u64AD\u653E\u7F13\u5B58..."
-                } else {
-                    "\u6E05\u7406\u9884\u89C8\u56FE\u3001\u7F51\u7EDC\u7F13\u5B58\u548C\u64AD\u653E\u5668\u6B8B\u7559\u3002"
-                },
-                value = if (isClearingCache) "\u6E05\u7406\u4E2D..." else cacheSize,
-                compact = compact,
-                enabled = !isClearingCache,
-                onClick = {
-                    scope.launch {
-                        isClearingCache = true
-                        CacheUtils.clearAllCache(context)
-                        cacheRefreshTick += 1
-                        isClearingCache = false
-                    }
-                }
-            )
-        }
-
-        if (showBuildInfo) {
-            item { SettingsSectionTitle("\u5173\u4E8E", compact = compact) }
-            item {
+                )
+            }
+            item(key = "settings_remember_last_speed") {
                 SettingsRow(
-                    title = "\u7248\u672C",
-                    subtitle = "\u5F53\u524D\u5B89\u88C5\u5305\u7248\u672C\u53F7\u3002",
-                    value = BuildConfig.VERSION_NAME,
+                    title = "记住上次播放倍速",
+                    subtitle = "自动应用上次观看视频时选择的播放速度。",
+                    value = onOff(rememberLastSpeed),
                     compact = compact,
+                    modifier = getRowModifier("settings_remember_last_speed", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            PlayerSettingsStore.setRememberLastPlaybackSpeed(context, !rememberLastSpeed)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_default_speed") {
+                SettingsRow(
+                    title = "默认倍速",
+                    subtitle = "循环切换 0.75x / 1.0x / 1.25x / 1.5x / 2.0x。",
+                    value = "${preferredSpeed}x",
+                    compact = compact,
+                    modifier = getRowModifier("settings_default_speed", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            PlayerSettingsStore.setDefaultPlaybackSpeed(
+                                context,
+                                nextPlaybackSpeed(preferredSpeed)
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_auto_resume") {
+                SettingsRow(
+                    title = "自动跳到上次播放位置",
+                    subtitle = "打开视频时，自动从上次观看中断处继续播放。",
+                    value = onOff(playerAutoResumeEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_auto_resume", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setPlayerAutoResumeEnabled(
+                                context,
+                                !playerAutoResumeEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_playback_end") {
+                SettingsRow(
+                    title = "播放结束后",
+                    subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
+                    value = playerPlaybackEndAction.label,
+                    compact = compact,
+                    modifier = getRowModifier("settings_playback_end", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setPlayerPlaybackEndAction(
+                                context,
+                                nextPlayerPlaybackEndAction(playerPlaybackEndAction)
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        if (selectedCategory == null || selectedCategory == SettingsCategory.AUDIO) {
+            item(key = "settings_audio_title") { SettingsSectionTitle("音频配置", compact = compact) }
+            item(key = "settings_volume_calibration") {
+                SettingsRow(
+                    title = "应用音量校准",
+                    subtitle = "调整 BBTTVV 播放输出音量，不改变电视系统音量。超过 100% 可能失真。",
+                    value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
+                    compact = compact,
+                    modifier = getRowModifier("settings_volume_calibration", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            val nextScale = nextPlayerVolumeCalibrationScale(volumeCalibrationScale)
+                            PlayerSettingsCache.updateVolumeCalibrationScale(nextScale)
+                            PlayerSettingsStore.setVolumeCalibrationScale(context, nextScale)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_volume_balance") {
+                SettingsRow(
+                    title = "音量均衡",
+                    subtitle = "自动调整不同视频的音量差异，避免切换视频时音量忽大忽小。",
+                    value = audioBalanceLevel.label,
+                    compact = compact,
+                    modifier = getRowModifier("settings_volume_balance", leftModifier),
+                    onClick = {
+                        val nextLevel = nextAudioBalanceLevel(audioBalanceLevel)
+                        com.bbttvv.app.core.player.VolumeBalanceController.setLevel(nextLevel)
+                        PlayerSettingsCache.updateAudioBalanceLevel(nextLevel)
+                        scope.launch {
+                            PlayerSettingsStore.setAudioBalanceLevel(context, nextLevel)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_audio_passthrough") {
+                SettingsRow(
+                    title = "音频直通 [实验性]",
+                    subtitle = "将压缩音频（如杜比全景声、Hi-Res）不经解码直接输出到外接音频设备。开启后音量均衡、倍速调节将失效。需要设备支持对应编码格式。",
+                    value = onOff(audioPassthrough),
+                    compact = compact,
+                    modifier = getRowModifier("settings_audio_passthrough", leftModifier),
+                    onClick = {
+                        val newValue = !audioPassthrough
+                        PlayerSettingsCache.updateAudioPassthrough(newValue)
+                        scope.launch {
+                            PlayerSettingsStore.setAudioPassthrough(context, newValue)
+                        }
+                    }
+                )
+            }
+        }
+
+        if (selectedCategory == null || selectedCategory == SettingsCategory.UI_UX) {
+            item(key = "settings_ui_ux_title") { SettingsSectionTitle("界面与交互", compact = compact) }
+            item(key = "settings_show_online_count") {
+                SettingsRow(
+                    title = "在线观看人数",
+                    subtitle = "控制播放页右上角是否显示当前视频的在线观看人数。",
+                    value = onOff(showOnlineCount),
+                    compact = compact,
+                    modifier = getRowModifier("settings_show_online_count", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setShowOnlineCount(context, !showOnlineCount)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_video_detail_comments") {
+                SettingsRow(
+                    title = "视频详情页评论",
+                    subtitle = "控制视频详情页底部评论区是否显示和加载。",
+                    value = onOff(videoDetailCommentsEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_video_detail_comments", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setVideoDetailCommentsEnabled(
+                                context,
+                                !videoDetailCommentsEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_update_content_on_tab_focus") {
+                SettingsRow(
+                    title = "“我的”页面焦点刷新",
+                    subtitle = if (updateContentOnTabFocusEnabled) {
+                        "已开启：在“我的”页左侧 TAB 上移动焦点时，会立即刷新右侧内容。"
+                    } else {
+                        "已关闭：焦点移动只限于 TAB，需按确定键后才刷新右侧内容。"
+                    },
+                    value = if (updateContentOnTabFocusEnabled) "开启" else "关闭",
+                    compact = compact,
+                    modifier = getRowModifier("settings_update_content_on_tab_focus", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setUpdateContentOnTabFocusEnabled(
+                                context,
+                                !updateContentOnTabFocusEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_watch_later_in_top_tabs") {
+                SettingsRow(
+                    title = "稍后再看入口位置",
+                    subtitle = if (watchLaterInTopTabsEnabled) {
+                        "当前显示在首页顶部 Tabs 中，并从“我的”左侧菜单隐藏。"
+                    } else {
+                        "当前显示在“我的”左侧菜单中，并从首页顶部 Tabs 隐藏。"
+                    },
+                    value = if (watchLaterInTopTabsEnabled) "顶部 Tabs" else "我的菜单",
+                    compact = compact,
+                    modifier = getRowModifier("settings_watch_later_in_top_tabs", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setWatchLaterInTopTabsEnabled(
+                                context,
+                                !watchLaterInTopTabsEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_single_back_to_home") {
+                SettingsRow(
+                    title = "相关视频一键回首页",
+                    subtitle = "开启后，在相关视频多次跳转时，点击一次返回键即可直接回到首页。",
+                    value = onOff(singleBackToHomeEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_single_back_to_home", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setSingleBackToHomeEnabled(
+                                context,
+                                !singleBackToHomeEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_theme_mode") {
+                SettingsRow(
+                    title = "系统主题模式",
+                    subtitle = "切换应用的全局主题界面。亮色主题下播放器、评论 and 设置等区域都将升级为高级磨砂白玻璃拟态加黑色文字界面。",
+                    value = themeMode.label,
+                    compact = compact,
+                    modifier = getRowModifier("settings_theme_mode", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            val next = if (themeMode == SettingsManager.ThemeMode.DARK) {
+                                SettingsManager.ThemeMode.LIGHT
+                            } else {
+                                SettingsManager.ThemeMode.DARK
+                            }
+                            SettingsManager.setThemeMode(context, next)
+                        }
+                    }
+                )
+            }
+        }
+
+        if (selectedCategory == null || selectedCategory == SettingsCategory.FEED) {
+            item(key = "settings_feed_title") { SettingsSectionTitle("推荐与数据", compact = compact) }
+            item(key = "settings_feed_api_type") {
+                SettingsRow(
+                    title = "推荐页数据源",
+                    subtitle = resolveFeedApiTypeDescription(feedApiType),
+                    value = resolveFeedApiTypeLabel(feedApiType),
+                    compact = compact,
+                    modifier = getRowModifier("settings_feed_api_type", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            val next = nextFeedApiType(feedApiType)
+                            if (
+                                next == SettingsManager.FeedApiType.MOBILE &&
+                                TokenManager.accessTokenCache.isNullOrBlank()
+                            ) {
+                                Toast.makeText(
+                                    context,
+                                    MOBILE_FEED_TOKEN_MISSING_MESSAGE,
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            SettingsManager.setFeedApiType(context, next)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_home_refresh_count") {
+                SettingsRow(
+                    title = "首页刷新数量",
+                    subtitle = "单次刷新时拉取的推荐视频数量。",
+                    value = homeRefreshCount.toString(),
+                    compact = compact,
+                    modifier = getRowModifier("settings_home_refresh_count", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            val next = if (homeRefreshCount >= 40) 10 else homeRefreshCount + 5
+                            SettingsManager.setHomeRefreshCount(context, next)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_dynamic_page_display_mode") {
+                SettingsRow(
+                    title = "动态页显示管理",
+                    subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
+                    value = dynamicPageDisplayMode.label,
+                    compact = compact,
+                    modifier = getRowModifier("settings_dynamic_page_display_mode", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setDynamicPageDisplayMode(
+                                context,
+                                nextDynamicPageDisplayMode(dynamicPageDisplayMode)
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        if (selectedCategory == null || selectedCategory == SettingsCategory.NETWORK) {
+            item(key = "settings_network_title") { SettingsSectionTitle("网络与连接", compact = compact) }
+            item(key = "settings_user_agent") {
+                SettingsRow(
+                    title = "User-Agent",
+                    subtitle = "当前：${buildUserAgentPreview(userAgent)}",
+                    value = if (userAgent == DEFAULT_APP_USER_AGENT) "默认" else "自定义",
+                    compact = compact,
+                    modifier = getRowModifier(
+                        "settings_user_agent",
+                        leftModifier.focusRequester(userAgentFocusRequester)
+                    ),
+                    onClick = {
+                        userAgentDraft = userAgent
+                        showUserAgentDialog = true
+                    }
+                )
+            }
+            item(key = "settings_ipv4_only") {
+                SettingsRow(
+                    title = "是否只允许使用IPV4",
+                    subtitle = "开启后只走 IPv4 解析；在双栈网络异常时可作为兼容开关。",
+                    value = onOff(ipv4OnlyEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_ipv4_only", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setIpv4OnlyEnabled(context, !ipv4OnlyEnabled)
+                        }
+                    }
+                )
+            }
+        }
+
+        if (selectedCategory == null || selectedCategory == SettingsCategory.SYSTEM) {
+            item(key = "settings_system_title") { SettingsSectionTitle("系统与关于", compact = compact) }
+            item(key = "settings_privacy_mode") {
+                SettingsRow(
+                    title = "隐私无痕模式",
+                    subtitle = "关闭搜索历史写入，并跳过观看心跳上报。",
+                    value = onOff(privacyMode),
+                    compact = compact,
+                    modifier = getRowModifier("settings_privacy_mode", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setPrivacyModeEnabled(context, !privacyMode)
+                        }
+                    }
+                )
+            }
+            item(key = "settings_blocked_ups_count") {
+                SettingsRow(
+                    title = "黑名单数量",
+                    subtitle = "当前已屏蔽的 UP 数量。",
+                    value = blockedUps.size.toString(),
+                    compact = compact,
+                    modifier = getRowModifier("settings_blocked_ups_count", leftModifier),
                     enabled = false,
                     onClick = {}
                 )
             }
-            item {
+            item(key = "settings_clear_cache") {
                 SettingsRow(
-                    title = "\u6784\u5EFA\u7C7B\u578B",
-                    subtitle = "\u7528\u4E8E\u533A\u5206 debug / release\u3002",
-                    value = BuildConfig.BUILD_TYPE,
+                    title = "清除缓存",
+                    subtitle = if (isClearingCache) {
+                        "正在清理图片、网络与播放缓存..."
+                    } else {
+                        "清理预览图、网络缓存和播放器残留。"
+                    },
+                    value = if (isClearingCache) "清理中..." else cacheSize,
                     compact = compact,
-                    enabled = false,
-                    onClick = {}
+                    modifier = getRowModifier("settings_clear_cache", leftModifier),
+                    enabled = !isClearingCache,
+                    onClick = {
+                        scope.launch {
+                            isClearingCache = true
+                            CacheUtils.clearAllCache(context)
+                            cacheRefreshTick += 1
+                            isClearingCache = false
+                        }
+                    }
                 )
             }
-            item {
-                SettingsRow(
-                    title = "\u5E94\u7528\u5305\u540D",
-                    subtitle = "\u5F53\u524D\u5B89\u88C5\u5728\u8BBE\u5907\u4E0A\u7684\u5305\u6807\u8BC6\u3002",
-                    value = context.packageName,
-                    compact = compact,
-                    enabled = false,
-                    onClick = {}
-                )
+
+            if (showBuildInfo) {
+                item(key = "settings_version") {
+                    SettingsRow(
+                        title = "版本",
+                        subtitle = "当前安装包版本号。",
+                        value = BuildConfig.VERSION_NAME,
+                        compact = compact,
+                        modifier = getRowModifier("settings_version", leftModifier),
+                        enabled = false,
+                        onClick = {}
+                    )
+                }
+                item(key = "settings_build_type") {
+                    SettingsRow(
+                        title = "构建类型",
+                        subtitle = "用于区分 debug / release。",
+                        value = BuildConfig.BUILD_TYPE,
+                        compact = compact,
+                        modifier = leftModifier,
+                        enabled = false,
+                        onClick = {}
+                    )
+                }
+                item(key = "settings_package_name") {
+                    SettingsRow(
+                        title = "应用包名",
+                        subtitle = "当前安装在设备上的包标识。",
+                        value = context.packageName,
+                        compact = compact,
+                        modifier = leftModifier,
+                        enabled = false,
+                        onClick = {}
+                    )
+                }
             }
         }
     }
@@ -662,29 +924,43 @@ private fun SettingsBackButton(
     modifier: Modifier = Modifier,
     onBack: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+
+    val containerColor = if (isLightTheme) Color(0x0C000000) else Color(0x14000000)
+    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
+    
+    val textColor = when {
+        isFocused -> if (isLightTheme) Color.White else Color(0xFF111111)
+        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
+    }
+
     Surface(
         onClick = onBack,
         modifier = modifier,
+        interactionSource = interactionSource,
         shape = ClickableSurfaceDefaults.shape(CircleShape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x14000000),
-            focusedContainerColor = Color.White
+            containerColor = containerColor,
+            focusedContainerColor = focusedContainerColor
         )
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "\u8FD4\u56DE", color = Color.White, fontSize = 15.sp)
+            Text(text = "\u8FD4\u56DE", color = textColor, fontSize = 15.sp)
         }
     }
 }
 
 @Composable
 internal fun SettingsSectionTitle(title: String, compact: Boolean) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Text(
         text = title,
-        color = Color(0x8FFFFFFF),
+        color = if (isLightTheme) Color(0xFF61666D) else Color(0x8FFFFFFF),
         fontSize = if (compact) 11.sp else 13.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 6.dp)
@@ -704,67 +980,101 @@ internal fun SettingsRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val useLightFocusStyle = compact && isFocused
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+
     val titleColor = when {
-        !enabled -> Color(0x78FFFFFF)
-        useLightFocusStyle -> Color(0xFF111111)
-        isFocused -> Color(0xFFF8FBFF)
-        else -> Color.White
+        isLightTheme -> when {
+            !enabled -> Color(0x78000000)
+            isFocused -> Color.White
+            else -> Color(0xFF18191C)
+        }
+        else -> when {
+            !enabled -> Color(0x78FFFFFF)
+            isFocused -> Color.White
+            else -> Color.White
+        }
     }
+    
     val subtitleColor = when {
-        !enabled -> Color(0x5FFFFFFF)
-        useLightFocusStyle -> Color(0xB0000000)
-        isFocused -> Color(0xE1EDF9)
-        else -> Color(0x9FFFFFFF)
+        isLightTheme -> when {
+            !enabled -> Color(0x5F000000)
+            isFocused -> Color(0xB3FFFFFF)
+            else -> Color(0xFF61666D)
+        }
+        else -> when {
+            !enabled -> Color(0x5FFFFFFF)
+            isFocused -> Color(0xB5FFFFFF)
+            else -> Color(0x8FFFFFFF)
+        }
     }
+    
     val valueContainerColor = when {
-        !enabled -> Color(0x0FFFFFFF)
-        useLightFocusStyle -> Color(0x14000000)
-        isFocused -> Color(0x1FFFFFFF)
-        else -> Color(0x0DFFFFFF)
+        isLightTheme -> when {
+            !enabled -> Color(0x0A000000)
+            isFocused -> Color(0x24FFFFFF)
+            else -> Color(0x0F000000)
+        }
+        else -> when {
+            !enabled -> Color(0x0FFFFFFF)
+            isFocused -> Color(0x24FFFFFF)
+            else -> Color(0x0DFFFFFF)
+        }
     }
+    
     val valueTextColor = when {
-        !enabled -> Color(0x72FFFFFF)
-        useLightFocusStyle -> Color(0xFF111111)
-        isFocused -> Color(0xFFF8FBFF)
-        else -> Color(0xCCFFFFFF)
+        isLightTheme -> when {
+            !enabled -> Color(0x72000000)
+            isFocused -> Color.White
+            else -> Color(0xFFFB7299)
+        }
+        else -> when {
+            !enabled -> Color(0x72FFFFFF)
+            isFocused -> Color.White
+            else -> Color(0xCCFFFFFF)
+        }
     }
+
+    val containerColor = if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xFF26354A)
 
     Surface(
         onClick = onClick,
         enabled = enabled,
         interactionSource = interactionSource,
         modifier = modifier,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (compact) 24.dp else 28.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (compact) 10.dp else 12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x12000000),
-            focusedContainerColor = if (compact) Color(0xE9E6EEF4) else Color(0xFF31445E)
+            containerColor = containerColor,
+            focusedContainerColor = focusedContainerColor
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 70.dp else 82.dp)
-                .padding(horizontal = if (compact) 18.dp else 20.dp),
+                .height(if (compact) 44.dp else 62.dp)
+                .padding(horizontal = if (compact) 14.dp else 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 4.dp)
+                verticalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 2.dp)
             ) {
                 Text(
                     text = title,
                     color = titleColor,
-                    fontSize = if (compact) 15.sp else 18.sp,
+                    fontSize = if (compact) 13.sp else 15.sp,
                     fontWeight = FontWeight.Medium
                 )
-                Text(
-                    text = subtitle,
-                    color = subtitleColor,
-                    fontSize = if (compact) 11.sp else 13.sp,
-                    maxLines = 2
-                )
+                if (!compact) {
+                    Text(
+                        text = subtitle,
+                        color = subtitleColor,
+                        fontSize = if (compact) 9.sp else 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             Box(
                 modifier = Modifier
@@ -773,15 +1083,15 @@ internal fun SettingsRow(
                         shape = RoundedCornerShape(999.dp)
                     )
                     .padding(
-                        horizontal = if (compact) 12.dp else 14.dp,
-                        vertical = if (compact) 7.dp else 8.dp
+                        horizontal = if (compact) 10.dp else 12.dp,
+                        vertical = if (compact) 5.dp else 6.dp
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = value,
                     color = valueTextColor,
-                    fontSize = if (compact) 13.sp else 16.sp,
+                    fontSize = if (compact) 11.sp else 13.sp,
                     fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
                 )
             }
@@ -877,4 +1187,58 @@ private fun nextAudioBalanceLevel(current: com.bbttvv.app.core.player.AudioBalan
 
 private fun buildUserAgentPreview(userAgent: String): String {
     return userAgent.trim().replace(Regex("\\s+"), " ").take(52)
+}
+
+private fun getIndexForKey(key: String, category: SettingsCategory): Int {
+    return when (category) {
+        SettingsCategory.PLAYBACK -> when (key) {
+            "settings_playback_title" -> 0
+            "settings_auto_highest_quality" -> 1
+            "settings_remember_last_speed" -> 2
+            "settings_default_speed" -> 3
+            "settings_auto_resume" -> 4
+            "settings_playback_end" -> 5
+            else -> 1
+        }
+        SettingsCategory.AUDIO -> when (key) {
+            "settings_audio_title" -> 0
+            "settings_volume_calibration" -> 1
+            "settings_volume_balance" -> 2
+            "settings_audio_passthrough" -> 3
+            else -> 1
+        }
+        SettingsCategory.UI_UX -> when (key) {
+            "settings_ui_ux_title" -> 0
+            "settings_show_online_count" -> 1
+            "settings_video_detail_comments" -> 2
+            "settings_update_content_on_tab_focus" -> 3
+            "settings_watch_later_in_top_tabs" -> 4
+            "settings_single_back_to_home" -> 5
+            "settings_theme_mode" -> 6
+            else -> 1
+        }
+        SettingsCategory.FEED -> when (key) {
+            "settings_feed_title" -> 0
+            "settings_feed_api_type" -> 1
+            "settings_home_refresh_count" -> 2
+            "settings_dynamic_page_display_mode" -> 3
+            else -> 1
+        }
+        SettingsCategory.NETWORK -> when (key) {
+            "settings_network_title" -> 0
+            "settings_user_agent" -> 1
+            "settings_ipv4_only" -> 2
+            else -> 1
+        }
+        SettingsCategory.SYSTEM -> when (key) {
+            "settings_system_title" -> 0
+            "settings_privacy_mode" -> 1
+            "settings_blocked_ups_count" -> 2
+            "settings_clear_cache" -> 3
+            "settings_version" -> 4
+            "settings_build_type" -> 5
+            "settings_package_name" -> 6
+            else -> 1
+        }
+    }
 }

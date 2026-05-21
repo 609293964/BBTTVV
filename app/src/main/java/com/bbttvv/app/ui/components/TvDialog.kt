@@ -59,6 +59,11 @@ fun TvDialog(
         runCatching { dialogFocusRequester.requestFocus() }
     }
 
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val dialogBg = if (isLightTheme) Color(0xFFF7F8FA) else Color(0xF21A2028)
+    val dialogBorder = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f)
+    val dialogTitleColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -89,14 +94,14 @@ fun TvDialog(
                         onExit = { cancelFocusChange() }
                     }
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xF21A2028))
-                    .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(24.dp))
+                    .background(dialogBg)
+                    .border(1.dp, dialogBorder, RoundedCornerShape(24.dp))
                     .padding(horizontal = 26.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Text(
                     text = title,
-                    color = Color.White,
+                    color = dialogTitleColor,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -125,6 +130,7 @@ fun TvConfirmDialog(
     onSuppressConfirmKeyConsumed: () -> Unit = {},
     actions: @Composable RowScope.() -> Unit
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     TvDialog(
         title = title,
         onDismissRequest = onDismissRequest,
@@ -133,7 +139,7 @@ fun TvConfirmDialog(
         content = {
             Text(
                 text = message,
-                color = Color(0xDDEAF2F8),
+                color = if (isLightTheme) Color(0xFF61666D) else Color(0xDDEAF2F8),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
             )

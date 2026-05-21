@@ -10,6 +10,9 @@ import androidx.annotation.IdRes
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.LayerDrawable
 import coil.imageLoader
 import coil.load
 import coil.request.ImageRequest
@@ -17,11 +20,43 @@ import coil.size.Precision
 import coil.size.Size
 import coil.transform.CircleCropTransformation
 import com.bbttvv.app.R
+import com.bbttvv.app.core.store.SettingsManager
+import com.bbttvv.app.core.util.BlurTransformation
 import com.bbttvv.app.core.util.FormatUtils
 import com.bbttvv.app.databinding.ItemVideoCardBinding
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
 
 private val avatarCircleCropTransformation = CircleCropTransformation()
+
+private val lightStrokeColorStateList = android.content.res.ColorStateList(
+    arrayOf(
+        intArrayOf(android.R.attr.state_focused),
+        intArrayOf(android.R.attr.state_selected),
+        intArrayOf(android.R.attr.state_pressed),
+        intArrayOf()
+    ),
+    intArrayOf(
+        Color.parseColor("#FB7299"), // focused: brand pink
+        Color.parseColor("#FF6699"), // selected: pink
+        Color.parseColor("#FB7299"), // pressed: brand pink
+        Color.TRANSPARENT           // default: transparent
+    )
+)
+
+private val darkStrokeColorStateList = android.content.res.ColorStateList(
+    arrayOf(
+        intArrayOf(android.R.attr.state_focused),
+        intArrayOf(android.R.attr.state_selected),
+        intArrayOf(android.R.attr.state_pressed),
+        intArrayOf()
+    ),
+    intArrayOf(
+        Color.parseColor("#FFFFFF"), // focused: white
+        Color.parseColor("#FF6699"), // selected: pink
+        Color.parseColor("#FFFFFF"), // pressed: white
+        Color.TRANSPARENT           // default: transparent
+    )
+)
 
 internal class HomeVideoCardAdapter(
     private var showHistoryProgressOnly: Boolean = false,
@@ -266,6 +301,24 @@ internal class HomeVideoCardAdapter(
             val video = item.video
             val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
 
+            val context = binding.root.context
+            val themeMode = SettingsManager.getThemeModeSync(context)
+            val isLightTheme = themeMode == SettingsManager.ThemeMode.LIGHT
+
+            binding.root.setStrokeColor(if (isLightTheme) lightStrokeColorStateList else darkStrokeColorStateList)
+
+            if (isLightTheme) {
+                binding.tvTitle.setTextColor(Color.parseColor("#18191C"))
+                binding.tvSubtitle.setTextColor(Color.parseColor("#61666D"))
+                binding.tvPubdate.setTextColor(Color.parseColor("#61666D"))
+                binding.tvReasonHint.setTextColor(Color.parseColor("#E04060"))
+            } else {
+                binding.tvTitle.setTextColor(Color.parseColor("#F4F6F8"))
+                binding.tvSubtitle.setTextColor(Color.parseColor("#999999"))
+                binding.tvPubdate.setTextColor(Color.parseColor("#999999"))
+                binding.tvReasonHint.setTextColor(Color.parseColor("#CFE5EDF7"))
+            }
+
             binding.tvTitle.text = uiModel.title
             binding.tvSubtitle.text = uiModel.ownerName
             binding.tvPubdate.text = uiModel.pubDateText
@@ -286,6 +339,39 @@ internal class HomeVideoCardAdapter(
                 size(Size(480, 270))
             }
 
+            // 异步加载毛玻璃虚化背景层（解决列表复用导致背景错乱的防错 Tag 校验设计）
+            binding.clInfo.setTag(coverUrl)
+            val defaultBgColor = if (isLightTheme) Color.parseColor("#F2F4F7") else Color.parseColor("#CC1F1F21")
+            val overlayColor = if (isLightTheme) Color.parseColor("#D8FFFFFF") else Color.parseColor("#C0161618")
+            binding.clInfo.setBackgroundColor(defaultBgColor)
+
+            if (coverUrl.isNotBlank()) {
+                val blurRequest = ImageRequest.Builder(context)
+                    .data(coverUrl)
+                    .transformations(BlurTransformation(context, radius = 8f, sampling = 4f))
+                    .precision(Precision.INEXACT)
+                    .size(Size(120, 67)) // 缩放小图进行模糊，极其快速且节省内存
+                    .allowHardware(false) // 设为 false 以便能获取 Bitmap 渲染为背景 Drawable
+                    .target(
+                        onSuccess = { drawable ->
+                            if (binding.clInfo.tag == coverUrl) {
+                                val layerDrawable = LayerDrawable(arrayOf(
+                                    drawable,
+                                    ColorDrawable(overlayColor)
+                                ))
+                                binding.clInfo.background = layerDrawable
+                            }
+                        },
+                        onError = {
+                            if (binding.clInfo.tag == coverUrl) {
+                                binding.clInfo.setBackgroundColor(defaultBgColor)
+                            }
+                        }
+                    )
+                    .build()
+                context.imageLoader.enqueue(blurRequest)
+            }
+
             val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
             binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
                 crossfade(false)
@@ -293,9 +379,15 @@ internal class HomeVideoCardAdapter(
                 transformations(avatarCircleCropTransformation)
             }
 
-            val isLiveCard = video.aid == 0L && video.cid == 0L && video.duration <= 0
+            val isBangumiCard = video.bvid.startsWith("ss") || video.bvid.startsWith("ep")
+            val isLiveCard = !isBangumiCard && video.aid == 0L && video.cid == 0L && video.duration <= 0
 
-            if (isLiveCard) {
+            if (isBangumiCard) {
+                binding.tvDuration.visibility = View.VISIBLE
+                binding.tvDuration.text = uiModel.durationMetaText
+                binding.llStats.visibility = View.GONE
+                binding.tvProgressLeft.visibility = View.GONE
+            } else if (isLiveCard) {
                 binding.tvDuration.visibility = View.GONE
                 binding.llStats.visibility = View.GONE
                 binding.tvProgressLeft.visibility = View.VISIBLE
@@ -322,6 +414,10 @@ internal class HomeVideoCardAdapter(
             boundOnItemKeyEvent = null
             boundOnBackKeyUp = null
             binding.root.isLongClickable = false
+
+            // 清除毛玻璃异步 Tag 与背景，防止内存泄漏和复用瞬间的旧图闪烁
+            binding.clInfo.setTag(null)
+            binding.clInfo.background = null
         }
 
         fun clearFocusVisualState() {

@@ -68,6 +68,7 @@ import com.bbttvv.app.ui.home.HomeCollapsingHeaderGrid
 import com.bbttvv.app.ui.home.LocalHomeTabActive
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 import com.bbttvv.app.ui.home.rememberHomeCollapsingHeaderState
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @Composable
 internal fun SearchScreen(
@@ -81,6 +82,7 @@ internal fun SearchScreen(
     viewModel: SearchViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLightTheme = LocalIsLightTheme.current
     val isHomeTabActive = LocalHomeTabActive.current
     val searchBarFocusRequester = remember { FocusRequester() }
     val visibleSearchTypes = remember { listOf(SearchType.VIDEO, SearchType.UP) }
@@ -235,7 +237,7 @@ internal fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background)
         ) {
             SearchBarRow(
                 value = uiState.query,
@@ -256,7 +258,7 @@ internal fun SearchScreen(
             if (uiState.hotList.isNotEmpty()) {
                 Text(
                     text = "当前热搜",
-                    color = Color.White,
+                    color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 18.sp,
                     modifier = Modifier.padding(horizontal = AppTopBarDefaults.HeaderContentHorizontalPadding, vertical = 12.dp)
@@ -296,12 +298,12 @@ internal fun SearchScreen(
             state = searchResultHeaderState,
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background),
             localHeader = {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background)
                 ) {
                     SearchBarRow(
                         value = uiState.query,
@@ -351,7 +353,7 @@ internal fun SearchScreen(
                         .padding(top = topPadding),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "搜索中...", color = Color.White)
+                    Text(text = "搜索中...", color = if (isLightTheme) Color(0xFF61666D) else Color.White)
                 }
             } else if (!uiState.errorMessage.isNullOrBlank()) {
                 Box(
@@ -541,6 +543,12 @@ private fun CapsuleSearchBar(
     onMoveFocusDown: (() -> Boolean)? = null,
     modifier: Modifier = Modifier
 ) {
+    val isLightTheme = LocalIsLightTheme.current
+    val containerColor = if (isLightTheme) Color(0xFFF1F2F3) else Color(0xFF222733)
+    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
+    val contentColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val focusedContentColor = if (isLightTheme) Color.White else Color.Black
+
     TvTextInput(
         value = value,
         onValueChange = onValueChange,
@@ -553,19 +561,19 @@ private fun CapsuleSearchBar(
         },
         onMoveFocusDown = onMoveFocusDown,
         shape = RoundedCornerShape(999.dp),
-        containerColor = Color(0xFF222733),
-        focusedContainerColor = Color.White,
-        contentColor = Color.White,
-        focusedContentColor = Color.Black,
+        containerColor = containerColor,
+        focusedContainerColor = focusedContainerColor,
+        contentColor = contentColor,
+        focusedContentColor = focusedContentColor,
         focusedScale = 1.05f,
         horizontalPadding = 24.dp,
         verticalPadding = 12.dp,
         modifier = modifier
-    ) { contentColor ->
+    ) { contentColorVal ->
         Icon(
             imageVector = Icons.Outlined.Search,
             contentDescription = "Search",
-            tint = contentColor.copy(alpha = 0.7f),
+            tint = contentColorVal.copy(alpha = 0.7f),
             modifier = Modifier.padding(end = 4.dp)
         )
     }
@@ -618,18 +626,24 @@ private fun CategoryPill(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
+    val targetBgColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        else -> Color.Transparent
+    }
+    val targetTextColor = when {
+        isFocused -> Color.White
+        selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        else -> if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.6f)
+    }
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) Color.White else Color.Transparent,
+        targetValue = targetBgColor,
         animationSpec = tween(durationMillis = 150),
         label = "backgroundColor"
     )
     val textColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> Color(0xFF111418)
-            selected -> Color.White
-            else -> Color.White.copy(alpha = 0.6f)
-        },
+        targetValue = targetTextColor,
         animationSpec = tween(durationMillis = 150),
         label = "textColor"
     )
@@ -691,14 +705,23 @@ private fun HotSearchKeywordPill(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
+    val targetBgColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        else -> if (isLightTheme) Color(0xFFF1F2F3) else Color(0xFF222733)
+    }
+    val targetContentColor = when {
+        isFocused -> if (isLightTheme) Color.White else Color.Black
+        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
+    }
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) Color.White else Color(0xFF222733),
+        targetValue = targetBgColor,
         animationSpec = tween(150),
         label = "bg"
     )
     val contentColor by animateColorAsState(
-        targetValue = if (isFocused) Color.Black else Color.White,
+        targetValue = targetContentColor,
         animationSpec = tween(150),
         label = "content"
     )

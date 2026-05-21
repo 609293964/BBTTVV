@@ -35,6 +35,7 @@ import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -251,15 +252,24 @@ fun HomeScreen(
         requestTopBarFromContent(HomeFocusScene.BackToTopBar)
     }
 
-    val backgroundModifier = remember(selectedHomeTab) {
+    val isLightTheme = LocalIsLightTheme.current
+    val backgroundModifier = remember(selectedHomeTab, isLightTheme) {
         if (selectedHomeTab == AppTopLevelTab.PROFILE) {
             Modifier.background(
                 androidx.compose.ui.graphics.Brush.linearGradient(
-                    colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF18222A),
-                        androidx.compose.ui.graphics.Color(0xFF161A16),
-                        androidx.compose.ui.graphics.Color(0xFF090A0B)
-                    )
+                    colors = if (isLightTheme) {
+                        listOf(
+                            androidx.compose.ui.graphics.Color(0xFFEBECEF),
+                            androidx.compose.ui.graphics.Color(0xFFF3F4F7),
+                            androidx.compose.ui.graphics.Color(0xFFF0F1F5)
+                        )
+                    } else {
+                        listOf(
+                            androidx.compose.ui.graphics.Color(0xFF18222A),
+                            androidx.compose.ui.graphics.Color(0xFF161A16),
+                            androidx.compose.ui.graphics.Color(0xFF090A0B)
+                        )
+                    }
                 )
             )
         } else {

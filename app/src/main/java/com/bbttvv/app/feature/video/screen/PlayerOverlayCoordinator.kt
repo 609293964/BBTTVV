@@ -155,6 +155,7 @@ internal fun handlePlayerOverlayEffect(
     context: Context,
     scope: CoroutineScope,
     exitTrace: PlayerExitTrace,
+    onPrepareExitPlayer: () -> Unit,
     onExitPlayer: () -> Unit,
 ) {
     when (effect) {
@@ -203,6 +204,9 @@ internal fun handlePlayerOverlayEffect(
 
         PlayerOverlayEffect.ExitPlayer -> {
             exitTrace.start("back_pressed")
+            exitTrace.measure("playerView:pre_exit_detach") {
+                onPrepareExitPlayer()
+            }
             exitTrace.measure("finishPlaybackSession:back_pressed") {
                 viewModel.finishPlaybackSession(reason = "back_pressed")
             }

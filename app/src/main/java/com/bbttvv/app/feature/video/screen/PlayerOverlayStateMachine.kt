@@ -210,6 +210,10 @@ internal class PlayerOverlayStateMachine {
 
         if (event.action == KeyEvent.ACTION_UP) {
             return when {
+                event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE -> {
+                    true
+                }
+
                 isSeekKey && shouldHandleAsSeek -> {
                     if (uiState.isScrubbing) {
                         finishSeekScrub(onEffect)

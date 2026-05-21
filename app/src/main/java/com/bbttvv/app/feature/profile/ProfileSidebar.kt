@@ -48,15 +48,16 @@ private data class ProfileMetric(val label: String, val value: String)
 
 @Composable
 internal fun GuestProfileSidebar(storedAccountCount: Int, modifier: Modifier = Modifier) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
         modifier = modifier.fillMaxHeight().padding(top = 24.dp, start = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Box(modifier = Modifier.size(66.dp).background(Color(0x2AFFFFFF), CircleShape), contentAlignment = Alignment.Center) {
-            Text(text = "未", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Box(modifier = Modifier.size(66.dp).background(if (isLightTheme) Color(0x0C000000) else Color(0x2AFFFFFF), CircleShape), contentAlignment = Alignment.Center) {
+            Text(text = "未", color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         }
-        Text(text = "未登录", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        Text(text = "右侧会显示 TV 扫码登录二维码，登录后会自动刷新账户信息与历史记录！", color = Color(0xD9FFFFFF), lineHeight = 22.sp)
+        Text(text = "未登录", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "右侧会显示 TV 扫码登录二维码，登录后会自动刷新账户信息与历史记录！", color = if (isLightTheme) Color(0xFF61666D) else Color(0xD9FFFFFF), lineHeight = 22.sp)
         ProfileMetricRow(
             items = listOf(
                 ProfileMetric("硬币", "0"),
@@ -73,8 +74,9 @@ internal fun GuestProfileSidebar(storedAccountCount: Int, modifier: Modifier = M
 
 @Composable
 private fun ProfileGhostHint(text: String) {
-    Box(modifier = Modifier.fillMaxWidth().background(Color(0x14000000), RoundedCornerShape(28.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
-        Text(text = text, color = Color(0xE6FFFFFF), lineHeight = 21.sp)
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    Box(modifier = Modifier.fillMaxWidth().background(if (isLightTheme) Color(0x0C000000) else Color(0x14000000), RoundedCornerShape(28.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
+        Text(text = text, color = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF), lineHeight = 21.sp)
     }
 }
 
@@ -93,6 +95,7 @@ internal fun LoggedInSidebar(
     modifier: Modifier = Modifier
 ) {
     val navData = uiState.navData ?: return
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(modifier = modifier.fillMaxHeight().padding(top = 14.dp, start = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AsyncImage(
@@ -107,7 +110,7 @@ internal fun LoggedInSidebar(
             )
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(text = navData.uname, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = navData.uname, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     MiniBadge(text = "LV${navData.level_info.current_level}", backgroundColor = Color(0xFFEF8D39))
                     if (navData.vip.status == 1) {
                         MiniBadge(text = navData.vip.label.text.ifBlank { "大会员" }, backgroundColor = Color(0xFFB86884))
@@ -160,11 +163,12 @@ private fun MiniBadge(text: String, backgroundColor: Color) {
 
 @Composable
 private fun ProfileMetricRow(items: List<ProfileMetric>) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         items.forEach { item ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = item.value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = item.label, color = Color(0xE6FFFFFF), fontSize = 10.sp)
+                Text(text = item.value, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = item.label, color = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF), fontSize = 10.sp)
             }
         }
     }
@@ -185,6 +189,7 @@ private fun ProfileMenuItemRow(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val itemShape = RoundedCornerShape(22.dp)
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Surface(
         modifier = Modifier
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
@@ -210,8 +215,12 @@ private fun ProfileMenuItemRow(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(itemShape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) Color(0xE8E5EEF4) else Color(0x12000000),
-            focusedContainerColor = if (isDanger) Color(0x33F0B4BF) else Color(0xFFF6FAFD)
+            containerColor = if (selected) {
+                if (isLightTheme) Color(0x14FB7299) else Color(0xE8E5EEF4)
+            } else {
+                if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
+            },
+            focusedContainerColor = if (isDanger) Color(0x33F0B4BF) else if (isLightTheme) Color(0xFFFB7299) else Color(0xFFF6FAFD)
         )
     ) {
         Box(
@@ -221,8 +230,8 @@ private fun ProfileMenuItemRow(
                 .border(
                     width = if (isFocused) 1.dp else if (selected) 1.dp else 0.dp,
                     color = when {
-                        isFocused -> Color.White.copy(alpha = 0.92f)
-                        selected -> Color.White.copy(alpha = 0.28f)
+                        isFocused -> if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.92f)
+                        selected -> if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.28f)
                         else -> Color.Transparent
                     },
                     shape = itemShape,
@@ -234,9 +243,10 @@ private fun ProfileMenuItemRow(
                 text = label,
                 color = when {
                     isDanger && isFocused -> Color(0xFF5A1020)
-                    selected || isFocused -> Color(0xFF111111)
+                    isFocused -> if (isLightTheme) Color.White else Color(0xFF111111)
+                    selected -> if (isLightTheme) Color(0xFFFB7299) else Color(0xFF111111)
                     isDanger -> Color(0xFFF0B4BF)
-                    else -> Color.White
+                    else -> if (isLightTheme) Color(0xFF18191C) else Color.White
                 },
                 fontSize = 14.sp,
                 fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal

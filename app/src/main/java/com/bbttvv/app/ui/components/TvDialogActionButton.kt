@@ -34,13 +34,36 @@ fun TvDialogActionButton(
     minWidth: Dp = 72.dp
 ) {
     var focused by remember { mutableStateOf(false) }
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+
+    val finalContainerColor = if (isLightTheme) {
+        Color(0x0C000000)
+    } else {
+        containerColor
+    }
+    val finalFocusedContainerColor = if (isLightTheme) {
+        Color(0xFFFB7299)
+    } else {
+        focusedContainerColor
+    }
+    val finalContentColor = if (isLightTheme) {
+        Color(0xFF18191C)
+    } else {
+        contentColor
+    }
+    val finalFocusedContentColor = if (isLightTheme) {
+        Color.White
+    } else {
+        focusedContentColor
+    }
+
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused || it.hasFocus },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = containerColor,
-            focusedContainerColor = focusedContainerColor
+            containerColor = finalContainerColor,
+            focusedContainerColor = finalFocusedContainerColor
         )
     ) {
         Box(
@@ -51,7 +74,7 @@ fun TvDialogActionButton(
         ) {
             Text(
                 text = text,
-                color = if (focused) focusedContentColor else contentColor,
+                color = if (focused) finalFocusedContentColor else finalContentColor,
                 fontWeight = FontWeight.Medium
             )
         }

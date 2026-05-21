@@ -101,6 +101,7 @@ private fun HomeSecondaryTab(
     onDpadUp: (() -> Boolean)?,
     onDpadDown: ((Int) -> Boolean)?,
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     var isFocused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
@@ -137,14 +138,21 @@ private fun HomeSecondaryTab(
         ),
         glow = ClickableSurfaceDefaults.glow(Glow.None, Glow.None, Glow.None)
     ) {
+        val containerBgColor = when {
+            isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+            selected -> if (isLightTheme) Color(0x14FB7299) else Color(0x22000000)
+            else -> if (isLightTheme) Color(0x0A000000) else Color(0x22000000)
+        }
+        val textColor = when {
+            isFocused -> if (isLightTheme) Color.White else Color.Black
+            selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+            else -> if (isLightTheme) Color(0xFF61666D) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
+        }
         Box(
             modifier = Modifier
                 .clip(CircleShape)
                 .background(
-                    color = when {
-                        isFocused -> Color.White
-                        else -> Color(0x22000000)
-                    },
+                    color = containerBgColor,
                     shape = CircleShape
                 )
                 .padding(horizontal = 15.dp, vertical = 6.dp),
@@ -152,11 +160,7 @@ private fun HomeSecondaryTab(
         ) {
             Text(
                 text = label,
-                color = when {
-                    isFocused -> Color.Black
-                    selected -> Color.White
-                    else -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
-                },
+                color = textColor,
                 fontSize = 15.sp,
                 fontWeight = if (isFocused || selected) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1

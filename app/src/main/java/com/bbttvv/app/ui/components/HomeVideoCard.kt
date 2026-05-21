@@ -75,13 +75,19 @@ data class HomeVideoCardUiModel(
 fun VideoItem.toHomeVideoCardUiModel(
     showHistoryProgressOnly: Boolean = false
 ): HomeVideoCardUiModel {
-    val isLiveCard = aid == 0L && cid == 0L && duration <= 0
-    val showHistoryFallbackMeta = showHistoryProgressOnly || (!isLiveCard &&
+    val isBangumiCard = bvid.startsWith("ss") || bvid.startsWith("ep")
+    val isLiveCard = !isBangumiCard && aid == 0L && cid == 0L && duration <= 0
+    val showHistoryFallbackMeta = !isBangumiCard && (showHistoryProgressOnly || (!isLiveCard &&
         view_at > 0L &&
         stat.view <= 0 &&
-        stat.danmaku <= 0)
-    val durationMetaText = if (isLiveCard) "直播中" else formatDuration(duration)
+        stat.danmaku <= 0))
+    val durationMetaText = when {
+        isBangumiCard -> collectionSubtitle.ifBlank { "番剧" }
+        isLiveCard -> "直播中"
+        else -> formatDuration(duration)
+    }
     val leadingMetaText = when {
+        isBangumiCard -> ""
         showHistoryFallbackMeta -> {
             if (progress > 0 && duration > 0) {
                 "已看 ${formatDuration(progress.coerceIn(0, duration))}"

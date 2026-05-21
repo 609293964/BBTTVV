@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import com.bbttvv.app.feature.video.viewmodel.PlaybackBadge
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
@@ -131,19 +132,27 @@ internal fun buildTopRightBadges(
 
 @Composable
 private fun BoxScope.PlayerControlsScrim() {
+    val isLightTheme = LocalIsLightTheme.current
+    val scrimColors = if (isLightTheme) {
+        listOf(
+            Color.Transparent,
+            Color.White.copy(alpha = 0.35f),
+            Color.White.copy(alpha = 0.85f),
+        )
+    } else {
+        listOf(
+            Color.Transparent,
+            Color.Black.copy(alpha = 0.28f),
+            Color.Black.copy(alpha = 0.82f),
+        )
+    }
     Box(
         modifier = Modifier
             .align(Alignment.BottomStart)
             .fillMaxWidth()
             .height(300.dp)
             .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        Color.Black.copy(alpha = 0.28f),
-                        Color.Black.copy(alpha = 0.82f),
-                    ),
-                ),
+                Brush.verticalGradient(colors = scrimColors),
             ),
     )
 }
@@ -327,10 +336,11 @@ private fun OnlineCountPill(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.15f))
+            .background(if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.15f))
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -343,7 +353,7 @@ private fun OnlineCountPill(
         )
         Text(
             text = text,
-            color = Color(0xEAF7FAFF),
+            color = if (isLightTheme) Color(0xFF18191C) else Color(0xEAF7FAFF),
             fontSize = 12.sp,
             maxLines = 1,
         )
@@ -355,20 +365,28 @@ private fun BadgeRow(
     badges: List<PlaybackBadge>,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     LazyRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(badges) { badge ->
+            val bgAlpha = if (badge.isActive) 0.28f else 0.15f
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(Color.White.copy(alpha = if (badge.isActive) 0.28f else 0.15f))
+                    .background(
+                        if (isLightTheme) {
+                            if (badge.isActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.65f)
+                        } else {
+                            Color.White.copy(alpha = bgAlpha)
+                        }
+                    )
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = badge.label,
-                    color = Color.White,
+                    color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )

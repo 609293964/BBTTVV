@@ -102,6 +102,9 @@ internal fun PlayerScreenEffectHost(
                 is PlayerEvent.ExitPlayer -> {
                     val exitTrace = latestExitTrace.value
                     exitTrace.start(event.reason)
+                    exitTrace.measure("playerView:pre_exit_detach") {
+                        clearPlayerViewReference(latestPlayerView.value)
+                    }
                     exitTrace.mark("navigateBack:request")
                     latestOnExitPlayer.value()
                 }

@@ -26,6 +26,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.bbttvv.app.core.player.BufferingSpeedMeter
+import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.player.DanmakuSettings
@@ -126,6 +127,9 @@ fun PlayerScreen(
         context = context,
         scope = scope,
         exitTrace = exitTrace,
+        onPrepareExitPlayer = {
+            clearPlayerViewReference(playerViewRef)
+        },
         onExitPlayer = onBack,
     )
     val latestHandleOverlayEffect = rememberUpdatedState(handleOverlayEffect)

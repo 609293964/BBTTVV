@@ -82,6 +82,20 @@ object SettingsManager {
         }
     }
 
+    enum class ThemeMode(
+        val value: String,
+        val label: String
+    ) {
+        DARK("dark", "深色模式"),
+        LIGHT("light", "亮色模式");
+
+        companion object {
+            fun fromValue(value: String?): ThemeMode {
+                return entries.find { it.value == value } ?: DARK
+            }
+        }
+    }
+
     private const val SYNC_PREFS_NAME = "settings_sync_cache"
     private const val CACHE_PRIVACY_MODE = "privacy_mode"
     private const val CACHE_SPONSOR_BLOCK_ENABLED = "sponsor_block_enabled"
@@ -109,6 +123,7 @@ object SettingsManager {
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
     private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
     private const val CACHE_SINGLE_BACK_TO_HOME = "single_back_to_home"
+    private const val CACHE_THEME_MODE = "theme_mode"
 
     private val keyPrivacyMode = booleanPreferencesKey(CACHE_PRIVACY_MODE)
     private val keySponsorBlockEnabled = booleanPreferencesKey(CACHE_SPONSOR_BLOCK_ENABLED)
@@ -136,6 +151,20 @@ object SettingsManager {
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
     private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
+    private val keyThemeMode = stringPreferencesKey(CACHE_THEME_MODE)
+
+    fun getThemeMode(context: Context): Flow<ThemeMode> {
+        return context.settingsDataStore.data.map { preferences ->
+            ThemeMode.fromValue(preferences[keyThemeMode])
+        }
+    }
+
+    suspend fun setThemeMode(context: Context, mode: ThemeMode) {
+        updatePreference(context) { preferences ->
+            preferences[keyThemeMode] = mode.value
+        }
+        updateSyncCache(context) { putString(CACHE_THEME_MODE, mode.value) }
+    }
 
     fun getWatchLaterInTopTabsEnabled(context: Context): Flow<Boolean> {
         return context.settingsDataStore.data.map { preferences ->
@@ -560,6 +589,12 @@ object SettingsManager {
 
     fun getSingleBackToHomeEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_SINGLE_BACK_TO_HOME, false)
+    }
+
+    fun getThemeModeSync(context: Context): ThemeMode {
+        return ThemeMode.fromValue(
+            context.syncPrefs().getString(CACHE_THEME_MODE, ThemeMode.DARK.value)
+        )
     }
 
     internal fun mapNavigationSettingsFromPreferences(preferences: Preferences): AppNavigationSettings {

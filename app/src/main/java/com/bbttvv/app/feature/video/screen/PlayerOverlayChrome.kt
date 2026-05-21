@@ -56,6 +56,7 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.ProgressHeatmapPoint
 import kotlinx.coroutines.delay
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @Composable
 internal fun PlayerSurface(
@@ -151,6 +152,7 @@ internal fun PlayerInfoOverlay(
     actionBar: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val currentPlaybackState = playbackState.value
     Column(
         modifier = modifier
@@ -160,7 +162,7 @@ internal fun PlayerInfoOverlay(
     ) {
         Text(
             text = uiState.info?.title.orEmpty().ifBlank { "正在加载视频..." },
-            color = Color.White,
+            color = if (isLightTheme) Color(0xFF18191C) else Color.White,
             fontSize = 28.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 2,
@@ -189,7 +191,7 @@ internal fun PlayerInfoOverlay(
         if (uiState.capabilityHints.isNotEmpty()) {
             Text(
                 text = uiState.capabilityHints.joinToString("  "),
-                color = Color(0xCCEBCB62),
+                color = if (isLightTheme) Color(0xFFC04F00) else Color(0xCCEBCB62),
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -212,6 +214,7 @@ private fun MetadataRow(
     uiState: PlayerUiState,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val pubDateText = remember(uiState.info?.pubdate) {
         formatLongVideoPubDate(uiState.info?.pubdate ?: 0L)
     }
@@ -226,11 +229,11 @@ private fun MetadataRow(
             modifier = Modifier
                 .size(24.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.16f)),
+                .background(if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.16f)),
         )
         Text(
             text = uiState.info?.owner?.name.orEmpty().ifBlank { "未知 UP" },
-            color = Color(0xDDF2F6FA),
+            color = if (isLightTheme) Color(0xFF404040) else Color(0xDDF2F6FA),
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -246,6 +249,7 @@ private fun MetricItem(
     icon: ImageVector,
     text: String,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -253,12 +257,12 @@ private fun MetricItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = Color(0xBEE7EBF0),
+            tint = if (isLightTheme) Color(0xFF61666D) else Color(0xBEE7EBF0),
             modifier = Modifier.size(15.dp),
         )
         Text(
             text = text,
-            color = Color(0xCFE7EBF0),
+            color = if (isLightTheme) Color(0xFF61666D) else Color(0xCFE7EBF0),
             fontSize = 15.sp,
             maxLines = 1,
         )
@@ -275,19 +279,32 @@ private fun PlaybackProgressBlock(
     isFocused: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     val positionMs = positionOverrideMs ?: playbackState.positionMs
     val progress = when {
         playbackState.durationMs <= 0L -> 0f
         else -> (positionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
     }
 
+    val blockBackground = if (isFocused) {
+        if (isLightTheme) Color.Black.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.10f)
+    } else {
+        Color.Transparent
+    }
+
+    val blockBorderColor = if (isFocused) {
+        if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.42f)
+    } else {
+        Color.Transparent
+    }
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(if (isFocused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+            .background(blockBackground)
             .border(
                 width = 1.dp,
-                color = if (isFocused) Color.White.copy(alpha = 0.42f) else Color.Transparent,
+                color = blockBorderColor,
                 shape = RoundedCornerShape(18.dp),
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -309,7 +326,7 @@ private fun PlaybackProgressBlock(
         ) {
             Text(
                 text = formatDuration(positionMs),
-                color = Color.White,
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -319,7 +336,7 @@ private fun PlaybackProgressBlock(
             ) {
                 Text(
                     text = playbackState.durationMs.takeIf { it > 0L }?.let(::formatDuration) ?: "--:--",
-                    color = Color(0xD5FFFFFF),
+                    color = if (isLightTheme) Color(0xFF61666D) else Color(0xD5FFFFFF),
                     fontSize = 13.sp,
                 )
                 trailingContent()
@@ -335,6 +352,7 @@ private fun SegmentedProgressBar(
     heatmapPoints: List<ProgressHeatmapPoint>,
     modifier: Modifier = Modifier,
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Canvas(modifier = modifier) {
         val hasHeatmap = heatmapPoints.isNotEmpty()
         val progressHeight = if (hasHeatmap) {
@@ -421,21 +439,37 @@ private fun SegmentedProgressBar(
                     lineTo(last.x, last.y)
                 }
 
+                val fillColors = if (isLightTheme) {
+                    listOf(
+                        Color(0xFFFB7299).copy(alpha = 0.36f),
+                        Color(0xFFFB7299).copy(alpha = 0.08f),
+                        Color.Transparent,
+                    )
+                } else {
+                    listOf(
+                        Color.White.copy(alpha = 0.36f),
+                        Color(0xFFBFE9FF).copy(alpha = 0.11f),
+                        Color.Transparent,
+                    )
+                }
+
+                val strokeColor = if (isLightTheme) {
+                    Color(0xFFFB7299).copy(alpha = 0.62f)
+                } else {
+                    Color.White.copy(alpha = 0.62f)
+                }
+
                 drawPath(
                     path = fillPath,
                     brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.36f),
-                            Color(0xFFBFE9FF).copy(alpha = 0.11f),
-                            Color.Transparent,
-                        ),
+                        colors = fillColors,
                         startY = 0f,
                         endY = heatmapBottom,
                     ),
                 )
                 drawPath(
                     path = strokePath,
-                    color = Color.White.copy(alpha = 0.62f),
+                    color = strokeColor,
                     style = Stroke(
                         width = 1.2.dp.toPx(),
                         cap = StrokeCap.Round,
@@ -447,14 +481,26 @@ private fun SegmentedProgressBar(
 
         val radius = progressHeight / 2f
         val corner = CornerRadius(radius, radius)
+        val trackColor = if (isLightTheme) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.16f)
+        val progressColor = if (isLightTheme) Color(0xFFFB7299) else Color.White.copy(alpha = 0.92f)
+
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.16f),
+            color = trackColor,
             topLeft = Offset(0f, progressTop),
             size = Size(width = size.width, height = progressHeight),
             cornerRadius = corner,
         )
+        if (isLightTheme) {
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.05f),
+                topLeft = Offset(0f, progressTop),
+                size = Size(width = size.width, height = progressHeight),
+                cornerRadius = corner,
+                style = Stroke(width = 0.5.dp.toPx())
+            )
+        }
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.92f),
+            color = progressColor,
             topLeft = Offset(0f, progressTop),
             size = Size(width = size.width * progress.coerceIn(0f, 1f), height = progressHeight),
             cornerRadius = corner,

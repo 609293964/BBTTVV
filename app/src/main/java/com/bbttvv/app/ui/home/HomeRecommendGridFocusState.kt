@@ -19,6 +19,8 @@ internal class HomeRecommendGridFocusState {
     private var forceFirstItemFocusOnNextDataSetChange: Boolean = false
     private var pendingDirectionalScrollFocusPosition: Int = RecyclerView.NO_POSITION
     private var pendingDirectionalScrollFocusUntilUptimeMs: Long = 0L
+    private var pendingDownSearchPosition: Int = RecyclerView.NO_POSITION
+    private var pendingDownSearchUntilUptimeMs: Long = 0L
     private var focusRequestToken: Int = 0
     private var lastUserNavigationUptimeMs: Long = 0L
     private var suppressRecyclerFocusRestoreUntilUptimeMs: Long = 0L
@@ -29,6 +31,7 @@ internal class HomeRecommendGridFocusState {
         nextFocusRequestToken()
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
+        clearPendingDownSearch()
     }
 
     fun attach(recyclerView: RecyclerView) {
@@ -45,6 +48,7 @@ internal class HomeRecommendGridFocusState {
 
     fun onItemsCommitted() {
         applyPendingAfterItemsAvailable()
+        applyPendingDownSearch()
     }
 
     fun setOnFocusTargetAvailabilityChanged(callback: (() -> Unit)?) {
@@ -167,6 +171,7 @@ internal class HomeRecommendGridFocusState {
     fun onItemFocused(key: String, position: Int) {
         suppressRecyclerFocusRestoreUntilUptimeMs = 0L
         clearPendingDirectionalScrollFocus()
+        clearPendingDownSearch()
         rememberFocusedPosition(key, position)
 
         val pending = pendingDataSetFocus ?: return
@@ -196,6 +201,10 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun requestScrollToTop() {
+        if (hasFocusInside() && isRecentUserNavigation()) {
+            android.util.Log.d("HomeFocus", "requestScrollToTop IGNORED to protect active focus inside Grid.")
+            return
+        }
         pendingScrollToTop = true
         restoreFocusAfterPendingScrollToTop = true
         pendingDataSetFocus = null
@@ -549,14 +558,20 @@ internal class HomeRecommendGridFocusState {
                         }
                     }
                 }
-                if (closestView != null && closestView.requestFocus()) {
-                    if (expectedKey != null) {
-                        val fallbackKey = (recycler.adapter as? HomeVideoCardAdapter)?.keyAt(closestPosition)
-                        onItemFocused(fallbackKey ?: expectedKey, closestPosition)
+                if (closestView != null) {
+                    val isPendingDown = pendingDownSearchPosition != RecyclerView.NO_POSITION
+                    val isUpwardFallback = closestPosition < position && (lastFocusedPosition == RecyclerView.NO_POSITION || closestPosition <= lastFocusedPosition)
+                    if (isPendingDown || isUpwardFallback) {
+                        android.util.Log.d("HomeFocus", "tryFocusPosition Fallback INHIBITED to prevent upward jump: expected=$position, closest=$closestPosition, lastFocused=$lastFocusedPosition, isPendingDown=$isPendingDown")
+                    } else if (closestView.requestFocus()) {
+                        if (expectedKey != null) {
+                            val fallbackKey = (recycler.adapter as? HomeVideoCardAdapter)?.keyAt(closestPosition)
+                            onItemFocused(fallbackKey ?: expectedKey, closestPosition)
+                        }
+                        onFocused?.invoke()
+                        android.util.Log.d("HomeFocus", "tryFocusPosition Fallback SUCCESS: expected=$position, actual=$closestPosition")
+                        return true
                     }
-                    onFocused?.invoke()
-                    android.util.Log.d("HomeFocus", "tryFocusPosition Fallback SUCCESS: expected=$position, actual=$closestPosition")
-                    return true
                 }
             }
             onFocusTargetAvailabilityChanged?.invoke()
@@ -685,12 +700,66 @@ internal class HomeRecommendGridFocusState {
         pendingDirectionalScrollFocusUntilUptimeMs = 0L
     }
 
+    fun schedulePendingDownSearch(targetPosition: Int) {
+        val now = SystemClock.uptimeMillis()
+        pendingDownSearchPosition = targetPosition
+        pendingDownSearchUntilUptimeMs = now + 350L
+        
+        val recycler = currentRecyclerView() ?: return
+        if (targetPosition != RecyclerView.NO_POSITION && targetPosition < (recycler.adapter?.itemCount ?: 0)) {
+            android.util.Log.d("HomeFocus", "schedulePendingDownSearch: pos=$targetPosition, posting scroll.")
+            recycler.scrollToPosition(targetPosition)
+            schedulePendingDownSearchRetry()
+        }
+    }
+
+    private fun schedulePendingDownSearchRetry() {
+        val recycler = currentRecyclerView() ?: return
+        val requestToken = focusRequestToken
+        recycler.postOnAnimation {
+            if (recyclerView === recycler && focusRequestToken == requestToken) {
+                applyPendingDownSearch()
+            }
+        }
+    }
+
+    private fun applyPendingDownSearch(): Boolean {
+        val targetPos = pendingDownSearchPosition
+        if (targetPos == RecyclerView.NO_POSITION) return false
+        if (SystemClock.uptimeMillis() > pendingDownSearchUntilUptimeMs) {
+            clearPendingDownSearch()
+            return false
+        }
+        val recycler = currentRecyclerView() ?: return false
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
+        if (targetPos >= adapter.itemCount) return false
+
+        val holder = recycler.findViewHolderForAdapterPosition(targetPos)
+        val itemView = holder?.itemView
+        if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
+            android.util.Log.d("HomeFocus", "applyPendingDownSearch SUCCESS: focused pos=$targetPos")
+            onItemFocused(adapter.keyAt(targetPos) ?: "", targetPos)
+            clearPendingDownSearch()
+            return true
+        }
+
+        if (SystemClock.uptimeMillis() <= pendingDownSearchUntilUptimeMs) {
+            schedulePendingDownSearchRetry()
+        }
+        return false
+    }
+
+    fun clearPendingDownSearch() {
+        pendingDownSearchPosition = RecyclerView.NO_POSITION
+        pendingDownSearchUntilUptimeMs = 0L
+    }
+
     private companion object {
         private const val UserNavigationFocusWindowMs = 250L
         private const val DirectionalScrollFocusParkingWindowMs = 700L
         private const val DirectionalScrollFocusTargetWindowMs = 1_500L
         private const val DefaultFocusRetryCount = 5
-        private const val PendingFocusRetryCount = 8
+        private const val PendingFocusRetryCount = 20
         private val DirectionalKeyCodes = setOf(
             KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_DPAD_DOWN,

@@ -101,7 +101,12 @@ fun TvTextInput(
         animationSpec = tween(durationMillis = 150),
         label = "tvTextInputScale"
     )
-    val borderColor = if (focused) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.14f)
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val borderColor = if (isLightTheme) {
+        if (focused) Color(0xFFFB7299) else Color.Black.copy(alpha = 0.08f)
+    } else {
+        if (focused) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.14f)
+    }
 
     Column(
         modifier = modifier.graphicsLayer {
@@ -232,7 +237,7 @@ fun TvTextInput(
                         if (value.isEmpty() && !placeholder.isNullOrBlank()) {
                             Text(
                                 text = placeholder,
-                                color = fieldContentColor.copy(alpha = 0.5f),
+                                color = fieldContentColor.copy(alpha = if (isLightTheme) 0.7f else 0.5f),
                                 fontSize = 16.sp,
                                 lineHeight = 22.sp
                             )

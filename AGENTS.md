@@ -64,6 +64,7 @@ BBTTVV 是面向 Android TV 的第三方客户端，核心目标是：
 ./gradlew tvVerification --no-daemon --stacktrace    # lintDebug + testDebugUnitTest + assembleDebug
 ./gradlew tvBuild --no-daemon --stacktrace            # assembleRelease
 ./gradlew tvReleaseVerification --no-daemon --stacktrace  # lintRelease + assembleRelease
+./gradlew tvProfiledRelease --no-daemon --stacktrace  # generateReleaseBaselineProfile + assembleRelease
 ./gradlew lintDebug --no-daemon --stacktrace
 ./gradlew testDebugUnitTest --no-daemon --stacktrace
 ```

@@ -19,6 +19,14 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     private var onSelectedTabConfirmed: (AppTopLevelTab) -> Unit = {}
     private var onDpadDown: () -> Boolean = { false }
     private var onTopBarFocusChanged: (Boolean) -> Unit = {}
+    private var isLightTheme: Boolean = false
+
+    fun setIsLightTheme(isLight: Boolean) {
+        if (isLightTheme != isLight) {
+            isLightTheme = isLight
+            notifyDataSetChanged()
+        }
+    }
 
     init {
         setHasStableIds(true)
@@ -187,16 +195,30 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                 binding.root.scaleY = scale
             }
 
-            binding.root.setCardBackgroundColor(
-                if (focused) Color.WHITE else Color.TRANSPARENT
-            )
-            binding.tvLabel.setTextColor(
-                when {
-                    focused -> Color.rgb(17, 20, 24)
-                    selected -> Color.WHITE
-                    else -> Color.argb(153, 255, 255, 255)
+            val cardColor = when {
+                focused -> {
+                    if (isLightTheme) Color.rgb(251, 114, 153) // #FB7299
+                    else Color.WHITE
                 }
-            )
+                else -> Color.TRANSPARENT
+            }
+            binding.root.setCardBackgroundColor(cardColor)
+
+            val textColor = when {
+                focused -> {
+                    if (isLightTheme) Color.WHITE
+                    else Color.rgb(17, 20, 24)
+                }
+                selected -> {
+                    if (isLightTheme) Color.rgb(251, 114, 153) // #FB7299
+                    else Color.WHITE
+                }
+                else -> {
+                    if (isLightTheme) Color.rgb(97, 102, 109) // #61666D
+                    else Color.argb(153, 255, 255, 255)
+                }
+            }
+            binding.tvLabel.setTextColor(textColor)
             binding.tvLabel.typeface = topBarTypeface(if (selected || focused) 600 else 500)
         }
     }

@@ -46,6 +46,18 @@ tasks.register("tvBaselineProfile") {
     dependsOn(":app:generateReleaseBaselineProfile")
 }
 
+tasks.register("tvProfiledRelease") {
+    group = "build"
+    description = "Generates the TV Baseline Profile, then assembles the release APK with the fresh profile."
+    dependsOn(":app:generateReleaseBaselineProfile", ":app:assembleRelease")
+}
+
+gradle.projectsEvaluated {
+    project(":app").tasks.named("assembleRelease").configure {
+        mustRunAfter(project(":app").tasks.named("generateReleaseBaselineProfile"))
+    }
+}
+
 tasks.register("tvUiRegression") {
     group = "verification"
     description = "Runs connected TV UI smoke tests on an attached emulator or device."

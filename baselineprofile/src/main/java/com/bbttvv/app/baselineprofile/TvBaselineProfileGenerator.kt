@@ -36,7 +36,8 @@ class TvBaselineProfileGenerator {
         settle()
 
         exerciseHomeTabs()
-        exerciseDetailPlaybackAndReturn()
+        exerciseHomeGridDpadScroll()
+        exercisePlaybackFirstFrameAndReturn()
         exerciseSearch()
         exerciseProfileHistory()
     }
@@ -49,10 +50,32 @@ class TvBaselineProfileGenerator {
         }
     }
 
-    private fun MacrobenchmarkScope.exerciseDetailPlaybackAndReturn() {
+    private fun MacrobenchmarkScope.exerciseHomeGridDpadScroll() {
         selectTopTab("推荐")
         settle(WaitLong)
-        repeat(2) { press(KeyEvent.KEYCODE_DPAD_DOWN) }
+        focusContentFromTopBar()
+        pressRepeated(KeyEvent.KEYCODE_DPAD_RIGHT, 2)
+        pressRepeated(KeyEvent.KEYCODE_DPAD_DOWN, 6)
+        pressRepeated(KeyEvent.KEYCODE_DPAD_RIGHT, 3)
+        pressRepeated(KeyEvent.KEYCODE_DPAD_UP, 2)
+        settle()
+
+        selectTopTab("热门")
+        settle(WaitLong)
+        focusContentFromTopBar()
+        pressRepeated(KeyEvent.KEYCODE_DPAD_DOWN, 4)
+        pressRepeated(KeyEvent.KEYCODE_DPAD_RIGHT, 2)
+        settle()
+
+        selectTopTab("推荐")
+        settle()
+    }
+
+    private fun MacrobenchmarkScope.exercisePlaybackFirstFrameAndReturn() {
+        selectTopTab("推荐")
+        settle(WaitLong)
+        focusContentFromTopBar()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
         pressCenter()
         settle(WaitLong)
 
@@ -73,11 +96,11 @@ class TvBaselineProfileGenerator {
     private fun MacrobenchmarkScope.exerciseSearch() {
         selectTopTab("搜索")
         settle()
-        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        focusContentFromTopBar()
         device.executeShellCommand("input text BBTTVV")
         press(KeyEvent.KEYCODE_ENTER)
         settle(WaitLong)
-        repeat(2) { press(KeyEvent.KEYCODE_DPAD_DOWN) }
+        pressRepeated(KeyEvent.KEYCODE_DPAD_DOWN, 2)
         settle()
         ensureHomeVisible()
     }
@@ -96,6 +119,11 @@ class TvBaselineProfileGenerator {
             settle(WaitTiny)
         }
         pressCenter()
+    }
+
+    private fun MacrobenchmarkScope.focusContentFromTopBar() {
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        settle(WaitTiny)
     }
 
     private fun MacrobenchmarkScope.ensureHomeVisible() {
@@ -142,6 +170,17 @@ class TvBaselineProfileGenerator {
 
     private fun MacrobenchmarkScope.pressCenter() {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
+    }
+
+    private fun MacrobenchmarkScope.pressRepeated(
+        keyCode: Int,
+        count: Int,
+        settleMs: Long = WaitTiny,
+    ) {
+        repeat(count) {
+            press(keyCode)
+            settle(settleMs)
+        }
     }
 
     private fun MacrobenchmarkScope.press(keyCode: Int) {

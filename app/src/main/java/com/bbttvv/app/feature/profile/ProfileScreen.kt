@@ -408,7 +408,8 @@ private fun LoggedInProfileLayout(
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
             videoCardRecycledViewPool = videoCardRecycledViewPool,
-            onRequestSidebarFocus = profileFocusCoordinator::requestSidebarFocus
+            onRequestSidebarFocus = profileFocusCoordinator::requestSidebarFocus,
+            onRequestTopBarFocus = onRequestTopBarFocus
         )
     }
 }
@@ -425,8 +426,9 @@ internal fun DecorativeBackdrop() {
 
 @Composable
 internal fun CenterStatus(text: String) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = text, color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Text(text = text, color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.titleLarge)
     }
 }
 @Composable
@@ -448,7 +450,8 @@ private fun ProfileContentPanel(
     focusCoordinator: HomeFocusCoordinator?,
     focusTab: AppTopLevelTab?,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
-    onRequestSidebarFocus: () -> Boolean
+    onRequestSidebarFocus: () -> Boolean,
+    onRequestTopBarFocus: () -> Boolean
 ) {
     Box(modifier = modifier) {
         AnimatedContent(
@@ -469,6 +472,7 @@ private fun ProfileContentPanel(
                     onOpenVideo = onOpenVideo,
                     onLoadMore = onLoadMoreHistory,
                     onRequestSidebarFocus = onRequestSidebarFocus,
+                    onBackToTopBar = onRequestTopBarFocus,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool
@@ -495,6 +499,7 @@ private fun ProfileContentPanel(
                     onOpenVideo = onOpenVideo,
                     onLoadMore = onLoadMoreFavorites,
                     onRequestSidebarFocus = onRequestSidebarFocus,
+                    onBackToTopBar = onRequestTopBarFocus,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool
@@ -509,6 +514,7 @@ private fun ProfileContentPanel(
                     onLoadMore = onLoadMoreBangumi,
                     onUnfollowBangumi = onUnfollowBangumi,
                     onRequestSidebarFocus = onRequestSidebarFocus,
+                    onBackToTopBar = onRequestTopBarFocus,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool
@@ -524,6 +530,7 @@ private fun ProfileContentPanel(
                     focusTab = focusTab,
                     videoCardRecycledViewPool = videoCardRecycledViewPool,
                     focusRegion = HomeFocusRegion.ProfileContent,
+                    onBackToTopBar = onRequestTopBarFocus,
                     onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.SWITCH_ACCOUNT -> SwitchAccountPanel(

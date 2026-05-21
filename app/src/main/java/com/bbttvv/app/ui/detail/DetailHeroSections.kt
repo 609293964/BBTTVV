@@ -92,6 +92,17 @@ private const val DetailTripleHoldDurationMs = 1_500
 
 @Composable
 internal fun DetailCoverBackdrop(model: ImageRequest) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val gradientColors = if (isLightTheme) {
+        listOf(
+            Color(0xB3F4F6F8), // 70% opacity white-gray
+            Color(0xD9F4F6F8), // 85% opacity
+            Color(0xF2F4F6F8)  // 95% opacity
+        )
+    } else {
+        DetailBackdropGradientColors
+    }
+
     AsyncImage(
         model = model,
         contentDescription = null,
@@ -104,7 +115,7 @@ internal fun DetailCoverBackdrop(model: ImageRequest) {
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
-                    colors = DetailBackdropGradientColors
+                    colors = gradientColors
                 )
             )
     )
@@ -143,11 +154,12 @@ internal fun DetailHeroSection(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
             Text(
                 text = viewInfo.title.replace("\n", " "),
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White,
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                 maxLines = 2,
                 lineHeight = 38.sp,
                 overflow = TextOverflow.Ellipsis
@@ -182,7 +194,7 @@ internal fun DetailHeroSection(
                 Text(
                     text = viewInfo.desc.take(220),
                     fontSize = 14.sp,
-                    color = DetailMutedTextColor,
+                    color = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 21.sp
@@ -327,10 +339,11 @@ private fun DetailOwnerSection(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
                     Text(
                         text = ownerName,
                         fontSize = 16.sp,
-                        color = Color(0xFFF1F1F1),
+                        color = if (isLightTheme) Color(0xFF18191C) else Color(0xFFF1F1F1),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -340,9 +353,9 @@ private fun DetailOwnerSection(
                         } ?: " ",
                         fontSize = 14.sp,
                         color = if (followerCount != null) {
-                            DetailMutedTextColor
+                            if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor
                         } else {
-                            DetailMutedTextColor.copy(alpha = 0f)
+                            (if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor).copy(alpha = 0f)
                         },
                         maxLines = 1
                     )
@@ -365,16 +378,29 @@ private fun DetailFollowButton(
     isLoading: Boolean,
     onClick: () -> Unit
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     var isFocused by remember { mutableStateOf(false) }
     val iconTint = when {
-        isFocused -> DetailPrimaryTextColor
+        isFocused -> {
+            if (isLightTheme) Color.White else DetailPrimaryTextColor
+        }
         isFollowing -> DetailAccentColor
-        else -> Color.White
+        else -> {
+            if (isLightTheme) Color(0xFF18191C) else Color.White
+        }
     }
 
-    val containerColor = if (isFocused) DetailPrimaryPillColor else Color.Transparent
+    val containerColor = if (isFocused) {
+        if (isLightTheme) DetailAccentColor else DetailPrimaryPillColor
+    } else {
+        Color.Transparent
+    }
     val borderWidth = if (isFocused) 0.dp else 1.5.dp
-    val borderColor = if (isFocused) Color.Transparent else Color(0x66FFFFFF)
+    val borderColor = if (isFocused) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0xFFCCCCCC) else Color(0x66FFFFFF)
+    }
 
     Box(
         modifier = Modifier
@@ -455,10 +481,11 @@ internal fun RelatedVideosSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
         Text(
             text = "相关视频",
             fontSize = 20.sp,
-            color = Color.White,
+            color = if (isLightTheme) Color(0xFF18191C) else Color.White,
             fontWeight = FontWeight.Bold
         )
 
@@ -616,14 +643,27 @@ private fun DetailTripleLikeActionButton(
         },
     )
 
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     val contentColor = when {
-        isFocused -> DetailPrimaryTextColor
+        isFocused -> {
+            if (isLightTheme) Color.White else DetailPrimaryTextColor
+        }
         active -> DetailAccentColor
-        else -> Color.White
+        else -> {
+            if (isLightTheme) Color(0xFF18191C) else Color.White
+        }
     }.copy(alpha = if (enabled) 1f else 0.68f)
-    val containerColor = if (isFocused) DetailPrimaryPillColor else Color.Transparent
+    val containerColor = if (isFocused) {
+        if (isLightTheme) DetailAccentColor else DetailPrimaryPillColor
+    } else {
+        Color.Transparent
+    }
     val borderWidth = if (isFocused) 0.dp else 1.5.dp
-    val borderColor = if (isFocused) Color.Transparent else Color(0x66FFFFFF)
+    val borderColor = if (isFocused) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0xFFCCCCCC) else Color(0x66FFFFFF)
+    }
 
     Box(
         modifier = modifier
@@ -757,11 +797,16 @@ internal fun DetailCompactActionButton(
     focusRequester: FocusRequester? = null,
     leadingContent: (@Composable (Color) -> Unit)? = null
 ) {
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     var isFocused by remember { mutableStateOf(false) }
     val contentColor = when {
-        isFocused -> DetailPrimaryTextColor
+        isFocused -> {
+            if (isLightTheme) Color.White else DetailPrimaryTextColor
+        }
         active -> DetailAccentColor
-        else -> Color.White
+        else -> {
+            if (isLightTheme) Color(0xFF18191C) else Color.White
+        }
     }.copy(alpha = if (enabled) 1f else 0.62f)
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
@@ -769,9 +814,17 @@ internal fun DetailCompactActionButton(
         modifier
     }
 
-    val containerColor = if (isFocused) DetailPrimaryPillColor else Color.Transparent
+    val containerColor = if (isFocused) {
+        if (isLightTheme) DetailAccentColor else DetailPrimaryPillColor
+    } else {
+        Color.Transparent
+    }
     val borderWidth = if (isFocused) 0.dp else 1.5.dp
-    val borderColor = if (isFocused) Color.Transparent else Color(0x66FFFFFF)
+    val borderColor = if (isFocused) {
+        Color.Transparent
+    } else {
+        if (isLightTheme) Color(0xFFCCCCCC) else Color(0x66FFFFFF)
+    }
 
     Box(
         modifier = composedModifier
@@ -833,7 +886,7 @@ private fun DetailMetricRow(
 private fun DetailMetricItem(
     icon: DetailMetricIcon,
     text: String,
-    tint: Color = Color(0xFFAAAAAA)
+    tint: Color = if (com.bbttvv.app.ui.theme.LocalIsLightTheme.current) Color(0xFF61666D) else Color(0xFFAAAAAA)
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         DetailMetricIcon(icon = icon, tint = tint, modifier = Modifier.size(14.dp))
@@ -957,10 +1010,11 @@ internal fun DetailPagesSection(
     onHorizontalRailFocusChanged: (Dp?) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
         Text(
             text = "分P",
             fontSize = 20.sp,
-            color = Color.White,
+            color = if (isLightTheme) Color(0xFF18191C) else Color.White,
             fontWeight = FontWeight.Bold
         )
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {

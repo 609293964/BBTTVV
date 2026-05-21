@@ -44,6 +44,11 @@ focus_repro_*.txt
 focus-repro-*.txt
 focus-refactor-*.txt
 window_dump*.xml
+uidump.xml
+uidump_*.xml
+dynamic_tab_*.xml
+home_focus_log.txt
+release_output/
 *.hprof
 *.tmp
 *.temp
@@ -67,3 +72,12 @@ ehthumbs.db
 *.swo
 *~
 
+# Development plans, tasks, walkthroughs and test reports
+*plan*.md
+*report*.md
+*plan*.txt
+*report*.txt
+*plan*.json
+*report*.json
+task*.md
+walkthrough*.md

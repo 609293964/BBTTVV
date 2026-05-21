@@ -368,6 +368,17 @@ internal fun VideoCardRecyclerGridItems(
                             ?.takeIf { it != NO_POSITION }
                         val itemCount = adapter?.itemCount ?: 0
                         val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
+                        if (currentPosition != null && spanCount != null) {
+                            val targetPosition = currentPosition + spanCount
+                            if (targetPosition < itemCount) {
+                                val hasValidNextFocus = next != null && next !== focused && next !== this &&
+                                        nextPosition != null && nextPosition > currentPosition
+                                if (!hasValidNextFocus) {
+                                    focusState.schedulePendingDownSearch(targetPosition)
+                                    return focused
+                                }
+                            }
+                        }
                         if (
                             currentPosition != null &&
                             ((spanCount != null && currentPosition + spanCount >= itemCount) ||
@@ -386,11 +397,16 @@ internal fun VideoCardRecyclerGridItems(
                         if (currentPosition != null && spanCount != null && currentPosition >= spanCount) {
                             val targetPosition = currentPosition - spanCount
                             findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { return it }
+                            focusState.parkFocusForDirectionalScroll(targetPosition)
                             scrollToPosition(targetPosition)
+                            requestFocusAfterScrollToPosition(
+                                position = targetPosition,
+                                expectedFocusedView = focused,
+                            )
                             return focused
                         }
                     }
-                    if (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT || direction == View.FOCUS_DOWN) {
+                    if (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT || direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
                         if (next == null) return focused
                         var parent = next.parent
                         var isChild = false
@@ -401,7 +417,12 @@ internal fun VideoCardRecyclerGridItems(
                             }
                             parent = parent.parent
                         }
-                        if (!isChild) return focused
+                        if (!isChild) {
+                            if (direction == View.FOCUS_UP && latestConsumeTopRowDpadUp) {
+                                return next
+                            }
+                            return focused
+                        }
                     }
                     return next
                 }
@@ -545,11 +566,20 @@ internal fun VideoCardRecyclerGridItems(
                     latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
                     return@let
                 }
-                if (!dpadGridController.hasPendingLoadMoreFocus()) {
+                val isAppend = adapter.currentList.isNotEmpty() &&
+                        items.size > adapter.currentList.size &&
+                        items.take(adapter.currentList.size) == adapter.currentList
+
+                if (isAppend) {
                     dpadGridController.cancelAllPendingRequests()
-                    focusState.prepareForDataSetChange(items)
+                    android.util.Log.d("HomeFocus", "listChanged is pure APPEND. Exclude focusState.prepareForDataSetChange to protect current active focus and pending search.")
                 } else {
-                    focusState.cancelAllPendingRequests()
+                    if (!dpadGridController.hasPendingLoadMoreFocus()) {
+                        dpadGridController.cancelAllPendingRequests()
+                        focusState.prepareForDataSetChange(items)
+                    } else {
+                        focusState.cancelAllPendingRequests()
+                    }
                 }
                 adapter.submitList(items) {
                     recyclerView.applyInitialScrollPosition(initialScrollPosition)
@@ -848,6 +878,40 @@ private fun RecyclerView.applyInitialScrollPosition(position: Int): Boolean {
     return true
 }
 
+private fun RecyclerView.requestFocusAfterScrollToPosition(
+    position: Int,
+    expectedFocusedView: View?,
+    attemptsLeft: Int = FocusSearchScrollFocusMaxAttempts,
+) {
+    if (position == RecyclerView.NO_POSITION) return
+    postOnAnimation {
+        val itemCount = adapter?.itemCount ?: return@postOnAnimation
+        if (position !in 0 until itemCount) return@postOnAnimation
+
+        val currentFocused = rootView?.findFocus()
+        val focusStillAtScrollOrigin = currentFocused === this ||
+            (
+                expectedFocusedView != null &&
+                    currentFocused?.isSameOrDescendantOf(expectedFocusedView) == true
+                )
+        if (!focusStillAtScrollOrigin) return@postOnAnimation
+
+        val targetItem = findViewHolderForAdapterPosition(position)?.itemView
+        if (targetItem != null && targetItem.isValidFocusTarget()) {
+            targetItem.requestFocus()
+            return@postOnAnimation
+        }
+
+        if (attemptsLeft > 0) {
+            requestFocusAfterScrollToPosition(
+                position = position,
+                expectedFocusedView = expectedFocusedView,
+                attemptsLeft = attemptsLeft - 1,
+            )
+        }
+    }
+}
+
 internal object InitialGridRestoreScrollPolicy {
     fun targetPosition(position: Int, itemCount: Int): Int {
         if (position == RecyclerView.NO_POSITION || itemCount <= 0) {
@@ -874,6 +938,7 @@ private data class RecyclerPaddingPx(
 private const val FocusSettledPreloadRows = 2
 private const val RecyclerGridPreloadDuplicateWindowMs = 700L
 private const val DuplicateFocusDispatchWindowMs = 500L
+private const val FocusSearchScrollFocusMaxAttempts = 12
 
 private class RecyclerViewRef {
     var value: RecyclerView? = null

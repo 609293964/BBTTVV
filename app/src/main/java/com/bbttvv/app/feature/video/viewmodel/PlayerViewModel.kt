@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.viewmodel
 
+import android.os.SystemClock
 import androidx.annotation.MainThread
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
@@ -146,6 +147,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var sponsorPluginUiObservationJob: Job? = null
     private var playbackCdnFallbackJob: Job? = null
     private var playbackCdnFallbackState: PlaybackCdnFallbackState = PlaybackCdnFallbackState.Inactive
+    private val bufferingStallTracker = PlaybackBufferingStallTracker()
     private var sponsorBlockEnabled: Boolean = true
     private val sponsorPluginUiState = MutableStateFlow(PlayerSponsorPluginUiState())
     val sponsorUiState: StateFlow<PlayerSponsorUiState> = combine(
@@ -279,6 +281,7 @@ class PlayerViewModel : BasePlayerViewModel() {
             playbackCdnFallbackJob?.cancel()
             playbackCdnFallbackJob = null
             playbackCdnFallbackState = PlaybackCdnFallbackState.Inactive
+            bufferingStallTracker.reset()
             super.detachPlayer(player)
         } else {
             player.removeListener(playerListener)
@@ -295,6 +298,7 @@ class PlayerViewModel : BasePlayerViewModel() {
         resumeFromPrompt: Boolean = false,
     ) {
         ensureMainThread("loadVideo")
+        bufferingStallTracker.reset()
         playbackLoadCoordinator.load(
             PlaybackLoadRequest(
                 bvid = bvid,
@@ -606,6 +610,7 @@ class PlayerViewModel : BasePlayerViewModel() {
         playWhenReady: Boolean = true
     ) {
         ensureMainThread("applyPlaybackSource")
+        bufferingStallTracker.reset()
         playbackRuntime = playbackRuntime.copy(source = source)
         armPlaybackCdnFallback(source = source, playWhenReady = playWhenReady)
         if (source.segmentUrls.isNotEmpty()) {
@@ -745,13 +750,11 @@ class PlayerViewModel : BasePlayerViewModel() {
                 "audio=${hostForPlaybackLog(state.selectedAudioUrl)}, fallbackAudio=${hostForPlaybackLog(state.fallbackAudioUrl)}"
         )
 
-        val fallbackSource = source.copy(
-            videoUrl = fallbackVideoUrl,
-            audioUrl = state.fallbackAudioUrl,
-            videoUrlCandidates = buildFallbackCandidates(fallbackVideoUrl, source.videoUrlCandidates),
-            audioUrlCandidates = buildFallbackCandidates(state.fallbackAudioUrl, source.audioUrlCandidates),
-            fallbackVideoUrl = null,
-            fallbackAudioUrl = null
+        val fallbackSource = source.withPrioritizedDashPlaybackCandidates(
+            selectedVideoUrl = fallbackVideoUrl,
+            selectedAudioUrl = state.fallbackAudioUrl,
+            videoCandidates = buildFallbackCandidates(fallbackVideoUrl, source.videoUrlCandidates),
+            audioCandidates = buildFallbackCandidates(state.fallbackAudioUrl, source.audioUrlCandidates)
         )
         applyPlaybackSource(
             source = fallbackSource,
@@ -812,9 +815,74 @@ class PlayerViewModel : BasePlayerViewModel() {
                 ) {
                     checkAndSkipSponsor()
                 }
+                recoverFromBufferingStallIfNeeded()
                 delay(if (isDanmakuEnabled.value) 500L else 1000L)
             }
         }
+    }
+
+    private fun recoverFromBufferingStallIfNeeded() {
+        ensureMainThread("recoverFromBufferingStallIfNeeded")
+        val player = exoPlayer ?: return
+        val source = playbackRuntime.source
+        val uiState = _uiState.value
+        val shouldRecover = bufferingStallTracker.observe(
+            PlaybackBufferingStallSample(
+                sessionKey = playbackRuntime.sessionKey,
+                nowMs = SystemClock.elapsedRealtime(),
+                isBuffering = player.playbackState == Player.STATE_BUFFERING,
+                isLoadingPlaybackInfo = uiState.isLoading,
+                hasPlaybackError = !uiState.errorMessage.isNullOrBlank(),
+                playWhenReady = player.playWhenReady,
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
+                hasPlaybackSource = source != null,
+            )
+        )
+        if (!shouldRecover) return
+
+        if (fallbackFromCdnRewrite(reason = "buffering_stall")) {
+            bufferingStallTracker.reset()
+            return
+        }
+
+        val currentSource = source ?: return
+        val recoveredSource = currentSource.rotateForBufferingStall()
+        if (recoveredSource == null) {
+            com.bbttvv.app.core.util.Logger.w(
+                "PlayerViewModel",
+                "Buffering stall detected but no alternate candidate: " +
+                    "session=${playbackRuntime.sessionKey}, video=${hostForPlaybackLog(currentSource.videoUrl)}, " +
+                    "audio=${hostForPlaybackLog(currentSource.audioUrl)}, buffered=${player.bufferedPosition}"
+            )
+            return
+        }
+
+        val currentPosition = player.currentPosition.coerceAtLeast(0L)
+        val playWhenReadyAfterRecovery = player.playWhenReady
+        com.bbttvv.app.core.util.Logger.w(
+            "PlayerViewModel",
+            "Buffering stall recovery: session=${playbackRuntime.sessionKey}, " +
+                "video=${hostForPlaybackLog(currentSource.videoUrl)}->${hostForPlaybackLog(recoveredSource.videoUrl)}, " +
+                "audio=${hostForPlaybackLog(currentSource.audioUrl)}->${hostForPlaybackLog(recoveredSource.audioUrl)}, " +
+                "position=$currentPosition, buffered=${player.bufferedPosition}"
+        )
+
+        applyPlaybackSource(
+            source = recoveredSource,
+            seekToMs = currentPosition,
+            resetPlayer = false,
+            playWhenReady = playWhenReadyAfterRecovery
+        )
+        updatePlaybackDuration(recoveredSource.durationMs)
+        _uiState.update {
+            it.withPlaybackSource(
+                source = recoveredSource,
+                isLoading = false,
+                statusMessage = "播放缓冲过久，已切换备用线路"
+            )
+        }
+        refreshPlayerSnapshot()
+        bufferingStallTracker.reset()
     }
 
     @MainThread

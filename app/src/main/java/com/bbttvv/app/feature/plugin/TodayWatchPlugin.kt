@@ -41,11 +41,9 @@ private val todayWatchPluginJson = Json {
 @Serializable
 data class TodayWatchPluginConfig(
     val currentMode: TodayWatchMode = TodayWatchMode.RELAX,
-    val upRankLimit: Int = 5,
     val queueBuildLimit: Int = 40,
     val queuePreviewLimit: Int = 8,
     val historySampleLimit: Int = 120,
-    val showUpRank: Boolean = true,
     val showReasonHint: Boolean = true,
     val refreshTriggerToken: Long = 0L
 )
@@ -144,10 +142,6 @@ class TodayWatchPlugin : RecommendationPluginApi {
         persistConfig(_configState.value.copy(currentMode = mode))
     }
 
-    fun setUpRankLimit(limit: Int) {
-        persistConfig(_configState.value.copy(upRankLimit = limit))
-    }
-
     fun setQueueBuildLimit(limit: Int) {
         persistConfig(_configState.value.copy(queueBuildLimit = limit))
     }
@@ -160,9 +154,7 @@ class TodayWatchPlugin : RecommendationPluginApi {
         persistConfig(_configState.value.copy(historySampleLimit = limit))
     }
 
-    fun setShowUpRank(enabled: Boolean) {
-        persistConfig(_configState.value.copy(showUpRank = enabled))
-    }
+
 
     fun setShowReasonHint(enabled: Boolean) {
         persistConfig(_configState.value.copy(showReasonHint = enabled))
@@ -222,7 +214,6 @@ class TodayWatchPlugin : RecommendationPluginApi {
             .coerceIn(3, 12)
             .coerceAtMost(normalizedQueueBuildLimit)
         return config.copy(
-            upRankLimit = config.upRankLimit.coerceIn(1, 12),
             queueBuildLimit = normalizedQueueBuildLimit,
             queuePreviewLimit = normalizedPreviewLimit,
             historySampleLimit = config.historySampleLimit.coerceIn(20, 120)

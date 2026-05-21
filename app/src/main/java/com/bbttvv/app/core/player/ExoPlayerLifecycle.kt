@@ -1,5 +1,6 @@
 package com.bbttvv.app.core.player
 
+import android.view.View
 import androidx.annotation.MainThread
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -39,9 +40,12 @@ internal class ExoPlayerReleaseGuard(
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun clearPlayerViewReference(playerView: PlayerView?) {
     playerView ?: return
-    playerView.player = null
+    playerView.visibility = View.INVISIBLE
+    playerView.setKeepContentOnPlayerReset(false)
     playerView.setOnKeyListener(null)
     playerView.keepScreenOn = false
+    playerView.player = null
 }

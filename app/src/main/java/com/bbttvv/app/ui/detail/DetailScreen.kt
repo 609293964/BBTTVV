@@ -56,6 +56,8 @@ import com.bbttvv.app.ui.focus.rememberTvFocusAnchorState
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
+
 private const val DetailBackgroundCoverWidthPx = 320
 private const val DetailBackgroundCoverHeightPx = 180
 private const val DetailFocusEscapePriority = 10
@@ -79,6 +81,7 @@ fun DetailScreen(
 ) {
     val viewModel: DetailViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLightTheme = LocalIsLightTheme.current
     val context = LocalContext.current
     val density = LocalDensity.current
     val hostView = LocalView.current
@@ -122,7 +125,7 @@ fun DetailScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF141414))
+            .background(if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF141414))
     ) {
         Box(
             modifier = Modifier
@@ -170,7 +173,7 @@ fun DetailScreen(
                                 Text(
                                     text = "正在加载详情...",
                                     modifier = Modifier.align(Alignment.Center),
-                                    color = Color.White
+                                    color = if (isLightTheme) Color(0xFF18191C) else Color.White
                                 )
                             }
                         }
@@ -335,7 +338,7 @@ fun DetailScreen(
                 }
 
                 val backgroundCoverModel = remember(context, viewInfo.pic) {
-                    buildSizedImageRequest(
+                    buildBlurredImageRequest(
                         context,
                         viewInfo.pic,
                         DetailBackgroundCoverWidthPx,

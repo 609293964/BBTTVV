@@ -144,18 +144,7 @@ internal fun TodayWatchScreen(
                         .padding(bottom = 14.dp)
                 )
 
-                if (config.showUpRank && plan.upRanks.isNotEmpty()) {
-                    TodayWatchUpSummaryRow(
-                        plan = plan,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                                end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                                bottom = 14.dp
-                            )
-                    )
-                }
+
             }
         }
     ) { topPadding, onScrollOffset ->
@@ -285,47 +274,4 @@ private fun TodayWatchStatus(
     }
 }
 
-@Composable
-private fun TodayWatchUpSummaryRow(
-    plan: TodayWatchPlan,
-    modifier: Modifier = Modifier
-) {
-    val upSummary = remember(plan.upRanks) {
-        plan.upRanks.joinToString(" / ") { it.name }
-    }
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TodayWatchInfoCard(
-            title = "偏好 UP",
-            value = upSummary,
-            modifier = Modifier.fillMaxWidth(0.55f)
-        )
-    }
-}
 
-@Composable
-private fun TodayWatchInfoCard(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .background(Color(0x12000000), androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(text = title, color = Color(0xB3FFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        Text(
-            text = value,
-            color = Color.White,
-            fontSize = 14.sp,
-            lineHeight = 18.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}

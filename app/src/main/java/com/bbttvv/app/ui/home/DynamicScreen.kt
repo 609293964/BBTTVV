@@ -70,6 +70,7 @@ import com.bbttvv.app.data.repository.DynamicFollowUpdateUpItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.components.AppTopBarDefaults
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 private val LiveCardShape = RoundedCornerShape(8.dp)
 private val LiveTagShape = RoundedCornerShape(4.dp)
@@ -210,8 +211,31 @@ internal fun DynamicScreen(
             val targetIndex = (preferredIndex ?: lastFocusedLiveUserIndex)
                 .coerceIn(0, liveUserFocusRequesters.lastIndex)
             return runCatching {
-                val focused = liveUserFocusRequesters[targetIndex].requestFocus()
+                var focused = liveUserFocusRequesters[targetIndex].requestFocus()
+                var finalIndex = targetIndex
+                if (!focused) {
+                    val maxDelta = maxOf(targetIndex, liveUserFocusRequesters.lastIndex - targetIndex)
+                    for (delta in 1..maxDelta) {
+                        val left = targetIndex - delta
+                        if (left in liveUserFocusRequesters.indices) {
+                            focused = liveUserFocusRequesters[left].requestFocus()
+                            if (focused) {
+                                finalIndex = left
+                                break
+                            }
+                        }
+                        val right = targetIndex + delta
+                        if (right in liveUserFocusRequesters.indices) {
+                            focused = liveUserFocusRequesters[right].requestFocus()
+                            if (focused) {
+                                finalIndex = right
+                                break
+                            }
+                        }
+                    }
+                }
                 if (focused) {
+                    lastFocusedLiveUserIndex = finalIndex
                     onContentRowFocused(0)
                     focusCoordinator.onContentRegionFocused(
                         AppTopLevelTab.DYNAMIC,
@@ -244,8 +268,31 @@ internal fun DynamicScreen(
             val targetIndex = (preferredIndex ?: lastFocusedFollowUpdateIndex)
                 .coerceIn(0, followUpdateFocusRequesters.lastIndex)
             return runCatching {
-                val focused = followUpdateFocusRequesters[targetIndex].requestFocus()
+                var focused = followUpdateFocusRequesters[targetIndex].requestFocus()
+                var finalIndex = targetIndex
+                if (!focused) {
+                    val maxDelta = maxOf(targetIndex, followUpdateFocusRequesters.lastIndex - targetIndex)
+                    for (delta in 1..maxDelta) {
+                        val left = targetIndex - delta
+                        if (left in followUpdateFocusRequesters.indices) {
+                            focused = followUpdateFocusRequesters[left].requestFocus()
+                            if (focused) {
+                                finalIndex = left
+                                break
+                            }
+                        }
+                        val right = targetIndex + delta
+                        if (right in followUpdateFocusRequesters.indices) {
+                            focused = followUpdateFocusRequesters[right].requestFocus()
+                            if (focused) {
+                                finalIndex = right
+                                break
+                            }
+                        }
+                    }
+                }
                 if (focused) {
+                    lastFocusedFollowUpdateIndex = finalIndex
                     onContentRowFocused(if (hasLiveRow) 1 else 0)
                     focusCoordinator.onContentRegionFocused(
                         AppTopLevelTab.DYNAMIC,
@@ -565,11 +612,12 @@ private fun DynamicNoticeBanner(
     message: String,
     modifier: Modifier = Modifier
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(Color(0x1AFFFFFF))
+            .background(if (isLightTheme) Color(0x0D000000) else Color(0x1AFFFFFF))
             .padding(horizontal = 18.dp, vertical = 12.dp)
     ) {
         Text(
@@ -592,6 +640,7 @@ private fun DynamicFollowUpdateCard(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
     val focusRequesterModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
     Surface(
         onClick = onClick,
@@ -632,7 +681,13 @@ private fun DynamicFollowUpdateCard(
         Column(
             modifier = Modifier
                 .clip(FollowUpdateCardShape)
-                .background(if (isFocused) Color(0x1AFFFFFF) else Color.Transparent)
+                .background(
+                    if (isFocused) {
+                        if (isLightTheme) Color(0x1A000000) else Color(0x1AFFFFFF)
+                    } else {
+                        Color.Transparent
+                    }
+                )
                 .padding(vertical = 8.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -655,7 +710,7 @@ private fun DynamicFollowUpdateCard(
                     is DynamicFollowUpdateFixedItem -> item.title
                     is DynamicFollowUpdateUpItem -> item.name.ifBlank { "UP ${item.mid}" }
                 },
-                color = Color.White,
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -671,6 +726,7 @@ private fun DynamicFollowUpdateFixedIcon(
     item: DynamicFollowUpdateFixedItem,
     isFocused: Boolean
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Box(
         modifier = Modifier.size(64.dp),
         contentAlignment = Alignment.Center
@@ -684,15 +740,29 @@ private fun DynamicFollowUpdateFixedIcon(
                 }
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White else Color(0x66FFFFFF),
+                    color = if (isFocused) {
+                        if (isLightTheme) Color(0xFFFB7299) else Color.White
+                    } else {
+                        if (isLightTheme) Color(0x33000000) else Color(0x66FFFFFF)
+                    },
                     shape = CircleShape
                 )
-                .background(if (isFocused) Color.White else Color(0x26FFFFFF)),
+                .background(
+                    if (isFocused) {
+                        if (isLightTheme) Color(0xFFFB7299) else Color.White
+                    } else {
+                        if (isLightTheme) Color(0x0F000000) else Color(0x26FFFFFF)
+                    }
+                ),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = item.iconText,
-                color = if (isFocused) Color(0xFF111315) else Color.White,
+                color = if (isFocused) {
+                    if (isLightTheme) Color.White else Color(0xFF111315)
+                } else {
+                    if (isLightTheme) Color(0xFF18191C) else Color.White
+                },
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -705,6 +775,7 @@ private fun DynamicFollowUpdateAvatar(
     item: DynamicFollowUpdateUpItem,
     isFocused: Boolean
 ) {
+    val isLightTheme = LocalIsLightTheme.current
     Box(
         modifier = Modifier.size(64.dp),
         contentAlignment = Alignment.Center
@@ -718,7 +789,11 @@ private fun DynamicFollowUpdateAvatar(
                 }
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
-                    color = if (isFocused) Color.White else Color(0x66FFFFFF),
+                    color = if (isFocused) {
+                        if (isLightTheme) Color(0xFFFB7299) else Color.White
+                    } else {
+                        if (isLightTheme) Color(0x33000000) else Color(0x66FFFFFF)
+                    },
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -764,6 +839,7 @@ fun LiveAvatarCard(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
     val focusRequesterModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
     Surface(
         onClick = onClick,
@@ -803,7 +879,13 @@ fun LiveAvatarCard(
         Column(
             modifier = Modifier
                 .clip(LiveCardShape)
-                .background(if (isFocused) Color(0x1AFFFFFF) else Color.Transparent)
+                .background(
+                    if (isFocused) {
+                        if (isLightTheme) Color(0x1A000000) else Color(0x1AFFFFFF)
+                    } else {
+                        Color.Transparent
+                    }
+                )
                 .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -862,7 +944,7 @@ fun LiveAvatarCard(
 
             Text(
                 text = live.uname,
-                color = Color.White,
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

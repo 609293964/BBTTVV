@@ -11,7 +11,7 @@
     app:cardCornerRadius="10dp"
     app:cardElevation="0dp"
     app:strokeColor="?attr/blblFocusStrokeColor"
-    app:strokeWidth="2dp"
+    app:strokeWidth="2.7dp"
     app:cardUseCompatPadding="false">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -133,7 +133,7 @@
             android:id="@+id/cl_info"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#242424"
+            android:background="#CC1F1F21"
             android:padding="12dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"

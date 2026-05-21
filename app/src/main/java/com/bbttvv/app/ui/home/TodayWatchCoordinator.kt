@@ -1,4 +1,4 @@
-﻿package com.bbttvv.app.ui.home
+package com.bbttvv.app.ui.home
 
 import android.content.Context
 import android.os.SystemClock
@@ -117,7 +117,7 @@ internal class TodayWatchCoordinator(
         )
         val creatorSignals = profileStore.getCreatorSignals(
             context = context,
-            limit = config.upRankLimit
+            limit = 5
         ).map(::toCreatorSignal)
         val penaltySignals = TodayWatchPenaltySignals(
             consumedBvids = sessionConsumedBvids.toSet(),
@@ -132,7 +132,7 @@ internal class TodayWatchCoordinator(
                 candidateVideos = candidates,
                 mode = mode,
                 eyeCareNightActive = false,
-                upRankLimit = config.upRankLimit,
+                upRankLimit = 5,
                 queueLimit = config.queueBuildLimit,
                 creatorSignals = creatorSignals,
                 penaltySignals = penaltySignals

@@ -45,6 +45,7 @@ internal fun rememberPlayerOverlayEffectHandler(
     context: Context,
     scope: CoroutineScope,
     exitTrace: PlayerExitTrace,
+    onPrepareExitPlayer: () -> Unit,
     onExitPlayer: () -> Unit,
 ): (PlayerOverlayEffect) -> Unit {
     return remember(
@@ -53,6 +54,7 @@ internal fun rememberPlayerOverlayEffectHandler(
         context,
         scope,
         exitTrace,
+        onPrepareExitPlayer,
         onExitPlayer,
     ) {
         { effect ->
@@ -63,6 +65,7 @@ internal fun rememberPlayerOverlayEffectHandler(
                 context = context,
                 scope = scope,
                 exitTrace = exitTrace,
+                onPrepareExitPlayer = onPrepareExitPlayer,
                 onExitPlayer = onExitPlayer,
             )
         }

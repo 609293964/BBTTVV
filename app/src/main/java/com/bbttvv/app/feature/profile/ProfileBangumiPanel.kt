@@ -36,6 +36,7 @@ internal fun ProfileBangumiPanel(
     onLoadMore: () -> Unit,
     onUnfollowBangumi: (Long) -> Unit,
     onRequestSidebarFocus: () -> Boolean,
+    onBackToTopBar: (() -> Boolean)? = null,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool? = null
@@ -72,11 +73,24 @@ internal fun ProfileBangumiPanel(
         items.firstOrNull()?.seasonId
     }
 
+    val contentFocusTarget = rememberProfileContentFocusTargetState(
+        focusCoordinator = focusCoordinator,
+        focusTab = focusTab,
+    )
+    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .profileContentFocusTarget(
+                state = contentFocusTarget,
+                focusCoordinator = focusCoordinator,
+                focusTab = focusTab,
+                onDpadLeft = onRequestSidebarFocus,
+            )
+            .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "我的追番", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(text = "我的追番", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
         ProfileVideoGrid(
             items = videoItems,
             isLoading = isLoading,
@@ -95,6 +109,7 @@ internal fun ProfileBangumiPanel(
             focusTab = focusTab,
             focusRegion = HomeFocusRegion.ProfileContent,
             videoCardRecycledViewPool = videoCardRecycledViewPool,
+            onBackToTopBar = onBackToTopBar,
             onRequestSidebarFocus = onRequestSidebarFocus,
             modifier = Modifier.weight(1f)
         )
