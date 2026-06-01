@@ -21,8 +21,8 @@ private val HomeFeedAnonymizerTimeFormatter: DateTimeFormatter =
 class HomeFeedAnonymizerPlugin : Plugin {
     override val id: String = HOME_FEED_ANONYMIZER_PLUGIN_ID
     override val name: String = "初见推荐"
-    override val description: String = "仅在 Web 首页推荐接口隐藏登录 Cookie，让推荐流更接近未登录公共热门。"
-    override val version: String = "1.0.1"
+    override val description: String = "仅在 Web 首页推荐接口使用匿名访客标识，隐藏登录 Cookie，让推荐流更接近未登录公共热门。"
+    override val version: String = "1.0.2"
     override val author: String = "BiliPai项目组"
     override val capabilityManifest: PluginCapabilityManifest = PluginCapabilityManifest(
         pluginId = id,
@@ -43,8 +43,11 @@ class HomeFeedAnonymizerPlugin : Plugin {
         get() = HomeFeedAnonymizerRuntime.statsSnapshot
 
     override suspend fun onEnable() {
+        if (!HomeFeedAnonymizerRuntime.enabled) {
+            HomeFeedAnonymizerRuntime.rotateAnonymousSession()
+        }
         HomeFeedAnonymizerRuntime.setEnabled(true)
-        Logger.d(HomeFeedAnonymizerPluginTag, "初见推荐已启用：Web 首页推荐接口将不携带 Cookie")
+        Logger.d(HomeFeedAnonymizerPluginTag, "初见推荐已启用：Web 首页推荐接口将使用匿名 buvid3，不携带登录 Cookie")
     }
 
     override suspend fun onDisable() {
@@ -98,7 +101,7 @@ fun buildHomeFeedAnonymizerStatsUiModel(
         stateRow = HomeFeedAnonymizerInfoRow(
             label = "状态",
             summary = stateSummary,
-            fullContent = "状态：$stateSummary。插件只影响 Web 首页推荐接口，不影响播放、评论、动态、收藏和移动端推荐流。",
+            fullContent = "状态：$stateSummary。插件只影响 Web 首页推荐接口，会保留匿名访客标识并移除登录 Cookie，不影响播放、评论、动态、收藏和移动端推荐流。",
             maxLines = 1
         ),
         totalRow = HomeFeedAnonymizerInfoRow(
@@ -116,7 +119,7 @@ fun buildHomeFeedAnonymizerStatsUiModel(
         scopeRow = HomeFeedAnonymizerInfoRow(
             label = "影响范围",
             summary = "仅 Web 首页推荐接口",
-            fullContent = "影响范围：仅 $HOME_FEED_ANONYMIZER_WEB_ENDPOINT。启用后该接口请求不携带 Cookie，其他接口保持原登录态。频繁刷新可能触发访客侧限流；首页异常时请先关闭插件验证。",
+            fullContent = "影响范围：仅 $HOME_FEED_ANONYMIZER_WEB_ENDPOINT。启用后该接口请求使用本次启动的匿名 buvid3，不携带登录 Cookie，其他接口保持原登录态。频繁刷新可能触发访客侧限流；首页异常时请先关闭插件验证。",
             maxLines = 2
         )
     )

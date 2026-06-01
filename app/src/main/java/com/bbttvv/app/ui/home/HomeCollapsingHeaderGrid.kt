@@ -114,12 +114,13 @@ internal fun HomeCollapsingHeaderGrid(
             // Avoid painting RecyclerView for one frame with only TopBar padding while
             // the local TV header is still being measured during tab switches.
             grid(headerTopPadding) { scrollOffsetPx ->
-                if (collapseEnabled) {
-                    state.updateScrollOffset(
-                        scrollOffsetPx = scrollOffsetPx,
-                        totalHeaderHeightPx = totalHeaderHeightPx,
-                    )
-                }
+                // Keep the stored offset fresh even while rendering the header expanded.
+                // Detail return focus restore can enable collapse after the RecyclerView
+                // has already reported this same offset.
+                state.updateScrollOffset(
+                    scrollOffsetPx = scrollOffsetPx,
+                    totalHeaderHeightPx = totalHeaderHeightPx,
+                )
             }
         }
 

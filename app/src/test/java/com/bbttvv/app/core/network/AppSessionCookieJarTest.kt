@@ -9,7 +9,7 @@ import org.junit.Test
 class AppSessionCookieJarTest {
 
     @Test
-    fun `home feed anonymizer returns empty cookies before token warmup`() {
+    fun `home feed anonymizer returns anonymous buvid before token warmup`() {
         HomeFeedAnonymizerRuntime.resetStats()
         HomeFeedAnonymizerRuntime.setEnabled(true)
 
@@ -18,7 +18,8 @@ class AppSessionCookieJarTest {
                 "https://api.bilibili.com/x/web-interface/wbi/index/top/feed/rcmd?ps=20".toHttpUrl()
             )
 
-            assertTrue(cookies.isEmpty())
+            assertEquals(listOf("buvid3"), cookies.map { it.name })
+            assertTrue(cookies.single().value.endsWith("infoc"))
             assertEquals(1L, HomeFeedAnonymizerRuntime.statsSnapshot.totalHits)
         } finally {
             HomeFeedAnonymizerRuntime.setEnabled(false)

@@ -17,7 +17,7 @@ class HomeFeedAnonymizerPluginTest {
 
         assertEquals(HOME_FEED_ANONYMIZER_PLUGIN_ID, plugin.id)
         assertEquals("初见推荐", plugin.name)
-        assertEquals("1.0.1", plugin.version)
+        assertEquals("1.0.2", plugin.version)
         assertEquals("BiliPai项目组", plugin.author)
         assertFalse(plugin.unavailable)
         assertEquals(

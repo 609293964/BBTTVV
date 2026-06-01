@@ -11,8 +11,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.LayerDrawable
 import coil.imageLoader
 import coil.load
 import coil.request.ImageRequest
@@ -22,7 +20,6 @@ import coil.transform.CircleCropTransformation
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.R
 import com.bbttvv.app.core.store.SettingsManager
-import com.bbttvv.app.core.util.BlurTransformation
 import com.bbttvv.app.core.util.FormatUtils
 import com.bbttvv.app.databinding.ItemVideoCardBinding
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
@@ -342,38 +339,14 @@ internal class HomeVideoCardAdapter(
                 size(Size(480, 270))
             }
 
-            // 异步加载毛玻璃虚化背景层（解决列表复用导致背景错乱的防错 Tag 校验设计）
-            binding.clInfo.setTag(coverUrl)
-            val defaultBgColor = if (isLightTheme) Color.parseColor("#F2F4F7") else Color.parseColor("#CC1F1F21")
-            val overlayColor = if (isLightTheme) Color.parseColor("#D8FFFFFF") else Color.parseColor("#C0161618")
-            binding.clInfo.setBackgroundColor(defaultBgColor)
-
-            if (coverUrl.isNotBlank()) {
-                val blurRequest = ImageRequest.Builder(context)
-                    .data(coverUrl)
-                    .transformations(BlurTransformation(context, radius = 8f, sampling = 4f))
-                    .precision(Precision.INEXACT)
-                    .size(Size(120, 67)) // 缩放小图进行模糊，极其快速且节省内存
-                    .allowHardware(false) // 设为 false 以便能获取 Bitmap 渲染为背景 Drawable
-                    .target(
-                        onSuccess = { drawable ->
-                            if (binding.clInfo.tag == coverUrl) {
-                                val layerDrawable = LayerDrawable(arrayOf(
-                                    drawable,
-                                    ColorDrawable(overlayColor)
-                                ))
-                                binding.clInfo.background = layerDrawable
-                            }
-                        },
-                        onError = {
-                            if (binding.clInfo.tag == coverUrl) {
-                                binding.clInfo.setBackgroundColor(defaultBgColor)
-                            }
-                        }
-                    )
-                    .build()
-                context.imageLoader.enqueue(blurRequest)
+            // Keep the title area lightweight on low-end TV devices: no per-card blur work.
+            val infoBackgroundColor = if (isLightTheme) {
+                Color.parseColor("#F2F4F7")
+            } else {
+                Color.parseColor("#CC1F1F21")
             }
+            binding.clInfo.setTag(null)
+            binding.clInfo.setBackgroundColor(infoBackgroundColor)
 
             val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
             binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
@@ -418,7 +391,6 @@ internal class HomeVideoCardAdapter(
             boundOnBackKeyUp = null
             binding.root.isLongClickable = false
 
-            // 清除毛玻璃异步 Tag 与背景，防止内存泄漏和复用瞬间的旧图闪烁
             binding.clInfo.setTag(null)
             binding.clInfo.background = null
         }

@@ -31,7 +31,7 @@ class HomeFeedAnonymizerPolicyTest {
     }
 
     @Test
-    fun `enabled plugin clears entire cookie header for web home feed`() {
+    fun `enabled plugin keeps only anonymous visitor cookie for web home feed`() {
         val cookieNames = listOf(
             "buvid3",
             "SESSDATA",
@@ -40,7 +40,7 @@ class HomeFeedAnonymizerPolicyTest {
         )
 
         assertEquals(
-            emptyList(),
+            listOf("buvid3"),
             filterHomeFeedCookieHeaderNames(
                 pluginEnabled = true,
                 host = "api.bilibili.com",
@@ -48,6 +48,25 @@ class HomeFeedAnonymizerPolicyTest {
                 cookieNames = cookieNames
             )
         )
+    }
+
+    @Test
+    fun `anonymous visitor id is stable until session rotates`() {
+        HomeFeedAnonymizerRuntime.setEnabled(false)
+
+        try {
+            val first = HomeFeedAnonymizerRuntime.anonymousBuvid3
+            val repeated = HomeFeedAnonymizerRuntime.anonymousBuvid3
+            HomeFeedAnonymizerRuntime.rotateAnonymousSession()
+            val rotated = HomeFeedAnonymizerRuntime.anonymousBuvid3
+
+            assertEquals(first, repeated)
+            assertTrue(first.endsWith("infoc"))
+            assertTrue(rotated.endsWith("infoc"))
+            assertFalse(first == rotated)
+        } finally {
+            HomeFeedAnonymizerRuntime.setEnabled(false)
+        }
     }
 
     @Test

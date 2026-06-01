@@ -113,7 +113,6 @@ internal fun ProfilePluginCenterPanel(
     val plugins by com.bbttvv.app.core.plugin.PluginManager.pluginsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val jsonPlugins by JsonPluginManager.plugins.collectAsStateWithLifecycle(initialValue = emptyList())
     val filterStats by JsonPluginManager.filterStats.collectAsStateWithLifecycle(initialValue = emptyMap())
-    val lastFilteredCount by JsonPluginManager.lastFilteredCount.collectAsStateWithLifecycle(initialValue = 0)
     var expandedPluginId by remember { mutableStateOf<String?>(null) }
     val contentFocusTarget = rememberProfileContentFocusTargetState(
         focusCoordinator = focusCoordinator,
@@ -140,26 +139,24 @@ internal fun ProfilePluginCenterPanel(
     }
 
     var lastFocusedKey by remember { mutableStateOf<String?>(null) }
-    val defaultFirstKey = firstBuiltInPluginId ?: firstJsonPluginId ?: "plugin_summary"
+    val defaultFirstKey = firstBuiltInPluginId ?: firstJsonPluginId ?: "plugin_external_empty"
     val targetFirstKey = lastFocusedKey ?: defaultFirstKey
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var isFocusedInRightPanel by remember { mutableStateOf(false) }
 
     val getIndexForPluginKey: (String) -> Int = { key ->
-        if (key == "plugin_summary") {
-            1
+        val builtinIndex = builtInPlugins.indexOfFirst { it.plugin.id == key }
+        if (builtinIndex >= 0) {
+            1 + builtinIndex
         } else {
-            val builtinIndex = builtInPlugins.indexOfFirst { it.plugin.id == key }
-            if (builtinIndex >= 0) {
-                3 + builtinIndex
+            val jsonIndex = jsonPlugins.indexOfFirst { it.plugin.id == key }
+            if (jsonIndex >= 0) {
+                2 + builtInPlugins.size + jsonIndex
+            } else if (key == "plugin_external_empty") {
+                2 + builtInPlugins.size
             } else {
-                val jsonIndex = jsonPlugins.indexOfFirst { it.plugin.id == key }
-                if (jsonIndex >= 0) {
-                    4 + builtInPlugins.size + jsonIndex
-                } else {
-                    0
-                }
+                1
             }
         }
     }
@@ -197,24 +194,7 @@ internal fun ProfilePluginCenterPanel(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item { Text(text = "插件中心", color = titleTextColor, style = MaterialTheme.typography.headlineMedium) }
-        item(key = "plugin_summary") {
-            Row(
-                modifier = Modifier.onFocusChanged { state ->
-                    if (state.hasFocus) {
-                        lastFocusedKey = "plugin_summary"
-                    }
-                },
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                PluginCenterSummaryCard("内置插件", builtInPlugins.size.toString(), Modifier.weight(1f))
-                PluginCenterSummaryCard("已启用", (builtInPlugins.count { it.enabled } + jsonPlugins.count { it.enabled }).toString(), Modifier.weight(1f))
-                PluginCenterSummaryCard("最近过期", lastFilteredCount.toString(), Modifier.weight(1f))
-            }
-        }
-        item(key = "plugin_builtin_title") {
-            Text(text = "内置插件", color = sectionHeaderColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        }
-        items(builtInPlugins, key = { it.plugin.id }) { pluginInfo ->
+        itemsIndexed(builtInPlugins, key = { _, pluginInfo -> pluginInfo.plugin.id }) { index, pluginInfo ->
             val isExpanded = expandedPluginId == pluginInfo.plugin.id
             Column(
                 modifier = Modifier.onFocusChanged { state ->
@@ -243,6 +223,11 @@ internal fun ProfilePluginCenterPanel(
                         Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
                     } else {
                         Modifier
+                    },
+                    onDpadUp = if (index == 0) {
+                        { true }
+                    } else {
+                        null
                     },
                 )
                 AnimatedVisibility(
@@ -333,9 +318,19 @@ internal fun ProfilePluginCenterPanel(
             item(key = "plugin_external_empty") {
                 PluginCenterRowCard(
                     title = "暂无外部规则插件",
-                    subtitle = "内置规则插件已经就位，后续可在这里接入外部 JSON 规则插件。",
+                    subtitle = "系统规则已经就位，后续可在这里接入外部 JSON 规则插件。",
                     value = "列表结束",
+                    modifier = if (targetFirstKey == "plugin_external_empty") {
+                        Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
+                    } else {
+                        Modifier
+                    },
                     onClick = {},
+                    onDpadUp = if (builtInPlugins.isEmpty()) {
+                        { true }
+                    } else {
+                        null
+                    },
                     onDpadDown = { true }
                 )
             }
@@ -376,6 +371,11 @@ internal fun ProfilePluginCenterPanel(
                             Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
                         } else {
                             Modifier
+                        },
+                        onDpadUp = if (builtInPlugins.isEmpty() && index == 0) {
+                            { true }
+                        } else {
+                            null
                         },
                         onDpadDown = {
                             index == jsonPlugins.lastIndex
@@ -1162,20 +1162,6 @@ private fun HomeFeedAnonymizerPluginPanel(
             )
         }
         ProfileInfoCard("已接入推荐请求", "该插件只作用于网页端推荐流。若当前设置切到移动端推荐流，它不会改动移动端 access_token 请求。", compact = true)
-    }
-}
-
-@Composable
-private fun PluginCenterSummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    val bgColor = if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
-    val titleColor = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
-    val valueColor = if (isLightTheme) Color(0xFF18191C) else Color.White
-    Box(modifier = modifier.background(bgColor, RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 14.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(text = title, color = titleColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Text(text = value, color = valueColor, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-        }
     }
 }
 

@@ -1,7 +1,10 @@
 package com.bbttvv.app.core.network.policy
 
+import java.util.UUID
+
 private const val BILIBILI_API_HOST = "api.bilibili.com"
 private const val WEB_HOME_FEED_PATH = "/x/web-interface/wbi/index/top/feed/rcmd"
+private val ANONYMOUS_HOME_FEED_COOKIE_NAMES = setOf("buvid3")
 
 data class HomeFeedAnonymizerStatsSnapshot(
     val totalHits: Long = 0L,
@@ -12,11 +15,13 @@ data class HomeFeedAnonymizerStatsSnapshot(
 
 object HomeFeedAnonymizerRuntime {
     private val statsLock = Any()
+    private val anonymousSessionLock = Any()
 
     @Volatile
     private var enabledValue: Boolean = false
 
     private var statsValue: HomeFeedAnonymizerStatsSnapshot = HomeFeedAnonymizerStatsSnapshot()
+    private var anonymousBuvid3Value: String? = null
 
     val enabled: Boolean
         get() = enabledValue
@@ -24,8 +29,22 @@ object HomeFeedAnonymizerRuntime {
     val statsSnapshot: HomeFeedAnonymizerStatsSnapshot
         get() = synchronized(statsLock) { statsValue }
 
+    val anonymousBuvid3: String
+        get() = synchronized(anonymousSessionLock) {
+            anonymousBuvid3Value ?: createAnonymousBuvid3().also { anonymousBuvid3Value = it }
+        }
+
     fun setEnabled(enabled: Boolean) {
         enabledValue = enabled
+        if (!enabled) {
+            clearAnonymousSession()
+        }
+    }
+
+    fun rotateAnonymousSession() {
+        synchronized(anonymousSessionLock) {
+            anonymousBuvid3Value = createAnonymousBuvid3()
+        }
     }
 
     fun recordHit(
@@ -47,6 +66,16 @@ object HomeFeedAnonymizerRuntime {
         synchronized(statsLock) {
             statsValue = HomeFeedAnonymizerStatsSnapshot()
         }
+    }
+
+    private fun clearAnonymousSession() {
+        synchronized(anonymousSessionLock) {
+            anonymousBuvid3Value = null
+        }
+    }
+
+    private fun createAnonymousBuvid3(): String {
+        return UUID.randomUUID().toString().replace("-", "") + "infoc"
     }
 }
 
@@ -72,10 +101,14 @@ fun filterHomeFeedCookieHeaderNames(
             encodedPath = encodedPath
         )
     ) {
-        emptyList()
+        cookieNames.filter(::isAnonymousHomeFeedCookieName)
     } else {
         cookieNames
     }
+}
+
+fun isAnonymousHomeFeedCookieName(name: String): Boolean {
+    return name in ANONYMOUS_HOME_FEED_COOKIE_NAMES
 }
 
 fun resolveHomeFeedCookieAnonymizerDecision(

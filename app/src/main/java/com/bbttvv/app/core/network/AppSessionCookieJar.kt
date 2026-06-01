@@ -39,9 +39,9 @@ internal class AppSessionCookieJar : CookieJar {
         ) {
             Logger.d(
                 "CookieJar",
-                " 初见推荐匿名化首页推荐请求: ${url.encodedPath}, clearCookieHeader=true"
+                " 初见推荐匿名化首页推荐请求: ${url.encodedPath}, accountCookiesCleared=true"
             )
-            return emptyList()
+            return anonymousHomeFeedCookies(url)
         }
 
         TokenManager.awaitWarmupBlocking()
@@ -101,6 +101,16 @@ internal class AppSessionCookieJar : CookieJar {
         }
 
         return cookies
+    }
+
+    private fun anonymousHomeFeedCookies(url: HttpUrl): List<Cookie> {
+        return listOf(
+            Cookie.Builder()
+                .domain(url.host)
+                .name("buvid3")
+                .value(HomeFeedAnonymizerRuntime.anonymousBuvid3)
+                .build()
+        )
     }
 
     fun clear() {
