@@ -79,4 +79,79 @@ class DpadGridDirectionalFocusPolicyTest {
             )
         )
     }
+
+    @Test
+    fun `directional smooth scroll stops after intended target receives focus`() {
+        assertTrue(
+            DpadGridDirectionalFocusPolicy.shouldStopScrollAfterTargetFocus(
+                focusedPosition = 8,
+                directionalScrollTargetPosition = 8,
+                isDirectionalScrollParked = true,
+            )
+        )
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldStopScrollAfterTargetFocus(
+                focusedPosition = 4,
+                directionalScrollTargetPosition = 8,
+                isDirectionalScrollParked = true,
+            )
+        )
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldStopScrollAfterTargetFocus(
+                focusedPosition = 8,
+                directionalScrollTargetPosition = RecyclerView.NO_POSITION,
+                isDirectionalScrollParked = true,
+            )
+        )
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldStopScrollAfterTargetFocus(
+                focusedPosition = 8,
+                directionalScrollTargetPosition = 8,
+                isDirectionalScrollParked = false,
+            )
+        )
+    }
+
+    @Test
+    fun `attached partial target defers focus until smooth scroll can run`() {
+        assertTrue(
+            DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                isTargetFullyVisible = false,
+                scrollDistancePx = 240,
+                canScrollInDirection = true,
+            )
+        )
+        assertTrue(
+            DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                isTargetFullyVisible = false,
+                scrollDistancePx = -240,
+                canScrollInDirection = true,
+            )
+        )
+    }
+
+    @Test
+    fun `attached target focuses immediately when no smooth scroll is needed`() {
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                isTargetFullyVisible = true,
+                scrollDistancePx = 240,
+                canScrollInDirection = true,
+            )
+        )
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                isTargetFullyVisible = false,
+                scrollDistancePx = 0,
+                canScrollInDirection = true,
+            )
+        )
+        assertFalse(
+            DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                isTargetFullyVisible = false,
+                scrollDistancePx = 240,
+                canScrollInDirection = false,
+            )
+        )
+    }
 }

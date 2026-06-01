@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.components.AppTopLevelTab
 
 /**
@@ -230,7 +231,7 @@ internal class HomeFocusCoordinator(
 
     fun onTopBarFocused() {
         clearSelectedContentVisualState()
-        Log.d("HomeFocus", "onTopBarFocused: isTopBarVisible $isTopBarVisible -> true")
+        logHomeFocus { "onTopBarFocused: isTopBarVisible $isTopBarVisible -> true" }
         isTopBarVisible = true
         pendingTopBarHide = false
         isContentFocused = false
@@ -261,7 +262,7 @@ internal class HomeFocusCoordinator(
         isContentFocused = true
         pendingTopBarHide = false
         val newVis = rowIndex <= 0
-        Log.d("HomeFocus", "onContentRowFocused: row=$rowIndex isTopBarVisible $isTopBarVisible -> $newVis")
+        logHomeFocus { "onContentRowFocused: row=$rowIndex isTopBarVisible $isTopBarVisible -> $newVis" }
         isTopBarVisible = newVis
     }
 
@@ -348,10 +349,7 @@ internal class HomeFocusCoordinator(
     fun cancelPendingRestoreVideoKeyForUserNavigation(tab: AppTopLevelTab?): Boolean {
         val intent = pendingIntent as? HomeFocusIntent.RestoreVideoKey ?: return false
         if (tab != null && intent.tab != tab) return false
-        Log.d(
-            "HomeFocus",
-            "cancelPendingRestoreVideoKeyForUserNavigation: tab=$tab key=${intent.key}"
-        )
+        logHomeFocus { "cancelPendingRestoreVideoKeyForUserNavigation: tab=$tab key=${intent.key}" }
         pendingIntent = null
         pendingRestoreCallback = null
         pendingRestoreCancelCallback?.invoke()
@@ -503,7 +501,7 @@ internal class HomeFocusCoordinator(
                 else -> {
                     if (pendingTopBarHide) {
                         pendingTopBarHide = false
-                        Log.d("HomeFocus", "drainPendingFocus CONSUMED: isTopBarVisible $isTopBarVisible -> false")
+                        logHomeFocus { "drainPendingFocus CONSUMED: isTopBarVisible $isTopBarVisible -> false" }
                         isTopBarVisible = false
                     }
                 }
@@ -624,5 +622,11 @@ internal class HomeFocusCoordinator(
 
     private fun shouldKeepTopBarVisibleWhileEnteringContent(tab: AppTopLevelTab): Boolean {
         return HomeFocusRules.ruleFor(tab)?.keepTopBarVisibleWhileEnteringContent == true
+    }
+}
+
+private inline fun logHomeFocus(message: () -> String) {
+    if (BuildConfig.DEBUG) {
+        Log.d("HomeFocus", message())
     }
 }

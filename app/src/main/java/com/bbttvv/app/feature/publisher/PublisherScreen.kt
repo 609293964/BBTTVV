@@ -48,6 +48,7 @@ import com.bbttvv.app.data.repository.PublisherRepository
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.home.HomeRecommendGridFocusState
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 private const val PublisherGridColumns = 4
 private const val PublisherLoadMorePrefetchItems = 4
@@ -65,6 +66,8 @@ fun PublisherScreen(
     val timeSortFocusRequester = remember { FocusRequester() }
     val hotSortFocusRequester = remember { FocusRequester() }
     val videoGridFocusState = remember { HomeRecommendGridFocusState() }
+    val isLightTheme = LocalIsLightTheme.current
+    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF111315)
     var headerFocusToken by remember { mutableIntStateOf(0) }
     val initialHeader = remember(mid, initialName, initialFace) {
         if (mid > 0L && !initialName.isNullOrBlank()) {
@@ -89,7 +92,7 @@ fun PublisherScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF111315))
+            .background(pageBackgroundColor)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             PublisherHeaderSection(
@@ -218,6 +221,10 @@ private fun PublisherHeaderSection(
     onNavigateDown: () -> Boolean,
     onSortSelected: (PublisherRepository.PublisherSortOrder) -> Unit
 ) {
+    val isLightTheme = LocalIsLightTheme.current
+    val titleTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val avatarPlaceholderColor = if (isLightTheme) Color(0xFFE3E5E8) else Color.DarkGray
+
     LaunchedEffect(requestFocusToken, selectedSort) {
         if (requestFocusToken > 0) {
             when (selectedSort) {
@@ -272,11 +279,11 @@ private fun PublisherHeaderSection(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(Color.DarkGray)
+                                .background(avatarPlaceholderColor)
                         )
                         Text(
                             text = header.name.ifBlank { "未知发布者" },
-                            color = Color.White,
+                            color = titleTextColor,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -331,6 +338,24 @@ private fun PublisherSortButton(
     onNavigateDown: () -> Boolean
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
+    val containerColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        selected -> if (isLightTheme) Color(0x14FB7299) else Color.White.copy(alpha = 0.22f)
+        else -> if (isLightTheme) Color(0x0A000000) else Color(0x22000000)
+    }
+    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
+    val pressedContainerColor = when {
+        isLightTheme -> Color(0xFFE25E83)
+        selected -> Color.White.copy(alpha = 0.78f)
+        else -> Color(0x33FFFFFF)
+    }
+    val contentColor = when {
+        isFocused -> if (isLightTheme) Color.White else Color(0xFF121212)
+        selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        else -> if (isLightTheme) Color(0xFF61666D) else Color.White
+    }
+
     Surface(
         onClick = onClick,
         modifier = Modifier
@@ -351,17 +376,9 @@ private fun PublisherSortButton(
         shape = ClickableSurfaceDefaults.shape(),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = when {
-                isFocused -> Color.White
-                selected -> Color.White.copy(alpha = 0.22f)
-                else -> Color(0x22000000)
-            },
-            focusedContainerColor = Color.White,
-            pressedContainerColor = if (selected) {
-                Color.White.copy(alpha = 0.78f)
-            } else {
-                Color(0x33FFFFFF)
-            }
+            containerColor = containerColor,
+            focusedContainerColor = focusedContainerColor,
+            pressedContainerColor = pressedContainerColor
         ),
         glow = ClickableSurfaceDefaults.glow(Glow.None, Glow.None, Glow.None)
     ) {
@@ -375,7 +392,7 @@ private fun PublisherSortButton(
         ) {
             Text(
                 text = label,
-                color = if (isFocused) Color(0xFF121212) else Color.White,
+                color = contentColor,
                 fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
             )

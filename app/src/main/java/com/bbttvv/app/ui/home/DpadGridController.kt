@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
 internal class DpadGridController(
@@ -107,7 +108,16 @@ internal class DpadGridController(
             return false
         }
 
+        val shouldStopSettledDirectionalScroll =
+            DpadGridDirectionalFocusPolicy.shouldStopScrollAfterTargetFocus(
+                focusedPosition = position,
+                directionalScrollTargetPosition = directionalScrollTargetPosition,
+                isDirectionalScrollParked = isDirectionalScrollParked(),
+            )
         focusRequestToken++
+        if (shouldStopSettledDirectionalScroll) {
+            recyclerView?.stopScroll()
+        }
         clearDirectionalScrollParking()
         lastKnownFocusedPosition = position
         lastKnownFocusedColumn = spanCountOrNull()?.let { position % it } ?: RecyclerView.NO_POSITION
@@ -294,16 +304,20 @@ internal class DpadGridController(
         val currentItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
         val targetItem = recycler.findViewHolderForAdapterPosition(targetPosition)?.itemView
         if (targetItem != null && targetItem.isValidFocusTarget()) {
-            if (focusAttachedItemThenScrollIntoView(recycler, targetItem, targetPosition)) {
-                return true
-            }
-            val requestToken = ++focusRequestToken
             val scrollDistance = scrollDistanceToPreviousRow(
                 recycler = recycler,
                 currentItem = currentItem,
                 targetItem = targetItem,
             )
-            if (scrollDistance < 0 && recycler.canScrollVertically(-1)) {
+            val canSmoothScrollToTarget = scrollDistance < 0 && recycler.canScrollVertically(-1)
+            if (
+                DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                    isTargetFullyVisible = isItemFullyVisible(recycler, targetItem),
+                    scrollDistancePx = scrollDistance,
+                    canScrollInDirection = canSmoothScrollToTarget,
+                )
+            ) {
+                val requestToken = ++focusRequestToken
                 return smoothScrollThen(
                     recycler = recycler,
                     dyPx = scrollDistance,
@@ -316,6 +330,9 @@ internal class DpadGridController(
                         requestToken = requestToken,
                     )
                 }
+            }
+            if (focusAttachedItemThenScrollIntoView(recycler, targetItem, targetPosition)) {
+                return true
             }
             if (targetItem.requestFocus()) {
                 return true
@@ -357,20 +374,24 @@ internal class DpadGridController(
     ): Boolean {
         val currentItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
         val nextPosition = position + spanCount
-        Log.d("HomeFocus", "handleDpadDown: pos=$position nextPos=$nextPosition itemCount=$itemCount spanCount=$spanCount")
+        logHomeFocus { "handleDpadDown: pos=$position nextPos=$nextPosition itemCount=$itemCount spanCount=$spanCount" }
         if (nextPosition in 0 until itemCount) {
             val targetItem = recycler.findViewHolderForAdapterPosition(nextPosition)?.itemView
             if (targetItem != null && targetItem.isValidFocusTarget()) {
-                if (focusAttachedItemThenScrollIntoView(recycler, targetItem, nextPosition)) {
-                    return true
-                }
-                val requestToken = ++focusRequestToken
                 val scrollDistance = scrollDistanceToNextRow(
                     recycler = recycler,
                     currentItem = currentItem,
                     targetItem = targetItem,
                 )
-                if (scrollDistance > 0 && recycler.canScrollVertically(1)) {
+                val canSmoothScrollToTarget = scrollDistance > 0 && recycler.canScrollVertically(1)
+                if (
+                    DpadGridDirectionalFocusPolicy.shouldDeferAttachedTargetFocusForSmoothScroll(
+                        isTargetFullyVisible = isItemFullyVisible(recycler, targetItem),
+                        scrollDistancePx = scrollDistance,
+                        canScrollInDirection = canSmoothScrollToTarget,
+                    )
+                ) {
+                    val requestToken = ++focusRequestToken
                     return smoothScrollThen(
                         recycler = recycler,
                         dyPx = scrollDistance,
@@ -383,6 +404,9 @@ internal class DpadGridController(
                             requestToken = requestToken,
                         )
                     }
+                }
+                if (focusAttachedItemThenScrollIntoView(recycler, targetItem, nextPosition)) {
+                    return true
                 }
                 if (targetItem.requestFocus()) {
                     return true
@@ -650,11 +674,11 @@ internal class DpadGridController(
         if (!itemView.isValidFocusTarget()) return false
         unparkFocusInRecyclerViewIfNeeded(recycler)
         if (!itemView.requestFocus()) return false
-        Log.d("HomeFocus", "focusAttachedItemThenScrollIntoView: pos=$position requestToken=$focusRequestToken")
+        logHomeFocus { "focusAttachedItemThenScrollIntoView: pos=$position requestToken=$focusRequestToken" }
         val requestToken = focusRequestToken
         recycler.postOnAnimation {
             if (!isFocusRequestCurrent(recycler, requestToken)) {
-                Log.d("HomeFocus", "focusAttachedItemThenScrollIntoView POST: STALE token=$requestToken current=$focusRequestToken")
+                logHomeFocus { "focusAttachedItemThenScrollIntoView POST: STALE token=$requestToken current=$focusRequestToken" }
                 return@postOnAnimation
             }
             val targetItem = recycler.findViewHolderForAdapterPosition(position)?.itemView
@@ -662,10 +686,10 @@ internal class DpadGridController(
             if (!targetItem.isValidFocusTarget()) return@postOnAnimation
             val focusedView = recycler.rootView?.findFocus() ?: return@postOnAnimation
             if (!focusedView.isSameOrDescendantOf(targetItem)) {
-                Log.d("HomeFocus", "focusAttachedItemThenScrollIntoView POST: focusedView not in targetItem")
+                logHomeFocus { "focusAttachedItemThenScrollIntoView POST: focusedView not in targetItem" }
                 return@postOnAnimation
             }
-            Log.d("HomeFocus", "focusAttachedItemThenScrollIntoView POST: calling scrollAttachedItemIntoView pos=$position")
+            logHomeFocus { "focusAttachedItemThenScrollIntoView POST: calling scrollAttachedItemIntoView pos=$position" }
             scrollAttachedItemIntoView(recycler, targetItem)
         }
         return true
@@ -686,12 +710,12 @@ internal class DpadGridController(
             else -> 0
         }
         if (dy != 0) {
-            Log.d("HomeFocus", "scrollAttachedItemIntoView: dy=$dy itemTop=${bounds.top} itemBot=${bounds.bottom} topLimit=$topLimit botLimit=$bottomLimit")
+            logHomeFocus { "scrollAttachedItemIntoView: dy=$dy itemTop=${bounds.top} itemBot=${bounds.bottom} topLimit=$topLimit botLimit=$bottomLimit" }
         }
         if (dy == 0 || !recycler.canScrollVertically(if (dy > 0) 1 else -1)) {
             return false
         }
-        recycler.scrollBy(0, dy)
+        recycler.smoothScrollBy(0, dy)
         return true
     }
 
@@ -761,7 +785,7 @@ internal class DpadGridController(
                 if (closestView != null && closestView.requestFocus()) {
                     onFocused?.invoke()
                     callbacks.onFocusSettled()
-                    android.util.Log.d("HomeFocus", "DpadGridController Fallback SUCCESS: expected=$position, actual=$closestPosition")
+                    logHomeFocus { "DpadGridController Fallback SUCCESS: expected=$position, actual=$closestPosition" }
                     return true
                 }
             }
@@ -939,6 +963,9 @@ internal class DpadGridController(
                 focusRequestToken != requestToken ||
                 !isDirectionalScrollParked()
             ) {
+                return@postOnAnimation
+            }
+            if (recycler.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
                 return@postOnAnimation
             }
 
@@ -1251,6 +1278,12 @@ internal class DpadGridController(
     }
 }
 
+private inline fun logHomeFocus(message: () -> String) {
+    if (BuildConfig.DEBUG) {
+        Log.d("HomeFocus", message())
+    }
+}
+
 internal data class DpadGridEdge(
     val isTop: Boolean,
     val isLeft: Boolean,
@@ -1335,6 +1368,26 @@ internal object DpadGridDirectionalFocusPolicy {
         if (!isDirectionalScrollParked) return false
         if (validPosition(directionalScrollTargetPosition, itemCount) == null) return false
         return position != directionalScrollTargetPosition
+    }
+
+    fun shouldStopScrollAfterTargetFocus(
+        focusedPosition: Int,
+        directionalScrollTargetPosition: Int,
+        isDirectionalScrollParked: Boolean,
+    ): Boolean {
+        if (!isDirectionalScrollParked) return false
+        return directionalScrollTargetPosition != RecyclerView.NO_POSITION &&
+            focusedPosition == directionalScrollTargetPosition
+    }
+
+    fun shouldDeferAttachedTargetFocusForSmoothScroll(
+        isTargetFullyVisible: Boolean,
+        scrollDistancePx: Int,
+        canScrollInDirection: Boolean,
+    ): Boolean {
+        return !isTargetFullyVisible &&
+            scrollDistancePx != 0 &&
+            canScrollInDirection
     }
 
     private fun validPosition(position: Int, itemCount: Int): Int? {

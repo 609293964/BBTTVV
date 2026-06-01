@@ -184,22 +184,13 @@ class CdnRegionPlugin : PlaybackCdnPlugin {
             )
             val selection = selectCdnRegionForLocation(
                 location = location,
-                catalog = loadedCatalog,
-                fallbackRegion = {
-                    current.fallbackRegion.takeIf { it in loadedCatalog }
-                        ?: loadedCatalog.keys.first()
-                }
+                catalog = loadedCatalog
             )
             val verifiedHosts = filterResolvableCdnHosts(selection.hosts)
             val next = CdnRegionPluginCache(
                 location = location,
                 selectedRegion = selection.region.takeIf { verifiedHosts.isNotEmpty() }.orEmpty(),
                 selectedHosts = verifiedHosts,
-                fallbackRegion = if (selection.fallbackUsed && verifiedHosts.isNotEmpty()) {
-                    selection.region
-                } else {
-                    current.fallbackRegion
-                },
                 fallbackUsed = selection.fallbackUsed,
                 refreshedAtMs = System.currentTimeMillis(),
                 lastError = if (verifiedHosts.isEmpty()) {
@@ -275,7 +266,6 @@ data class CdnRegionPluginCache(
     val location: IpLocationSnapshot = IpLocationSnapshot(),
     val selectedRegion: String = "",
     val selectedHosts: List<String> = emptyList(),
-    val fallbackRegion: String = "",
     val fallbackUsed: Boolean = false,
     val refreshedAtMs: Long = 0L,
     val lastError: String? = null

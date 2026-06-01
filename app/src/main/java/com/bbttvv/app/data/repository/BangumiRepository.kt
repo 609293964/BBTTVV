@@ -5,6 +5,7 @@ import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiKeyManager
 import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.store.TokenManager
+import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.*
 import kotlinx.coroutines.Dispatchers
@@ -172,9 +173,10 @@ object BangumiRepository {
             val response = json.decodeFromString<BangumiDetailResponse>(jsonString)
             
             if (response.code == 0 && response.result != null) {
-                //  [调试] 打印追番状态和认证信息
+                // Debug-only diagnostics; avoid release log noise on TV devices.
                 val userStatus = response.result.userStatus
-                android.util.Log.w("BangumiRepo", """
+                Logger.d("BangumiRepo") {
+                    """
                      getSeasonDetail 结果:
                     - request seasonId: $seasonId, epId: $epId
                     - result seasonId: ${response.result.seasonId}
@@ -182,7 +184,8 @@ object BangumiRepository {
                     - userStatus: $userStatus
                     - follow: ${userStatus?.follow} (1=已追番, 0=未追番)
                     - SESSDATA存在: ${com.bbttvv.app.core.store.TokenManager.sessDataCache?.isNotEmpty() == true}
-                """.trimIndent())
+                    """.trimIndent()
+                }
                 Result.success(response.result)
             } else {
                 Result.failure(Exception("获取番剧详情失败: ${response.message}"))
@@ -300,7 +303,9 @@ object BangumiRepository {
             tag = "BangumiRepo",
             errorMessage = { "getBangumiPlayUrl error: epId=$epId, cid=$cid, seasonId=$seasonId" }
         ) {
-            android.util.Log.d("BangumiRepo", "📡 getBangumiPlayUrl: epId=$epId, cid=$cid, seasonId=$seasonId, qn=$qn")
+            Logger.d("BangumiRepo") {
+                "getBangumiPlayUrl: epId=$epId, cid=$cid, seasonId=$seasonId, qn=$qn"
+            }
             val baseParams = buildBangumiPlayUrlParams(
                 epId = epId,
                 cid = cid,
@@ -314,23 +319,23 @@ object BangumiRepository {
                 params = baseParams,
                 wbiKeys = wbiKeys
             )
-            android.util.Log.d(
-                "BangumiRepo",
-                "📡 getBangumiPlayUrl request params: wbiSigned=${signedParams.containsKey("w_rid")}, keys=${signedParams.keys.sorted()}"
-            )
+            Logger.d("BangumiRepo") {
+                "getBangumiPlayUrl request params: wbiSigned=${signedParams.containsKey("w_rid")}, keys=${signedParams.keys.sorted()}"
+            }
             val response = decodeBangumiPlayUrlPayload(
                 rawJson = api.getBangumiPlayUrl(
                     signedParams
                 ).string()
             )
-            android.util.Log.d(
-                "BangumiRepo",
-                "📡 getBangumiPlayUrl response: code=${response.code}, msg=${response.message}, hasResult=${response.videoInfo != null}"
-            )
+            Logger.d("BangumiRepo") {
+                "getBangumiPlayUrl response: code=${response.code}, msg=${response.message}, hasResult=${response.videoInfo != null}"
+            }
             
             if (response.code == 0 && response.videoInfo != null) {
                 val result = response.videoInfo
-                android.util.Log.d("BangumiRepo", "📹 PlayUrl: quality=${result.quality}, hasDash=${result.dash != null}, hasDurl=${!result.durl.isNullOrEmpty()}")
+                Logger.d("BangumiRepo") {
+                    "PlayUrl: quality=${result.quality}, hasDash=${result.dash != null}, hasDurl=${!result.durl.isNullOrEmpty()}"
+                }
                 result
             } else {
                 val errorMsg = when (response.code) {
@@ -355,9 +360,13 @@ object BangumiRepository {
             errorMessage = { "followBangumi error: seasonId=$seasonId" }
         ) {
             val csrf = TokenManager.csrfCache ?: throw Exception("未登录")
-            android.util.Log.w("BangumiRepo", "📌 追番请求: seasonId=$seasonId, csrf=${csrf.take(10)}...")
+            Logger.d("BangumiRepo") {
+                "followBangumi request: seasonId=$seasonId, hasCsrf=${csrf.isNotBlank()}"
+            }
             val response = api.followBangumi(seasonId = seasonId, csrf = csrf)
-            android.util.Log.w("BangumiRepo", "📌 追番响应: code=${response.code}, message=${response.message}")
+            Logger.d("BangumiRepo") {
+                "followBangumi response: code=${response.code}, message=${response.message}"
+            }
             if (response.code == 0) {
                 true
             } else {
@@ -487,4 +496,3 @@ object BangumiRepository {
         }
     }
 }
-

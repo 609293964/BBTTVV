@@ -47,6 +47,7 @@ import com.bbttvv.app.ui.home.applyHomeTabActiveState
 import com.bbttvv.app.ui.home.installChildFocusParkingOnDetach
 import com.bbttvv.app.ui.home.parkFocusForDataSetReset
 import com.bbttvv.app.ui.home.requestFocusParking
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import java.lang.ref.WeakReference
 import kotlin.math.roundToInt
 
@@ -77,6 +78,10 @@ internal fun UpSearchRecyclerGrid(
     val latestFocusTab by rememberUpdatedState(focusTab)
     val latestOnOpenUp by rememberUpdatedState(onOpenUp)
     val latestIsHomeTabActive by rememberUpdatedState(isHomeTabActive)
+    val isLightTheme = LocalIsLightTheme.current
+    val colors = remember(isLightTheme) {
+        if (isLightTheme) UpSearchLightColors else UpSearchDarkColors
+    }
 
     SideEffect {
         dpadGridController.updateCallbacks(
@@ -247,6 +252,7 @@ internal fun UpSearchRecyclerGrid(
                 dpadGridController.attach(this)
                 configureUpSearchRecycler()
                 applyHomeTabActiveState(isHomeTabActive)
+                setBackgroundColor(colors.recyclerBackground)
                 setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
                 layoutManager = GridLayoutManager(context, columns)
                 setOnFocusChangeListener { _, hasFocus ->
@@ -269,6 +275,7 @@ internal fun UpSearchRecyclerGrid(
                     }
                 })
                 adapter = UpSearchAdapter(
+                    colors = colors,
                     onItemClick = { item ->
                         if (latestIsHomeTabActive) {
                             latestOnOpenUp(item.mid)
@@ -307,6 +314,7 @@ internal fun UpSearchRecyclerGrid(
             focusState.attach(recyclerView)
             dpadGridController.attach(recyclerView)
             recyclerView.applyHomeTabActiveState(isHomeTabActive)
+            recyclerView.setBackgroundColor(colors.recyclerBackground)
             recyclerView.setPadding(paddingPx.start, paddingPx.top, paddingPx.end, paddingPx.bottom)
             val manager = recyclerView.layoutManager as? GridLayoutManager
             if (manager == null) {
@@ -315,6 +323,7 @@ internal fun UpSearchRecyclerGrid(
                 manager.spanCount = columns
             }
             (recyclerView.adapter as? UpSearchAdapter)?.let { adapter ->
+                adapter.updateColors(recyclerView, colors)
                 val listChanged = adapter.currentList != items
                 if (!listChanged) return@let
                 if (!dpadGridController.hasPendingLoadMoreFocus()) {
@@ -334,6 +343,7 @@ internal fun UpSearchRecyclerGrid(
 }
 
 private class UpSearchAdapter(
+    private var colors: UpSearchColors,
     private val onItemClick: (SearchUpItem) -> Unit,
     private val onItemFocused: (SearchUpItem, Int) -> Unit,
     private val onItemKeyEvent: (View, SearchUpItem, Int, Int, KeyEvent) -> Boolean,
@@ -344,7 +354,7 @@ private class UpSearchAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UpViewHolder {
-        return UpViewHolder(createUpSearchCard(parent.context))
+        return UpViewHolder(createUpSearchCard(parent.context, colors))
     }
 
     override fun onBindViewHolder(holder: UpViewHolder, position: Int) {
@@ -367,6 +377,15 @@ private class UpSearchAdapter(
         for (index in 0 until recyclerView.childCount) {
             val child = recyclerView.getChildAt(index)
             (recyclerView.getChildViewHolder(child) as? UpViewHolder)?.setFocused(false)
+        }
+    }
+
+    fun updateColors(recyclerView: RecyclerView, colors: UpSearchColors) {
+        if (this.colors == colors) return
+        this.colors = colors
+        for (index in 0 until recyclerView.childCount) {
+            val child = recyclerView.getChildAt(index)
+            (recyclerView.getChildViewHolder(child) as? UpViewHolder)?.setFocused(child.hasFocus())
         }
     }
 
@@ -411,10 +430,10 @@ private class UpSearchAdapter(
 
         fun setFocused(focused: Boolean) {
             card.root.isSelected = focused
-            card.root.setCardBackgroundColor(if (focused) UpFocusedBackground else UpNormalBackground)
-            card.root.strokeColor = if (focused) UpFocusedStroke else UpNormalStroke
-            card.name.setTextColor(if (focused) UpFocusedText else UpNormalText)
-            card.subtitle.setTextColor(if (focused) UpFocusedSubtitle else UpNormalSubtitle)
+            card.root.setCardBackgroundColor(if (focused) colors.focusedBackground else colors.normalBackground)
+            card.root.strokeColor = if (focused) colors.focusedStroke else colors.normalStroke
+            card.name.setTextColor(if (focused) colors.focusedText else colors.normalText)
+            card.subtitle.setTextColor(if (focused) colors.focusedSubtitle else colors.normalSubtitle)
         }
 
         private fun currentItem(): SearchUpItem? {
@@ -570,7 +589,7 @@ private class UpSearchGridFocusState {
     }
 }
 
-private fun createUpSearchCard(context: Context): UpSearchCardView {
+private fun createUpSearchCard(context: Context, colors: UpSearchColors): UpSearchCardView {
     val margin = context.dp(8)
     val padding = context.dp(16)
     val avatarSize = context.dp(64)
@@ -583,8 +602,8 @@ private fun createUpSearchCard(context: Context): UpSearchCardView {
         }
         radius = context.dp(12).toFloat()
         strokeWidth = context.dp(2)
-        strokeColor = UpNormalStroke
-        setCardBackgroundColor(UpNormalBackground)
+        strokeColor = colors.normalStroke
+        setCardBackgroundColor(colors.normalBackground)
     }
     val row = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -596,7 +615,7 @@ private fun createUpSearchCard(context: Context): UpSearchCardView {
         scaleType = ImageView.ScaleType.CENTER_CROP
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.DKGRAY)
+            setColor(colors.avatarBackground)
         }
         layoutParams = LinearLayout.LayoutParams(avatarSize, avatarSize)
     }
@@ -612,14 +631,14 @@ private fun createUpSearchCard(context: Context): UpSearchCardView {
         }
     }
     val name = TextView(context).apply {
-        setTextColor(UpNormalText)
+        setTextColor(colors.normalText)
         textSize = 16f
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
     }
     val subtitle = TextView(context).apply {
-        setTextColor(UpNormalSubtitle)
+        setTextColor(colors.normalSubtitle)
         textSize = 13f
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
@@ -714,13 +733,13 @@ private class UpSearchCardRoot(context: Context) : FrameLayout(context) {
             refreshBackground()
         }
 
-    var strokeColor: Int = UpNormalStroke
+    var strokeColor: Int = UpSearchDarkColors.normalStroke
         set(value) {
             field = value
             refreshBackground()
         }
 
-    private var cardBackgroundColor: Int = UpNormalBackground
+    private var cardBackgroundColor: Int = UpSearchDarkColors.normalBackground
 
     fun setCardBackgroundColor(color: Int) {
         cardBackgroundColor = color
@@ -766,11 +785,42 @@ private val UpGridNavigationKeyCodes = setOf(
 )
 
 private const val UpSearchLoadMorePrefetchItems = 8
-private const val UpNormalBackground = 0xFF20252D.toInt()
-private const val UpFocusedBackground = 0xFFFFFFFF.toInt()
-private const val UpNormalStroke = 0x1AFFFFFF
-private const val UpFocusedStroke = 0xFFFFFFFF.toInt()
-private const val UpNormalText = 0xFFFFFFFF.toInt()
-private const val UpFocusedText = 0xFF000000.toInt()
-private const val UpNormalSubtitle = 0xFF9AA2AD.toInt()
-private const val UpFocusedSubtitle = 0xFF444444.toInt()
+
+private data class UpSearchColors(
+    val recyclerBackground: Int,
+    val normalBackground: Int,
+    val focusedBackground: Int,
+    val normalStroke: Int,
+    val focusedStroke: Int,
+    val normalText: Int,
+    val focusedText: Int,
+    val normalSubtitle: Int,
+    val focusedSubtitle: Int,
+    val avatarBackground: Int,
+)
+
+private val UpSearchLightColors = UpSearchColors(
+    recyclerBackground = Color.TRANSPARENT,
+    normalBackground = 0xFFF1F2F3.toInt(),
+    focusedBackground = 0xFFFB7299.toInt(),
+    normalStroke = 0x0D000000,
+    focusedStroke = 0xFFFB7299.toInt(),
+    normalText = 0xFF18191C.toInt(),
+    focusedText = 0xFFFFFFFF.toInt(),
+    normalSubtitle = 0xFF61666D.toInt(),
+    focusedSubtitle = 0xFFFFFFFF.toInt(),
+    avatarBackground = 0xFFE3E5E7.toInt(),
+)
+
+private val UpSearchDarkColors = UpSearchColors(
+    recyclerBackground = Color.TRANSPARENT,
+    normalBackground = 0xFF20252D.toInt(),
+    focusedBackground = 0xFFFFFFFF.toInt(),
+    normalStroke = 0x1AFFFFFF,
+    focusedStroke = 0xFFFFFFFF.toInt(),
+    normalText = 0xFFFFFFFF.toInt(),
+    focusedText = 0xFF000000.toInt(),
+    normalSubtitle = 0xFF9AA2AD.toInt(),
+    focusedSubtitle = 0xFF444444.toInt(),
+    avatarBackground = Color.DKGRAY,
+)

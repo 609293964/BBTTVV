@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBar
@@ -253,29 +255,7 @@ fun HomeScreen(
     }
 
     val isLightTheme = LocalIsLightTheme.current
-    val backgroundModifier = remember(selectedHomeTab, isLightTheme) {
-        if (selectedHomeTab == AppTopLevelTab.PROFILE) {
-            Modifier.background(
-                androidx.compose.ui.graphics.Brush.linearGradient(
-                    colors = if (isLightTheme) {
-                        listOf(
-                            androidx.compose.ui.graphics.Color(0xFFEBECEF),
-                            androidx.compose.ui.graphics.Color(0xFFF3F4F7),
-                            androidx.compose.ui.graphics.Color(0xFFF0F1F5)
-                        )
-                    } else {
-                        listOf(
-                            androidx.compose.ui.graphics.Color(0xFF18222A),
-                            androidx.compose.ui.graphics.Color(0xFF161A16),
-                            androidx.compose.ui.graphics.Color(0xFF090A0B)
-                        )
-                    }
-                )
-            )
-        } else {
-            Modifier
-        }
-    }
+    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background
     val usesCollapsingHomeHeader = selectedHomeTab.usesCollapsingHomeHeader()
     val selectedCollapsingHeaderState = collapsingHeaderStates.stateFor(selectedHomeTab)
     val density = LocalDensity.current
@@ -305,7 +285,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .then(backgroundModifier)
+            .background(pageBackgroundColor)
             .clipToBounds()
     ) {
         Box(

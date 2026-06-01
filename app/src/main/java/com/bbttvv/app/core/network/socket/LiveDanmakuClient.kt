@@ -3,6 +3,7 @@ package com.bbttvv.app.core.network.socket
 import android.util.Log
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
+import com.bbttvv.app.core.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -109,7 +110,7 @@ class LiveDanmakuClient(
                 webSocket.cancel()
                 return
             }
-            Log.d(tag, "WebSocket connected: ${currentEndpointUrl()}")
+            Logger.d(tag) { "WebSocket connected: ${currentEndpointUrl()}" }
             _connectionState.value = LiveDanmakuConnectionState.CONNECTED
             sendAuthPacket()
         }
@@ -121,7 +122,7 @@ class LiveDanmakuClient(
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (activeGenerationFor(webSocket) == null) return
-            Log.d(tag, "WebSocket closed: $code - $reason")
+            Logger.d(tag) { "WebSocket closed: $code - $reason" }
             clearSocketIfCurrent(webSocket)
             _isConnected.set(false)
             stopHeartbeat()
@@ -180,14 +181,14 @@ class LiveDanmakuClient(
     }
 
     fun disconnect() {
-        Log.d(tag, "Disconnecting")
+        Logger.d(tag) { "Disconnecting" }
         closeCurrentSocket(force = false, cancelReconnect = true)
         _connectionState.value = LiveDanmakuConnectionState.IDLE
     }
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
-        Log.d(tag, "Releasing")
+        Logger.d(tag) { "Releasing" }
         closeCurrentSocket(force = true, cancelReconnect = true)
         stopDecodeLoop()
         _connectionState.value = LiveDanmakuConnectionState.RELEASED
@@ -209,7 +210,9 @@ class LiveDanmakuClient(
             LiveDanmakuConnectionState.CONNECTING
         }
 
-        Log.d(tag, "Connecting to ${endpoint.url}, room=${config.realRoomId}, endpointIndex=$currentEndpointIndex")
+        Logger.d(tag) {
+            "Connecting to ${endpoint.url}, room=${config.realRoomId}, endpointIndex=$currentEndpointIndex"
+        }
         val request = Request.Builder()
             .url(endpoint.url)
             .header("User-Agent", resolveAppUserAgent(NetworkModule.appContext))
@@ -279,7 +282,7 @@ class LiveDanmakuClient(
     }
 
     private fun sendAuthPacket() {
-        Log.d(tag, "Sending auth packet")
+        Logger.d(tag) { "Sending auth packet" }
         sendPacket(
             DanmakuProtocol.Packet(
                 version = DanmakuProtocol.PROTO_VER_HEARTBEAT,
@@ -322,7 +325,7 @@ class LiveDanmakuClient(
                 MAX_RECONNECT_DELAY_MS.toDouble(),
             ).toLong()
             _connectionState.value = LiveDanmakuConnectionState.RECONNECTING
-            Log.d(tag, "Reconnecting in ${delayMs}ms, attempt=${retryCount + 1}")
+            Logger.d(tag) { "Reconnecting in ${delayMs}ms, attempt=${retryCount + 1}" }
             delay(delayMs)
             if (released.get()) return@launch
             retryCount += 1
@@ -347,7 +350,7 @@ class LiveDanmakuClient(
             currentConfig = refreshed
             currentEndpointIndex = 0
             updateAuthBody(refreshed)
-            Log.d(tag, "Live danmaku config refreshed, endpointCount=${refreshed.endpoints.size}")
+            Logger.d(tag) { "Live danmaku config refreshed, endpointCount=${refreshed.endpoints.size}" }
         }
     }
 
@@ -390,7 +393,7 @@ class LiveDanmakuClient(
                             val popularity = ByteBuffer.wrap(packet.body)
                                 .order(java.nio.ByteOrder.BIG_ENDIAN)
                                 .int
-                            Log.d(tag, "Popularity: $popularity")
+                            Logger.d(tag) { "Popularity: $popularity" }
                         }
                     }
 
@@ -399,7 +402,7 @@ class LiveDanmakuClient(
                             JSONObject(String(packet.body, Charsets.UTF_8)).optInt("code", -1)
                         }.getOrDefault(-1)
                         if (authCode == 0) {
-                            Log.d(tag, "Auth success")
+                            Logger.d(tag) { "Auth success" }
                             authFailureCount = 0
                             retryCount = 0
                             _isConnected.set(true)

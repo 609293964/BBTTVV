@@ -29,6 +29,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.R
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
@@ -157,6 +158,7 @@ internal fun VideoCardRecyclerGridItems(
     val latestOnVideoLongClick by rememberUpdatedState(onVideoLongClick)
     val latestSupportingText by rememberUpdatedState(supportingText)
     val latestOnVerticalScrollOffsetChanged by rememberUpdatedState(onVerticalScrollOffsetChanged)
+    val verticalOffsetDispatcher = remember { RecyclerVerticalOffsetDispatcher() }
     val latestOnVideoClick by rememberUpdatedState(onVideoClick)
     val latestFocusCoordinator by rememberUpdatedState(focusCoordinator)
     val latestFocusTab by rememberUpdatedState(focusTab)
@@ -294,6 +296,7 @@ internal fun VideoCardRecyclerGridItems(
     }
 
     LaunchedEffect(scrollResetKey, scrollResetOnFirstComposition) {
+        verticalOffsetDispatcher.reset()
         if (scrollResetKey == null) {
             hasObservedScrollResetKey = false
             return@LaunchedEffect
@@ -442,10 +445,14 @@ internal fun VideoCardRecyclerGridItems(
 
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                        if (dy != 0) {
-                            Log.d("HomeFocus", "RecyclerView.onScrolled: dx=$dx dy=$dy scrollOffset=${recyclerView.computeVerticalScrollOffset()} padTop=${recyclerView.paddingTop}")
+                        val verticalScrollOffset = recyclerView.computeVerticalScrollOffset()
+                        if (BuildConfig.DEBUG && dy != 0) {
+                            Log.d("HomeFocus", "RecyclerView.onScrolled: dx=$dx dy=$dy scrollOffset=$verticalScrollOffset padTop=${recyclerView.paddingTop}")
                         }
-                        latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
+                        verticalOffsetDispatcher.dispatch(
+                            verticalScrollOffset,
+                            latestOnVerticalScrollOffsetChanged,
+                        )
                         if (dy <= 0) return
                         val manager = recyclerView.layoutManager as? GridLayoutManager ?: return
                         val totalItemCount = manager.itemCount
@@ -534,7 +541,10 @@ internal fun VideoCardRecyclerGridItems(
                         applyInitialScrollPosition(initialScrollPosition)
                         dpadGridController.onItemsCommitted()
                         focusState.onItemsCommitted()
-                        latestOnVerticalScrollOffsetChanged(computeVerticalScrollOffset())
+                        verticalOffsetDispatcher.dispatch(
+                            computeVerticalScrollOffset(),
+                            latestOnVerticalScrollOffsetChanged,
+                        )
                         if (latestIsHomeTabActive) {
                             latestFocusCoordinator?.drainPendingFocus()
                         }
@@ -563,7 +573,10 @@ internal fun VideoCardRecyclerGridItems(
                 )
                 val listChanged = adapter.currentList != items
                 if (!listChanged) {
-                    latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
+                    verticalOffsetDispatcher.dispatch(
+                        recyclerView.computeVerticalScrollOffset(),
+                        latestOnVerticalScrollOffsetChanged,
+                    )
                     return@let
                 }
                 val isAppend = adapter.currentList.isNotEmpty() &&
@@ -572,7 +585,9 @@ internal fun VideoCardRecyclerGridItems(
 
                 if (isAppend) {
                     dpadGridController.cancelAllPendingRequests()
-                    android.util.Log.d("HomeFocus", "listChanged is pure APPEND. Exclude focusState.prepareForDataSetChange to protect current active focus and pending search.")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("HomeFocus", "listChanged is pure APPEND. Exclude focusState.prepareForDataSetChange to protect current active focus and pending search.")
+                    }
                 } else {
                     if (!dpadGridController.hasPendingLoadMoreFocus()) {
                         dpadGridController.cancelAllPendingRequests()
@@ -585,7 +600,10 @@ internal fun VideoCardRecyclerGridItems(
                     recyclerView.applyInitialScrollPosition(initialScrollPosition)
                     dpadGridController.onItemsCommitted()
                     focusState.onItemsCommitted()
-                    latestOnVerticalScrollOffsetChanged(recyclerView.computeVerticalScrollOffset())
+                    verticalOffsetDispatcher.dispatch(
+                        recyclerView.computeVerticalScrollOffset(),
+                        latestOnVerticalScrollOffsetChanged,
+                    )
                     if (latestIsHomeTabActive) {
                         latestFocusCoordinator?.drainPendingFocus()
                     }
@@ -763,6 +781,20 @@ internal fun VideoCardRecyclerRow(
             }
         }
     )
+}
+
+private class RecyclerVerticalOffsetDispatcher {
+    private var lastOffset: Int? = null
+
+    fun dispatch(offset: Int, onChanged: (Int) -> Unit) {
+        if (lastOffset == offset) return
+        lastOffset = offset
+        onChanged(offset)
+    }
+
+    fun reset() {
+        lastOffset = null
+    }
 }
 
 private class RecyclerGridPreloadThrottler {

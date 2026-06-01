@@ -17,9 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,7 +51,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.SearchType
 import com.bbttvv.app.data.model.response.VideoItem
@@ -91,6 +89,10 @@ internal fun SearchScreen(
     }
     val videoGridFocusState = remember { HomeRecommendGridFocusState() }
     val firstHotSearchFocusRequester = remember { FocusRequester() }
+    val historyKeywords = uiState.historyList.map { it.keyword }
+    val historyFocusRequesters = remember(historyKeywords) {
+        List(historyKeywords.size) { FocusRequester() }
+    }
     val searchResultsMode = uiState.hasSubmittedQuery || uiState.query.isNotBlank()
     var searchInputHasFocus by remember { mutableStateOf(false) }
     var searchCategoryHasFocus by remember { mutableStateOf(false) }
@@ -235,9 +237,7 @@ internal fun SearchScreen(
 
     if (!searchResultsMode) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background)
+            modifier = Modifier.fillMaxSize()
         ) {
             SearchBarRow(
                 value = uiState.query,
@@ -246,7 +246,9 @@ internal fun SearchScreen(
                 onSubmit = viewModel::search,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onMoveFocusDown = {
-                    if (uiState.hotList.isNotEmpty()) {
+                    if (historyFocusRequesters.isNotEmpty()) {
+                        runCatching { historyFocusRequesters.first().requestFocus() }.getOrDefault(false)
+                    } else if (uiState.hotList.isNotEmpty()) {
                         runCatching { firstHotSearchFocusRequester.requestFocus() }.getOrDefault(false)
                     } else {
                         false
@@ -254,15 +256,7 @@ internal fun SearchScreen(
                 },
                 modifier = searchBarModifier
             )
-            // Hot Search Mode
-            if (uiState.hotList.isNotEmpty()) {
-                Text(
-                    text = "当前热搜",
-                    color = if (isLightTheme) Color(0xFF18191C) else Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = AppTopBarDefaults.HeaderContentHorizontalPadding, vertical = 12.dp)
-                )
+            if (uiState.historyList.isNotEmpty() || uiState.hotList.isNotEmpty()) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(hotColumnCount),
                     contentPadding = PaddingValues(
@@ -274,6 +268,33 @@ internal fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    if (uiState.historyList.isNotEmpty()) {
+                        item(span = { GridItemSpan(hotColumnCount) }) {
+                            SearchSectionTitle(text = "搜索历史")
+                        }
+                        itemsIndexed(uiState.historyList, key = { _, history -> "history:${history.keyword}" }) { index, history ->
+                            HistorySearchKeywordPill(
+                                keyword = history.keyword,
+                                onClick = { viewModel.applyKeyword(history.keyword) },
+                                onFocusUp = {
+                                    if (index < hotColumnCount) {
+                                        requestSearchInputFocus()
+                                    } else {
+                                        false
+                                    }
+                                },
+                                modifier = historyFocusRequesters
+                                    .getOrNull(index)
+                                    ?.let { requester -> Modifier.focusRequester(requester) }
+                                    ?: Modifier
+                            )
+                        }
+                    }
+                    if (uiState.hotList.isNotEmpty()) {
+                        item(span = { GridItemSpan(hotColumnCount) }) {
+                            SearchSectionTitle(text = "当前热搜")
+                        }
+                    }
                     itemsIndexed(uiState.hotList, key = { _, hot -> hot.keyword }) { index, hot ->
                         HotSearchKeywordPill(
                             keyword = hot.show_name.ifBlank { hot.keyword },
@@ -281,12 +302,20 @@ internal fun SearchScreen(
                             onClick = { viewModel.applyKeyword(hot.show_name.ifBlank { hot.keyword }) },
                             onFocusUp = {
                                 if (index < hotColumnCount) {
-                                    requestSearchInputFocus()
+                                    if (historyFocusRequesters.isNotEmpty()) {
+                                        runCatching { historyFocusRequesters.last().requestFocus() }.getOrDefault(false)
+                                    } else {
+                                        requestSearchInputFocus()
+                                    }
                                 } else {
                                     false
                                 }
                             },
-                            modifier = if (index == 0) Modifier.focusRequester(firstHotSearchFocusRequester) else Modifier
+                            modifier = if (historyFocusRequesters.isEmpty() && index == 0) {
+                                Modifier.focusRequester(firstHotSearchFocusRequester)
+                            } else {
+                                Modifier
+                            }
                         )
                     }
                 }
@@ -296,14 +325,10 @@ internal fun SearchScreen(
         HomeCollapsingHeaderGrid(
             topBarHeightPx = 0,
             state = searchResultHeaderState,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background),
+            modifier = Modifier.fillMaxSize(),
             localHeader = {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     SearchBarRow(
                         value = uiState.query,
@@ -474,6 +499,23 @@ internal fun SearchScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SearchSectionTitle(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val isLightTheme = LocalIsLightTheme.current
+    Text(
+        text = text,
+        color = if (isLightTheme) Color(0xFF18191C) else Color.White,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 18.sp,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    )
 }
 
 @Composable
@@ -692,6 +734,77 @@ private fun CategoryPill(
             fontSize = 16.sp,
             fontWeight = if (selected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun HistorySearchKeywordPill(
+    keyword: String,
+    onClick: () -> Unit,
+    onFocusUp: () -> Boolean,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
+    val targetBgColor = when {
+        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+        else -> if (isLightTheme) Color(0xFFF1F2F3) else Color(0xFF222733)
+    }
+    val targetContentColor = when {
+        isFocused -> if (isLightTheme) Color.White else Color.Black
+        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
+    }
+
+    val backgroundColor by animateColorAsState(
+        targetValue = targetBgColor,
+        animationSpec = tween(150),
+        label = "historyBg"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = targetContentColor,
+        animationSpec = tween(150),
+        label = "historyContent"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.05f else 1f,
+        animationSpec = tween(150),
+        label = "historyScale"
+    )
+
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .background(backgroundColor, RoundedCornerShape(12.dp))
+            .onFocusChanged { isFocused = it.isFocused }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN &&
+                    keyEvent.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP
+                ) {
+                    return@onPreviewKeyEvent onFocusUp()
+                }
+                false
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = keyword,
+            color = contentColor,
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

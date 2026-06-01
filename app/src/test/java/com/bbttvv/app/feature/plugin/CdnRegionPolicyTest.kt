@@ -16,8 +16,7 @@ class CdnRegionPolicyTest {
             catalog = mapOf(
                 "广州" to listOf("gz.bilivideo.com"),
                 "上海" to listOf("sh.bilivideo.com")
-            ),
-            fallbackRegion = { "上海" }
+            )
         )
 
         assertEquals("广州", selection.region)
@@ -46,8 +45,7 @@ class CdnRegionPolicyTest {
             catalog = mapOf(
                 "广州" to listOf("gz.bilivideo.com"),
                 "深圳" to listOf("sz.bilivideo.com")
-            ),
-            fallbackRegion = { "广州" }
+            )
         )
 
         assertEquals("深圳", selection.region)
@@ -67,24 +65,21 @@ class CdnRegionPolicyTest {
             "西安",
             selectCdnRegionForLocation(
                 location = IpLocationSnapshot(country = "中国", province = "陕西", city = "渭南"),
-                catalog = catalog,
-                fallbackRegion = { "南京" }
+                catalog = catalog
             ).region
         )
         assertEquals(
             "武汉",
             selectCdnRegionForLocation(
                 location = IpLocationSnapshot(country = "中国", province = "湖北省", city = ""),
-                catalog = catalog,
-                fallbackRegion = { "南京" }
+                catalog = catalog
             ).region
         )
         assertEquals(
             "南京",
             selectCdnRegionForLocation(
                 location = IpLocationSnapshot(country = "中国", province = "江苏", city = "苏州"),
-                catalog = catalog,
-                fallbackRegion = { "西安" }
+                catalog = catalog
             ).region
         )
     }
@@ -93,8 +88,7 @@ class CdnRegionPolicyTest {
     fun `does not choose random fallback region when location has no catalog match`() {
         val selection = selectCdnRegionForLocation(
             location = IpLocationSnapshot(country = "中国", province = "青海", city = "西宁"),
-            catalog = mapOf("广州" to listOf("gz.bilivideo.com")),
-            fallbackRegion = { "广州" }
+            catalog = mapOf("广州" to listOf("gz.bilivideo.com"))
         )
 
         assertEquals("", selection.region)
@@ -113,8 +107,7 @@ class CdnRegionPolicyTest {
                     "cn-sh-cm-01-01.bilivideo.com",
                     "cn-sh-fx-01-01.bilivideo.com"
                 )
-            ),
-            fallbackRegion = { "上海" }
+            )
         )
 
         assertEquals("cn-sh-cm-01-01.bilivideo.com", selection.hosts.first())
@@ -127,8 +120,7 @@ class CdnRegionPolicyTest {
             catalog = mapOf(
                 "广州" to listOf("gz.bilivideo.com"),
                 "海外" to listOf("upos-hz-mirrorakam.akamaized.net")
-            ),
-            fallbackRegion = { "广州" }
+            )
         )
 
         assertEquals("海外", selection.region)

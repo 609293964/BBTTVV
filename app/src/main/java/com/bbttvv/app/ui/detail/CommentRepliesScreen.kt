@@ -42,6 +42,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -56,6 +57,8 @@ fun CommentRepliesScreen(
 ) {
     val viewModel: CommentRepliesViewModel = viewModel()
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
+    val isLightTheme = LocalIsLightTheme.current
+    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF141414)
     val listState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
         androidx.compose.foundation.lazy.LazyListState()
     }
@@ -72,7 +75,7 @@ fun CommentRepliesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF141414))
+            .background(pageBackgroundColor)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -123,7 +126,7 @@ fun CommentRepliesScreen(
 
                 uiState.items.isEmpty() -> {
                     item(key = "empty") {
-                        DetailMessageCard(text = "鏆傛棤鍥炲")
+                        DetailMessageCard(text = "暂无回复")
                     }
                 }
 
@@ -154,6 +157,9 @@ private fun CommentRepliesHeader(
     replyCount: Int,
     onBack: () -> Unit
 ) {
+    val primaryTextColor = commentRepliesPrimaryTextColor()
+    val mutedTextColor = commentRepliesMutedTextColor()
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         DetailPillButton(
             label = "返回",
@@ -162,13 +168,13 @@ private fun CommentRepliesHeader(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = "评论回复",
-                color = Color.White,
+                color = primaryTextColor,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "评论回复",
-                color = DetailMutedTextColor,
+                color = mutedTextColor,
                 fontSize = 13.sp
             )
         }
@@ -178,12 +184,16 @@ private fun CommentRepliesHeader(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun CommentThreadRootCard(comment: ReplyItem) {
+    val cardColor = commentRepliesCardColor()
+    val primaryTextColor = commentRepliesPrimaryTextColor()
+    val mutedTextColor = commentRepliesMutedTextColor()
+
     Surface(
         onClick = {},
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = DetailCardColor,
-            focusedContainerColor = DetailCardColor
+            containerColor = cardColor,
+            focusedContainerColor = cardColor
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -196,7 +206,7 @@ private fun CommentThreadRootCard(comment: ReplyItem) {
             CommentAuthorRow(comment = comment)
             Text(
                 text = comment.content.message.ifBlank { "评论内容加载中" },
-                color = Color.White,
+                color = primaryTextColor,
                 fontSize = 15.sp,
                 lineHeight = 24.sp
             )
@@ -206,12 +216,12 @@ private fun CommentThreadRootCard(comment: ReplyItem) {
             ) {
                 Text(
                     text = "点赞 ${formatNumber(comment.like)}",
-                    color = DetailMutedTextColor,
+                    color = mutedTextColor,
                     fontSize = 12.sp
                 )
                 Text(
                     text = "回复 ${formatNumber(comment.rcount)}",
-                    color = DetailMutedTextColor,
+                    color = mutedTextColor,
                     fontSize = 12.sp
                 )
             }
@@ -222,17 +232,23 @@ private fun CommentThreadRootCard(comment: ReplyItem) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun CommentReplyCard(reply: ReplyItem) {
+    val cardColor = commentRepliesCardColor()
+    val focusedCardColor = commentRepliesFocusedCardColor()
+    val primaryTextColor = commentRepliesPrimaryTextColor()
+    val mutedTextColor = commentRepliesMutedTextColor()
+    val focusedBorderColor = commentRepliesFocusedBorderColor()
+
     Surface(
         onClick = {},
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = DetailCardColor,
-            focusedContainerColor = Color(0x33FFFFFF)
+            containerColor = cardColor,
+            focusedContainerColor = focusedCardColor
         ),
         border = ClickableSurfaceDefaults.border(
             focusedBorder = Border(
-                border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                border = androidx.compose.foundation.BorderStroke(2.dp, focusedBorderColor),
                 shape = RoundedCornerShape(18.dp)
             )
         ),
@@ -247,7 +263,7 @@ private fun CommentReplyCard(reply: ReplyItem) {
             CommentAuthorRow(comment = reply)
             Text(
                 text = reply.content.message.ifBlank { "此条回复暂时没有正文内容" },
-                color = Color.White,
+                color = primaryTextColor,
                 fontSize = 15.sp,
                 lineHeight = 24.sp,
                 maxLines = 8,
@@ -259,7 +275,7 @@ private fun CommentReplyCard(reply: ReplyItem) {
             ) {
                 Text(
                     text = "点赞 ${formatNumber(reply.like)}",
-                    color = DetailMutedTextColor,
+                    color = mutedTextColor,
                     fontSize = 12.sp
                 )
             }
@@ -269,6 +285,8 @@ private fun CommentReplyCard(reply: ReplyItem) {
 
 @Composable
 private fun CommentAuthorRow(comment: ReplyItem) {
+    val primaryTextColor = commentRepliesPrimaryTextColor()
+    val mutedTextColor = commentRepliesMutedTextColor()
     val dateText = remember(comment.ctime) {
         if (comment.ctime <= 0L) {
             ""
@@ -285,7 +303,7 @@ private fun CommentAuthorRow(comment: ReplyItem) {
         ) {
             Text(
                 text = comment.member.uname.ifBlank { "认证用户" },
-                color = Color.White,
+                color = primaryTextColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -294,7 +312,7 @@ private fun CommentAuthorRow(comment: ReplyItem) {
             if (dateText.isNotEmpty()) {
                 Text(
                     text = dateText,
-                    color = DetailMutedTextColor,
+                    color = mutedTextColor,
                     fontSize = 12.sp
                 )
             }
@@ -309,6 +327,7 @@ private fun CommentRepliesPagination(
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
+    val mutedTextColor = commentRepliesMutedTextColor()
     val safeTotalPages = totalPages.coerceAtLeast(1)
 
     Row(
@@ -321,7 +340,7 @@ private fun CommentRepliesPagination(
         Text(
             text = "第 $currentPage / $safeTotalPages 页",
             fontSize = 13.sp,
-            color = DetailMutedTextColor
+            color = mutedTextColor
         )
 
         Row(
@@ -343,3 +362,27 @@ private fun CommentRepliesPagination(
     }
 }
 
+@Composable
+private fun commentRepliesCardColor(): Color {
+    return if (LocalIsLightTheme.current) Color.White else DetailCardColor
+}
+
+@Composable
+private fun commentRepliesFocusedCardColor(): Color {
+    return if (LocalIsLightTheme.current) Color.White else Color(0x33FFFFFF)
+}
+
+@Composable
+private fun commentRepliesPrimaryTextColor(): Color {
+    return if (LocalIsLightTheme.current) Color(0xFF18191C) else Color.White
+}
+
+@Composable
+private fun commentRepliesMutedTextColor(): Color {
+    return if (LocalIsLightTheme.current) Color(0xFF61666D) else DetailMutedTextColor
+}
+
+@Composable
+private fun commentRepliesFocusedBorderColor(): Color {
+    return if (LocalIsLightTheme.current) DetailAccentColor else Color.White
+}

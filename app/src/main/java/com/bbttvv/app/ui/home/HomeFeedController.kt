@@ -85,12 +85,14 @@ internal class HomeFeedController(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun refresh(force: Boolean = true): HomeFeedLoadResult {
-        val refreshGeneration = feed.snapshot().generation + 1
+    suspend fun refresh(): HomeFeedLoadResult {
+        val snapshotAtStart = feed.snapshot()
+        val refreshGeneration = snapshotAtStart.generation + 1
+        val refreshPageKey = snapshotAtStart.nextKey
         return try {
+            // Bilibili's recommend feed treats manual refresh as advancing fresh_idx.
             val loadResult = feed.refresh(
-                fetch = { pageKey -> loadPage(pageKey, incremental = false) },
+                fetch = { loadPage(refreshPageKey, incremental = false) },
                 reduce = { _, page -> page }
             )
             loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored

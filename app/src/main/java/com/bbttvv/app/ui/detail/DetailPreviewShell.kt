@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.ViewInfo
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 private const val DetailPreviewBackgroundCoverWidthPx = 320
 private const val DetailPreviewBackgroundCoverHeightPx = 180
@@ -42,6 +43,11 @@ internal fun DetailPreviewShell(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val isLightTheme = LocalIsLightTheme.current
+    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF141414)
+    val primaryTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val mutedTextColor = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor
+    val placeholderColor = if (isLightTheme) Color(0x0C000000) else Color.White.copy(alpha = 0.08f)
     val backgroundCoverModel = remember(context, previewInfo.pic) {
         buildSizedImageRequest(
             context,
@@ -62,7 +68,7 @@ internal fun DetailPreviewShell(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF141414))
+            .background(pageBackgroundColor)
     ) {
         DetailCoverBackdrop(model = backgroundCoverModel)
         Row(
@@ -80,7 +86,7 @@ internal fun DetailPreviewShell(
                     text = previewInfo.title.replace("\n", " "),
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color.White,
+                    color = primaryTextColor,
                     maxLines = 2,
                     lineHeight = 38.sp,
                     overflow = TextOverflow.Ellipsis
@@ -88,16 +94,16 @@ internal fun DetailPreviewShell(
                 Text(
                     text = previewInfo.owner.name.ifBlank { "正在加载详情" },
                     fontSize = 16.sp,
-                    color = DetailMutedTextColor,
+                    color = mutedTextColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                DetailPreviewMetricsRow(previewInfo)
-                DetailPreviewPillRow()
+                DetailPreviewMetricsRow(previewInfo, mutedTextColor)
+                DetailPreviewPillRow(placeholderColor)
                 Spacer(modifier = Modifier.height(16.dp))
-                DetailPreviewLine(width = 360.dp)
-                DetailPreviewLine(width = 520.dp)
-                DetailPreviewLine(width = 440.dp)
+                DetailPreviewLine(width = 360.dp, color = placeholderColor)
+                DetailPreviewLine(width = 520.dp, color = placeholderColor)
+                DetailPreviewLine(width = 440.dp, color = placeholderColor)
             }
 
             AsyncImage(
@@ -109,61 +115,73 @@ internal fun DetailPreviewShell(
                     .width(360.dp)
                     .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
+                    .background(placeholderColor)
             )
         }
     }
 }
 
 @Composable
-private fun DetailPreviewMetricsRow(previewInfo: ViewInfo) {
+private fun DetailPreviewMetricsRow(
+    previewInfo: ViewInfo,
+    textColor: Color
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.view)}播放")
-        DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.danmaku)}弹幕")
+        DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.view)}播放", color = textColor)
+        DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.danmaku)}弹幕", color = textColor)
         if (previewInfo.stat.reply > 0) {
-            DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.reply)}评论")
+            DetailPreviewMetric(text = "${formatNumber(previewInfo.stat.reply)}评论", color = textColor)
         }
     }
 }
 
 @Composable
-private fun DetailPreviewMetric(text: String) {
+private fun DetailPreviewMetric(
+    text: String,
+    color: Color
+) {
     Text(
         text = text,
         fontSize = 14.sp,
-        color = DetailMutedTextColor,
+        color = color,
         maxLines = 1
     )
 }
 
 @Composable
-private fun DetailPreviewPillRow() {
+private fun DetailPreviewPillRow(color: Color) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        DetailPreviewPill(width = 88.dp)
-        DetailPreviewPill(width = 72.dp)
-        DetailPreviewPill(width = 72.dp)
-        DetailPreviewPill(width = 72.dp)
+        DetailPreviewPill(width = 88.dp, color = color)
+        DetailPreviewPill(width = 72.dp, color = color)
+        DetailPreviewPill(width = 72.dp, color = color)
+        DetailPreviewPill(width = 72.dp, color = color)
     }
 }
 
 @Composable
-private fun DetailPreviewPill(width: Dp) {
+private fun DetailPreviewPill(
+    width: Dp,
+    color: Color
+) {
     Box(
         modifier = Modifier
             .width(width)
             .height(32.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.12f))
+            .background(color)
     )
 }
 
 @Composable
-private fun DetailPreviewLine(width: Dp) {
+private fun DetailPreviewLine(
+    width: Dp,
+    color: Color
+) {
     Box(
         modifier = Modifier
             .width(width)
             .height(12.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(color)
     )
 }

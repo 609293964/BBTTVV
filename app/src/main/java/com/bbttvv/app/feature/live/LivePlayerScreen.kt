@@ -46,6 +46,7 @@ import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.core.store.player.toEngineConfig
 import com.bbttvv.app.core.util.ScreenUtils
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.feature.video.danmaku.DanmakuOverlay
 import com.bbttvv.app.feature.video.screen.buildPanelOptionsFocusKey
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
@@ -88,17 +89,18 @@ fun LivePlayerScreen(
     val playerReleaseGuard = remember(exoPlayer) { ExoPlayerReleaseGuard(exoPlayer) }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     val keyCaptureRequester = remember { FocusRequester() }
-    val actions = remember { LiveOverlayAction.entries }
+    val actions = remember { buildLiveOverlayActions() }
     var showOverlay by rememberSaveable(roomId) { mutableStateOf(true) }
     var selectedActionIndex by rememberSaveable(roomId) { mutableIntStateOf(0) }
     var activePanelKey by rememberSaveable(roomId) { mutableStateOf<String?>(null) }
     var selectedPanelIndex by rememberSaveable(roomId) { mutableIntStateOf(0) }
     var showDebugOverlay by rememberSaveable(roomId) { mutableStateOf(false) }
+    val isDebugOverlayVisible = BuildConfig.DEBUG && showDebugOverlay
     val debugMetrics = rememberLivePlaybackDebugMetrics(
         player = exoPlayer,
         roomId = roomId,
         streamUrl = uiState.streamUrl,
-        isDebugOverlayVisible = showDebugOverlay,
+        isDebugOverlayVisible = isDebugOverlayVisible,
     )
     val activePanel = activePanelKey?.let(LiveOverlayAction::valueOf)
     val panelOptions = remember(activePanel, uiState) {
@@ -283,13 +285,20 @@ fun LivePlayerScreen(
         viewModel.loadLive(roomId = roomId, force = true)
     }
 
+    LaunchedEffect(actions.size) {
+        selectedActionIndex = selectedActionIndex.coerceIn(0, actions.lastIndex.coerceAtLeast(0))
+        if (!BuildConfig.DEBUG && showDebugOverlay) {
+            showDebugOverlay = false
+        }
+    }
+
     LaunchedEffect(panelOptionsFocusKey, activePanel) {
         selectedPanelIndex = panelOptions.indexOfFirst { it.isSelected }
             .takeIf { it >= 0 }
             ?: selectedPanelIndex.coerceIn(0, panelOptions.lastIndex.coerceAtLeast(0))
     }
 
-    LaunchedEffect(roomId, showOverlay, activePanel, showDebugOverlay, uiState.isLoading, uiState.errorMessage) {
+    LaunchedEffect(roomId, showOverlay, activePanel, isDebugOverlayVisible, uiState.isLoading, uiState.errorMessage) {
         runCatching { keyCaptureRequester.requestFocus() }
     }
 
@@ -436,7 +445,7 @@ fun LivePlayerScreen(
             }
         }
 
-        if (showDebugOverlay) {
+        if (isDebugOverlayVisible) {
             val debugSnapshot = remember(uiState, playbackState, debugMetrics) {
                 buildLiveDebugSnapshot(
                     player = exoPlayer,
@@ -452,6 +461,12 @@ fun LivePlayerScreen(
                     .padding(top = 28.dp, end = 28.dp)
             )
         }
+    }
+}
+
+private fun buildLiveOverlayActions(): List<LiveOverlayAction> {
+    return LiveOverlayAction.entries.filter { action ->
+        BuildConfig.DEBUG || action != LiveOverlayAction.Debug
     }
 }
 

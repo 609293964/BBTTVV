@@ -46,6 +46,52 @@ class HomeFeedControllerRepositoryTest {
     }
 
     @Test
+    fun `manual refresh requests the current recommend cursor`() = runBlocking {
+        val repository = FakeHomeFeedRepository(
+            pages = mapOf(
+                0 to Result.success(listOf(video("BV1"))),
+                1 to Result.success(listOf(video("BV2"))),
+                2 to Result.success(listOf(video("BV3")))
+            )
+        )
+        val controller = HomeFeedController(
+            dismissStore = RecommendDismissStore(),
+            feedRepository = repository
+        )
+
+        controller.loadMore()
+        val refreshed = controller.refresh() as HomeFeedLoadResult.Success
+        val nextPage = controller.loadMore() as HomeFeedLoadResult.Success
+
+        assertEquals(listOf(0, 1, 2), repository.requestedPages)
+        assertEquals(listOf("BV2"), refreshed.videos.map { it.bvid })
+        assertEquals(listOf("BV2", "BV3"), nextPage.videos.map { it.bvid })
+    }
+
+    @Test
+    fun `manual refresh retries the same cursor after empty response`() = runBlocking {
+        val repository = FakeHomeFeedRepository(
+            pages = mapOf(
+                0 to Result.success(listOf(video("BV1"))),
+                1 to Result.success(emptyList())
+            )
+        )
+        val controller = HomeFeedController(
+            dismissStore = RecommendDismissStore(),
+            feedRepository = repository
+        )
+
+        controller.loadMore()
+        val firstRefresh = controller.refresh() as HomeFeedLoadResult.Success
+        val secondRefresh = controller.refresh() as HomeFeedLoadResult.Success
+
+        assertEquals(listOf(0, 1, 1), repository.requestedPages)
+        assertTrue(firstRefresh.videos.isEmpty())
+        assertTrue(secondRefresh.videos.isEmpty())
+        assertEquals(false, secondRefresh.hasMore)
+    }
+
+    @Test
     fun `repository failure surfaces as load failure`() = runBlocking {
         val failure = IllegalStateException("offline")
         val controller = HomeFeedController(

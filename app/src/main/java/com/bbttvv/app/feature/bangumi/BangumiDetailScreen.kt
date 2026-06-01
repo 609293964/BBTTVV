@@ -61,6 +61,7 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.BangumiEpisode
 import com.bbttvv.app.data.model.response.SeasonInfo
 import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -72,6 +73,28 @@ fun BangumiDetailScreen(
     viewModel: BangumiViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLightTheme = LocalIsLightTheme.current
+    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF111315)
+    val primaryTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val secondaryTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.7f)
+    val mutedTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.5f)
+    val focusedControlContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
+    val focusedControlContentColor = if (isLightTheme) Color.White else Color(0xFF111315)
+    val secondaryControlContainerColor = if (isLightTheme) Color(0x0C000000) else Color(0x33FFFFFF)
+    val pressedControlContainerColor = if (isLightTheme) Color(0xFFE25E83) else Color.White.copy(alpha = 0.8f)
+    val posterBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.2f)
+    val coverPlaceholderColor = if (isLightTheme) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.4f)
+    val backdropGradientColors = if (isLightTheme) {
+        listOf(
+            Color(0xD9F4F6F8),
+            Color(0xF7F4F6F8)
+        )
+    } else {
+        listOf(
+            Color.Black.copy(alpha = 0.5f),
+            Color(0xFF111315).copy(alpha = 0.95f)
+        )
+    }
 
     val playButtonFocusRequester = remember { FocusRequester() }
     val followButtonFocusRequester = remember { FocusRequester() }
@@ -94,7 +117,7 @@ fun BangumiDetailScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF111315))
+            .background(pageBackgroundColor)
     ) {
         // 1. 背景层：高斯模糊的大封面海报，配合暗色渐变压底
         uiState.detail?.cover?.let { coverUrl ->
@@ -105,7 +128,7 @@ fun BangumiDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .blur(32.dp)
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .background(coverPlaceholderColor)
             )
         }
 
@@ -115,10 +138,7 @@ fun BangumiDetailScreen(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.5f),
-                            Color(0xFF111315).copy(alpha = 0.95f)
-                        )
+                        colors = backdropGradientColors
                     )
                 )
         )
@@ -126,12 +146,12 @@ fun BangumiDetailScreen(
         // 2. 内容层：左右布局
         if (uiState.isLoading && uiState.detail == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "正在努力加载番剧详情...", color = Color.White, fontSize = 18.sp)
+                Text(text = "正在努力加载番剧详情...", color = primaryTextColor, fontSize = 18.sp)
             }
         } else if (uiState.error != null && uiState.detail == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = uiState.error ?: "加载失败", color = Color.Red, fontSize = 18.sp)
+                    Text(text = uiState.error ?: "加载失败", color = MaterialTheme.colorScheme.error, fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(16.dp))
                     Surface(onClick = { viewModel.load(seasonId, epId) }) {
                         Text(text = "重新加载", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
@@ -166,7 +186,7 @@ fun BangumiDetailScreen(
                             modifier = Modifier
                                 .size(width = 180.dp, height = 240.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .border(2.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                .border(2.dp, posterBorderColor, RoundedCornerShape(12.dp))
                         )
 
                         // 评分
@@ -181,7 +201,7 @@ fun BangumiDetailScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "分 (${rating.count}人评)",
-                                    color = Color.White.copy(alpha = 0.6f),
+                                    color = secondaryTextColor,
                                     fontSize = 12.sp
                                 )
                             }
@@ -228,15 +248,15 @@ fun BangumiDetailScreen(
                                         }
                                     },
                                 colors = ClickableSurfaceDefaults.colors(
-                                    containerColor = if (isPlayFocused) Color.White else Color(0xFF1E88E5),
-                                    focusedContainerColor = Color.White,
-                                    pressedContainerColor = Color.White.copy(alpha = 0.8f)
+                                    containerColor = if (isPlayFocused) focusedControlContainerColor else Color(0xFF1E88E5),
+                                    focusedContainerColor = focusedControlContainerColor,
+                                    pressedContainerColor = pressedControlContainerColor
                                 ),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp))
                             ) {
                                 Text(
                                     text = playButtonText,
-                                    color = if (isPlayFocused) Color(0xFF111315) else Color.White,
+                                    color = if (isPlayFocused) focusedControlContentColor else Color.White,
                                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp
@@ -262,9 +282,9 @@ fun BangumiDetailScreen(
                                         }
                                     },
                                 colors = ClickableSurfaceDefaults.colors(
-                                    containerColor = if (isFollowFocused) Color.White else Color(0x33FFFFFF),
-                                    focusedContainerColor = Color.White,
-                                    pressedContainerColor = Color.White.copy(alpha = 0.8f)
+                                    containerColor = if (isFollowFocused) focusedControlContainerColor else secondaryControlContainerColor,
+                                    focusedContainerColor = focusedControlContainerColor,
+                                    pressedContainerColor = pressedControlContainerColor
                                 ),
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp))
                             ) {
@@ -275,13 +295,13 @@ fun BangumiDetailScreen(
                                     Icon(
                                         imageVector = if (uiState.isFollowed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                         contentDescription = null,
-                                        tint = if (uiState.isFollowed) Color(0xFFFF4081) else if (isFollowFocused) Color.Black else Color.White,
+                                        tint = if (uiState.isFollowed) Color(0xFFFF4081) else if (isFollowFocused) focusedControlContentColor else primaryTextColor,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = followText,
-                                        color = if (isFollowFocused) Color(0xFF111315) else Color.White,
+                                        color = if (isFollowFocused) focusedControlContentColor else primaryTextColor,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 15.sp
                                     )
@@ -292,7 +312,7 @@ fun BangumiDetailScreen(
                         // 简介（折叠或固定，TV 上展示前几行）
                         Text(
                             text = detail.evaluate.ifBlank { "暂无番剧简介" },
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = secondaryTextColor,
                             fontSize = 13.sp,
                             lineHeight = 20.sp,
                             maxLines = 6,
@@ -312,7 +332,7 @@ fun BangumiDetailScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = detail.title,
-                                color = Color.White,
+                                color = primaryTextColor,
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -339,7 +359,7 @@ fun BangumiDetailScreen(
                             }
                             Text(
                                 text = tagText,
-                                color = Color.White.copy(alpha = 0.5f),
+                                color = mutedTextColor,
                                 fontSize = 13.sp
                             )
                         }
@@ -392,8 +412,8 @@ fun BangumiDetailScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(
                                                     when {
-                                                        isTabFocused -> Color.White
-                                                        isSelected -> Color.White.copy(alpha = 0.2f)
+                                                        isTabFocused -> focusedControlContainerColor
+                                                        isSelected -> if (isLightTheme) Color(0x14FB7299) else Color.White.copy(alpha = 0.2f)
                                                         else -> Color.Transparent
                                                     }
                                                 )
@@ -402,7 +422,11 @@ fun BangumiDetailScreen(
                                         ) {
                                             Text(
                                                 text = season.seasonTitle.ifBlank { season.title },
-                                                color = if (isTabFocused) Color(0xFF111315) else Color.White,
+                                                color = when {
+                                                    isTabFocused -> focusedControlContentColor
+                                                    isSelected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
+                                                    else -> secondaryTextColor
+                                                },
                                                 fontSize = 14.sp,
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                             )
@@ -423,7 +447,7 @@ fun BangumiDetailScreen(
                             ) {
                                 Text(
                                     text = if (uiState.isLoading) "正在载入剧集..." else "该季度暂无剧集",
-                                    color = Color.White.copy(alpha = 0.5f)
+                                    color = mutedTextColor
                                 )
                             }
                         } else {
@@ -479,6 +503,14 @@ private fun EpisodeCard(
     onTopEdge: () -> Boolean
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
+    val containerColor = if (isLightTheme) Color.White else Color(0x1AFFFFFF)
+    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
+    val pressedContainerColor = if (isLightTheme) Color(0xFFE25E83) else Color.White.copy(alpha = 0.8f)
+    val primaryTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val secondaryTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.5f)
+    val focusedTextColor = if (isLightTheme) Color.White else Color(0xFF111315)
+    val focusedSecondaryTextColor = if (isLightTheme) Color.White.copy(alpha = 0.82f) else Color(0x99111315)
 
     Surface(
         onClick = onClick,
@@ -511,9 +543,9 @@ private fun EpisodeCard(
             },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0x1AFFFFFF),
-            focusedContainerColor = Color.White,
-            pressedContainerColor = Color.White.copy(alpha = 0.8f)
+            containerColor = containerColor,
+            focusedContainerColor = focusedContainerColor,
+            pressedContainerColor = pressedContainerColor
         )
     ) {
         Column(
@@ -530,7 +562,7 @@ private fun EpisodeCard(
             ) {
                 Text(
                     text = episode.title,
-                    color = if (isFocused) Color(0xFF111315) else Color.White,
+                    color = if (isFocused) focusedTextColor else primaryTextColor,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -561,7 +593,7 @@ private fun EpisodeCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = episode.longTitle,
-                    color = if (isFocused) Color(0x99111315) else Color.White.copy(alpha = 0.5f),
+                    color = if (isFocused) focusedSecondaryTextColor else secondaryTextColor,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

@@ -2,6 +2,7 @@
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorCategory
 import com.bbttvv.app.data.model.response.SponsorSegment
 import kotlinx.coroutines.Dispatchers
@@ -61,12 +62,12 @@ object SponsorBlockRepository {
                 200 -> {
                     val body = response.body.string()
                     val segments = json.decodeFromString<List<SponsorSegment>>(body)
-                    android.util.Log.d(TAG, "获取到 ${segments.size} 个空降片段 for $bvid")
+                    Logger.d(TAG) { "获取到 ${segments.size} 个空降片段 for $bvid" }
                     segments.filter { it.isSkipType } // 只返回跳过类型的片段
                 }
                 404 -> {
                     // 没有空降数据，这是正常情况
-                    android.util.Log.d(TAG, "视频 $bvid 没有空降数据")
+                    Logger.d(TAG) { "视频 $bvid 没有空降数据" }
                     emptyList()
                 }
                 else -> {
@@ -117,4 +118,3 @@ object SponsorBlockRepository {
         }
     }
 }
-

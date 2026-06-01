@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.profile
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,7 +58,11 @@ import com.bbttvv.app.data.model.response.displayLabel
 import com.bbttvv.app.feature.plugin.CDN_REGION_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.CdnRegionPlugin
 import com.bbttvv.app.feature.plugin.CdnRegionPluginCache
+import com.bbttvv.app.feature.plugin.HOME_FEED_ANONYMIZER_PLUGIN_ID
+import com.bbttvv.app.feature.plugin.HomeFeedAnonymizerPlugin
 import com.bbttvv.app.feature.plugin.TodayWatchTasteInsightState
+import com.bbttvv.app.feature.plugin.buildHomeFeedAnonymizerCreditRows
+import com.bbttvv.app.feature.plugin.buildHomeFeedAnonymizerStatsUiModel
 import com.bbttvv.app.feature.plugin.buildTodayWatchTasteInsightState
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvConfirmDialog
@@ -119,7 +126,8 @@ internal fun ProfilePluginCenterPanel(
             com.bbttvv.app.feature.plugin.AD_FILTER_PLUGIN_ID,
             com.bbttvv.app.feature.plugin.DANMAKU_ENHANCE_PLUGIN_ID,
             com.bbttvv.app.feature.plugin.TodayWatchPlugin.PLUGIN_ID,
-            CDN_REGION_PLUGIN_ID
+            CDN_REGION_PLUGIN_ID,
+            HOME_FEED_ANONYMIZER_PLUGIN_ID
         ).mapNotNull { id ->
             plugins.firstOrNull { it.plugin.id == id }
         }
@@ -207,6 +215,7 @@ internal fun ProfilePluginCenterPanel(
             Text(text = "内置插件", color = sectionHeaderColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
         items(builtInPlugins, key = { it.plugin.id }) { pluginInfo ->
+            val isExpanded = expandedPluginId == pluginInfo.plugin.id
             Column(
                 modifier = Modifier.onFocusChanged { state ->
                     if (state.hasFocus) {
@@ -237,7 +246,7 @@ internal fun ProfilePluginCenterPanel(
                     },
                 )
                 AnimatedVisibility(
-                    visible = expandedPluginId == pluginInfo.plugin.id,
+                    visible = isExpanded,
                     enter = expandVertically(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
                     exit = shrinkVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(150))
                 ) {
@@ -298,6 +307,17 @@ internal fun ProfilePluginCenterPanel(
                                     }
                                 )
                             }
+                            is HomeFeedAnonymizerPlugin -> {
+                                HomeFeedAnonymizerPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
+                                    }
+                                )
+                            }
                             else -> {
                                 ProfileInfoCard("暂不支持的插件类型", "这个插件已经注册进插件系统，但当前插件中心还没有给它单独的 TV 配置面板。", compact = true)
                             }
@@ -310,9 +330,17 @@ internal fun ProfilePluginCenterPanel(
             Text(text = "外部规则插件", color = sectionHeaderColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
         if (jsonPlugins.isEmpty()) {
-            item { ProfileInfoCard("当前还没有导入外部插件", "内置规则插件已经就位，后续如果还有外部 JSON 规则插件，可以继续在这里向下扩展。", compact = true) }
+            item(key = "plugin_external_empty") {
+                PluginCenterRowCard(
+                    title = "暂无外部规则插件",
+                    subtitle = "内置规则插件已经就位，后续可在这里接入外部 JSON 规则插件。",
+                    value = "列表结束",
+                    onClick = {},
+                    onDpadDown = { true }
+                )
+            }
         } else {
-            items(jsonPlugins, key = { it.plugin.id }) { loaded ->
+            itemsIndexed(jsonPlugins, key = { _, loaded -> loaded.plugin.id }) { index, loaded ->
                 Column(
                     modifier = Modifier.onFocusChanged { state ->
                         if (state.hasFocus) {
@@ -332,12 +360,25 @@ internal fun ProfilePluginCenterPanel(
                                 append("已")
                             }
                         },
-                        value = if (loaded.enabled) "已启用" else "已关闭",
+                        value = buildString {
+                            append(if (loaded.enabled) "已启用" else "已关闭")
+                            append(" · ")
+                            append(resolveJsonPluginTypeLabel(loaded.plugin.type))
+                            append(" ")
+                            append(loaded.plugin.version)
+                            filterStats[loaded.plugin.id]?.takeIf { it > 0 }?.let { count ->
+                                append(" · 过滤 ")
+                                append(count)
+                            }
+                        },
                         onClick = { JsonPluginManager.setEnabled(loaded.plugin.id, !loaded.enabled) },
                         modifier = if (loaded.plugin.id == targetFirstKey) {
                             Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
                         } else {
                             Modifier
+                        },
+                        onDpadDown = {
+                            index == jsonPlugins.lastIndex
                         },
                     )
                 }
@@ -360,35 +401,35 @@ private fun SponsorBlockPluginPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
-            title = "插件状态",
+            title = "启用空降助手",
             subtitle = "控制空降助手是否参与视频详情页的 SponsorBlock 跳过逻辑。",
             value = if (enabled) "点击关闭" else "点击切换",
             isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
-            title = "手动跳过",
+            title = "自动跳过",
             subtitle = "命中片头、片尾或恰饭片段时直接跳过；关闭后会显示手动跳过提示。",
             value = if (config.autoSkip) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setAutoSkip(!config.autoSkip) }
         )
         PluginCenterRowCard(
-            title = "进度条提示",
+            title = "进度条标记",
             subtitle = "切换 SponsorBlock 片段在进度条上的提示策略，便于后续预览标记。",
             value = "${config.markerMode.displayLabel()} -> ${nextMarkerMode.displayLabel()}",
             isSubItem = true,
             onClick = { plugin.setMarkerMode(nextMarkerMode) }
         )
         PluginCenterRowCard(
-            title = "手动跳过提示",
+            title = "跳过提示",
             subtitle = "关闭后不再显示右下角“按确认键跳过”提示，但不会影响进度条标记和自动跳过。",
             value = if (config.showSkipPrompt) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setShowSkipPrompt(!config.showSkipPrompt) }
         )
         PluginCenterRowCard(
-            title = "广告 / 恰饭",
+            title = "赞助/恰饭",
             subtitle = "命中 SponsorBlock 的赞助片段时参与跳过。",
             value = if (config.skipSponsor) "已跳过" else "已保留",
             isSubItem = true,
@@ -409,7 +450,7 @@ private fun SponsorBlockPluginPanel(
             onClick = { plugin.setSkipOutro(!config.skipOutro) }
         )
         PluginCenterRowCard(
-            title = "互动提示",
+            title = "互动提示片段",
             subtitle = "跳过无意义的连播投币点赞 and 下一期提示等互动片段。",
             value = if (config.skipInteraction) "已跳过" else "已保留",
             isSubItem = true,
@@ -423,14 +464,14 @@ private fun SponsorBlockPluginPanel(
             onClick = { plugin.setSkipSelfPromo(!config.skipSelfPromo) }
         )
         PluginCenterRowCard(
-            title = "预告 / 回顾",
+            title = "预告/回顾",
             subtitle = "默认跳过片尾广告和重复回顾，默认关闭以免误伤剧情内容。",
             value = if (config.skipPreview) "已跳过" else "已保留",
             isSubItem = true,
             onClick = { plugin.setSkipPreview(!config.skipPreview) }
         )
         PluginCenterRowCard(
-            title = "无关片段",
+            title = "跑题片段",
             subtitle = "默认跳过跑题片段，默认关闭，适合你想更激进一点的时候。",
             value = if (config.skipFiller) "已跳过" else "已保留",
             isSubItem = true,
@@ -464,35 +505,35 @@ private fun AdFilterPluginPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
-            title = "插件状态",
+            title = "启用广告过滤",
             subtitle = "首页推荐、热门分区会先经过去广告增强再展示。",
             value = if (enabled) "点击关闭" else "点击切换",
             isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
-            title = "营销推广过滤",
+            title = "过滤营销推广",
             subtitle = "过滤商业合作、恰饭推广、官方活动等营销内容。",
             value = if (config.filterSponsored) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setFilterSponsored(!config.filterSponsored) }
         )
         PluginCenterRowCard(
-            title = "标题党过滤",
+            title = "过滤标题党",
             subtitle = "过滤夸张标题、震惊体和常见钓鱼式标题。",
             value = if (config.filterClickbait) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setFilterClickbait(!config.filterClickbait) }
         )
         PluginCenterRowCard(
-            title = "低播放量过滤",
+            title = "过滤低播放量",
             subtitle = "默认过滤播放量低于 1000 的内容，适合你想让瀑布流更干净时开启。",
             value = if (config.filterLowQuality) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setFilterLowQuality(!config.filterLowQuality) }
         )
         PluginCenterRowCard(
-            title = "低播放量阈值",
+            title = "播放量阈值",
             subtitle = "低播放量过滤的实际生效，当前小于这个值的视频会被隐藏。",
             value = "${config.minViewCount}",
             isSubItem = true,
@@ -502,21 +543,21 @@ private fun AdFilterPluginPanel(
             }
         )
         PluginCenterRowCard(
-            title = "添加名称黑名单",
+            title = "添加 UP 名称",
             subtitle = "按 UP 名称做模糊匹配拉黑，适合先用遥控器快速录入关键字。",
             value = if (config.blockedUpNames.isEmpty()) "去添加" else "${config.blockedUpNames.size} 个",
             isSubItem = true,
             onClick = { showAddNameDialog = true }
         )
         PluginCenterRowCard(
-            title = "添加 MID 黑名单",
+            title = "添加 UP MID",
             subtitle = "按 UID/MID 精确拉黑，适合你已经知道该 UP 主数字 ID 的情况。",
             value = if (manualBlockedMids.isEmpty()) "去添加" else "${manualBlockedMids.size} 个",
             isSubItem = true,
             onClick = { showAddMidDialog = true }
         )
         PluginCenterRowCard(
-            title = "标题屏蔽词",
+            title = "添加标题屏蔽词",
             subtitle = "按关键字直接过滤标题，适合屏蔽某类长期不想看的内容。",
             value = if (config.blockedKeywords.isEmpty()) "去添加" else "${config.blockedKeywords.size} 个",
             isSubItem = true,
@@ -744,42 +785,42 @@ private fun DanmakuEnhancePluginPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
-            title = "插件状态",
+            title = "启用弹幕增强",
             subtitle = "会作用到当前播放器的弹幕载入链路，打开后支持热刷新。",
             value = if (enabled) "点击关闭" else "点击切换",
             isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
-            title = "关键词屏蔽",
+            title = "开启关键词屏蔽",
             subtitle = "按关键字隐藏剧透、前方高能等你不想看到的弹幕。",
             value = if (config.enableFilter) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setEnableFilter(!config.enableFilter) }
         )
         PluginCenterRowCard(
-            title = "同传高亮",
+            title = "开启同传高亮",
             subtitle = "把同传、翻译类弹幕高亮出来，方便电视端远距离阅读。",
             value = if (config.enableHighlight) "已开启" else "已关闭",
             isSubItem = true,
             onClick = { plugin.setEnableHighlight(!config.enableHighlight) }
         )
         PluginCenterRowCard(
-            title = "屏蔽关键字",
+            title = "编辑屏蔽关键字",
             subtitle = config.blockedKeywords.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
             isSubItem = true,
             onClick = { openEditor("blocked_keywords", config.blockedKeywords) }
         )
         PluginCenterRowCard(
-            title = "屏蔽用户 ID",
+            title = "编辑屏蔽用户 ID",
             subtitle = config.blockedUserIds.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
             isSubItem = true,
             onClick = { openEditor("blocked_users", config.blockedUserIds) }
         )
         PluginCenterRowCard(
-            title = "高亮关键字",
+            title = "编辑高亮关键字",
             subtitle = config.highlightKeywords.ifBlank { "当前生效词，点按后编辑。" },
             value = "编辑",
             isSubItem = true,
@@ -878,35 +919,35 @@ private fun TodayWatchPluginPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
-            title = "插件状态",
+            title = "启用推荐单",
             subtitle = "启用后，会在首页导航栏最外挂载「推荐单」版块。",
             value = if (enabled) "点击关闭" else "点击切换",
             isSubItem = true,
             onClick = onToggleEnabled
         )
         PluginCenterRowCard(
-            title = "默认模式",
+            title = "推荐单默认模式",
             subtitle = "进入推荐单页时默认选中的二级标签。",
             value = "${config.currentMode.label} -> ${nextMode.label}",
             isSubItem = true,
             onClick = { plugin.setCurrentMode(nextMode) }
         )
         PluginCenterRowCard(
-            title = "队列生成长度",
+            title = "候选队列长度",
             subtitle = "用于算法内部排序的种子队列规模，越大越容易补齐多样性。",
             value = "${config.queueBuildLimit} -> $nextQueueBuildLimit",
             isSubItem = true,
             onClick = { plugin.setQueueBuildLimit(nextQueueBuildLimit) }
         )
         PluginCenterRowCard(
-            title = "预览展示条数",
+            title = "首页预览条数",
             subtitle = "推荐单页当前行展示前几条视频卡片。",
             value = "${config.queuePreviewLimit} -> $nextQueuePreviewLimit",
             isSubItem = true,
             onClick = { plugin.setQueuePreviewLimit(nextQueuePreviewLimit) }
         )
         PluginCenterRowCard(
-            title = "历史样本数",
+            title = "历史采样数量",
             subtitle = "冷启动生成推荐单时最多抽取最近多少条历史记录。",
             value = "${config.historySampleLimit} -> $nextHistorySampleLimit",
             isSubItem = true,
@@ -922,7 +963,7 @@ private fun TodayWatchPluginPanel(
         )
         TodayWatchTasteInsightSection(insightState)
         PluginCenterRowCard(
-            title = "清空画像与反馈",
+            title = "清空推荐画像",
             subtitle = "清空后台学到的创作者偏好和不感兴趣反馈，推荐会重新学习。",
             value = "立即清空",
             isSubItem = true,
@@ -1024,7 +1065,7 @@ private fun CdnRegionPluginPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
-            title = "插件状态",
+            title = "启用属地 CDN",
             subtitle = "启用后，播放地址会先尝试同属地 bilivideo CDN，原始线路仍保留兜底。",
             value = if (enabled) "点击关闭" else "点击切换",
             isSubItem = true,
@@ -1043,7 +1084,7 @@ private fun CdnRegionPluginPanel(
             isSubItem = true
         )
         PluginCenterRowCard(
-            title = "刷新属地",
+            title = "刷新属地缓存",
             subtitle = if (enabled) "重新请求 B 站 IP 属地接口并更新本地 CDN 候选缓存。" else "开启插件后再刷新属地缓存。",
             value = if (enabled) "立即刷新" else "未启用",
             isSubItem = true,
@@ -1062,6 +1103,65 @@ private fun CdnRegionPluginPanel(
             )
         }
         ProfileInfoCard("已接入播放链路", "该插件只重排播放候选 URL，不删除原始 baseUrl / backupUrl；线路异常时播放器仍会继续尝试后续候选。", compact = true)
+    }
+}
+
+@Composable
+private fun HomeFeedAnonymizerPluginPanel(
+    plugin: HomeFeedAnonymizerPlugin,
+    enabled: Boolean,
+    onToggleEnabled: () -> Unit
+) {
+    var refreshToken by remember { mutableStateOf(0) }
+    val stats = remember(refreshToken, enabled) {
+        buildHomeFeedAnonymizerStatsUiModel(
+            snapshot = plugin.statsSnapshot,
+            enabled = enabled
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        PluginCenterRowCard(
+            title = "启用匿名推荐",
+            subtitle = "启用后仅让 Web 首页推荐接口不携带 Cookie，不影响播放、动态和评论。",
+            value = if (enabled) "点击关闭" else "点击切换",
+            isSubItem = true,
+            onClick = onToggleEnabled
+        )
+        stats.rows.forEach { row ->
+            PluginCenterStaticInfoCard(
+                title = row.label,
+                subtitle = row.summary,
+                value = "",
+                isSubItem = true
+            )
+        }
+        PluginCenterRowCard(
+            title = "刷新命中统计",
+            subtitle = "重新读取本机命中次数和最近命中的推荐接口。",
+            value = "刷新",
+            isSubItem = true,
+            onClick = { refreshToken += 1 }
+        )
+        PluginCenterRowCard(
+            title = "重置命中统计",
+            subtitle = "只清空本机统计，不修改插件启用状态和推荐数据源设置。",
+            value = "重置",
+            isSubItem = true,
+            onClick = {
+                plugin.resetStats()
+                refreshToken += 1
+            }
+        )
+        buildHomeFeedAnonymizerCreditRows().forEach { row ->
+            PluginCenterStaticInfoCard(
+                title = row.label,
+                subtitle = row.fullContent,
+                value = row.summary,
+                isSubItem = true
+            )
+        }
+        ProfileInfoCard("已接入推荐请求", "该插件只作用于网页端推荐流。若当前设置切到移动端推荐流，它不会改动移动端 access_token 请求。", compact = true)
     }
 }
 
@@ -1095,7 +1195,6 @@ private fun PluginCenterStaticInfoCard(
     val cardShape = RoundedCornerShape(if (isSubItem) 14.dp else 24.dp)
     
     val titleColor = if (isLightTheme) Color(0xFF18191C) else Color.White
-    val subtitleColor = if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
     val valueColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xE8FFFFFF)
 
     Box(
@@ -1114,18 +1213,13 @@ private fun PluginCenterStaticInfoCard(
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(if (isSubItem) 2.dp else 4.dp)
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = title,
                     color = titleColor,
                     fontSize = if (isSubItem) 14.sp else 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = subtitle,
-                    color = subtitleColor,
-                    fontSize = if (isSubItem) 10.sp else 11.sp,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1151,7 +1245,9 @@ private fun PluginCenterRowCard(
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isSubItem: Boolean = false
+    isSubItem: Boolean = false,
+    onDpadUp: (() -> Boolean)? = null,
+    onDpadDown: (() -> Boolean)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -1174,12 +1270,7 @@ private fun PluginCenterRowCard(
         focused -> if (isLightTheme) Color.White else (if (isSubItem) Color.White else Color(0xFF111111))
         else -> if (isLightTheme) Color(0xFF18191C) else Color.White
     }
-    
-    val subtitleColor = when {
-        focused -> if (isLightTheme) Color(0xB3FFFFFF) else (if (isSubItem) Color(0xB3FFFFFF) else Color(0xB0000000))
-        else -> if (isLightTheme) Color(0xFF61666D) else Color(0xB3FFFFFF)
-    }
-    
+
     val valueTextColor = when {
         focused -> if (isLightTheme) Color.White else (if (isSubItem) Color(0xE8FFFFFF) else Color(0xCC000000))
         else -> if (isLightTheme) Color(0xFFFB7299) else Color(0xE8FFFFFF)
@@ -1187,7 +1278,19 @@ private fun PluginCenterRowCard(
 
     Surface(
         onClick = onClick,
-        modifier = modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier
+            .onPreviewKeyEvent { keyEvent ->
+                val nativeEvent = keyEvent.nativeKeyEvent
+                if (nativeEvent.action != AndroidKeyEvent.ACTION_DOWN) {
+                    return@onPreviewKeyEvent false
+                }
+                when (nativeEvent.keyCode) {
+                    AndroidKeyEvent.KEYCODE_DPAD_UP -> onDpadUp?.invoke() == true
+                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown?.invoke() == true
+                    else -> false
+                }
+            }
+            .onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(cardShape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
         colors = ClickableSurfaceDefaults.colors(
@@ -1207,19 +1310,14 @@ private fun PluginCenterRowCard(
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(if (isSubItem) 2.dp else 4.dp)
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = title,
                     color = titleColor,
                     fontSize = if (isSubItem) 14.sp else 15.sp,
-                    fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium
-                )
-                Text(
-                    text = subtitle,
-                    color = subtitleColor,
-                    fontSize = if (isSubItem) 10.sp else 11.sp,
-                    maxLines = 2,
+                    fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }

@@ -1,5 +1,7 @@
 package com.bbttvv.app.core.network
 
+import com.bbttvv.app.core.network.policy.HomeFeedAnonymizerRuntime
+import com.bbttvv.app.core.network.policy.resolveHomeFeedCookieAnonymizerDecision
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.Logger
 import okhttp3.Cookie
@@ -29,6 +31,19 @@ internal class AppSessionCookieJar : CookieJar {
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        if (resolveHomeFeedCookieAnonymizerDecision(
+                pluginEnabled = HomeFeedAnonymizerRuntime.enabled,
+                host = url.host,
+                encodedPath = url.encodedPath
+            )
+        ) {
+            Logger.d(
+                "CookieJar",
+                " 初见推荐匿名化首页推荐请求: ${url.encodedPath}, clearCookieHeader=true"
+            )
+            return emptyList()
+        }
+
         TokenManager.awaitWarmupBlocking()
         val cookies = mutableListOf<Cookie>()
 

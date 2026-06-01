@@ -19,6 +19,7 @@ import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Size
 import coil.transform.CircleCropTransformation
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.R
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.BlurTransformation
@@ -226,7 +227,9 @@ internal class HomeVideoCardAdapter(
                 val item = boundItem
                 if (hasFocus) {
                     val focusedPosition = position ?: return@setOnFocusChangeListener
-                    Log.d("HomeFocus", "Card focused: pos=$focusedPosition key=${item?.key}")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("HomeFocus", "Card focused: pos=$focusedPosition key=${item?.key}")
+                    }
                     if (item != null) {
                         boundOnItemFocused?.invoke(item, focusedPosition)
                     }

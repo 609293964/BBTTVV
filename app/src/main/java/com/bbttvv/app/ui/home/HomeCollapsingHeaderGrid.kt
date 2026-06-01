@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.components.AppTopLevelTab
 
 internal class HomeCollapsingHeaderState {
@@ -31,7 +32,7 @@ internal class HomeCollapsingHeaderState {
         this.scrollOffsetPx = scrollOffsetPx.coerceAtLeast(0)
         val newCollapse = this.scrollOffsetPx.coerceIn(0, totalHeaderHeightPx.coerceAtLeast(0))
         if (collapseOffsetPx != newCollapse) {
-            Log.d("HomeFocus", "collapseOffsetPx: $collapseOffsetPx -> $newCollapse  scroll=$scrollOffsetPx totalHeader=$totalHeaderHeightPx")
+            logHomeFocus { "collapseOffsetPx: $collapseOffsetPx -> $newCollapse  scroll=$scrollOffsetPx totalHeader=$totalHeaderHeightPx" }
         }
         collapseOffsetPx = newCollapse
     }
@@ -43,6 +44,12 @@ internal class HomeCollapsingHeaderState {
 
     fun updateHeaderHeight(totalHeaderHeightPx: Int) {
         collapseOffsetPx = scrollOffsetPx.coerceIn(0, totalHeaderHeightPx.coerceAtLeast(0))
+    }
+}
+
+private inline fun logHomeFocus(message: () -> String) {
+    if (BuildConfig.DEBUG) {
+        Log.d("HomeFocus", message())
     }
 }
 

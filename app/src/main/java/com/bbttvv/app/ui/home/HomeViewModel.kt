@@ -161,7 +161,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
         _refreshErrorMessage.value = null
         viewModelScope.launch {
-            when (val result = feedController.refresh(force = true)) {
+            when (val result = feedController.refresh()) {
                 is HomeFeedLoadResult.Success -> {
                     applyRecommendLoadSuccess(result)
                     requestTodayWatchRebuild(forceReloadHistory = false)

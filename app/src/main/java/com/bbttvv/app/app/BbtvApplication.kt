@@ -24,6 +24,7 @@ import com.bbttvv.app.feature.plugin.AD_FILTER_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.AdFilterPlugin
 import com.bbttvv.app.feature.plugin.CdnRegionPlugin
 import com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin
+import com.bbttvv.app.feature.plugin.HomeFeedAnonymizerPlugin
 import com.bbttvv.app.feature.plugin.SPONSOR_BLOCK_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
 import com.bbttvv.app.feature.plugin.TodayWatchPlugin
@@ -166,6 +167,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                     PluginManager.register(DanmakuEnhancePlugin())
                     PluginManager.register(TodayWatchPlugin())
                     PluginManager.register(CdnRegionPlugin())
+                    PluginManager.register(HomeFeedAnonymizerPlugin())
                     syncBuiltInPluginState()
                 }
             }

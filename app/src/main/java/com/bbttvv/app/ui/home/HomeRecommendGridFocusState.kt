@@ -1,10 +1,12 @@
 package com.bbttvv.app.ui.home
 
 import android.os.SystemClock
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
 internal class HomeRecommendGridFocusState {
@@ -202,7 +204,7 @@ internal class HomeRecommendGridFocusState {
 
     fun requestScrollToTop() {
         if (hasFocusInside() && isRecentUserNavigation()) {
-            android.util.Log.d("HomeFocus", "requestScrollToTop IGNORED to protect active focus inside Grid.")
+            logHomeFocus { "requestScrollToTop IGNORED to protect active focus inside Grid." }
             return
         }
         pendingScrollToTop = true
@@ -375,7 +377,7 @@ internal class HomeRecommendGridFocusState {
         val recycler = currentRecyclerView() ?: return
         if ((recycler.adapter?.itemCount ?: 0) <= 0) return
         pendingScrollToTop = false
-        android.util.Log.d("HomeFocus", "applyPendingScrollToTop: scrollToPositionWithOffset(0, paddingTop=${recycler.paddingTop})")
+        logHomeFocus { "applyPendingScrollToTop: scrollToPositionWithOffset(0, paddingTop=${recycler.paddingTop})" }
         val shouldRestoreFocus = restoreFocusAfterPendingScrollToTop
         restoreFocusAfterPendingScrollToTop = true
         recycler.scrollToTopRespectingPadding()
@@ -511,7 +513,7 @@ internal class HomeRecommendGridFocusState {
         }
 
         if (!isPositionVisible(recycler, position) && canPerformPhysicalScroll()) {
-            android.util.Log.d("HomeFocus", "tryFocusPosition: scrollToPosition pos=$position (not visible)")
+            logHomeFocus { "tryFocusPosition: scrollToPosition pos=$position (not visible)" }
             recycler.scrollToPosition(position)
         }
 
@@ -562,14 +564,14 @@ internal class HomeRecommendGridFocusState {
                     val isPendingDown = pendingDownSearchPosition != RecyclerView.NO_POSITION
                     val isUpwardFallback = closestPosition < position && (lastFocusedPosition == RecyclerView.NO_POSITION || closestPosition <= lastFocusedPosition)
                     if (isPendingDown || isUpwardFallback) {
-                        android.util.Log.d("HomeFocus", "tryFocusPosition Fallback INHIBITED to prevent upward jump: expected=$position, closest=$closestPosition, lastFocused=$lastFocusedPosition, isPendingDown=$isPendingDown")
+                        logHomeFocus { "tryFocusPosition Fallback INHIBITED to prevent upward jump: expected=$position, closest=$closestPosition, lastFocused=$lastFocusedPosition, isPendingDown=$isPendingDown" }
                     } else if (closestView.requestFocus()) {
                         if (expectedKey != null) {
                             val fallbackKey = (recycler.adapter as? HomeVideoCardAdapter)?.keyAt(closestPosition)
                             onItemFocused(fallbackKey ?: expectedKey, closestPosition)
                         }
                         onFocused?.invoke()
-                        android.util.Log.d("HomeFocus", "tryFocusPosition Fallback SUCCESS: expected=$position, actual=$closestPosition")
+                        logHomeFocus { "tryFocusPosition Fallback SUCCESS: expected=$position, actual=$closestPosition" }
                         return true
                     }
                 }
@@ -707,7 +709,7 @@ internal class HomeRecommendGridFocusState {
         
         val recycler = currentRecyclerView() ?: return
         if (targetPosition != RecyclerView.NO_POSITION && targetPosition < (recycler.adapter?.itemCount ?: 0)) {
-            android.util.Log.d("HomeFocus", "schedulePendingDownSearch: pos=$targetPosition, posting scroll.")
+            logHomeFocus { "schedulePendingDownSearch: pos=$targetPosition, posting scroll." }
             recycler.scrollToPosition(targetPosition)
             schedulePendingDownSearchRetry()
         }
@@ -737,7 +739,7 @@ internal class HomeRecommendGridFocusState {
         val holder = recycler.findViewHolderForAdapterPosition(targetPos)
         val itemView = holder?.itemView
         if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
-            android.util.Log.d("HomeFocus", "applyPendingDownSearch SUCCESS: focused pos=$targetPos")
+            logHomeFocus { "applyPendingDownSearch SUCCESS: focused pos=$targetPos" }
             onItemFocused(adapter.keyAt(targetPos) ?: "", targetPos)
             clearPendingDownSearch()
             return true
@@ -766,6 +768,12 @@ internal class HomeRecommendGridFocusState {
             KeyEvent.KEYCODE_DPAD_LEFT,
             KeyEvent.KEYCODE_DPAD_RIGHT,
         )
+    }
+}
+
+private inline fun logHomeFocus(message: () -> String) {
+    if (BuildConfig.DEBUG) {
+        Log.d("HomeFocus", message())
     }
 }
 

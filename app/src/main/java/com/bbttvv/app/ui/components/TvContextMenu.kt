@@ -59,6 +59,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @Immutable
 internal data class TvContextMenuAction(
@@ -84,6 +85,9 @@ internal fun TvContextMenu(
 
     val firstFocusRequester = remember { FocusRequester() }
     val dialogFocusRequester = rememberTvDialogFocusTrap()
+    val isLightTheme = LocalIsLightTheme.current
+    val panelBackgroundColor = if (isLightTheme) Color(0xF7F7F8FA) else Color(0xF51A2028)
+    val panelBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.16f)
 
     BackHandler {
         onDismissRequest()
@@ -142,10 +146,10 @@ internal fun TvContextMenu(
                         onExit = { cancelFocusChange() }
                     }
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xF51A2028))
+                    .background(panelBackgroundColor)
                     .border(
                         width = 1.dp,
-                        color = Color.White.copy(alpha = 0.16f),
+                        color = panelBorderColor,
                         shape = RoundedCornerShape(24.dp),
                     )
                     .padding(horizontal = 20.dp, vertical = 20.dp),
@@ -238,12 +242,13 @@ private fun TvContextMenuButton(
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val isLightTheme = LocalIsLightTheme.current
     val shape = RoundedCornerShape(18.dp)
     val backgroundColor by animateColorAsState(
         targetValue = if (isFocused) {
             accentColor.copy(alpha = 0.22f)
         } else {
-            Color.White.copy(alpha = 0.07f)
+            if (isLightTheme) Color.Black.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.07f)
         },
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonBackground",
@@ -299,7 +304,10 @@ private fun TvContextMenuButton(
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                border = BorderStroke(
+                    1.dp,
+                    if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.08f),
+                ),
                 shape = shape,
             ),
             focusedBorder = Border(

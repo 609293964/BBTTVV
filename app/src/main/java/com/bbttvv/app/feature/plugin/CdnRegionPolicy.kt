@@ -25,9 +25,7 @@ data class CdnRewriteResult(
 
 internal fun selectCdnRegionForLocation(
     location: IpLocationSnapshot,
-    catalog: Map<String, List<String>>,
-    @Suppress("UNUSED_PARAMETER")
-    fallbackRegion: () -> String
+    catalog: Map<String, List<String>>
 ): CdnRegionSelection {
     val available = catalog.filterValues { it.isNotEmpty() }
     val overseasHosts = available["海外"]

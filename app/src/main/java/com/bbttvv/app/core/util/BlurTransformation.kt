@@ -55,7 +55,7 @@ class BlurTransformation(
             outputAlloc.copyTo(bitmap)
         } catch (e: Exception) {
             // 降级兜底：若 RenderScript 出错，则返回采样的缩略图（略微带一点马赛克感，也算是一种模糊效果）
-            e.printStackTrace()
+            Logger.w("BlurTransformation", "RenderScript blur failed; using sampled bitmap fallback", e)
         } finally {
             // 3. 安全释放硬件分配的内存
             inputAlloc?.destroy()

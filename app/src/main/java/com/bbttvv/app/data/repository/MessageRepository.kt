@@ -266,14 +266,11 @@ object MessageRepository {
             
             com.bbttvv.app.core.util.Logger.d("MessageRepo", "getSessions response: code=${response.code}, sessions=${response.data?.session_list?.size ?: 0}")
             
-            // [Debug] 打印第一个会话的详细信息以调试字段结构
+            // [Debug] Keep field-shape diagnostics out of release logs and avoid dumping profile data.
             response.data?.session_list?.firstOrNull()?.let { first ->
-                android.util.Log.d("MessageRepo", "First session debug: talker_id=${first.talker_id}, " +
-                    "account_info=${first.account_info}, " +
-                    "name=${first.account_info?.name}, " +
-                    "pic_url=${first.account_info?.pic_url}, " +
-                    "face=${first.account_info?.face}, " +
-                    "avatarUrl=${first.account_info?.avatarUrl}")
+                com.bbttvv.app.core.util.Logger.d("MessageRepo") {
+                    "First session debug: talker_id=${first.talker_id}, hasAccountInfo=${first.account_info != null}"
+                }
             }
             
             if (response.code == 0 && response.data != null) {
@@ -555,4 +552,3 @@ object MessageRepository {
         }
     }
 }
-
