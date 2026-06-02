@@ -1,3 +1,4 @@
+import com.bbttvv.build.BumpReleaseVersionTask
 import java.util.Properties
 
 plugins {
@@ -19,6 +20,9 @@ val signingProperties = Properties().apply {
 val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val missingReleaseSigningKeys = releaseSigningKeys.filter { signingProperties.getProperty(it).isNullOrBlank() }
 val hasReleaseKeystore = missingReleaseSigningKeys.isEmpty()
+val bumpReleaseVersion = tasks.register<BumpReleaseVersionTask>("bumpReleaseVersion") {
+    versionFile.set(rootProject.layout.projectDirectory.file("version.properties"))
+}
 val releaseAbiStr = providers.gradleProperty("bbttvv.releaseAbi")
     .orElse("arm64-v8a")
     .get()
@@ -53,7 +57,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.00"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -134,6 +138,18 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val releaseVersion = bumpReleaseVersion.flatMap { task ->
+            task.versionFile.map { BumpReleaseVersionTask.readAppVersion(it.asFile) }
+        }
+        variant.outputs.forEach { output ->
+            output.versionCode.set(releaseVersion.map { it.versionCode })
+            output.versionName.set(releaseVersion.map { it.versionName })
         }
     }
 }

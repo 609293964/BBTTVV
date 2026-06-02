@@ -363,6 +363,15 @@ fun TvSettingsList(
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
     val userAgentFocusRequester = remember { FocusRequester() }
 
+    LaunchedEffect(context, cacheRefreshTick) {
+        cacheSize = "\u8BA1\u7B97\u4E2D..."
+        cacheSize = runCatching {
+            CacheUtils.getTotalCacheSize(context.applicationContext)
+        }.getOrElse {
+            "\u8BA1\u7B97\u5931\u8D25"
+        }
+    }
+
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
         focusRequester = userAgentFocusRequester,
@@ -826,9 +835,12 @@ fun TvSettingsList(
                     onClick = {
                         scope.launch {
                             isClearingCache = true
-                            CacheUtils.clearAllCache(context)
-                            cacheRefreshTick += 1
-                            isClearingCache = false
+                            try {
+                                CacheUtils.clearAllCache(context.applicationContext)
+                                cacheRefreshTick += 1
+                            } finally {
+                                isClearingCache = false
+                            }
                         }
                     }
                 )

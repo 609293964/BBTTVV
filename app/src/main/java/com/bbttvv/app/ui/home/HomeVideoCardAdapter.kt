@@ -50,7 +50,7 @@ private val darkStrokeColorStateList = android.content.res.ColorStateList(
     ),
     intArrayOf(
         Color.parseColor("#FFFFFF"), // focused: white
-        Color.parseColor("#FF6699"), // selected: pink
+        Color.parseColor("#FFFFFF"), // selected: visual focus anchor
         Color.parseColor("#FFFFFF"), // pressed: white
         Color.TRANSPARENT           // default: transparent
     )
@@ -68,6 +68,7 @@ internal class HomeVideoCardAdapter(
     private val onBackKeyUp: (() -> Boolean)? = null,
     private val supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)? = null,
 ) : ListAdapter<HomeRecommendVideoCardItem, HomeVideoCardAdapter.VideoViewHolder>(VideoDiffCallback) {
+    private var visualFocusKey: String? = null
 
     init {
         setHasStableIds(true)
@@ -94,6 +95,7 @@ internal class HomeVideoCardAdapter(
             onItemKeyEvent = onItemKeyEvent,
             onBackKeyUp = onBackKeyUp,
             supportingTextProvider = supportingTextProvider,
+            isLogicallySelected = getItem(position).key == visualFocusKey,
         )
     }
 
@@ -145,10 +147,24 @@ internal class HomeVideoCardAdapter(
     }
 
     fun clearVisibleFocusVisualState(recyclerView: RecyclerView) {
+        visualFocusKey = null
         for (index in 0 until recyclerView.childCount) {
             val child = recyclerView.getChildAt(index)
             (recyclerView.getChildViewHolder(child) as? VideoViewHolder)
-                ?.clearFocusVisualState()
+                ?.let { holder ->
+                    holder.setLogicalSelected(false)
+                    holder.clearFocusVisualState()
+                }
+        }
+    }
+
+    fun setVisualFocusKey(recyclerView: RecyclerView, key: String?) {
+        if (visualFocusKey == key) return
+        visualFocusKey = key
+        for (index in 0 until recyclerView.childCount) {
+            val child = recyclerView.getChildAt(index)
+            val holder = recyclerView.getChildViewHolder(child) as? VideoViewHolder ?: continue
+            holder.setLogicalSelected(holder.boundKey == key)
         }
     }
 
@@ -192,6 +208,9 @@ internal class HomeVideoCardAdapter(
         private var boundOnItemLongClick: ((HomeRecommendVideoCardItem) -> Unit)? = null
         private var boundOnItemKeyEvent: ((View, HomeRecommendVideoCardItem, Int, Int, KeyEvent) -> Boolean)? = null
         private var boundOnBackKeyUp: (() -> Boolean)? = null
+        private var boundIsLogicallySelected: Boolean = false
+        val boundKey: String?
+            get() = boundItem?.key
 
         init {
             if (binding.root.id == View.NO_ID) {
@@ -217,9 +236,7 @@ internal class HomeVideoCardAdapter(
             }
 
             binding.root.setOnFocusChangeListener { _, hasFocus ->
-                if (binding.root.isSelected != hasFocus) {
-                    binding.root.isSelected = hasFocus
-                }
+                applySelectedState(hasFocus || boundIsLogicallySelected)
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
                 val item = boundItem
                 if (hasFocus) {
@@ -287,6 +304,7 @@ internal class HomeVideoCardAdapter(
             onItemKeyEvent: ((View, HomeRecommendVideoCardItem, Int, Int, KeyEvent) -> Boolean)?,
             onBackKeyUp: (() -> Boolean)?,
             supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)?,
+            isLogicallySelected: Boolean,
         ) {
             boundItem = item
             boundOnItemClick = onItemClick
@@ -295,8 +313,10 @@ internal class HomeVideoCardAdapter(
             boundOnItemLongClick = onItemLongClick
             boundOnItemKeyEvent = onItemKeyEvent
             boundOnBackKeyUp = onBackKeyUp
+            boundIsLogicallySelected = isLogicallySelected
 
             binding.root.isLongClickable = onItemLongClick != null
+            applySelectedState(binding.root.isFocused || boundIsLogicallySelected)
             applyFixedItemWidth(fixedItemWidthPx)
             val video = item.video
             val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
@@ -389,7 +409,9 @@ internal class HomeVideoCardAdapter(
             boundOnItemLongClick = null
             boundOnItemKeyEvent = null
             boundOnBackKeyUp = null
+            boundIsLogicallySelected = false
             binding.root.isLongClickable = false
+            applySelectedState(false)
 
             binding.clInfo.setTag(null)
             binding.clInfo.background = null
@@ -414,6 +436,18 @@ internal class HomeVideoCardAdapter(
             if (hasScaleState) {
                 binding.root.scaleX = 1f
                 binding.root.scaleY = 1f
+            }
+        }
+
+        fun setLogicalSelected(isSelected: Boolean) {
+            boundIsLogicallySelected = isSelected
+            applySelectedState(binding.root.isFocused || boundIsLogicallySelected)
+        }
+
+        private fun applySelectedState(selected: Boolean) {
+            if (binding.root.isSelected != selected) {
+                binding.root.isSelected = selected
+                binding.root.refreshDrawableState()
             }
         }
 

@@ -375,7 +375,9 @@ class VideoPlaybackUseCase {
             preferCodec = TV_SAFE_PRIMARY_CODEC,
             secondPreferCodec = TV_SAFE_SECONDARY_CODEC,
             isHevcSupported = isHevcSupported,
-            isAv1Supported = isAv1Supported
+            isAv1Supported = isAv1Supported,
+            isHdrSupported = isHdrSupported,
+            isDolbyVisionSupported = isDolbyVisionSupported
         )
         val dashAudio = playUrlData.dash?.getBestAudio()
         val allDashAudios = collectDashAudios(playUrlData.dash)
@@ -503,7 +505,9 @@ class VideoPlaybackUseCase {
         audioQualityId: Int = source.selectedAudioQualityId,
         cdnPreference: SettingsManager.PlayerCdnPreference = SettingsManager.PlayerCdnPreference.BILIVIDEO,
         isHevcSupported: Boolean = true,
-        isAv1Supported: Boolean = false
+        isAv1Supported: Boolean = false,
+        isHdrSupported: Boolean = true,
+        isDolbyVisionSupported: Boolean = true
     ): PlaybackSource? {
         if (source.segmentUrls.isNotEmpty() || source.dashVideos.isEmpty()) return null
 
@@ -516,7 +520,14 @@ class VideoPlaybackUseCase {
             .ifEmpty { validVideos }
 
         val supportedVideos = qualityVideos
-            .filter { it.isSupportedByDevice(isHevcSupported = isHevcSupported, isAv1Supported = isAv1Supported) }
+            .filter {
+                it.isSupportedByDevice(
+                    isHevcSupported = isHevcSupported,
+                    isAv1Supported = isAv1Supported,
+                    isHdrSupported = isHdrSupported,
+                    isDolbyVisionSupported = isDolbyVisionSupported
+                )
+            }
             .ifEmpty { qualityVideos.filter { it.codecs.startsWith("avc", ignoreCase = true) } }
             .ifEmpty { qualityVideos }
 
@@ -681,14 +692,19 @@ class VideoPlaybackUseCase {
 
     private fun DashVideo.isSupportedByDevice(
         isHevcSupported: Boolean,
-        isAv1Supported: Boolean
+        isAv1Supported: Boolean,
+        isHdrSupported: Boolean,
+        isDolbyVisionSupported: Boolean
     ): Boolean {
         val codecText = codecs.lowercase()
         return when {
+            id == VideoQuality.DOLBY_VISION.code ||
+                codecText.startsWith("dvh1") ||
+                codecText.startsWith("dvhe") -> isDolbyVisionSupported
+            id == VideoQuality.HDR.code -> isHdrSupported
             codecText.startsWith("avc") -> true
             codecText.startsWith("hev") || codecText.startsWith("hvc") -> isHevcSupported
             codecText.startsWith("av01") -> isAv1Supported
-            codecText.startsWith("dvh1") || codecText.startsWith("dvhe") -> isHevcSupported
             else -> true
         }
     }

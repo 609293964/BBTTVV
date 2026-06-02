@@ -167,6 +167,15 @@ fun PlayerScreen(
             handleSponsorSkipNoticeKey(event) || handleOverlayKey(event)
         }
     }
+    val handlePlayerPreviewKey = remember(handlePlayerKey) {
+        { event: KeyEvent ->
+            if (shouldRoutePlayerKeyToPreviewHandler(event)) {
+                handlePlayerKey(event)
+            } else {
+                false
+            }
+        }
+    }
     val isCommentsPanelVisible = presentationState.isCommentsPanelVisible
     val danmakuConfig = remember(presentationState.danmakuSettings) {
         presentationState.danmakuSettings.toEngineConfig()
@@ -234,7 +243,12 @@ fun PlayerScreen(
             .background(Color.Black)
             .playerBackdropSource(visualEffectsState)
             .onPreviewKeyEvent { keyEvent ->
-                handleSponsorSkipNoticeKey(keyEvent.nativeKeyEvent)
+                val nativeEvent = keyEvent.nativeKeyEvent
+                if (shouldRoutePlayerKeyToPreviewHandler(nativeEvent)) {
+                    handleSponsorSkipNoticeKey(nativeEvent)
+                } else {
+                    false
+                }
             },
     ) {
         PlayerSurfaceSection(
@@ -273,7 +287,7 @@ fun PlayerScreen(
             isCommentsPanelVisible = isCommentsPanelVisible,
             visualEffectsState = visualEffectsState,
             focusBindings = focusBindings,
-            handlePlayerKey = handlePlayerKey,
+            handlePlayerKey = handlePlayerPreviewKey,
             onToggleCommentSort = viewModel::toggleCommentSort,
             onRetryComments = viewModel::refreshComments,
             onLoadMoreComments = viewModel::loadMoreComments,

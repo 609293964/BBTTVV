@@ -58,6 +58,35 @@ internal data class HomeFocusEntryHint(
     val preferredIndex: Int? = null,
 )
 
+internal enum class HomeFocusRequestResult {
+    Focused,
+    Pending,
+    Unavailable;
+
+    val isAccepted: Boolean
+        get() = this != Unavailable
+
+    val isFocused: Boolean
+        get() = this == Focused
+
+    companion object {
+        fun fromFocused(focused: Boolean): HomeFocusRequestResult {
+            return if (focused) Focused else Unavailable
+        }
+    }
+}
+
+internal sealed class HomeFocusMode {
+    data object TopBar : HomeFocusMode()
+
+    data class Content(
+        val tab: AppTopLevelTab,
+        val region: HomeFocusRegion?,
+        val scene: HomeFocusScene,
+        val keepTopBarVisible: Boolean,
+    ) : HomeFocusMode()
+}
+
 internal interface HomeFocusTarget {
     fun tryRequestFocus(): Boolean
 
@@ -68,6 +97,21 @@ internal interface HomeFocusTarget {
     fun tryRequestFocusKeyOrFallback(key: String): Boolean = tryRequestFocusKey(key)
 
     fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean = tryRequestFocus()
+
+    fun requestFocusResult(): HomeFocusRequestResult =
+        HomeFocusRequestResult.fromFocused(tryRequestFocus())
+
+    fun requestFocusTabResult(tab: AppTopLevelTab): HomeFocusRequestResult =
+        HomeFocusRequestResult.fromFocused(tryRequestFocusTab(tab))
+
+    fun requestFocusKeyResult(key: String): HomeFocusRequestResult =
+        HomeFocusRequestResult.fromFocused(tryRequestFocusKey(key))
+
+    fun requestFocusKeyOrFallbackResult(key: String): HomeFocusRequestResult =
+        HomeFocusRequestResult.fromFocused(tryRequestFocusKeyOrFallback(key))
+
+    fun requestFocusForEntryResult(entryHint: HomeFocusEntryHint): HomeFocusRequestResult =
+        HomeFocusRequestResult.fromFocused(tryRequestFocusForEntry(entryHint))
 
     fun hasFocus(): Boolean = false
 
@@ -184,17 +228,36 @@ internal class HomeFocusCoordinator(
     var scene by mutableStateOf(HomeFocusScene.InitialEnter)
         private set
 
-    var isTopBarVisible by mutableStateOf(true)
-        private set
+    private var focusMode by mutableStateOf<HomeFocusMode>(HomeFocusMode.TopBar)
 
-    var isContentFocused by mutableStateOf(false)
-        private set
+    val isTopBarVisible: Boolean
+        get() = when (val mode = focusMode) {
+            HomeFocusMode.TopBar -> true
+            is HomeFocusMode.Content -> mode.keepTopBarVisible || contentTopBarVisible
+        }
+
+    val isTopBarFocusable: Boolean
+        get() = focusMode is HomeFocusMode.TopBar
+
+    val isContentFocused: Boolean
+        get() = focusMode is HomeFocusMode.Content
+
+    val currentFocusMode: HomeFocusMode
+        get() = focusMode
+
+    val hasPendingContentFocus: Boolean
+        get() = when (pendingIntent) {
+            HomeFocusIntent.FocusSelectedContent,
+            is HomeFocusIntent.FocusRegion,
+            is HomeFocusIntent.RestoreVideoKey -> true
+            else -> false
+        }
 
     private var pendingIntent: HomeFocusIntent? = HomeFocusIntent.FocusTopBar
     private var pendingRestoreCallback: ((String) -> Unit)? = null
     private var pendingRestoreCancelCallback: (() -> Unit)? = null
     private var pendingBackToTopBarReset: Boolean = false
-    private var pendingTopBarHide: Boolean = false
+    private var contentTopBarVisible by mutableStateOf(false)
     private var topBarTarget: HomeFocusTarget? = null
     private val lastContentRegionByTab = mutableMapOf<AppTopLevelTab, HomeFocusRegion>()
     private val contentTargets =
@@ -225,16 +288,20 @@ internal class HomeFocusCoordinator(
         if (scene != HomeFocusScene.BackToTopBar) {
             pendingBackToTopBarReset = false
         }
-        pendingTopBarHide = !keepTopBarVisible
-        isContentFocused = true
+        enterContentMode(
+            tab = selectedHomeTab,
+            region = lastContentRegionByTab[selectedHomeTab],
+            scene = scene,
+            keepTopBarVisible = keepTopBarVisible,
+        )
+        contentTopBarVisible = keepTopBarVisible
     }
 
     fun onTopBarFocused() {
         clearSelectedContentVisualState()
-        logHomeFocus { "onTopBarFocused: isTopBarVisible $isTopBarVisible -> true" }
-        isTopBarVisible = true
-        pendingTopBarHide = false
-        isContentFocused = false
+        logHomeFocus { "onTopBarFocused: mode $focusMode -> TopBar" }
+        contentTopBarVisible = false
+        focusMode = HomeFocusMode.TopBar
         when (val intent = pendingIntent) {
             HomeFocusIntent.FocusTopBar -> {
                 if (topBarTarget?.hasFocusOnRequestedTarget() == true) {
@@ -255,15 +322,18 @@ internal class HomeFocusCoordinator(
     }
 
     fun onContentFocused() {
-        isContentFocused = true
+        enterContentMode(
+            tab = selectedHomeTab,
+            region = lastContentRegionByTab[selectedHomeTab],
+            scene = scene,
+            keepTopBarVisible = shouldKeepTopBarVisibleWhileEnteringContent(selectedHomeTab),
+        )
     }
 
     fun onContentRowFocused(rowIndex: Int) {
-        isContentFocused = true
-        pendingTopBarHide = false
-        val newVis = rowIndex <= 0
-        logHomeFocus { "onContentRowFocused: row=$rowIndex isTopBarVisible $isTopBarVisible -> $newVis" }
-        isTopBarVisible = newVis
+        logHomeFocus { "onContentRowFocused: row=$rowIndex mode=$focusMode" }
+        onContentFocused()
+        contentTopBarVisible = rowIndex <= 0
     }
 
     fun onContentRegionFocused(
@@ -272,16 +342,20 @@ internal class HomeFocusCoordinator(
     ) {
         if (tab != selectedHomeTab) return
         lastContentRegionByTab[tab] = region
-        isContentFocused = true
+        enterContentMode(
+            tab = tab,
+            region = region,
+            scene = scene,
+            keepTopBarVisible = shouldKeepTopBarVisibleWhileEnteringContent(tab),
+        )
     }
 
     fun requestTopBarFocus(scene: HomeFocusScene = HomeFocusScene.BackToTopBar) {
         this.scene = scene
         pendingBackToTopBarReset = scene == HomeFocusScene.BackToTopBar
         clearSelectedContentVisualState()
-        isTopBarVisible = true
-        pendingTopBarHide = false
-        isContentFocused = false
+        contentTopBarVisible = false
+        focusMode = HomeFocusMode.TopBar
         enqueueFocusIntent(HomeFocusIntent.FocusTopBar)
     }
 
@@ -292,9 +366,8 @@ internal class HomeFocusCoordinator(
         this.scene = scene
         pendingBackToTopBarReset = false
         clearSelectedContentVisualState()
-        isTopBarVisible = true
-        pendingTopBarHide = false
-        isContentFocused = false
+        contentTopBarVisible = false
+        focusMode = HomeFocusMode.TopBar
         pendingIntent = HomeFocusIntent.FocusTopBarTab(tab)
     }
 
@@ -309,9 +382,6 @@ internal class HomeFocusCoordinator(
 
     fun requestSelectedContentFocus() {
         if (!canCoordinateContent(selectedHomeTab)) return
-        prepareForContentFocus(
-            keepTopBarVisible = shouldKeepTopBarVisibleWhileEnteringContent(selectedHomeTab)
-        )
         enqueueFocusIntent(HomeFocusIntent.FocusSelectedContent)
     }
 
@@ -393,7 +463,7 @@ internal class HomeFocusCoordinator(
                 tab = AppTopLevelTab.DYNAMIC,
                 region = HomeFocusRegion.DynamicFollowUpdates,
                 entryHint = entryHint,
-            )
+            ).isAccepted
         ) {
             return true
         }
@@ -406,7 +476,7 @@ internal class HomeFocusCoordinator(
     }
 
     fun handleDynamicFollowUpdatesDpadUp(): Boolean {
-        if (tryRequestRegionFocus(AppTopLevelTab.DYNAMIC, HomeFocusRegion.DynamicLiveUsers)) {
+        if (tryRequestRegionFocus(AppTopLevelTab.DYNAMIC, HomeFocusRegion.DynamicLiveUsers).isAccepted) {
             return true
         }
         return handleContentWantsTopBar()
@@ -424,7 +494,7 @@ internal class HomeFocusCoordinator(
     fun handleGridTopEdge(tab: AppTopLevelTab): Boolean {
         val rule = HomeFocusRules.ruleFor(tab)
         rule?.topEdgePriority.orEmpty().forEach { region ->
-            if (tryRequestRegionFocus(tab, region)) {
+            if (tryRequestRegionFocus(tab, region).isAccepted) {
                 return true
             }
         }
@@ -481,7 +551,7 @@ internal class HomeFocusCoordinator(
 
     fun drainPendingFocus(): Boolean {
         val intent = pendingIntent ?: return false
-        val focused = when (intent) {
+        val result = when (intent) {
             HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
             is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
             HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)
@@ -492,31 +562,33 @@ internal class HomeFocusCoordinator(
             )
             is HomeFocusIntent.RestoreVideoKey -> tryRestoreVideoKey(intent)
         }
-        if (focused) {
+        if (result.isFocused) {
             pendingIntent = null
-            when (intent) {
-                HomeFocusIntent.FocusTopBar, is HomeFocusIntent.FocusTopBarTab -> {
-                    pendingTopBarHide = false
-                }
-                else -> {
-                    if (pendingTopBarHide) {
-                        pendingTopBarHide = false
-                        logHomeFocus { "drainPendingFocus CONSUMED: isTopBarVisible $isTopBarVisible -> false" }
-                        isTopBarVisible = false
-                    }
-                }
-            }
         }
-        return focused
+        return result.isAccepted
     }
 
     fun recoverFocusAfterEscape(): Boolean {
         if (drainPendingFocus()) return true
-        val preferContent = isContentFocused || !isTopBarVisible
-        return if (preferContent) {
-            tryRequestSelectedContentFocus(selectedHomeTab) || tryRequestTopBarFocus()
-        } else {
-            tryRequestTopBarFocus() || tryRequestSelectedContentFocus(selectedHomeTab)
+        return when (focusMode) {
+            is HomeFocusMode.Content -> {
+                val contentResult = tryRequestSelectedContentFocus(selectedHomeTab)
+                if (contentResult.isAccepted) {
+                    true
+                } else if (hasPendingContentFocus) {
+                    false
+                } else {
+                    tryRequestTopBarFocus().isAccepted
+                }
+            }
+            HomeFocusMode.TopBar -> {
+                val topBarResult = tryRequestTopBarFocus()
+                if (topBarResult.isAccepted) {
+                    true
+                } else {
+                    tryRequestSelectedContentFocus(selectedHomeTab).isAccepted
+                }
+            }
         }
     }
 
@@ -527,22 +599,22 @@ internal class HomeFocusCoordinator(
         }
     }
 
-    private fun tryRequestTopBarFocus(tab: AppTopLevelTab? = null): Boolean {
-        val target = topBarTarget ?: return false
-        val focused = if (tab == null) {
-            target.tryRequestFocus()
+    private fun tryRequestTopBarFocus(tab: AppTopLevelTab? = null): HomeFocusRequestResult {
+        val target = topBarTarget ?: return HomeFocusRequestResult.Unavailable
+        val result = if (tab == null) {
+            target.requestFocusResult()
         } else {
-            target.tryRequestFocusTab(tab)
+            target.requestFocusTabResult(tab)
         }
-        if (!focused) return false
-        isTopBarVisible = true
-        isContentFocused = false
-        return true
+        if (result.isFocused) {
+            focusMode = HomeFocusMode.TopBar
+        }
+        return result
     }
 
-    private fun tryRequestSelectedContentFocus(tab: AppTopLevelTab): Boolean {
+    private fun tryRequestSelectedContentFocus(tab: AppTopLevelTab): HomeFocusRequestResult {
         val regions = contentFocusPriority(tab)
-        if (regions.isEmpty()) return false
+        if (regions.isEmpty()) return HomeFocusRequestResult.Unavailable
         return tryRequestFirstTarget(tab, regions)
     }
 
@@ -550,49 +622,58 @@ internal class HomeFocusCoordinator(
         tab: AppTopLevelTab,
         region: HomeFocusRegion,
         entryHint: HomeFocusEntryHint = HomeFocusEntryHint(),
-    ): Boolean {
-        val target = contentTargets[tab]?.get(region) ?: return false
-        if (!target.tryRequestFocusForEntry(entryHint)) return false
-        markContentFocusRequested(tab, region)
-        return true
+    ): HomeFocusRequestResult {
+        val target = contentTargets[tab]?.get(region) ?: return HomeFocusRequestResult.Unavailable
+        val result = target.requestFocusForEntryResult(entryHint)
+        if (result.isFocused) {
+            markContentFocusRequested(tab, region)
+        }
+        return result
     }
 
-    private fun tryRestoreVideoKey(intent: HomeFocusIntent.RestoreVideoKey): Boolean {
-        if (intent.tab != selectedHomeTab) return false
-        val targets = contentTargets[intent.tab] ?: return false
+    private fun tryRestoreVideoKey(intent: HomeFocusIntent.RestoreVideoKey): HomeFocusRequestResult {
+        if (intent.tab != selectedHomeTab) return HomeFocusRequestResult.Unavailable
+        val targets = contentTargets[intent.tab] ?: return HomeFocusRequestResult.Unavailable
         val restorePriority = HomeFocusRules.ruleFor(intent.tab)?.restorePriority
             ?: HomeFocusRules.DefaultRestorePriority
         val orderedTargets = restorePriority.mapNotNull { region ->
             targets[region]?.let { target -> region to target }
         }
         var restoredRegion: HomeFocusRegion? = null
-        val restored = orderedTargets.any { (region, target) ->
-            val restored = target.tryRequestFocusKeyOrFallback(intent.key)
-            if (restored) {
+        for ((region, target) in orderedTargets) {
+            val result = target.requestFocusKeyOrFallbackResult(intent.key)
+            if (result.isAccepted) {
                 restoredRegion = region
+                markContentFocusRequested(intent.tab, restoredRegion)
             }
-            restored
+            if (result.isFocused) {
+                pendingRestoreCallback?.invoke(intent.key)
+                pendingRestoreCallback = null
+                return HomeFocusRequestResult.Focused
+            }
+            if (result == HomeFocusRequestResult.Pending) {
+                return HomeFocusRequestResult.Pending
+            }
         }
-        if (!restored) return false
-        markContentFocusRequested(intent.tab, restoredRegion)
-        pendingRestoreCallback?.invoke(intent.key)
-        pendingRestoreCallback = null
-        return true
+        return HomeFocusRequestResult.Unavailable
     }
 
     private fun tryRequestFirstTarget(
         tab: AppTopLevelTab,
         regions: List<HomeFocusRegion>,
-    ): Boolean {
-        val targets = contentTargets[tab] ?: return false
+    ): HomeFocusRequestResult {
+        val targets = contentTargets[tab] ?: return HomeFocusRequestResult.Unavailable
         for (region in regions) {
             val target = targets[region] ?: continue
-            if (target.tryRequestFocus()) {
+            val result = target.requestFocusResult()
+            if (result.isFocused) {
                 markContentFocusRequested(tab, region)
-                return true
+            }
+            if (result.isAccepted) {
+                return result
             }
         }
-        return false
+        return HomeFocusRequestResult.Unavailable
     }
 
     private fun markContentFocusRequested(
@@ -602,7 +683,30 @@ internal class HomeFocusCoordinator(
         if (tab == selectedHomeTab && region != null) {
             lastContentRegionByTab[tab] = region
         }
-        isContentFocused = true
+        enterContentMode(
+            tab = tab,
+            region = region,
+            scene = scene,
+            keepTopBarVisible = shouldKeepTopBarVisibleWhileEnteringContent(tab),
+        )
+    }
+
+    private fun enterContentMode(
+        tab: AppTopLevelTab,
+        region: HomeFocusRegion?,
+        scene: HomeFocusScene,
+        keepTopBarVisible: Boolean,
+    ) {
+        val nextMode = HomeFocusMode.Content(
+            tab = tab,
+            region = region,
+            scene = scene,
+            keepTopBarVisible = keepTopBarVisible,
+        )
+        if (focusMode != nextMode) {
+            logHomeFocus { "enterContentMode: $focusMode -> $nextMode" }
+            focusMode = nextMode
+        }
     }
 
     private fun contentFocusPriority(tab: AppTopLevelTab): List<HomeFocusRegion> {

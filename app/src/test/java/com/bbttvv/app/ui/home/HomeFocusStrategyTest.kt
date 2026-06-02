@@ -165,26 +165,23 @@ class HomeFocusStrategyTest {
     }
 
     @Test
-    fun `collapsing header stays expanded while top bar has focus`() {
+    fun `collapsing header follows content focus regardless of top bar visibility`() {
         assertFalse(
             shouldCollapseHomeHeader(
                 usesCollapsingHomeHeader = true,
                 isContentFocused = false,
-                isTopBarVisible = true,
-            )
-        )
-        assertFalse(
-            shouldCollapseHomeHeader(
-                usesCollapsingHomeHeader = true,
-                isContentFocused = true,
-                isTopBarVisible = true,
             )
         )
         assertTrue(
             shouldCollapseHomeHeader(
                 usesCollapsingHomeHeader = true,
                 isContentFocused = true,
-                isTopBarVisible = false,
+            )
+        )
+        assertFalse(
+            shouldCollapseHomeHeader(
+                usesCollapsingHomeHeader = false,
+                isContentFocused = true,
             )
         )
     }

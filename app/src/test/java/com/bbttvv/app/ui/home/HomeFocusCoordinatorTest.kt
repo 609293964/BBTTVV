@@ -160,6 +160,130 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
+    fun `back return pending restore enters content mode without showing top bar`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val topBarTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(
+            canFocus = true,
+            keyRequestResult = HomeFocusRequestResult.Pending,
+        )
+        var restoredKey: String? = null
+
+        coordinator.registerTopBarTarget(topBarTarget)
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        coordinator.requestRestoreVideoKey(
+            tab = AppTopLevelTab.RECOMMEND,
+            key = "BV1:pending",
+            onRestored = { restoredKey = it },
+        )
+
+        assertNull(restoredKey)
+        assertTrue(coordinator.isContentFocused)
+        assertFalse(coordinator.isTopBarVisible)
+        assertEquals(1, topBarTarget.focusRequests)
+        assertEquals(listOf("BV1:pending"), gridTarget.keyRequests)
+        assertTrue(coordinator.drainPendingFocus())
+        assertEquals(1, topBarTarget.focusRequests)
+        assertEquals(listOf("BV1:pending", "BV1:pending"), gridTarget.keyRequests)
+    }
+
+    @Test
+    fun `top bar down pending content request keeps tabs visible until focus lands`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val topBarTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(
+            canFocus = true,
+            focusResult = HomeFocusRequestResult.Pending,
+        )
+
+        coordinator.registerTopBarTarget(topBarTarget)
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        assertTrue(coordinator.handleTopBarDpadDown())
+
+        assertFalse(coordinator.isContentFocused)
+        assertTrue(coordinator.isTopBarVisible)
+        assertTrue(coordinator.isTopBarFocusable)
+        assertEquals(1, topBarTarget.focusRequests)
+        assertEquals(1, gridTarget.focusRequests)
+    }
+
+    @Test
+    fun `pending content request enters content mode after real content focus`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val gridTarget = FakeFocusTarget(
+            canFocus = true,
+            focusResult = HomeFocusRequestResult.Pending,
+        )
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        assertTrue(coordinator.handleTopBarDpadDown())
+        assertFalse(coordinator.isContentFocused)
+        assertTrue(coordinator.isTopBarVisible)
+
+        coordinator.onContentRegionFocused(AppTopLevelTab.RECOMMEND, HomeFocusRegion.Grid)
+
+        assertTrue(coordinator.isContentFocused)
+        assertFalse(coordinator.isTopBarVisible)
+    }
+
+    @Test
+    fun `first content row keeps tabs visible without making top bar focusable`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+
+        coordinator.prepareForContentFocus()
+        assertFalse(coordinator.isTopBarVisible)
+        assertFalse(coordinator.isTopBarFocusable)
+
+        coordinator.onContentRowFocused(0)
+        assertTrue(coordinator.isTopBarVisible)
+        assertFalse(coordinator.isTopBarFocusable)
+
+        coordinator.onContentRowFocused(1)
+        assertFalse(coordinator.isTopBarVisible)
+        assertFalse(coordinator.isTopBarFocusable)
+    }
+
+    @Test
+    fun `escape recovery keeps pending content owner instead of top bar fallback`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val topBarTarget = FakeFocusTarget(canFocus = true)
+        val gridTarget = FakeFocusTarget(
+            canFocus = true,
+            focusResult = HomeFocusRequestResult.Pending,
+        )
+
+        coordinator.registerTopBarTarget(topBarTarget)
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+        coordinator.handleTopBarDpadDown()
+
+        assertTrue(coordinator.recoverFocusAfterEscape())
+
+        assertEquals(1, topBarTarget.focusRequests)
+        assertEquals(2, gridTarget.focusRequests)
+        assertFalse(coordinator.isContentFocused)
+        assertTrue(coordinator.isTopBarVisible)
+    }
+
+    @Test
     fun `restore video key callback runs after fallback focus succeeds`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
         val gridTarget = FakeFallbackFocusTarget()
@@ -392,6 +516,8 @@ class HomeFocusCoordinatorTest {
         var canFocus: Boolean = true,
         var rememberedFocus: Boolean = false,
         var keyFocus: Boolean = true,
+        var focusResult: HomeFocusRequestResult? = null,
+        var keyRequestResult: HomeFocusRequestResult? = null,
     ) : HomeFocusTarget {
         var focusRequests: Int = 0
             private set
@@ -400,7 +526,12 @@ class HomeFocusCoordinatorTest {
 
         override fun tryRequestFocus(): Boolean {
             focusRequests++
-            return canFocus
+            return (focusResult ?: HomeFocusRequestResult.fromFocused(canFocus)).isFocused
+        }
+
+        override fun requestFocusResult(): HomeFocusRequestResult {
+            focusRequests++
+            return focusResult ?: HomeFocusRequestResult.fromFocused(canFocus)
         }
 
         override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
@@ -408,9 +539,19 @@ class HomeFocusCoordinatorTest {
             return tryRequestFocus()
         }
 
+        override fun requestFocusForEntryResult(entryHint: HomeFocusEntryHint): HomeFocusRequestResult {
+            entryRequests += entryHint.preferredIndex
+            return requestFocusResult()
+        }
+
         override fun tryRequestFocusKey(key: String): Boolean {
             keyRequests += key
-            return keyFocus
+            return (keyRequestResult ?: HomeFocusRequestResult.fromFocused(keyFocus)).isFocused
+        }
+
+        override fun requestFocusKeyOrFallbackResult(key: String): HomeFocusRequestResult {
+            keyRequests += key
+            return keyRequestResult ?: HomeFocusRequestResult.fromFocused(keyFocus)
         }
 
         override fun hasRememberedFocus(): Boolean {

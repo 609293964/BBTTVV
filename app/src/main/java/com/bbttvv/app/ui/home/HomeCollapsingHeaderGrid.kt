@@ -1,5 +1,6 @@
 package com.bbttvv.app.ui.home
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,26 +25,69 @@ internal class HomeCollapsingHeaderState {
         private set
 
     private var scrollOffsetPx by mutableIntStateOf(0)
+    private var suppressLowScrollOffsetsUntilMs: Long = 0L
 
     fun updateScrollOffset(
         scrollOffsetPx: Int,
         totalHeaderHeightPx: Int,
     ) {
-        this.scrollOffsetPx = scrollOffsetPx.coerceAtLeast(0)
-        val newCollapse = this.scrollOffsetPx.coerceIn(0, totalHeaderHeightPx.coerceAtLeast(0))
+        val nextScrollOffsetPx = scrollOffsetPx.coerceAtLeast(0)
+        if (shouldIgnoreTransientZeroOffset(nextScrollOffsetPx, totalHeaderHeightPx)) {
+            suppressLowScrollOffsetsUntilMs = SystemClock.uptimeMillis() + TransientLowOffsetSuppressMs
+            logHomeFocus {
+                "ignore transient zero scrollOffset: previous=${this.scrollOffsetPx} collapse=$collapseOffsetPx totalHeader=$totalHeaderHeightPx"
+            }
+            return
+        }
+        if (shouldIgnoreSuppressedLowOffset(nextScrollOffsetPx, totalHeaderHeightPx)) {
+            return
+        }
+        if (nextScrollOffsetPx >= totalHeaderHeightPx.coerceAtLeast(0)) {
+            suppressLowScrollOffsetsUntilMs = 0L
+        }
+        this.scrollOffsetPx = nextScrollOffsetPx
+        val newCollapse = nextScrollOffsetPx.coerceIn(0, totalHeaderHeightPx.coerceAtLeast(0))
         if (collapseOffsetPx != newCollapse) {
-            logHomeFocus { "collapseOffsetPx: $collapseOffsetPx -> $newCollapse  scroll=$scrollOffsetPx totalHeader=$totalHeaderHeightPx" }
+            logHomeFocus { "collapseOffsetPx: $collapseOffsetPx -> $newCollapse  scroll=$nextScrollOffsetPx totalHeader=$totalHeaderHeightPx" }
         }
         collapseOffsetPx = newCollapse
     }
 
     fun reset() {
+        suppressLowScrollOffsetsUntilMs = 0L
         scrollOffsetPx = 0
         collapseOffsetPx = 0
     }
 
     fun updateHeaderHeight(totalHeaderHeightPx: Int) {
         collapseOffsetPx = scrollOffsetPx.coerceIn(0, totalHeaderHeightPx.coerceAtLeast(0))
+    }
+
+    private fun shouldIgnoreTransientZeroOffset(
+        nextScrollOffsetPx: Int,
+        totalHeaderHeightPx: Int,
+    ): Boolean {
+        val headerHeight = totalHeaderHeightPx.coerceAtLeast(0)
+        return nextScrollOffsetPx == 0 &&
+            headerHeight > 0 &&
+            scrollOffsetPx > headerHeight &&
+            collapseOffsetPx >= headerHeight
+    }
+
+    private fun shouldIgnoreSuppressedLowOffset(
+        nextScrollOffsetPx: Int,
+        totalHeaderHeightPx: Int,
+    ): Boolean {
+        val headerHeight = totalHeaderHeightPx.coerceAtLeast(0)
+        return headerHeight > 0 &&
+            suppressLowScrollOffsetsUntilMs > 0L &&
+            nextScrollOffsetPx in 1 until headerHeight &&
+            collapseOffsetPx >= headerHeight &&
+            SystemClock.uptimeMillis() <= suppressLowScrollOffsetsUntilMs
+    }
+
+    private companion object {
+        private const val TransientLowOffsetSuppressMs = 320L
     }
 }
 

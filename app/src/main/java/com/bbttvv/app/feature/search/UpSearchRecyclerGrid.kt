@@ -40,6 +40,7 @@ import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.home.DpadGridController
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.LocalHomeTabActive
@@ -123,12 +124,24 @@ internal fun UpSearchRecyclerGrid(
                         return focusState.tryFocusVisibleItem()
                     }
 
+                    override fun requestFocusResult(): HomeFocusRequestResult {
+                        return focusState.requestFocusVisibleItem()
+                    }
+
                     override fun tryRequestFocusKey(key: String): Boolean {
                         return focusState.tryFocusKey(key)
                     }
 
+                    override fun requestFocusKeyResult(key: String): HomeFocusRequestResult {
+                        return focusState.requestFocusKey(key)
+                    }
+
                     override fun tryRequestFocusKeyOrFallback(key: String): Boolean {
                         return focusState.tryFocusKeyOrFallback(key)
+                    }
+
+                    override fun requestFocusKeyOrFallbackResult(key: String): HomeFocusRequestResult {
+                        return focusState.requestFocusKeyOrFallback(key)
                     }
 
                     override fun hasFocus(): Boolean {
@@ -287,6 +300,7 @@ internal fun UpSearchRecyclerGrid(
                             if (latestIsHomeTabActive) latestFocusTab?.let { tab ->
                                 latestFocusCoordinator?.onContentRegionFocused(tab, HomeFocusRegion.Grid)
                             }
+                            latestFocusCoordinator?.drainPendingFocus()
                         }
                     },
                     onItemKeyEvent = { itemView, _, position, keyCode, event ->
@@ -348,6 +362,8 @@ private class UpSearchAdapter(
     private val onItemFocused: (SearchUpItem, Int) -> Unit,
     private val onItemKeyEvent: (View, SearchUpItem, Int, Int, KeyEvent) -> Boolean,
 ) : ListAdapter<SearchUpItem, UpSearchAdapter.UpViewHolder>(UpSearchDiffCallback) {
+    private var visualFocusKey: String? = null
+
     init {
         setHasStableIds(true)
         stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
@@ -358,7 +374,8 @@ private class UpSearchAdapter(
     }
 
     override fun onBindViewHolder(holder: UpViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        val item = getItem(position)
+        holder.bind(item, isLogicallyFocused = item.searchUpKey() == visualFocusKey)
     }
 
     override fun getItemId(position: Int): Long {
@@ -374,9 +391,20 @@ private class UpSearchAdapter(
     }
 
     fun clearVisibleFocusVisualState(recyclerView: RecyclerView) {
+        visualFocusKey = null
         for (index in 0 until recyclerView.childCount) {
             val child = recyclerView.getChildAt(index)
-            (recyclerView.getChildViewHolder(child) as? UpViewHolder)?.setFocused(false)
+            (recyclerView.getChildViewHolder(child) as? UpViewHolder)?.setLogicalFocused(false)
+        }
+    }
+
+    fun setVisualFocusKey(recyclerView: RecyclerView, key: String?) {
+        if (visualFocusKey == key) return
+        visualFocusKey = key
+        for (index in 0 until recyclerView.childCount) {
+            val child = recyclerView.getChildAt(index)
+            val holder = recyclerView.getChildViewHolder(child) as? UpViewHolder ?: continue
+            holder.setLogicalFocused(holder.boundKey == key)
         }
     }
 
@@ -385,11 +413,16 @@ private class UpSearchAdapter(
         this.colors = colors
         for (index in 0 until recyclerView.childCount) {
             val child = recyclerView.getChildAt(index)
-            (recyclerView.getChildViewHolder(child) as? UpViewHolder)?.setFocused(child.hasFocus())
+            val holder = recyclerView.getChildViewHolder(child) as? UpViewHolder ?: continue
+            holder.setLogicalFocused(holder.boundKey == visualFocusKey)
         }
     }
 
     inner class UpViewHolder(private val card: UpSearchCardView) : RecyclerView.ViewHolder(card.root) {
+        private var logicalFocused = false
+        val boundKey: String?
+            get() = currentItem()?.searchUpKey()
+
         init {
             card.root.isFocusable = true
             card.root.isFocusableInTouchMode = false
@@ -402,7 +435,7 @@ private class UpSearchAdapter(
                 currentItem()?.let(onItemClick)
             }
             card.root.setOnFocusChangeListener { _, hasFocus ->
-                setFocused(hasFocus)
+                applyFocused(hasFocus || logicalFocused)
                 if (hasFocus) {
                     val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
                         ?: return@setOnFocusChangeListener
@@ -417,7 +450,8 @@ private class UpSearchAdapter(
             }
         }
 
-        fun bind(item: SearchUpItem) {
+        fun bind(item: SearchUpItem, isLogicallyFocused: Boolean) {
+            logicalFocused = isLogicallyFocused
             card.name.text = item.uname
             card.subtitle.text = "粉丝: ${formatFans(item.fans)}"
             card.avatar.load(item.upic.normalizedHttpUrl()) {
@@ -425,10 +459,15 @@ private class UpSearchAdapter(
                 diskCachePolicy(CachePolicy.ENABLED)
                 transformations(CircleCropTransformation())
             }
-            setFocused(card.root.hasFocus())
+            applyFocused(card.root.hasFocus() || logicalFocused)
         }
 
-        fun setFocused(focused: Boolean) {
+        fun setLogicalFocused(focused: Boolean) {
+            logicalFocused = focused
+            applyFocused(card.root.hasFocus() || logicalFocused)
+        }
+
+        private fun applyFocused(focused: Boolean) {
             card.root.isSelected = focused
             card.root.setCardBackgroundColor(if (focused) colors.focusedBackground else colors.normalBackground)
             card.root.strokeColor = if (focused) colors.focusedStroke else colors.normalStroke
@@ -456,6 +495,7 @@ private class UpSearchGridFocusState {
 
     fun detach(recyclerView: RecyclerView) {
         if (recyclerViewRef?.get() === recyclerView) {
+            clearVisualFocusAnchor()
             recyclerViewRef = null
             hasRecyclerFocus = false
             pendingDirectionalPosition = null
@@ -468,6 +508,7 @@ private class UpSearchGridFocusState {
 
     fun onItemFocused(key: String, position: Int) {
         lastFocusedKey = key
+        clearVisualFocusAnchor()
         pendingDirectionalPosition = null
         hasRecyclerFocus = false
     }
@@ -478,6 +519,7 @@ private class UpSearchGridFocusState {
 
     fun parkFocusForDirectionalScroll(targetPosition: Int): Boolean {
         pendingDirectionalPosition = targetPosition.takeIf { it >= 0 }
+        setVisualFocusAnchor(targetPosition)
         return currentRecyclerView()?.requestFocusParking() == true
     }
 
@@ -495,23 +537,27 @@ private class UpSearchGridFocusState {
         pendingDirectionalPosition?.let { position ->
             pendingDirectionalPosition = null
             currentRecyclerView()?.let { recycler ->
-                if (tryFocusPosition(recycler, position)) return
+                if (requestFocusPosition(recycler, position).isAccepted) return
             }
         }
         onFocusTargetAvailabilityChanged?.invoke()
     }
 
     fun tryFocusVisibleItem(): Boolean {
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? UpSearchAdapter ?: return false
-        if (adapter.itemCount <= 0) return false
+        return requestFocusVisibleItem().isAccepted
+    }
+
+    fun requestFocusVisibleItem(): HomeFocusRequestResult {
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return HomeFocusRequestResult.Unavailable
+        if (adapter.itemCount <= 0) return HomeFocusRequestResult.Unavailable
         val currentFocused = recycler.rootView?.findFocus()
         if (
             currentFocused != null &&
             currentFocused !== recycler &&
             currentFocused.isSameOrDescendantOf(recycler)
         ) {
-            return true
+            return HomeFocusRequestResult.Focused
         }
         val position = pendingDirectionalPosition
             ?.takeIf { it in 0 until adapter.itemCount }
@@ -520,25 +566,33 @@ private class UpSearchGridFocusState {
                 ?.takeIf { it in 0 until adapter.itemCount }
             ?: firstVisiblePosition(recycler)
             ?: 0
-        return tryFocusPosition(recycler, position)
+        return requestFocusPosition(recycler, position)
     }
 
     fun tryFocusKey(key: String): Boolean {
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? UpSearchAdapter ?: return false
+        return requestFocusKey(key).isAccepted
+    }
+
+    fun requestFocusKey(key: String): HomeFocusRequestResult {
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return HomeFocusRequestResult.Unavailable
         val position = adapter.positionOfKey(key)
-        if (position !in 0 until adapter.itemCount) return false
-        return tryFocusPosition(recycler, position)
+        if (position !in 0 until adapter.itemCount) return HomeFocusRequestResult.Unavailable
+        return requestFocusPosition(recycler, position)
     }
 
     fun tryFocusKeyOrFallback(key: String): Boolean {
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? UpSearchAdapter ?: return false
-        if (adapter.itemCount <= 0) return false
+        return requestFocusKeyOrFallback(key).isAccepted
+    }
+
+    fun requestFocusKeyOrFallback(key: String): HomeFocusRequestResult {
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return HomeFocusRequestResult.Unavailable
+        if (adapter.itemCount <= 0) return HomeFocusRequestResult.Unavailable
         val position = adapter.positionOfKey(key).takeIf { it in 0 until adapter.itemCount }
             ?: firstVisiblePosition(recycler)
             ?: 0
-        return tryFocusPosition(recycler, position)
+        return requestFocusPosition(recycler, position)
     }
 
     fun hasFocusInside(): Boolean {
@@ -562,24 +616,40 @@ private class UpSearchGridFocusState {
         return recyclerViewRef?.get()
     }
 
-    private fun tryFocusPosition(recycler: RecyclerView, position: Int): Boolean {
-        val adapter = recycler.adapter as? UpSearchAdapter ?: return false
-        if (position !in 0 until adapter.itemCount) return false
+    private fun requestFocusPosition(recycler: RecyclerView, position: Int): HomeFocusRequestResult {
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return HomeFocusRequestResult.Unavailable
+        if (position !in 0 until adapter.itemCount) return HomeFocusRequestResult.Unavailable
         val expectedKey = adapter.keyAt(position)
         recycler.findViewHolderForAdapterPosition(position)?.itemView?.let { view ->
             if (view.requestFocus()) {
                 expectedKey?.let { lastFocusedKey = it }
-                return true
+                clearVisualFocusAnchor()
+                return HomeFocusRequestResult.Focused
             }
         }
+        setVisualFocusAnchor(position)
         recycler.scrollToPosition(position)
         recycler.post {
             val holder = recycler.findViewHolderForAdapterPosition(position)
             if (holder?.itemView?.requestFocus() == true) {
                 expectedKey?.let { lastFocusedKey = it }
+                clearVisualFocusAnchor()
             }
         }
-        return true
+        return HomeFocusRequestResult.Pending
+    }
+
+    private fun setVisualFocusAnchor(position: Int) {
+        val recycler = currentRecyclerView() ?: return
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return
+        val key = adapter.keyAt(position) ?: return
+        adapter.setVisualFocusKey(recycler, key)
+    }
+
+    private fun clearVisualFocusAnchor() {
+        val recycler = currentRecyclerView() ?: return
+        val adapter = recycler.adapter as? UpSearchAdapter ?: return
+        adapter.setVisualFocusKey(recycler, null)
     }
 
     private fun firstVisiblePosition(recycler: RecyclerView): Int? {

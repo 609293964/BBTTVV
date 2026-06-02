@@ -28,12 +28,14 @@ internal class HomeRecommendGridFocusState {
     private var suppressRecyclerFocusRestoreUntilUptimeMs: Long = 0L
     private var onFocusTargetAvailabilityChanged: (() -> Unit)? = null
     private var canPerformPhysicalScroll: () -> Boolean = { true }
+    private var lastFocusAttemptPending: Boolean = false
 
     fun cancelAllPendingRequests() {
         nextFocusRequestToken()
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
         clearPendingDownSearch()
+        clearVisualFocusAnchor()
     }
 
     fun attach(recyclerView: RecyclerView) {
@@ -78,6 +80,7 @@ internal class HomeRecommendGridFocusState {
         if (targetPosition != RecyclerView.NO_POSITION) {
             pendingDirectionalScrollFocusPosition = targetPosition
             pendingDirectionalScrollFocusUntilUptimeMs = now + DirectionalScrollFocusTargetWindowMs
+            setVisualFocusAnchor(targetPosition)
         } else {
             clearPendingDirectionalScrollFocus()
         }
@@ -172,6 +175,7 @@ internal class HomeRecommendGridFocusState {
 
     fun onItemFocused(key: String, position: Int) {
         suppressRecyclerFocusRestoreUntilUptimeMs = 0L
+        clearVisualFocusAnchor()
         clearPendingDirectionalScrollFocus()
         clearPendingDownSearch()
         rememberFocusedPosition(key, position)
@@ -256,9 +260,14 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun tryFocusVisibleItem(): Boolean {
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
-        if (adapter.itemCount <= 0) return false
+        return requestFocusVisibleItem().isFocused
+    }
+
+    fun requestFocusVisibleItem(): HomeFocusRequestResult {
+        beginFocusAttempt()
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return HomeFocusRequestResult.Unavailable
+        if (adapter.itemCount <= 0) return HomeFocusRequestResult.Unavailable
 
         val currentFocused = recycler.rootView?.findFocus()
         if (
@@ -267,7 +276,7 @@ internal class HomeRecommendGridFocusState {
             currentFocused.isValidFocusTarget() &&
             currentFocused.isSameOrDescendantOf(recycler)
         ) {
-            return true
+            return HomeFocusRequestResult.Focused
         }
 
         val pendingDirectionalPosition = pendingDirectionalScrollFocusPosition(adapter)
@@ -283,29 +292,34 @@ internal class HomeRecommendGridFocusState {
             recycler = recycler,
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
-        )
+        ).toRequestResult()
     }
 
     fun tryFocusEntryItem(preferredIndex: Int?): Boolean {
-        if (preferredIndex == null) return tryFocusVisibleItem()
+        return requestFocusEntryItem(preferredIndex).isFocused
+    }
+
+    fun requestFocusEntryItem(preferredIndex: Int?): HomeFocusRequestResult {
+        if (preferredIndex == null) return requestFocusVisibleItem()
+        beginFocusAttempt()
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
-        val spanCount = recycler.gridSpanCount() ?: return false
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return HomeFocusRequestResult.Unavailable
+        val spanCount = recycler.gridSpanCount() ?: return HomeFocusRequestResult.Unavailable
         val targetPosition = HomeGridEntryFocusPolicy.targetPosition(
             itemCount = adapter.itemCount,
             spanCount = spanCount,
             firstVisiblePosition = firstVisiblePosition(recycler),
             preferredIndex = preferredIndex,
         )
-        if (targetPosition == RecyclerView.NO_POSITION) return false
+        if (targetPosition == RecyclerView.NO_POSITION) return HomeFocusRequestResult.Unavailable
         return tryFocusPosition(
             recycler = recycler,
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
             retryCount = PendingFocusRetryCount,
-        )
+        ).toRequestResult()
     }
 
     fun clearVisibleFocusVisualState(): Boolean {
@@ -316,32 +330,42 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun tryFocusKeyOrFallback(key: String): Boolean {
+        return requestFocusKeyOrFallback(key).isFocused
+    }
+
+    fun requestFocusKeyOrFallback(key: String): HomeFocusRequestResult {
+        beginFocusAttempt()
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
-        if (adapter.itemCount <= 0) return false
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return HomeFocusRequestResult.Unavailable
+        if (adapter.itemCount <= 0) return HomeFocusRequestResult.Unavailable
         val position = adapter.positionOfKey(key).takeIf { it in 0 until adapter.itemCount }
             ?: missingKeyFallbackPosition(recycler, adapter)
         return tryFocusPosition(
             recycler = recycler,
             position = position,
             expectedKey = adapter.keyAt(position),
-        )
+        ).toRequestResult()
     }
 
     fun tryFocusKey(key: String): Boolean {
+        return requestFocusKey(key).isFocused
+    }
+
+    fun requestFocusKey(key: String): HomeFocusRequestResult {
+        beginFocusAttempt()
         pendingDataSetFocus = null
         clearPendingDirectionalScrollFocus()
-        val recycler = currentRecyclerView() ?: return false
-        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
+        val recycler = currentRecyclerView() ?: return HomeFocusRequestResult.Unavailable
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return HomeFocusRequestResult.Unavailable
         val position = adapter.positionOfKey(key)
-        if (position !in 0 until adapter.itemCount) return false
+        if (position !in 0 until adapter.itemCount) return HomeFocusRequestResult.Unavailable
         return tryFocusPosition(
             recycler = recycler,
             position = position,
             expectedKey = key,
-        )
+        ).toRequestResult()
     }
 
     fun tryFocusPreviousRow(): Boolean {
@@ -472,6 +496,7 @@ internal class HomeRecommendGridFocusState {
         val recycler = currentRecyclerView() ?: return
         if (pendingDataSetFocus == null) return
         val requestToken = nextFocusRequestToken()
+        lastFocusAttemptPending = true
         recycler.postOnAnimation {
             if (recyclerView === recycler && isFocusRequestTokenCurrent(requestToken)) {
                 applyPendingDataSetFocus()
@@ -507,17 +532,21 @@ internal class HomeRecommendGridFocusState {
         val holder = recycler.findViewHolderForAdapterPosition(position)
         val itemView = holder?.itemView
         if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
+            clearVisualFocusAnchor()
             if (expectedKey != null) onItemFocused(expectedKey, position)
             onFocused?.invoke()
             return true
         }
 
+        setVisualFocusAnchor(position)
         if (!isPositionVisible(recycler, position) && canPerformPhysicalScroll()) {
             logHomeFocus { "tryFocusPosition: scrollToPosition pos=$position (not visible)" }
             recycler.scrollToPosition(position)
+            lastFocusAttemptPending = true
         }
 
         if (retryCount > 0) {
+            lastFocusAttemptPending = true
             recycler.postOnAnimation {
                 if (
                     recyclerView === recycler &&
@@ -576,10 +605,23 @@ internal class HomeRecommendGridFocusState {
                     }
                 }
             }
+            lastFocusAttemptPending = true
             onFocusTargetAvailabilityChanged?.invoke()
         }
 
         return false
+    }
+
+    private fun beginFocusAttempt() {
+        lastFocusAttemptPending = false
+    }
+
+    private fun Boolean.toRequestResult(): HomeFocusRequestResult {
+        return when {
+            this -> HomeFocusRequestResult.Focused
+            lastFocusAttemptPending -> HomeFocusRequestResult.Pending
+            else -> HomeFocusRequestResult.Unavailable
+        }
     }
 
     private fun currentRecyclerView(): RecyclerView? {
@@ -613,6 +655,19 @@ internal class HomeRecommendGridFocusState {
         lastFocusedPosition = RecyclerView.NO_POSITION
         lastFocusedRow = RecyclerView.NO_POSITION
         lastFocusedColumn = RecyclerView.NO_POSITION
+    }
+
+    private fun setVisualFocusAnchor(position: Int) {
+        val recycler = currentRecyclerView() ?: return
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return
+        val key = adapter.keyAt(position) ?: return
+        adapter.setVisualFocusKey(recycler, key)
+    }
+
+    private fun clearVisualFocusAnchor() {
+        val recycler = currentRecyclerView() ?: return
+        val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return
+        adapter.setVisualFocusKey(recycler, null)
     }
 
     private fun missingKeyFallbackPosition(
@@ -700,12 +755,16 @@ internal class HomeRecommendGridFocusState {
     private fun clearPendingDirectionalScrollFocus() {
         pendingDirectionalScrollFocusPosition = RecyclerView.NO_POSITION
         pendingDirectionalScrollFocusUntilUptimeMs = 0L
+        if (pendingDownSearchPosition == RecyclerView.NO_POSITION) {
+            clearVisualFocusAnchor()
+        }
     }
 
     fun schedulePendingDownSearch(targetPosition: Int) {
         val now = SystemClock.uptimeMillis()
         pendingDownSearchPosition = targetPosition
         pendingDownSearchUntilUptimeMs = now + 350L
+        setVisualFocusAnchor(targetPosition)
         
         val recycler = currentRecyclerView() ?: return
         if (targetPosition != RecyclerView.NO_POSITION && targetPosition < (recycler.adapter?.itemCount ?: 0)) {
@@ -754,6 +813,9 @@ internal class HomeRecommendGridFocusState {
     fun clearPendingDownSearch() {
         pendingDownSearchPosition = RecyclerView.NO_POSITION
         pendingDownSearchUntilUptimeMs = 0L
+        if (pendingDirectionalScrollFocusPosition == RecyclerView.NO_POSITION) {
+            clearVisualFocusAnchor()
+        }
     }
 
     private companion object {

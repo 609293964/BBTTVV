@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import com.bbttvv.app.R
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusTarget
 
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
@@ -30,6 +31,7 @@ internal fun AppTopBar(
     onSelectedTabConfirmed: (AppTopLevelTab) -> Unit = {},
     updateSelectedTabOnFocus: Boolean,
     onDpadDown: () -> Boolean,
+    focusEnabled: Boolean = true,
     focusCoordinator: HomeFocusCoordinator? = null,
     onTopBarFocusChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
@@ -45,16 +47,27 @@ internal fun AppTopBar(
     val latestOnDpadDown by rememberUpdatedState(onDpadDown)
     val latestOnTopBarFocusChanged by rememberUpdatedState(onTopBarFocusChanged)
     val latestFocusTargetTab by rememberUpdatedState(focusTargetTab)
+    val latestFocusEnabled by rememberUpdatedState(focusEnabled)
 
     DisposableEffect(focusCoordinator, controller, tabsKey) {
         val registration = focusCoordinator?.registerTopBarTarget(
             object : HomeFocusTarget {
                 override fun tryRequestFocus(): Boolean {
-                    return controller.tryRequestFocus(latestFocusTargetTab)
+                    return latestFocusEnabled && controller.tryRequestFocus(latestFocusTargetTab)
                 }
 
                 override fun tryRequestFocusTab(tab: AppTopLevelTab): Boolean {
-                    return controller.tryRequestFocus(tab)
+                    return latestFocusEnabled && controller.tryRequestFocus(tab)
+                }
+
+                override fun requestFocusResult(): HomeFocusRequestResult {
+                    if (!latestFocusEnabled) return HomeFocusRequestResult.Unavailable
+                    return controller.requestFocusResult(latestFocusTargetTab)
+                }
+
+                override fun requestFocusTabResult(tab: AppTopLevelTab): HomeFocusRequestResult {
+                    if (!latestFocusEnabled) return HomeFocusRequestResult.Unavailable
+                    return controller.requestFocusResult(tab)
                 }
 
                 override fun hasFocus(): Boolean {
@@ -115,6 +128,7 @@ internal fun AppTopBar(
             }
         },
         update = {
+            controller.setFocusEnabled(focusEnabled)
             controller.adapter?.setIsLightTheme(isLightTheme)
             controller.adapter?.updateCallbacks(
                 updateSelectedTabOnFocus = updateSelectedTabOnFocus,
@@ -142,9 +156,13 @@ private class AppTopBarController {
     }
 
     fun tryRequestFocus(tab: AppTopLevelTab?): Boolean {
-        val recycler = recyclerView ?: return false
-        val topBarAdapter = adapter ?: return false
-        val targetTab = topBarAdapter.focusTargetOrFallback(tab) ?: return false
+        return requestFocusResult(tab).isFocused
+    }
+
+    fun requestFocusResult(tab: AppTopLevelTab?): HomeFocusRequestResult {
+        val recycler = recyclerView ?: return HomeFocusRequestResult.Unavailable
+        val topBarAdapter = adapter ?: return HomeFocusRequestResult.Unavailable
+        val targetTab = topBarAdapter.focusTargetOrFallback(tab) ?: return HomeFocusRequestResult.Unavailable
         val expectedSelectedTab = topBarAdapter.currentSelectedTab()
         val requestToken = ++focusRequestToken
         return requestFocus(
@@ -162,12 +180,12 @@ private class AppTopBarController {
         targetTab: AppTopLevelTab,
         expectedSelectedTab: AppTopLevelTab?,
         requestToken: Int
-    ): Boolean {
+    ): HomeFocusRequestResult {
         val position = topBarAdapter.positionOf(targetTab).takeIf { it != RecyclerView.NO_POSITION }
-            ?: return false
+            ?: return HomeFocusRequestResult.Unavailable
         val holder = recycler.findViewHolderForAdapterPosition(position)
         if (holder?.itemView?.requestFocus() == true) {
-            return true
+            return HomeFocusRequestResult.Focused
         }
         scrollToFocusablePosition(recycler, position)
         recycler.post {
@@ -183,7 +201,19 @@ private class AppTopBarController {
             }
             recycler.findViewHolderForAdapterPosition(latestPosition)?.itemView?.requestFocus()
         }
-        return false
+        return HomeFocusRequestResult.Pending
+    }
+
+    fun setFocusEnabled(enabled: Boolean) {
+        val recycler = recyclerView ?: return
+        recycler.descendantFocusability = if (enabled) {
+            ViewGroup.FOCUS_AFTER_DESCENDANTS
+        } else {
+            ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        if (!enabled && hasFocus()) {
+            recycler.rootView?.findFocus()?.clearFocus()
+        }
     }
 
     private fun scrollToFocusablePosition(recycler: RecyclerView, position: Int) {

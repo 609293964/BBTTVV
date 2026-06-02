@@ -94,6 +94,8 @@ internal class PlaybackQualityController(
                 cdnPreference = cdnPreference,
                 isHevcSupported = hevcSupported,
                 isAv1Supported = av1Supported,
+                isHdrSupported = hdrSupported,
+                isDolbyVisionSupported = dolbyVisionSupported,
             ) ?: loadedSource
 
             if (!isCurrentQualityChange(qualityGeneration, qualityBvid, qualityCid)) {

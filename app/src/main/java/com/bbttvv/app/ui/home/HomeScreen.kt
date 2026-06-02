@@ -265,17 +265,23 @@ fun HomeScreen(
         fallbackTopBarHeightPx = fallbackTopBarHeightPx,
     )
     val topBarHeightDp = with(density) { effectiveTopBarHeightPx.toDp() }
+    val topBarLogicVisible = focusCoordinator.isTopBarVisible && !isVideoFocusRestorePending
+    val topBarRenderVisible = if (usesCollapsingHomeHeader) {
+        !isVideoFocusRestorePending
+    } else {
+        topBarLogicVisible
+    }
+    val topBarFocusEnabled = focusCoordinator.isTopBarFocusable && !isVideoFocusRestorePending
     val collapseHomeHeader = shouldCollapseHomeHeader(
         usesCollapsingHomeHeader = usesCollapsingHomeHeader,
         isContentFocused = focusCoordinator.isContentFocused,
-        isTopBarVisible = focusCoordinator.isTopBarVisible,
     )
     val topBarCollapseOffsetPx = if (collapseHomeHeader) {
         selectedCollapsingHeaderState.collapseOffsetPx.coerceAtLeast(0)
     } else {
         0
     }
-    val shouldComposeTopBar = usesCollapsingHomeHeader || focusCoordinator.isTopBarVisible
+    val shouldComposeTopBar = usesCollapsingHomeHeader || topBarLogicVisible
     val contentTopPadding = if (!usesCollapsingHomeHeader && shouldComposeTopBar) {
         topBarHeightDp
     } else {
@@ -348,6 +354,7 @@ fun HomeScreen(
                 onDpadDown = {
                     focusCoordinator.handleTopBarDpadDown()
                 },
+                focusEnabled = topBarFocusEnabled,
                 onTopBarFocusChanged = { isFocused ->
                     if (isFocused) {
                         collapsingHeaderStates.stateFor(selectedHomeTab).reset()
@@ -368,14 +375,18 @@ fun HomeScreen(
                         topBarHeightState.intValue = size.height
                     }
                     .graphicsLayer {
-                        translationY = if (usesCollapsingHomeHeader) {
+                        translationY = if (!topBarRenderVisible) {
+                            -effectiveTopBarHeightPx.toFloat()
+                        } else if (usesCollapsingHomeHeader) {
                             -topBarCollapseOffsetPx.toFloat()
-                        } else if (focusCoordinator.isTopBarVisible) {
+                        } else if (topBarLogicVisible) {
                             0f
                         } else {
                             -effectiveTopBarHeightPx.toFloat()
                         }
-                        alpha = if (usesCollapsingHomeHeader) {
+                        alpha = if (!topBarRenderVisible) {
+                            0f
+                        } else if (usesCollapsingHomeHeader) {
                             if (effectiveTopBarHeightPx > 0) {
                                 val collapseProgress = topBarCollapseOffsetPx.toFloat() / effectiveTopBarHeightPx.toFloat()
                                 (1f - collapseProgress).coerceIn(0f, 1f)
@@ -383,7 +394,7 @@ fun HomeScreen(
                                 1f
                             }
                         } else {
-                            if (focusCoordinator.isTopBarVisible) 1f else 0f
+                            if (topBarLogicVisible) 1f else 0f
                         }
                     }
             )
@@ -443,9 +454,8 @@ internal fun effectiveTopBarHeightPx(
 internal fun shouldCollapseHomeHeader(
     usesCollapsingHomeHeader: Boolean,
     isContentFocused: Boolean,
-    isTopBarVisible: Boolean,
 ): Boolean {
-    return usesCollapsingHomeHeader && isContentFocused && !isTopBarVisible
+    return usesCollapsingHomeHeader && isContentFocused
 }
 
 private fun resetCollapsingTabForSwitch(
@@ -464,6 +474,7 @@ private fun HomeTopBarHost(
     onTabSelected: (AppTopLevelTab) -> Unit,
     onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
     onDpadDown: () -> Boolean,
+    focusEnabled: Boolean,
     onTopBarFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -474,6 +485,7 @@ private fun HomeTopBarHost(
         onSelectedTabConfirmed = onSelectedTabConfirmed,
         updateSelectedTabOnFocus = updateSelectedTabOnFocus,
         onDpadDown = onDpadDown,
+        focusEnabled = focusEnabled,
         focusCoordinator = focusCoordinator,
         onTopBarFocusChanged = onTopBarFocusChanged,
         modifier = modifier

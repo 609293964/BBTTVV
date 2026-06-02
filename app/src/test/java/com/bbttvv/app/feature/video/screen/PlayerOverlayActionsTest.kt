@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.screen
 
+import android.view.KeyEvent
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,6 +63,13 @@ class PlayerOverlayActionsTest {
         )
 
         assertTrue(shouldHide)
+    }
+
+    @Test
+    fun `android back is deferred to BackHandler instead of preview key handler`() {
+        assertFalse(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_BACK))
+        assertTrue(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_ESCAPE))
+        assertTrue(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_DPAD_CENTER))
     }
 
     @Test

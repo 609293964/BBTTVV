@@ -52,6 +52,7 @@ internal class DpadGridController(
     private var directionalScrollParkedUntilMs: Long = 0L
     private var directionalScrollTargetPosition: Int = RecyclerView.NO_POSITION
     private var directionalScrollRequestToken: Int = 0
+    private var directionalScrollSettlePasses: Int = 0
 
     private val recyclerKeyListener =
         View.OnKeyListener { _, keyCode, event ->
@@ -760,6 +761,17 @@ internal class DpadGridController(
         }
 
         if (attemptsLeft <= 0) {
+            if (
+                handleDirectionalScrollFocusMiss(
+                    recycler = recycler,
+                    position = position,
+                    requestToken = requestToken,
+                    scrollOffsetPx = scrollOffsetPx,
+                    onFocused = onFocused,
+                )
+            ) {
+                return false
+            }
             clearPendingIfTarget(position)
             clearDirectionalScrollParkingForRequest(requestToken, recycler)
             clearPendingLoadMoreFocus()
@@ -862,6 +874,7 @@ internal class DpadGridController(
 
         directionalScrollTargetPosition = targetPosition
         directionalScrollRequestToken = requestToken
+        directionalScrollSettlePasses = 0
         callbacks.parkFocusForScroll(targetPosition)
         parkFocusInRecyclerViewForScroll(recycler)
         directionalScrollParkedUntilMs = SystemClock.uptimeMillis() + DirectionalScrollParkedWindowMs
@@ -1098,6 +1111,7 @@ internal class DpadGridController(
         directionalScrollParkedUntilMs = 0L
         directionalScrollTargetPosition = RecyclerView.NO_POSITION
         directionalScrollRequestToken = 0
+        directionalScrollSettlePasses = 0
     }
 
     private fun clearDirectionalScrollParkingForRequest(
@@ -1112,16 +1126,118 @@ internal class DpadGridController(
     private fun scheduleDirectionalScrollParkingTimeout(
         recycler: RecyclerView,
         requestToken: Int,
+        delayMs: Long = DirectionalScrollParkedWindowMs,
     ) {
         recycler.postDelayed(
             {
-                if (SystemClock.uptimeMillis() < directionalScrollParkedUntilMs) {
+                if (directionalScrollRequestToken != requestToken) {
+                    return@postDelayed
+                }
+                val now = SystemClock.uptimeMillis()
+                if (now < directionalScrollParkedUntilMs) {
+                    scheduleDirectionalScrollParkingTimeout(
+                        recycler = recycler,
+                        requestToken = requestToken,
+                        delayMs = (directionalScrollParkedUntilMs - now).coerceAtLeast(1L),
+                    )
+                    return@postDelayed
+                }
+                val targetPosition = directionalScrollTargetPosition
+                if (
+                    targetPosition != RecyclerView.NO_POSITION &&
+                    handleDirectionalScrollFocusMiss(
+                        recycler = recycler,
+                        position = targetPosition,
+                        requestToken = requestToken,
+                        scrollOffsetPx = null,
+                        onFocused = null,
+                    )
+                ) {
                     return@postDelayed
                 }
                 clearDirectionalScrollParkingForRequest(requestToken, recycler)
             },
-            DirectionalScrollParkedWindowMs,
+            delayMs,
         )
+    }
+
+    private fun handleDirectionalScrollFocusMiss(
+        recycler: RecyclerView,
+        position: Int,
+        requestToken: Int,
+        scrollOffsetPx: Int?,
+        onFocused: (() -> Unit)?,
+    ): Boolean {
+        if (
+            directionalScrollRequestToken != requestToken ||
+            directionalScrollTargetPosition != position ||
+            position == RecyclerView.NO_POSITION
+        ) {
+            return false
+        }
+
+        if (!isFocusRequestCurrent(recycler, requestToken)) {
+            clearDirectionalScrollParkingForRequest(requestToken, recycler)
+            return true
+        }
+
+        val adapter = recycler.adapter
+        if (adapter == null || position !in 0 until adapter.itemCount) {
+            clearPendingIfTarget(position)
+            clearDirectionalScrollParkingForRequest(requestToken, recycler)
+            return true
+        }
+
+        if (directionalScrollSettlePasses >= DirectionalScrollSettleMaxPasses) {
+            logHomeFocus {
+                "directional target focus miss: giving up target=$position passes=$directionalScrollSettlePasses"
+            }
+            clearPendingIfTarget(position)
+            clearDirectionalScrollParkingForRequest(requestToken, recycler)
+            return true
+        }
+
+        directionalScrollSettlePasses += 1
+        callbacks.parkFocusForScroll(position)
+        parkFocusInRecyclerViewForScroll(recycler)
+        directionalScrollParkedUntilMs = SystemClock.uptimeMillis() + DirectionalScrollSettleRetryWindowMs
+        scheduleDirectionalScrollParkingTimeout(
+            recycler = recycler,
+            requestToken = requestToken,
+            delayMs = DirectionalScrollSettleRetryWindowMs,
+        )
+        if (!isPositionVisible(recycler, position)) {
+            if (scrollOffsetPx != null) {
+                (recycler.layoutManager as? GridLayoutManager)
+                    ?.scrollToPositionWithOffset(position, scrollOffsetPx)
+                    ?: recycler.scrollToPosition(position)
+            } else {
+                recycler.scrollToPosition(position)
+            }
+        }
+        logHomeFocus {
+            "directional target focus miss: retry target=$position pass=$directionalScrollSettlePasses"
+        }
+        recycler.postDelayed(
+            {
+                if (
+                    this.recyclerView === recycler &&
+                    focusRequestToken == requestToken &&
+                    directionalScrollRequestToken == requestToken
+                ) {
+                    tryFocusAtPosition(
+                        recycler = recycler,
+                        position = position,
+                        requestToken = requestToken,
+                        scrollOffsetPx = scrollOffsetPx,
+                        onFocused = onFocused,
+                        attemptsLeft = DirectionalScrollSettleFocusRetryAttempts,
+                    )
+                }
+            },
+            FocusRetryDelayMs,
+        )
+        return true
     }
 
     private fun parkFocusInRecyclerViewForScroll(recycler: RecyclerView): Boolean {
@@ -1270,6 +1386,9 @@ internal class DpadGridController(
         private const val FocusRetryDelayMs = 16L
         private const val FocusRetryMaxAttempts = 30
         private const val DirectionalScrollParkedWindowMs = 1000L
+        private const val DirectionalScrollSettleRetryWindowMs = 320L
+        private const val DirectionalScrollSettleMaxPasses = 3
+        private const val DirectionalScrollSettleFocusRetryAttempts = 12
         val CenterKeyCodes = setOf(
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,

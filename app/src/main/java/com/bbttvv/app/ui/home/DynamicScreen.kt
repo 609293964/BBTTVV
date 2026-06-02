@@ -293,7 +293,7 @@ internal fun DynamicScreen(
                 }
                 if (focused) {
                     lastFocusedFollowUpdateIndex = finalIndex
-                    onContentRowFocused(if (hasLiveRow) 1 else 0)
+                    onContentRowFocused(0)
                     focusCoordinator.onContentRegionFocused(
                         AppTopLevelTab.DYNAMIC,
                         HomeFocusRegion.DynamicFollowUpdates
@@ -406,7 +406,7 @@ internal fun DynamicScreen(
                             if (isHomeTabActive) {
                                 collapsingHeaderState.reset()
                                 lastFocusedFollowUpdateIndex = index
-                                onContentRowFocused(if (visibleLiveUsers.isNotEmpty()) 1 else 0)
+                                onContentRowFocused(0)
                                 focusCoordinator.onContentRegionFocused(
                                     AppTopLevelTab.DYNAMIC,
                                     HomeFocusRegion.DynamicFollowUpdates
@@ -468,7 +468,9 @@ internal fun DynamicScreen(
                         viewModel.prefetchVideoDetail(video)
                     },
                     onFocusedRowChanged = { rowIndex ->
-                        onContentRowFocused(rowIndex + rowsBeforeVideoGrid)
+                        // Dynamic header rows and the first video row share the first-viewport contract:
+                        // tabs stay visible visually, but remain non-focusable while content owns focus.
+                        onContentRowFocused(if (rowIndex == 0) 0 else rowIndex + rowsBeforeVideoGrid)
                     },
                     consumeTopRowDpadUp = true,
                     onTopRowDpadUp = {
@@ -510,7 +512,13 @@ private fun DynamicHeaderRows(
     onConsumeFollowUpdatePrompt: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
+    val isLightTheme = LocalIsLightTheme.current
+    val headerBackgroundColor = if (isLightTheme) {
+        Color(0xFFF4F6F8)
+    } else {
+        MaterialTheme.colorScheme.background
+    }
+    Column(modifier = modifier.background(headerBackgroundColor)) {
         partialNoticeMessage?.let { notice ->
             DynamicNoticeBanner(
                 message = notice,
@@ -1074,4 +1082,3 @@ private fun resolveDynamicStateTextColor(
 private fun isLoginRequiredDynamicMessage(message: String?): Boolean {
     return message?.contains("未登录") == true
 }
-

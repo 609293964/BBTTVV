@@ -9,6 +9,14 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import kotlinx.coroutines.CoroutineScope
 
+internal fun shouldRoutePlayerKeyToPreviewHandler(event: KeyEvent): Boolean {
+    return shouldRoutePlayerKeyCodeToPreviewHandler(event.keyCode)
+}
+
+internal fun shouldRoutePlayerKeyCodeToPreviewHandler(keyCode: Int): Boolean {
+    return keyCode != KeyEvent.KEYCODE_BACK
+}
+
 internal data class PlayerScreenFocusBindings(
     val progressFocusRequester: FocusRequester,
     val actionFocusRequesters: List<FocusRequester>,

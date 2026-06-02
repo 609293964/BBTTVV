@@ -5,6 +5,7 @@ package com.bbttvv.app.data.model.response
 import com.bbttvv.app.core.util.ClosestTargetFallback
 import com.bbttvv.app.core.util.findClosestTarget
 import com.bbttvv.app.data.model.VideoDecodeFormat
+import com.bbttvv.app.data.model.VideoQuality
 import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -189,14 +190,20 @@ fun Dash.getBestVideo(
     preferCodec: String = "hev1",
     secondPreferCodec: String = "avc1",
     isHevcSupported: Boolean = true,
-    isAv1Supported: Boolean = false
+    isAv1Supported: Boolean = false,
+    isHdrSupported: Boolean = true,
+    isDolbyVisionSupported: Boolean = true
 ): DashVideo? {
     if (video.isEmpty()) {
         android.util.Log.w("VideoResponse", " getBestVideo: video list is empty!")
         return null
     }
     
-    com.bbttvv.app.core.util.Logger.d("VideoResponse", "🔍 getBestVideo: targetQn=$targetQn, preferCodec=$preferCodec, hevc=$isHevcSupported, av1=$isAv1Supported")
+    com.bbttvv.app.core.util.Logger.d(
+        "VideoResponse",
+        "🔍 getBestVideo: targetQn=$targetQn, preferCodec=$preferCodec, " +
+            "hevc=$isHevcSupported, av1=$isAv1Supported, hdr=$isHdrSupported, dv=$isDolbyVisionSupported"
+    )
     
     val validVideos = video.filter { it.getValidUrl().isNotEmpty() }
     if (validVideos.isEmpty()) {
@@ -204,7 +211,22 @@ fun Dash.getBestVideo(
         return video.firstOrNull()
     }
     
-    val grouped = validVideos.groupBy { it.id }
+    val dynamicRangePlayableVideos = validVideos.filter {
+        it.isDynamicRangeSupported(
+            isHdrSupported = isHdrSupported,
+            isDolbyVisionSupported = isDolbyVisionSupported
+        )
+    }
+    val selectableVideos = dynamicRangePlayableVideos.ifEmpty { validVideos }
+    if (dynamicRangePlayableVideos.isNotEmpty() && dynamicRangePlayableVideos.size != validVideos.size) {
+        com.bbttvv.app.core.util.Logger.d(
+            "VideoResponse",
+            " getBestVideo: skipped unsupported dynamic range tracks, " +
+                "available=${validVideos.map { it.id }.distinct()}, selectable=${selectableVideos.map { it.id }.distinct()}"
+        )
+    }
+
+    val grouped = selectableVideos.groupBy { it.id }
     
     // 1. 找到匹配画质的视频列表
     val targetQualityId = grouped.keys.toList().findClosestTarget(
@@ -226,9 +248,14 @@ fun Dash.getBestVideo(
         val isAvc = codecs.startsWith("avc")
         val isHevc = codecs.startsWith("hev")
         val isAv1 = codecs.startsWith("av01")
+        val isDolbyVision = video.id == VideoQuality.DOLBY_VISION.code ||
+            codecs.startsWith("dvh1") ||
+            codecs.startsWith("dvhe")
         
         // 基础可用性检查
         val supported = when {
+            isDolbyVision -> isDolbyVisionSupported
+            video.id == VideoQuality.HDR.code && !isHdrSupported -> false
             isAvc -> true // 所有设备都支持 AVC
             isHevc -> isHevcSupported
             isAv1 -> isAv1Supported
@@ -257,6 +284,20 @@ fun Dash.getBestVideo(
     
     com.bbttvv.app.core.util.Logger.d("VideoResponse", " getBestVideo: selected id=${selected?.id}, codec=${selected?.codecs}")
     return selected
+}
+
+private fun DashVideo.isDynamicRangeSupported(
+    isHdrSupported: Boolean,
+    isDolbyVisionSupported: Boolean
+): Boolean {
+    val codecText = codecs.lowercase()
+    return when {
+        id == VideoQuality.DOLBY_VISION.code ||
+            codecText.startsWith("dvh1") ||
+            codecText.startsWith("dvhe") -> isDolbyVisionSupported
+        id == VideoQuality.HDR.code -> isHdrSupported
+        else -> true
+    }
 }
 
 //  扩展函数：获取最佳音频流
@@ -302,4 +343,3 @@ fun Dash.getBestAudio(preferQuality: Int = -1): DashAudio? {
     com.bbttvv.app.core.util.Logger.d("VideoResponse", " getBestAudio: selected id=${selected?.id}, bandwidth=${selected?.bandwidth}")
     return selected
 }
-

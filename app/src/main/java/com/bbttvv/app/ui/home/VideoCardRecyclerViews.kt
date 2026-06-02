@@ -251,9 +251,19 @@ internal fun VideoCardRecyclerGridItems(
                         return focusState.tryFocusVisibleItem()
                     }
 
+                    override fun requestFocusResult(): HomeFocusRequestResult {
+                        dpadGridController.cancelAllPendingRequests()
+                        return focusState.requestFocusVisibleItem()
+                    }
+
                     override fun tryRequestFocusForEntry(entryHint: HomeFocusEntryHint): Boolean {
                         dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusEntryItem(entryHint.preferredIndex)
+                    }
+
+                    override fun requestFocusForEntryResult(entryHint: HomeFocusEntryHint): HomeFocusRequestResult {
+                        dpadGridController.cancelAllPendingRequests()
+                        return focusState.requestFocusEntryItem(entryHint.preferredIndex)
                     }
 
                     override fun tryRequestFocusKey(key: String): Boolean {
@@ -261,9 +271,19 @@ internal fun VideoCardRecyclerGridItems(
                         return focusState.tryFocusKey(key)
                     }
 
+                    override fun requestFocusKeyResult(key: String): HomeFocusRequestResult {
+                        dpadGridController.cancelAllPendingRequests()
+                        return focusState.requestFocusKey(key)
+                    }
+
                     override fun tryRequestFocusKeyOrFallback(key: String): Boolean {
                         dpadGridController.cancelAllPendingRequests()
                         return focusState.tryFocusKeyOrFallback(key)
+                    }
+
+                    override fun requestFocusKeyOrFallbackResult(key: String): HomeFocusRequestResult {
+                        dpadGridController.cancelAllPendingRequests()
+                        return focusState.requestFocusKeyOrFallback(key)
                     }
 
                     override fun hasFocus(): Boolean {
@@ -495,6 +515,7 @@ internal fun VideoCardRecyclerGridItems(
                                 latestFocusTab?.let { tab ->
                                     latestFocusCoordinator?.onContentRegionFocused(tab, latestFocusRegion)
                                 }
+                                latestFocusCoordinator?.drainPendingFocus()
                                 latestOnFocusedRowChanged(position / latestGridColumnCount.coerceAtLeast(1))
                                 latestOnVideoFocused(item.video, item.key)
                             }
@@ -584,9 +605,8 @@ internal fun VideoCardRecyclerGridItems(
                         items.take(adapter.currentList.size) == adapter.currentList
 
                 if (isAppend) {
-                    dpadGridController.cancelAllPendingRequests()
                     if (BuildConfig.DEBUG) {
-                        Log.d("HomeFocus", "listChanged is pure APPEND. Exclude focusState.prepareForDataSetChange to protect current active focus and pending search.")
+                        Log.d("HomeFocus", "listChanged is pure APPEND. Keep Dpad pending target and skip focusState.prepareForDataSetChange.")
                     }
                 } else {
                     if (!dpadGridController.hasPendingLoadMoreFocus()) {
