@@ -25,7 +25,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.player.createConfiguredPlayer
@@ -75,7 +74,7 @@ fun PlayerScreen(
     val visualEffectsState = rememberPlayerVisualEffectsState()
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
-    val isDebugOverlayVisible = BuildConfig.DEBUG && overlayUiState.showDebugOverlay
+    val isDebugOverlayVisible = overlayUiState.showDebugOverlay
     val actions = remember {
         buildPlayerActions()
     }

@@ -16,44 +16,9 @@ import com.bytedance.danmaku.render.engine.DanmakuView
 import com.bytedance.danmaku.render.engine.control.DanmakuController
 import com.bytedance.danmaku.render.engine.data.DanmakuData
 import com.bytedance.danmaku.render.engine.render.draw.text.TextData
-import kotlin.math.abs
 
-private const val DANMAKU_POSITION_DISCONTINUITY_THRESHOLD_MS = 2500L
 private const val DANMAKU_OVERLAY_TAG = "DanmakuOverlay"
 private const val DEFAULT_DANMAKU_TEXT_SIZE = 25f
-
-private enum class DanmakuSyncReason {
-    PayloadChanged,
-    ConfigChanged,
-    ViewAttached,
-    ViewportReady,
-    ViewportChanged,
-    PositionDiscontinuity,
-    PlayStateChanged,
-}
-
-private class DanmakuOverlayRuntime {
-    var lastLoadedToken: Long = Long.MIN_VALUE
-    var lastAppliedConfigToken: Long = Long.MIN_VALUE
-    var lastObservedPosition: Long = 0L
-    var lastObservedPlayState: Boolean = false
-    var lastAppliedAttachToken: Int = Int.MIN_VALUE
-    var lastAppliedViewportWidth: Int = 0
-    var lastAppliedViewportHeight: Int = 0
-    var waitingForAttachment: Boolean = false
-    var waitingForViewport: Boolean = false
-
-    fun resetLoadedState() {
-        lastLoadedToken = Long.MIN_VALUE
-        lastAppliedAttachToken = Int.MIN_VALUE
-        lastAppliedViewportWidth = 0
-        lastAppliedViewportHeight = 0
-        lastAppliedConfigToken = Long.MIN_VALUE
-        waitingForAttachment = false
-        waitingForViewport = false
-        lastObservedPlayState = false
-    }
-}
 
 private fun DanmakuRenderPayload.renderToken(): Long {
     var result = sourceLabel.hashCode()
@@ -141,7 +106,7 @@ fun DanmakuOverlay(
     var danmakuView by remember { mutableStateOf<DanmakuView?>(null) }
     var attachChangeToken by remember { mutableIntStateOf(0) }
     var viewportChangeToken by remember { mutableIntStateOf(0) }
-    val runtime = remember { DanmakuOverlayRuntime() }
+    val syncState = remember { DanmakuOverlaySyncState() }
     val dataToken = remember(payload) { payload?.renderToken() ?: Long.MIN_VALUE }
     val configToken = config.renderToken()
     val renderStandardList = remember(payload, configToken) {
@@ -177,13 +142,15 @@ fun DanmakuOverlay(
         if (!play) {
             targetController.pause()
         }
-        runtime.lastLoadedToken = dataToken
-        runtime.lastAppliedConfigToken = configToken
-        runtime.lastAppliedAttachToken = attachToken
-        runtime.lastAppliedViewportWidth = viewportWidth
-        runtime.lastAppliedViewportHeight = viewportHeight
-        runtime.lastObservedPosition = positionMs
-        runtime.lastObservedPlayState = play
+        syncState.notifyHardSynced(
+            dataToken = dataToken,
+            configToken = configToken,
+            attachToken = attachToken,
+            viewportWidth = viewportWidth,
+            viewportHeight = viewportHeight,
+            positionMs = positionMs,
+            isPlaying = play,
+        )
     }
 
     @Suppress("UNUSED_VARIABLE")
@@ -212,8 +179,6 @@ fun DanmakuOverlay(
             val viewAttached = view.isAttachedToWindow
             val viewportWidth = view.width.coerceAtLeast(0)
             val viewportHeight = view.height.coerceAtLeast(0)
-            val viewportReady = viewportWidth > 0 && viewportHeight > 0
-
             val targetAlpha = if (isEnabled) config.opacity else 0f
             if (view.alpha != targetAlpha) {
                 view.alpha = targetAlpha
@@ -224,95 +189,86 @@ fun DanmakuOverlay(
             }
 
             if (!isEnabled) {
-                if (runtime.lastObservedPlayState) {
-                    targetController.pause()
-                }
-                runtime.waitingForAttachment = false
-                runtime.waitingForViewport = false
-                runtime.lastObservedPlayState = false
-                runtime.lastAppliedConfigToken = Long.MIN_VALUE
+                targetController.pause()
+                syncState.onDisabled()
                 return@AndroidView
             }
 
             if (payload == null || payload.standardList.isEmpty()) {
-                if (runtime.lastLoadedToken != Long.MIN_VALUE) {
+                if (syncState.hasLoadedData) {
                     targetController.clear(0)
                 }
-                runtime.resetLoadedState()
+                syncState.resetLoadedState()
                 return@AndroidView
             }
 
-            if (!viewAttached) {
-                if (!runtime.waitingForAttachment) {
-                    Logger.d(DANMAKU_OVERLAY_TAG) {
-                        "awaiting attach for payload total=${payload.totalCount}"
-                    }
-                }
-                runtime.waitingForAttachment = true
-                runtime.lastAppliedAttachToken = Int.MIN_VALUE
-                return@AndroidView
-            }
-
-            runtime.waitingForAttachment = false
-
-            if (!viewportReady) {
-                if (!runtime.waitingForViewport) {
-                    Logger.d(DANMAKU_OVERLAY_TAG) {
-                        "awaiting viewport for payload total=${payload.totalCount}"
-                    }
-                }
-                runtime.waitingForViewport = true
-                runtime.lastAppliedViewportWidth = 0
-                runtime.lastAppliedViewportHeight = 0
-                return@AndroidView
-            }
-
-            runtime.waitingForViewport = false
-
-            val syncReason = when {
-                attachChangeToken != runtime.lastAppliedAttachToken -> DanmakuSyncReason.ViewAttached
-                runtime.lastAppliedViewportWidth <= 0 || runtime.lastAppliedViewportHeight <= 0 -> DanmakuSyncReason.ViewportReady
-                viewportWidth != runtime.lastAppliedViewportWidth || viewportHeight != runtime.lastAppliedViewportHeight ->
-                    DanmakuSyncReason.ViewportChanged
-                dataToken != runtime.lastLoadedToken -> DanmakuSyncReason.PayloadChanged
-                configToken != runtime.lastAppliedConfigToken -> DanmakuSyncReason.ConfigChanged
-                isPlaying && isPlaying != runtime.lastObservedPlayState -> DanmakuSyncReason.PlayStateChanged
-                abs(playbackPositionMs - runtime.lastObservedPosition) > DANMAKU_POSITION_DISCONTINUITY_THRESHOLD_MS ->
-                    DanmakuSyncReason.PositionDiscontinuity
-                else -> null
-            }
-
-            if (syncReason != null) {
-                hardSync(
-                    reason = syncReason,
-                    targetController = targetController,
-                    targetPayload = payload,
-                    targetRenderList = renderStandardList,
-                    dataToken = dataToken,
-                    positionMs = playbackPositionMs,
-                    play = isPlaying,
-                    attachToken = attachChangeToken,
+            val wasWaitingForAttach = syncState.waitingForAttachment
+            val wasWaitingForViewport = syncState.waitingForViewport
+            when (
+                val syncDecision = syncState.decide(
+                    viewAttached = viewAttached,
                     viewportWidth = viewportWidth,
                     viewportHeight = viewportHeight,
-                    config = config,
-                    configToken = configToken
+                    attachToken = attachChangeToken,
+                    dataToken = dataToken,
+                    configToken = configToken,
+                    isPlaying = isPlaying,
+                    playbackPositionMs = playbackPositionMs,
                 )
-                return@AndroidView
-            }
-
-            if (isPlaying != runtime.lastObservedPlayState) {
-                Logger.d(DANMAKU_OVERLAY_TAG) {
-                    "softSync reason=${DanmakuSyncReason.PlayStateChanged} size=${viewportWidth}x$viewportHeight position=$playbackPositionMs total=${payload.totalCount}"
+            ) {
+                is DanmakuOverlaySyncDecision.WaitForAttach -> {
+                    if (!wasWaitingForAttach) {
+                        Logger.d(DANMAKU_OVERLAY_TAG) {
+                            "awaiting attach for payload total=${payload.totalCount} reason=${syncDecision.pendingReason}"
+                        }
+                    }
+                    return@AndroidView
                 }
-                if (!isPlaying) {
-                    targetController.pause()
-                } else {
-                    targetController.invalidateView()
-                }
-                runtime.lastObservedPlayState = isPlaying
-            }
 
-            runtime.lastObservedPosition = playbackPositionMs
+                is DanmakuOverlaySyncDecision.WaitForViewport -> {
+                    if (!wasWaitingForViewport) {
+                        Logger.d(DANMAKU_OVERLAY_TAG) {
+                            "awaiting viewport for payload total=${payload.totalCount} reason=${syncDecision.pendingReason}"
+                        }
+                    }
+                    return@AndroidView
+                }
+
+                is DanmakuOverlaySyncDecision.HardSync -> {
+                    hardSync(
+                        reason = syncDecision.reason,
+                        targetController = targetController,
+                        targetPayload = payload,
+                        targetRenderList = renderStandardList,
+                        dataToken = dataToken,
+                        positionMs = playbackPositionMs,
+                        play = isPlaying,
+                        attachToken = attachChangeToken,
+                        viewportWidth = viewportWidth,
+                        viewportHeight = viewportHeight,
+                        config = config,
+                        configToken = configToken
+                    )
+                    return@AndroidView
+                }
+
+                DanmakuOverlaySyncDecision.SoftSyncPlayState -> {
+                    Logger.d(DANMAKU_OVERLAY_TAG) {
+                        "softSync reason=${DanmakuSyncReason.PlayStateChanged} size=${viewportWidth}x$viewportHeight position=$playbackPositionMs total=${payload.totalCount}"
+                    }
+                    if (!isPlaying) {
+                        targetController.pause()
+                    } else {
+                        targetController.invalidateView()
+                    }
+                    syncState.notifySoftPlayStateObserved(isPlaying)
+                    syncState.notifyPositionObserved(playbackPositionMs)
+                }
+
+                DanmakuOverlaySyncDecision.Noop -> {
+                    syncState.notifyPositionObserved(playbackPositionMs)
+                }
+            }
         },
         modifier = modifier
     )
@@ -334,6 +290,9 @@ fun DanmakuOverlay(
             val attachListener = object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {
                     attachChangeToken += 1
+                    if (v.width > 0 && v.height > 0) {
+                        viewportChangeToken += 1
+                    }
                 }
 
                 override fun onViewDetachedFromWindow(v: View) {
@@ -342,6 +301,12 @@ fun DanmakuOverlay(
             }
             view.addOnLayoutChangeListener(listener)
             view.addOnAttachStateChangeListener(attachListener)
+            if (view.isAttachedToWindow) {
+                attachChangeToken += 1
+            }
+            if (view.width > 0 && view.height > 0) {
+                viewportChangeToken += 1
+            }
             onDispose {
                 view.removeOnLayoutChangeListener(listener)
                 view.removeOnAttachStateChangeListener(attachListener)

@@ -284,11 +284,13 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
-    fun `restore video key callback runs after fallback focus succeeds`() {
+    fun `restore video key fallback clears pending without restored callback`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
         val gridTarget = FakeFallbackFocusTarget()
         var restoredKey: String? = null
+        var canceled = false
 
+        coordinator.setPendingRestoreCancelCallback { canceled = true }
         coordinator.registerContentTarget(
             tab = AppTopLevelTab.RECOMMEND,
             region = HomeFocusRegion.Grid,
@@ -301,9 +303,42 @@ class HomeFocusCoordinatorTest {
             onRestored = { restoredKey = it },
         )
 
-        assertEquals("BV1:4", restoredKey)
+        assertNull(restoredKey)
+        assertTrue(canceled)
         assertEquals(listOf("BV1:4"), gridTarget.fallbackRequests)
         assertTrue(coordinator.isContentFocused)
+    }
+
+    @Test
+    fun `pending restore is canceled by user grid navigation`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        val gridTarget = FakeFocusTarget(
+            canFocus = true,
+            keyRequestResult = HomeFocusRequestResult.Pending,
+        )
+        var restoredKey: String? = null
+        var canceled = false
+
+        coordinator.setPendingRestoreCancelCallback { canceled = true }
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+
+        coordinator.requestRestoreVideoKey(
+            tab = AppTopLevelTab.RECOMMEND,
+            key = "BV1:pending",
+            onRestored = { restoredKey = it },
+        )
+
+        assertTrue(coordinator.cancelPendingRestoreVideoKeyForUserNavigation(AppTopLevelTab.RECOMMEND))
+        gridTarget.keyRequestResult = HomeFocusRequestResult.Focused
+
+        assertFalse(coordinator.drainPendingFocus())
+        assertNull(restoredKey)
+        assertTrue(canceled)
+        assertEquals(listOf("BV1:pending"), gridTarget.keyRequests)
     }
 
     @Test
@@ -573,6 +608,11 @@ class HomeFocusCoordinatorTest {
         override fun tryRequestFocusKeyOrFallback(key: String): Boolean {
             fallbackRequests += key
             return true
+        }
+
+        override fun requestBackReturnFocusKeyResult(key: String): HomeBackReturnRestoreResult {
+            fallbackRequests += key
+            return HomeBackReturnRestoreResult.FallbackFocused
         }
     }
 }

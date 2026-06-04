@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.store.player.DANMAKU_AREA_RATIO_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_OPACITY_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_STROKE_WIDTH_VALUES
@@ -103,9 +102,7 @@ internal fun rememberPlayerOverlayPresentationState(
 }
 
 internal fun buildPlayerActions(): List<PlayerAction> {
-    return PlayerAction.entries.filter { action ->
-        BuildConfig.DEBUG || action != PlayerAction.Debug
-    }
+    return PlayerAction.entries
 }
 
 internal fun buildPlayerPanelOptions(

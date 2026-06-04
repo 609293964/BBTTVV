@@ -76,6 +76,16 @@ internal enum class HomeFocusRequestResult {
     }
 }
 
+internal enum class HomeBackReturnRestoreResult {
+    ExactFocused,
+    PendingShort,
+    FallbackFocused,
+    Unavailable;
+
+    val isAccepted: Boolean
+        get() = this != Unavailable
+}
+
 internal sealed class HomeFocusMode {
     data object TopBar : HomeFocusMode()
 
@@ -109,6 +119,14 @@ internal interface HomeFocusTarget {
 
     fun requestFocusKeyOrFallbackResult(key: String): HomeFocusRequestResult =
         HomeFocusRequestResult.fromFocused(tryRequestFocusKeyOrFallback(key))
+
+    fun requestBackReturnFocusKeyResult(key: String): HomeBackReturnRestoreResult {
+        return when (requestFocusKeyOrFallbackResult(key)) {
+            HomeFocusRequestResult.Focused -> HomeBackReturnRestoreResult.ExactFocused
+            HomeFocusRequestResult.Pending -> HomeBackReturnRestoreResult.PendingShort
+            HomeFocusRequestResult.Unavailable -> HomeBackReturnRestoreResult.Unavailable
+        }
+    }
 
     fun requestFocusForEntryResult(entryHint: HomeFocusEntryHint): HomeFocusRequestResult =
         HomeFocusRequestResult.fromFocused(tryRequestFocusForEntry(entryHint))
@@ -641,18 +659,29 @@ internal class HomeFocusCoordinator(
         }
         var restoredRegion: HomeFocusRegion? = null
         for ((region, target) in orderedTargets) {
-            val result = target.requestFocusKeyOrFallbackResult(intent.key)
+            val result = target.requestBackReturnFocusKeyResult(intent.key)
             if (result.isAccepted) {
                 restoredRegion = region
                 markContentFocusRequested(intent.tab, restoredRegion)
             }
-            if (result.isFocused) {
-                pendingRestoreCallback?.invoke(intent.key)
-                pendingRestoreCallback = null
-                return HomeFocusRequestResult.Focused
-            }
-            if (result == HomeFocusRequestResult.Pending) {
-                return HomeFocusRequestResult.Pending
+            when (result) {
+                HomeBackReturnRestoreResult.ExactFocused -> {
+                    pendingRestoreCallback?.invoke(intent.key)
+                    pendingRestoreCallback = null
+                    return HomeFocusRequestResult.Focused
+                }
+
+                HomeBackReturnRestoreResult.FallbackFocused -> {
+                    pendingRestoreCallback = null
+                    pendingRestoreCancelCallback?.invoke()
+                    return HomeFocusRequestResult.Focused
+                }
+
+                HomeBackReturnRestoreResult.PendingShort -> {
+                    return HomeFocusRequestResult.Pending
+                }
+
+                HomeBackReturnRestoreResult.Unavailable -> Unit
             }
         }
         return HomeFocusRequestResult.Unavailable

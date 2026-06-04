@@ -165,7 +165,7 @@ fun PublisherScreen(
                             contentPadding = PaddingValues(
                                 start = 32.dp,
                                 end = 32.dp,
-                                top = 8.dp,
+                                top = 16.dp,
                                 bottom = 48.dp
                             ),
                             modifier = Modifier
@@ -174,6 +174,7 @@ fun PublisherScreen(
                             gridColumnCount = PublisherGridColumns,
                             focusState = videoGridFocusState,
                             scrollResetKey = uiState.selectedSort,
+                            allowChildDrawingOutsideBounds = false,
                             loadMorePrefetchItems = PublisherLoadMorePrefetchItems,
                             canLoadMore = {
                                 uiState.mid > 0L &&

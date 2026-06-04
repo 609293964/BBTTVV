@@ -11,9 +11,11 @@ import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
 import com.bbttvv.app.feature.video.danmaku.DanmakuRenderPayload
 import com.bbttvv.app.feature.video.danmaku.ParsedDanmaku
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -342,6 +344,66 @@ abstract class BasePlayerViewModel : ViewModel() {
         val loadSequence = ++danmakuLoadSequence
         danmakuLoadJob = viewModelScope.launch {
             _isDanmakuLoading.value = true
+            try {
+                val loadResult = loadInitialDanmakuWithRetry(
+                    cid = cid,
+                    aid = aid,
+                    initialSegmentIndex = initialSegmentIndex,
+                    loadSequence = loadSequence,
+                )
+                if (!isActive || loadSequence != danmakuLoadSequence || loadResult == null) {
+                    return@launch
+                }
+                if (loadResult.parsed != null || loadResult.rawData != null) {
+                    danmakuSessionController.markLoaded(initialSegmentIndex)
+                } else {
+                    danmakuSessionController.markFailed(initialSegmentIndex)
+                }
+
+                _danmakuData.value = loadResult.rawData
+                danmakuSource = loadResult.parsed
+                danmakuFilterContext = loadResult.filterContext
+                danmakuSourceVersion += 1
+                val payload = loadResult.parsed?.let {
+                    PlayerDanmakuPipeline.buildRenderPayload(
+                        parsed = it,
+                        sourceLabel = loadResult.sourceLabel,
+                        filterContext = danmakuFilterContext,
+                    )
+                }
+                _danmakuPayload.value = payload
+                payload?.let {
+                    val firstShowAt = it.standardList.firstOrNull()?.showAtTime ?: -1L
+                    val lastShowAt = it.standardList.lastOrNull()?.showAtTime ?: -1L
+                    Logger.w(
+                        TAG,
+                        "Danmaku ready source=${it.sourceLabel} cid=$cid count=${it.totalCount} first=$firstShowAt last=$lastShowAt segment=$initialSegmentIndex"
+                    )
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (loadSequence != danmakuLoadSequence) return@launch
+                danmakuSessionController.markFailed(initialSegmentIndex)
+                _danmakuData.value = null
+                danmakuSource = null
+                _danmakuPayload.value = null
+                Logger.e(TAG, "Danmaku initial load failed: cid=$cid segment=$initialSegmentIndex", error)
+            } finally {
+                if (loadSequence == danmakuLoadSequence) {
+                    _isDanmakuLoading.value = false
+                }
+            }
+        }
+    }
+
+    private suspend fun loadInitialDanmakuWithRetry(
+        cid: Long,
+        aid: Long,
+        initialSegmentIndex: Int,
+        loadSequence: Long,
+    ): PlayerDanmakuLoadResult? {
+        var failedAttemptIndex = 0
+        while (true) {
             val loadResult = withContext(Dispatchers.IO) {
                 PlayerDanmakuPipeline.loadSegmentSource(
                     cid = cid,
@@ -349,36 +411,40 @@ abstract class BasePlayerViewModel : ViewModel() {
                     segmentIndex = initialSegmentIndex,
                 )
             }
-            if (!isActive || loadSequence != danmakuLoadSequence) {
-                return@launch
+            currentCoroutineContext().ensureActive()
+            if (loadSequence != danmakuLoadSequence) return null
+
+            val isCurrentCid = currentDanmakuCid == cid
+            val isEnabled = isDanmakuEnabled.value
+            val hasPublishedPayload = _danmakuPayload.value != null
+            val retryDelayMs = DanmakuInitialLoadRetryPolicy.nextDelayMs(
+                failedAttemptIndex = failedAttemptIndex,
+                hasParsedPayload = loadResult.parsed != null,
+                hasRawData = loadResult.rawData != null,
+                isCurrentCid = isCurrentCid,
+                isDanmakuEnabled = isEnabled,
+                hasPublishedPayload = hasPublishedPayload,
+            )
+            if (retryDelayMs == null) {
+                if (
+                    loadResult.parsed == null &&
+                    loadResult.rawData == null &&
+                    (!isCurrentCid || !isEnabled || hasPublishedPayload)
+                ) {
+                    return null
+                }
+                return loadResult
             }
-            if (loadResult.parsed != null || loadResult.rawData != null) {
-                danmakuSessionController.markLoaded(initialSegmentIndex)
-            } else {
-                danmakuSessionController.markFailed(initialSegmentIndex)
-            }
-            
-            _danmakuData.value = loadResult.rawData
-            danmakuSource = loadResult.parsed
-            danmakuFilterContext = loadResult.filterContext
-            danmakuSourceVersion += 1
-            val payload = loadResult.parsed?.let {
-                PlayerDanmakuPipeline.buildRenderPayload(
-                    parsed = it,
-                    sourceLabel = loadResult.sourceLabel,
-                    filterContext = danmakuFilterContext,
-                )
-            }
-            _danmakuPayload.value = payload
-            _isDanmakuLoading.value = false
-            payload?.let {
-                val firstShowAt = it.standardList.firstOrNull()?.showAtTime ?: -1L
-                val lastShowAt = it.standardList.lastOrNull()?.showAtTime ?: -1L
-                Logger.w(
-                    TAG,
-                    "Danmaku ready source=${it.sourceLabel} cid=$cid count=${it.totalCount} first=$firstShowAt last=$lastShowAt segment=$initialSegmentIndex"
-                )
-            }
+
+            failedAttemptIndex += 1
+            Logger.w(
+                TAG,
+                "Danmaku initial load empty; retry $failedAttemptIndex/" +
+                    "${DanmakuInitialLoadRetryPolicy.retryCount} in ${retryDelayMs}ms cid=$cid segment=$initialSegmentIndex"
+            )
+            delay(retryDelayMs)
+            currentCoroutineContext().ensureActive()
+            if (loadSequence != danmakuLoadSequence) return null
         }
     }
 

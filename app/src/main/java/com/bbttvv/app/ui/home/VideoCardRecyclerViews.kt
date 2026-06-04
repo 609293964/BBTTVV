@@ -286,6 +286,11 @@ internal fun VideoCardRecyclerGridItems(
                         return focusState.requestFocusKeyOrFallback(key)
                     }
 
+                    override fun requestBackReturnFocusKeyResult(key: String): HomeBackReturnRestoreResult {
+                        dpadGridController.cancelAllPendingRequests()
+                        return focusState.requestBackReturnFocusKey(key)
+                    }
+
                     override fun hasFocus(): Boolean {
                         return focusState.hasFocusInside()
                     }
