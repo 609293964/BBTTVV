@@ -965,15 +965,20 @@ fun LiveAvatarCard(
 
 // Mapper from Dynamic to Recommend structure for the Card
 private fun DynamicItem.toVideoItem(): VideoItem {
-    val archive = this.modules.module_dynamic?.major?.archive
+    val major = this.modules.module_dynamic?.major
+    val archive = major?.archive ?: major?.ugc_season?.archive
     val author = this.modules.module_author
+    val title = archive?.title
+        ?: major?.ugc_season?.title
+        ?: major?.opus?.title
+        ?: "动态内容"
 
     return VideoItem(
         id = archive?.aid?.toLongOrNull() ?: 0L,
         aid = archive?.aid?.toLongOrNull() ?: 0L,
         bvid = archive?.bvid ?: this.id_str,
         pic = archive?.cover ?: "",
-        title = archive?.title ?: this.modules.module_dynamic?.major?.opus?.title ?: "动态内容",
+        title = title,
         owner = Owner(
             mid = author?.mid ?: 0L,
             name = author?.name ?: "",

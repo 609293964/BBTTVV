@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private const val DYNAMIC_ABSOLUTE_PAGE_FETCH_LIMIT = 10
+private const val DYNAMIC_FEED_REQUEST_TYPE = "all"
 private const val DYNAMIC_USER_PAGINATION_STATE_LIMIT = 64
 private const val DYNAMIC_FOLLOW_UPDATES_PAGE_SIZE = 15
 private const val DYNAMIC_FOLLOW_UPDATES_UP_LIMIT = 15
@@ -149,7 +150,7 @@ object DynamicRepository {
                 val previousOffset = feedPagination.offset(scope)
                 val response = fetchDynamicFeedPageWithRetry {
                     NetworkModule.dynamicApi.getDynamicFeed(
-                        type = "video", // [MODIFY] Filter strictly to video-only for TV simplicity
+                        type = DYNAMIC_FEED_REQUEST_TYPE,
                         offset = previousOffset
                     )
                 }.getOrElse { error ->
@@ -178,8 +179,8 @@ object DynamicRepository {
                     return@withContext Result.success(visibleItems)
                 }
 
-                // 过滤不可见的动态
-                visibleItems += data.items.filter { it.visible }
+                // 动态接口的 video 类型过滤可能返回空，改为请求 all 后仅保留 TV 视频网格可渲染的卡片。
+                visibleItems += data.items.filter { it.visible && it.hasRenderableVideoCard() }
                 pagesFetched += 1
 
                 if (!shouldContinueDynamicFetchAfterFilter(
@@ -519,6 +520,12 @@ object DynamicRepository {
     }
 }
 
+private fun DynamicItem.hasRenderableVideoCard(): Boolean {
+    val major = modules.module_dynamic?.major ?: return false
+    return major.archive?.bvid?.isNotBlank() == true ||
+        major.ugc_season?.archive?.bvid?.isNotBlank() == true
+}
+
 enum class DynamicFeedScope {
     DYNAMIC_SCREEN,
     HOME_FOLLOW
@@ -650,4 +657,3 @@ internal class DynamicUserPaginationRegistry {
         }
     }
 }
-

@@ -31,8 +31,12 @@ interface DynamicApi {
     suspend fun getDynamicFeed(
         @Query("type") type: String = "all",
         @Query("offset") offset: String = "",
+        @Query("update_baseline") updateBaseline: String = "",
         @Query("page") page: Int = 1,
-        @Query("features") features: String = DYNAMIC_FEED_FEATURES
+        @Query("features") features: String = DYNAMIC_FEED_FEATURES,
+        @Query("timezone_offset") timezoneOffset: Int = -480,
+        @Query("platform") platform: String = "web",
+        @Query("web_location") webLocation: String = "333.1365"
     ): DynamicFeedResponse
     
     //  [新增] 获取指定用户的动态列表

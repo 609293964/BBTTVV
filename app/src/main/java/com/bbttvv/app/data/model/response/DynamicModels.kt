@@ -4,6 +4,7 @@ package com.bbttvv.app.data.model.response
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
@@ -35,12 +36,33 @@ data class DynamicFeedResponse(
 
 @Serializable
 data class DynamicFeedData(
+    @Serializable(with = DynamicFeedItemsSerializer::class)
     val items: List<DynamicItem> = emptyList(),
     val offset: String = "", // 分页偏移量
     val has_more: Boolean = false,
     val update_baseline: String = "",
     val update_num: Int = 0
 )
+
+object DynamicFeedItemsSerializer : KSerializer<List<DynamicItem>> {
+    private val delegate = ListSerializer(DynamicItem.serializer())
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    override fun deserialize(decoder: Decoder): List<DynamicItem> {
+        val jsonDecoder = decoder as? JsonDecoder ?: return delegate.deserialize(decoder)
+        val element = jsonDecoder.decodeJsonElement()
+        val rawItems = element as? JsonArray ?: return emptyList()
+        return rawItems.mapNotNull { node ->
+            runCatching {
+                jsonDecoder.json.decodeFromJsonElement(DynamicItem.serializer(), node)
+            }.getOrNull()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<DynamicItem>) {
+        delegate.serialize(encoder, value)
+    }
+}
 
 @Serializable
 data class DynamicDetailResponse(
@@ -182,6 +204,7 @@ private fun JsonObject.portalBoolean(vararg keys: String): Boolean {
 @Serializable
 data class DynamicItem(
     val id_str: String = "",
+    @Serializable(with = FlexibleStringSerializer::class)
     val type: String = "", // DYNAMIC_TYPE_AV, DYNAMIC_TYPE_DRAW, DYNAMIC_TYPE_WORD, DYNAMIC_TYPE_FORWARD
     val visible: Boolean = true,
     @Serializable(with = DynamicModulesFlexibleSerializer::class)
@@ -361,6 +384,7 @@ data class DynamicAuthorModule(
     val face: String = "",
     val pub_time: String = "", // "昨天 18:00"
     val pub_ts: Long = 0, // 时间戳
+    @Serializable(with = FlexibleBooleanSerializer::class)
     val following: Boolean? = null,
     val official_verify: DynamicOfficialVerify? = null,
     val vip: DynamicVipInfo? = null,
