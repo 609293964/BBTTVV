@@ -33,6 +33,7 @@ import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.R
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
 @Composable
@@ -215,8 +216,11 @@ internal fun VideoCardRecyclerGridItems(
                     latestIsHomeTabActive && latestOnBackToTopBar?.invoke() == true
                 },
                 onFocusSettled = {
-                    focusState.cancelAllPendingRequests()
-                    dpadGridController.cancelAllPendingRequests()
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.onFocusSettled cancelAllPendingRequests=false " +
+                            "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                            GridFocusDebugLog.recycler(recyclerViewRef.value)
+                    }
                 },
             )
         )
@@ -339,6 +343,11 @@ internal fun VideoCardRecyclerGridItems(
             val context = ContextThemeWrapper(rawContext, R.style.Theme_BBTTVV)
             object : RecyclerView(context) {
                 override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent before " +
+                            "${GridFocusDebugLog.event(event)} ${focusState.debugSnapshot()} " +
+                            "${dpadGridController.debugSnapshot()} ${GridFocusDebugLog.recycler(this)}"
+                    }
                     if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in GridNavigationKeyCodes) {
                         val focusedView = rootView?.findFocus()
                         val currentPosition = focusedView
@@ -355,6 +364,11 @@ internal fun VideoCardRecyclerGridItems(
                                     event = event,
                                 )
                             ) {
+                                GridFocusDebugLog.d {
+                                    "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent handledByController=true " +
+                                        "${GridFocusDebugLog.event(event)} adapterPosition=$currentPosition " +
+                                        "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()}"
+                                }
                                 return true
                             }
                         }
@@ -372,17 +386,51 @@ internal fun VideoCardRecyclerGridItems(
                                     event = event,
                                 )
                             ) {
+                                GridFocusDebugLog.d {
+                                    "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent noPositionRecoveryHandled=true " +
+                                        "${GridFocusDebugLog.event(event)} adapterPosition=$NO_POSITION " +
+                                        "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()}"
+                                }
                                 return true
                             }
-                            return true
+                            GridFocusDebugLog.d {
+                                "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent noPositionConsumed=false " +
+                                    "controllerHandled=false ${GridFocusDebugLog.event(event)} " +
+                                    "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                                    GridFocusDebugLog.recycler(this)
+                            }
                         }
                     }
-                    return super.dispatchKeyEvent(event)
+                    val handled = super.dispatchKeyEvent(event)
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent superResult=$handled " +
+                            "${GridFocusDebugLog.event(event)} ${focusState.debugSnapshot()} " +
+                            "${dpadGridController.debugSnapshot()} ${GridFocusDebugLog.recycler(this)}"
+                    }
+                    return handled
                 }
 
                 override fun focusSearch(focused: View?, direction: Int): View? {
                     val next = super.focusSearch(focused, direction)
+                    GridFocusDebugLog.d {
+                        val currentPosition = focused
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?: NO_POSITION
+                        val nextPosition = next
+                            ?.let(::findContainingViewHolder)
+                            ?.bindingAdapterPosition
+                            ?: NO_POSITION
+                        "VideoCardRecyclerGrid.RecyclerView.focusSearch direction=$direction " +
+                            "adapterPosition=$currentPosition nextPosition=$nextPosition " +
+                            "nextClass=${next?.javaClass?.simpleName} ${focusState.debugSnapshot()} " +
+                            "${dpadGridController.debugSnapshot()} ${GridFocusDebugLog.recycler(this)}"
+                    }
                     if (next === this) {
+                        GridFocusDebugLog.d {
+                            "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused reason=nextIsRecycler " +
+                                "direction=$direction"
+                        }
                         return focused
                     }
                     if (direction == View.FOCUS_DOWN) {
@@ -403,6 +451,10 @@ internal fun VideoCardRecyclerGridItems(
                                         nextPosition != null && nextPosition > currentPosition
                                 if (!hasValidNextFocus) {
                                     focusState.schedulePendingDownSearch(targetPosition)
+                                    GridFocusDebugLog.d {
+                                        "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
+                                            "reason=pendingDownSearch direction=$direction targetPosition=$targetPosition"
+                                    }
                                     return focused
                                 }
                             }
@@ -413,6 +465,10 @@ internal fun VideoCardRecyclerGridItems(
                                 (nextPosition != null && nextPosition <= currentPosition) ||
                                 (nextPosition == null && canScrollVertically(1)))
                         ) {
+                            GridFocusDebugLog.d {
+                                "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
+                                    "reason=downBoundary direction=$direction adapterPosition=$currentPosition"
+                            }
                             return focused
                         }
                     }
@@ -431,6 +487,10 @@ internal fun VideoCardRecyclerGridItems(
                                 position = targetPosition,
                                 expectedFocusedView = focused,
                             )
+                            GridFocusDebugLog.d {
+                                "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
+                                    "reason=upScroll targetPosition=$targetPosition"
+                            }
                             return focused
                         }
                     }
@@ -451,6 +511,10 @@ internal fun VideoCardRecyclerGridItems(
                             }
                             return focused
                         }
+                    }
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.RecyclerView.focusSearch returnNext direction=$direction " +
+                            "nextClass=${next?.javaClass?.simpleName}"
                     }
                     return next
                 }
@@ -502,10 +566,19 @@ internal fun VideoCardRecyclerGridItems(
                         }
                     },
                     onItemFocused = { item, position ->
+                        GridFocusDebugLog.d {
+                            "VideoCardRecyclerGrid.onItemFocused before adapterPosition=$position " +
+                                "itemKey=${item.key} ${focusState.debugSnapshot()} " +
+                                "${dpadGridController.debugSnapshot()} " +
+                                GridFocusDebugLog.recycler(recyclerViewRef.value)
+                        }
                         if (dpadGridController.onItemFocused(position = position)) {
                             focusState.onItemFocused(item.key, position)
-                            dpadGridController.cancelAllPendingRequests()
-                            focusState.cancelAllPendingRequests()
+                            GridFocusDebugLog.d {
+                                "VideoCardRecyclerGrid.onItemFocused accepted=true " +
+                                    "cancelAllPendingRequests=false adapterPosition=$position itemKey=${item.key} " +
+                                    "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()}"
+                            }
                             if (latestIsHomeTabActive) {
                                 recyclerViewRef.value?.let { recyclerView ->
                                     preloadThrottler.preloadRowsAhead(
@@ -523,6 +596,12 @@ internal fun VideoCardRecyclerGridItems(
                                 latestFocusCoordinator?.drainPendingFocus()
                                 latestOnFocusedRowChanged(position / latestGridColumnCount.coerceAtLeast(1))
                                 latestOnVideoFocused(item.video, item.key)
+                            }
+                        } else {
+                            GridFocusDebugLog.d {
+                                "VideoCardRecyclerGrid.onItemFocused accepted=false adapterPosition=$position " +
+                                    "itemKey=${item.key} ${focusState.debugSnapshot()} " +
+                                    dpadGridController.debugSnapshot()
                             }
                         }
                     },
@@ -563,7 +642,19 @@ internal fun VideoCardRecyclerGridItems(
                         latestSupportingText?.invoke(item.video)
                 },
                 ).apply {
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.submitList initial before listChanged=true isAppend=false " +
+                            "calledSubmitList=true oldItemCount=$itemCount newItemCount=${items.size} " +
+                            "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                            GridFocusDebugLog.recycler(recyclerViewRef.value)
+                    }
                     submitList(items) {
+                        GridFocusDebugLog.d {
+                            "VideoCardRecyclerGrid.submitList initial committed calledSubmitList=true " +
+                                "itemCount=$itemCount ${focusState.debugSnapshot()} " +
+                                "${dpadGridController.debugSnapshot()} " +
+                                GridFocusDebugLog.recycler(recyclerViewRef.value)
+                        }
                         applyInitialScrollPosition(initialScrollPosition)
                         dpadGridController.onItemsCommitted()
                         focusState.onItemsCommitted()
@@ -599,6 +690,12 @@ internal fun VideoCardRecyclerGridItems(
                 )
                 val listChanged = adapter.currentList != items
                 if (!listChanged) {
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.submitList update skipped listChanged=false " +
+                            "isAppend=false calledSubmitList=false itemCount=${adapter.itemCount} " +
+                            "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                            GridFocusDebugLog.recycler(recyclerView)
+                    }
                     verticalOffsetDispatcher.dispatch(
                         recyclerView.computeVerticalScrollOffset(),
                         latestOnVerticalScrollOffsetChanged,
@@ -608,6 +705,16 @@ internal fun VideoCardRecyclerGridItems(
                 val isAppend = adapter.currentList.isNotEmpty() &&
                         items.size > adapter.currentList.size &&
                         items.take(adapter.currentList.size) == adapter.currentList
+                val currentFocused = recyclerView.rootView?.findFocus()
+                val focusInsideRecycler = currentFocused === recyclerView ||
+                    currentFocused?.isSameOrDescendantOf(recyclerView) == true
+                GridFocusDebugLog.d {
+                    "VideoCardRecyclerGrid.submitList update before listChanged=$listChanged " +
+                        "isAppend=$isAppend calledSubmitList=true oldItemCount=${adapter.currentList.size} " +
+                        "newItemCount=${items.size} focusInsideRecycler=$focusInsideRecycler " +
+                        "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                        GridFocusDebugLog.recycler(recyclerView)
+                }
 
                 if (isAppend) {
                     if (BuildConfig.DEBUG) {
@@ -622,6 +729,12 @@ internal fun VideoCardRecyclerGridItems(
                     }
                 }
                 adapter.submitList(items) {
+                    GridFocusDebugLog.d {
+                        "VideoCardRecyclerGrid.submitList update committed listChanged=$listChanged " +
+                            "isAppend=$isAppend calledSubmitList=true itemCount=${adapter.itemCount} " +
+                            "${focusState.debugSnapshot()} ${dpadGridController.debugSnapshot()} " +
+                            GridFocusDebugLog.recycler(recyclerView)
+                    }
                     recyclerView.applyInitialScrollPosition(initialScrollPosition)
                     dpadGridController.onItemsCommitted()
                     focusState.onItemsCommitted()
@@ -955,7 +1068,12 @@ private fun RecyclerView.requestFocusAfterScrollToPosition(
 
         val targetItem = findViewHolderForAdapterPosition(position)?.itemView
         if (targetItem != null && targetItem.isValidFocusTarget()) {
-            targetItem.requestFocus()
+            val focused = targetItem.requestFocus()
+            GridFocusDebugLog.d {
+                "VideoCardRecyclerGrid.requestFocusAfterScrollToPosition calledRequestFocus=true " +
+                    "requestFocusSuccess=$focused adapterPosition=$position attemptsLeft=$attemptsLeft " +
+                    GridFocusDebugLog.recycler(this)
+            }
             return@postOnAnimation
         }
 

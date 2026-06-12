@@ -4,9 +4,11 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.BuildConfig
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
 internal class HomeRecommendGridFocusState {
@@ -30,31 +32,62 @@ internal class HomeRecommendGridFocusState {
     private var onFocusTargetAvailabilityChanged: (() -> Unit)? = null
     private var canPerformPhysicalScroll: () -> Boolean = { true }
     private var lastFocusAttemptPending: Boolean = false
+    private var dataSetChangePendingCommit: Boolean = false
+    private var dataSetParkedDescendantFocusability: Int? = null
 
     fun cancelAllPendingRequests() {
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.cancelAllPendingRequests before cancelAllPendingRequests=true " +
+                debugSnapshot()
+        }
         nextFocusRequestToken()
         pendingDataSetFocus = null
         pendingBackReturnRestore = null
+        dataSetChangePendingCommit = false
+        unparkFocusAfterDataSetCommit()
         clearPendingDirectionalScrollFocus()
         clearPendingDownSearch()
         clearVisualFocusAnchor()
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.cancelAllPendingRequests after cancelAllPendingRequests=true " +
+                debugSnapshot()
+        }
     }
 
     fun attach(recyclerView: RecyclerView) {
         if (this.recyclerView === recyclerView) return
         this.recyclerView = recyclerView
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.attach ${debugSnapshot()} ${GridFocusDebugLog.recycler(recyclerView)}"
+        }
         applyPendingAfterItemsAvailable()
     }
 
     fun detach(recyclerView: RecyclerView) {
         if (this.recyclerView === recyclerView) {
+            unparkFocusAfterDataSetCommit(recyclerView)
             this.recyclerView = null
         }
     }
 
     fun onItemsCommitted() {
-        applyPendingAfterItemsAvailable()
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.onItemsCommitted before ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
+        dataSetChangePendingCommit = false
+        if (pendingDataSetFocus != null) {
+            applyPendingScrollToTop()
+            scheduleDataSetFocusAfterCommit()
+        } else {
+            unparkFocusAfterDataSetCommit()
+            applyPendingAfterItemsAvailable()
+        }
         applyPendingDownSearch()
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.onItemsCommitted after ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
     }
 
     fun setOnFocusTargetAvailabilityChanged(callback: (() -> Unit)?) {
@@ -66,7 +99,12 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun onRecyclerFocusChanged(hasFocus: Boolean) {
-        if (hasFocus && !isRecyclerFocusRestoreSuppressed()) {
+        if (
+            hasFocus &&
+            pendingBackReturnRestore == null &&
+            !dataSetChangePendingCommit &&
+            !isRecyclerFocusRestoreSuppressed()
+        ) {
             restoreChildFocusIfRecyclerOwnsFocus()
         }
     }
@@ -87,6 +125,11 @@ internal class HomeRecommendGridFocusState {
             clearPendingDirectionalScrollFocus()
         }
         val parked = recycler.requestFocusParking()
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.parkFocusForDirectionalScroll targetPosition=$targetPosition " +
+                "calledRequestFocus=true requestFocusSuccess=$parked ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recycler)
+        }
         return parked
     }
 
@@ -102,7 +145,16 @@ internal class HomeRecommendGridFocusState {
         val currentFocused = recycler.rootView?.findFocus()
         val focusInsideRecycler = currentFocused === recycler ||
             currentFocused?.isSameOrDescendantOf(recycler) == true
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.prepareForDataSetChange begin nextItemCount=${nextItems.size} " +
+                "focusInsideRecycler=$focusInsideRecycler ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recycler)
+        }
         if (!focusInsideRecycler) {
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.prepareForDataSetChange skipped reason=focusOutside " +
+                    "calledRequestFocus=false ${debugSnapshot()}"
+            }
             return false
         }
 
@@ -126,19 +178,12 @@ internal class HomeRecommendGridFocusState {
                 position = if (targetPosition != RecyclerView.NO_POSITION) targetPosition else 0,
                 preferPosition = true,
             )
-            return parkFocusForPendingDataSetFocus(recycler, currentFocused)
-        }
-
-        if (
-            HomeGridDataSetFocusPolicy.shouldKeepFocusedChild(
-                focusIsRecyclerContainer = currentFocused === recycler,
-                focusedKey = focusedKey,
-                nextPositionForKey = nextPositionForKey,
-            )
-        ) {
-            rememberFocusedPosition(focusedKey, nextPositionForKey ?: RecyclerView.NO_POSITION, recycler)
-            pendingDataSetFocus = null
-            return false
+            val parked = parkFocusForPendingDataSetFocus(recycler, currentFocused)
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.prepareForDataSetChange forceFirst parked=$parked " +
+                    "${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+            }
+            return parked
         }
 
         val pendingDirectionalPosition = pendingDirectionalScrollFocusPositionForItemCount(nextItems.size)
@@ -160,22 +205,35 @@ internal class HomeRecommendGridFocusState {
                 ),
             )
         }
+        dataSetChangePendingCommit = true
 
         if (currentFocused === recycler) {
-            if (!isRecyclerFocusRestoreSuppressed()) {
-                schedulePendingFocusAfterLayout()
+            val parked = parkFocusUntilDataSetCommit(recycler)
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.prepareForDataSetChange recyclerAlreadyParked=$parked " +
+                    "${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
             }
-            return true
+            return parked
         }
 
-        val parked = recycler.parkFocusForDataSetReset()
-        if (parked) {
-            schedulePendingFocusAfterLayout()
+        val parked = parkFocusUntilDataSetCommit(recycler)
+        if (!parked) {
+            dataSetChangePendingCommit = false
+        }
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.prepareForDataSetChange parked=$parked " +
+                "calledRequestFocus=true requestFocusSuccess=$parked focusedKey=$focusedKey " +
+                "focusedPosition=$focusedPosition nextPositionForKey=$nextPositionForKey " +
+                "${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
         }
         return parked
     }
 
     fun onItemFocused(key: String, position: Int) {
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.onItemFocused before adapterPosition=$position itemKey=$key " +
+                debugSnapshot()
+        }
         suppressRecyclerFocusRestoreUntilUptimeMs = 0L
         clearVisualFocusAnchor()
         clearPendingDirectionalScrollFocus()
@@ -185,7 +243,21 @@ internal class HomeRecommendGridFocusState {
         }
         rememberFocusedPosition(key, position)
 
-        val pending = pendingDataSetFocus ?: return
+        val pending = pendingDataSetFocus
+        if (pending == null) {
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.onItemFocused after adapterPosition=$position itemKey=$key " +
+                    debugSnapshot()
+            }
+            return
+        }
+        if (dataSetChangePendingCommit) {
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.onItemFocused keepPendingUntilCommit=true " +
+                    "adapterPosition=$position itemKey=$key ${debugSnapshot()}"
+            }
+            return
+        }
         when {
             pending.matches(key = key, position = position) -> {
                 if (!forceFirstItemFocusOnNextDataSetChange) {
@@ -198,6 +270,10 @@ internal class HomeRecommendGridFocusState {
             else -> {
                 schedulePendingFocusAfterLayout()
             }
+        }
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.onItemFocused after adapterPosition=$position itemKey=$key " +
+                debugSnapshot()
         }
     }
 
@@ -471,6 +547,7 @@ internal class HomeRecommendGridFocusState {
     private fun restoreChildFocusIfRecyclerOwnsFocus(): Boolean {
         val recycler = currentRecyclerView() ?: return false
         if (recycler.rootView?.findFocus() !== recycler) return false
+        if (pendingBackReturnRestore != null) return false
         if (pendingDataSetFocus == null) {
             val adapter = recycler.adapter as? HomeVideoCardAdapter ?: return false
             if (adapter.itemCount <= 0) return false
@@ -504,7 +581,12 @@ internal class HomeRecommendGridFocusState {
             preferFallbackPosition = pending.preferPosition,
         )
         if (targetPosition == RecyclerView.NO_POSITION) return false
-        return tryFocusPosition(
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.applyPendingDataSetFocus targetPosition=$targetPosition " +
+                "targetKey=${adapter.keyAt(targetPosition)} ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recycler)
+        }
+        val focused = tryFocusPosition(
             recycler = recycler,
             position = targetPosition,
             expectedKey = adapter.keyAt(targetPosition),
@@ -516,6 +598,11 @@ internal class HomeRecommendGridFocusState {
             retryCount = PendingFocusRetryCount,
             requireRecyclerFocusOwnership = true,
         )
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.applyPendingDataSetFocus calledRequestFocus=true " +
+                "requestFocusSuccess=$focused targetPosition=$targetPosition ${debugSnapshot()}"
+        }
+        return focused
     }
 
     private fun parkFocusForPendingDataSetFocus(
@@ -523,18 +610,68 @@ internal class HomeRecommendGridFocusState {
         currentFocused: View?,
     ): Boolean {
         if (pendingDataSetFocus == null) return false
+        dataSetChangePendingCommit = true
         if (currentFocused === recycler) {
-            if (!isRecyclerFocusRestoreSuppressed()) {
-                schedulePendingFocusAfterLayout()
-            }
-            return true
+            return parkFocusUntilDataSetCommit(recycler)
         }
 
-        val parked = recycler.parkFocusForDataSetReset()
-        if (parked) {
-            schedulePendingFocusAfterLayout()
+        val parked = parkFocusUntilDataSetCommit(recycler)
+        if (!parked) {
+            dataSetChangePendingCommit = false
         }
         return parked
+    }
+
+    private fun parkFocusUntilDataSetCommit(recycler: RecyclerView): Boolean {
+        installDataSetFocusProtection(recycler)
+        if (dataSetParkedDescendantFocusability == null) {
+            dataSetParkedDescendantFocusability = recycler.descendantFocusability
+        }
+        recycler.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        if (!recycler.isFocusable) {
+            recycler.isFocusable = true
+        }
+        val parked = recycler.requestFocus()
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.parkFocusUntilDataSetCommit calledRequestFocus=true " +
+                "requestFocusSuccess=$parked ${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+        }
+        if (!parked) {
+            unparkFocusAfterDataSetCommit(recycler)
+        }
+        return parked
+    }
+
+    private fun installDataSetFocusProtection(recycler: RecyclerView) {
+        recycler.installChildFocusParkingOnDetach().protectFocusDuringNextLayout()
+    }
+
+    private fun unparkFocusAfterDataSetCommit(recycler: RecyclerView? = recyclerView) {
+        val currentRecycler = recycler ?: return
+        val originalDescendantFocusability = dataSetParkedDescendantFocusability ?: return
+        currentRecycler.descendantFocusability = originalDescendantFocusability
+        dataSetParkedDescendantFocusability = null
+    }
+
+    private fun scheduleDataSetFocusAfterCommit() {
+        val recycler = currentRecyclerView() ?: return
+        if (pendingDataSetFocus == null) {
+            unparkFocusAfterDataSetCommit(recycler)
+            return
+        }
+        val requestToken = nextFocusRequestToken()
+        lastFocusAttemptPending = true
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.scheduleDataSetFocusAfterCommit requestToken=$requestToken " +
+                debugSnapshot()
+        }
+        recycler.postOnAnimation {
+            if (recyclerView !== recycler || !isFocusRequestTokenCurrent(requestToken)) {
+                return@postOnAnimation
+            }
+            unparkFocusAfterDataSetCommit(recycler)
+            applyPendingDataSetFocus()
+        }
     }
 
     private fun schedulePendingFocusAfterLayout() {
@@ -542,6 +679,10 @@ internal class HomeRecommendGridFocusState {
         if (pendingDataSetFocus == null) return
         val requestToken = nextFocusRequestToken()
         lastFocusAttemptPending = true
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.schedulePendingFocusAfterLayout requestToken=$requestToken " +
+                debugSnapshot()
+        }
         recycler.postOnAnimation {
             if (recyclerView === recycler && isFocusRequestTokenCurrent(requestToken)) {
                 applyPendingDataSetFocus()
@@ -572,7 +713,7 @@ internal class HomeRecommendGridFocusState {
         val focusedFallback = focusedPosition != null &&
             focusedPosition == pending.fallbackPosition
         val parkedFallback = currentFocused === recycler &&
-            pending.fallbackPosition == RecyclerView.NO_POSITION
+            pending.acceptRecyclerParkingAsFallback
         if (focusedFallback || parkedFallback) {
             pendingBackReturnRestore = null
             clearVisualFocusAnchor()
@@ -592,18 +733,19 @@ internal class HomeRecommendGridFocusState {
             return HomeBackReturnRestoreResult.ExactFocused
         }
 
+        pendingBackReturnRestore = PendingBackReturnRestore(
+            key = key,
+            exactPosition = exactPosition,
+            fallbackPosition = RecyclerView.NO_POSITION,
+            requestToken = requestToken,
+            acceptRecyclerParkingAsFallback = false,
+        )
         setVisualFocusAnchor(exactPosition)
         if (!isPositionVisible(recycler, exactPosition) && canPerformPhysicalScroll()) {
             logHomeFocus { "requestBackReturnExactFocus: scrollToPosition pos=$exactPosition" }
             recycler.scrollToPosition(exactPosition)
         }
         parkBackReturnFocusIfOutsideRecycler(recycler)
-        pendingBackReturnRestore = PendingBackReturnRestore(
-            key = key,
-            exactPosition = exactPosition,
-            fallbackPosition = RecyclerView.NO_POSITION,
-            requestToken = requestToken,
-        )
         lastFocusAttemptPending = true
         scheduleBackReturnExactRetry(
             key = key,
@@ -679,6 +821,7 @@ internal class HomeRecommendGridFocusState {
             exactPosition = exactPosition,
             fallbackPosition = fallbackPosition,
             requestToken = requestToken,
+            acceptRecyclerParkingAsFallback = false,
         )
         if (focusAdapterPosition(recycler, fallbackPosition, adapter.keyAt(fallbackPosition))) {
             return HomeBackReturnRestoreResult.FallbackFocused
@@ -765,6 +908,7 @@ internal class HomeRecommendGridFocusState {
             exactPosition = exactPosition,
             fallbackPosition = RecyclerView.NO_POSITION,
             requestToken = requestToken,
+            acceptRecyclerParkingAsFallback = true,
         )
         return if (recycler.requestFocusParking()) {
             clearVisualFocusAnchor()
@@ -856,11 +1000,26 @@ internal class HomeRecommendGridFocusState {
 
         val holder = recycler.findViewHolderForAdapterPosition(position)
         val itemView = holder?.itemView
-        if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
-            clearVisualFocusAnchor()
-            if (expectedKey != null) onItemFocused(expectedKey, position)
-            onFocused?.invoke()
-            return true
+        if (itemView != null && itemView.isValidFocusTarget()) {
+            val focused = itemView.requestFocus()
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.tryFocusPosition attached calledRequestFocus=true " +
+                    "requestFocusSuccess=$focused requestToken=$requestToken adapterPosition=$position " +
+                    "itemKey=$expectedKey attemptsLeft=$retryCount requireRecyclerFocusOwnership=" +
+                    "$requireRecyclerFocusOwnership ${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+            }
+            if (focused) {
+                clearVisualFocusAnchor()
+                if (expectedKey != null) onItemFocused(expectedKey, position)
+                onFocused?.invoke()
+                return true
+            }
+        } else {
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.tryFocusPosition unattached calledRequestFocus=false " +
+                    "requestToken=$requestToken adapterPosition=$position itemKey=$expectedKey " +
+                    "attemptsLeft=$retryCount ${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+            }
         }
 
         setVisualFocusAnchor(position)
@@ -1092,6 +1251,10 @@ internal class HomeRecommendGridFocusState {
         setVisualFocusAnchor(targetPosition)
         
         val recycler = currentRecyclerView() ?: return
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.schedulePendingDownSearch targetPosition=$targetPosition " +
+                debugSnapshot() + " " + GridFocusDebugLog.recycler(recycler)
+        }
         if (targetPosition != RecyclerView.NO_POSITION && targetPosition < (recycler.adapter?.itemCount ?: 0)) {
             logHomeFocus { "schedulePendingDownSearch: pos=$targetPosition, posting scroll." }
             recycler.scrollToPosition(targetPosition)
@@ -1122,11 +1285,20 @@ internal class HomeRecommendGridFocusState {
 
         val holder = recycler.findViewHolderForAdapterPosition(targetPos)
         val itemView = holder?.itemView
-        if (itemView != null && itemView.isValidFocusTarget() && itemView.requestFocus()) {
-            logHomeFocus { "applyPendingDownSearch SUCCESS: focused pos=$targetPos" }
-            onItemFocused(adapter.keyAt(targetPos) ?: "", targetPos)
-            clearPendingDownSearch()
-            return true
+        if (itemView != null && itemView.isValidFocusTarget()) {
+            val focused = itemView.requestFocus()
+            GridFocusDebugLog.d {
+                "HomeRecommendGridFocusState.applyPendingDownSearch calledRequestFocus=true " +
+                    "requestFocusSuccess=$focused adapterPosition=$targetPos " +
+                    "itemKey=${adapter.keyAt(targetPos)} ${debugSnapshot()} " +
+                    GridFocusDebugLog.recycler(recycler)
+            }
+            if (focused) {
+                logHomeFocus { "applyPendingDownSearch SUCCESS: focused pos=$targetPos" }
+                onItemFocused(adapter.keyAt(targetPos) ?: "", targetPos)
+                clearPendingDownSearch()
+                return true
+            }
         }
 
         if (SystemClock.uptimeMillis() <= pendingDownSearchUntilUptimeMs) {
@@ -1136,11 +1308,29 @@ internal class HomeRecommendGridFocusState {
     }
 
     fun clearPendingDownSearch() {
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.clearPendingDownSearch before ${debugSnapshot()}"
+        }
         pendingDownSearchPosition = RecyclerView.NO_POSITION
         pendingDownSearchUntilUptimeMs = 0L
         if (pendingDirectionalScrollFocusPosition == RecyclerView.NO_POSITION) {
             clearVisualFocusAnchor()
         }
+        GridFocusDebugLog.d {
+            "HomeRecommendGridFocusState.clearPendingDownSearch after ${debugSnapshot()}"
+        }
+    }
+
+    internal fun debugSnapshot(): String {
+        val pendingDataSet = pendingDataSetFocus
+        val pendingBackReturn = pendingBackReturnRestore
+        return "lastKnownFocusedPosition=$lastFocusedPosition lastFocusedKey=$lastFocusedKey " +
+            "pendingFocusKey=${pendingDataSet?.key ?: pendingBackReturn?.key} " +
+            "pendingFocusPosition=${pendingDataSet?.position ?: pendingBackReturn?.exactPosition ?: RecyclerView.NO_POSITION} " +
+            "acceptRecyclerParkingAsFallback=${pendingBackReturn?.acceptRecyclerParkingAsFallback ?: false} " +
+            "pendingDirectionalPosition=$pendingDirectionalScrollFocusPosition " +
+            "pendingDownPosition=$pendingDownSearchPosition requestToken=$focusRequestToken " +
+            "dataSetChangePendingCommit=$dataSetChangePendingCommit"
     }
 
     private companion object {
@@ -1181,4 +1371,5 @@ private data class PendingBackReturnRestore(
     val exactPosition: Int,
     val fallbackPosition: Int,
     val requestToken: Int,
+    val acceptRecyclerParkingAsFallback: Boolean,
 )

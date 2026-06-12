@@ -13,6 +13,7 @@ internal fun HomeEmptyFocusTarget(
     tab: AppTopLevelTab,
     focusCoordinator: HomeFocusCoordinator?,
     isActive: Boolean,
+    region: HomeFocusRegion = HomeFocusRegion.Grid,
     modifier: Modifier = Modifier,
     onDpadUp: () -> Boolean = {
         focusCoordinator?.handleGridTopEdge(tab) == true
@@ -21,11 +22,11 @@ internal fun HomeEmptyFocusTarget(
 ) {
     val anchorState = rememberTvFocusAnchorState()
 
-    DisposableEffect(tab, focusCoordinator, isActive, anchorState) {
+    DisposableEffect(tab, focusCoordinator, isActive, region, anchorState) {
         val registration = if (isActive && focusCoordinator != null) {
             focusCoordinator.registerContentTarget(
                 tab = tab,
-                region = HomeFocusRegion.Grid,
+                region = region,
                 target = object : HomeFocusTarget {
                     override fun tryRequestFocus(): Boolean {
                         return anchorState.requestFocus()

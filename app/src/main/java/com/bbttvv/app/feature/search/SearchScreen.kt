@@ -610,6 +610,7 @@ private fun CapsuleSearchBar(
         focusedScale = 1.05f,
         horizontalPadding = 24.dp,
         verticalPadding = 12.dp,
+        moveCursorToEndOnEdit = true,
         modifier = modifier
     ) { contentColorVal ->
         Icon(

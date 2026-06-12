@@ -160,6 +160,40 @@ class HomeFocusCoordinatorTest {
     }
 
     @Test
+    fun `restore video key does not reenter drain while focus callback is running`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
+        var restoreRequests = 0
+        val gridTarget = object : HomeFocusTarget {
+            override fun tryRequestFocus(): Boolean = false
+
+            override fun requestBackReturnFocusKeyResult(key: String): HomeBackReturnRestoreResult {
+                restoreRequests++
+                if (restoreRequests == 1) {
+                    coordinator.onContentRegionFocused(
+                        AppTopLevelTab.RECOMMEND,
+                        HomeFocusRegion.Grid,
+                    )
+                    coordinator.drainPendingFocus()
+                }
+                return HomeBackReturnRestoreResult.ExactFocused
+            }
+        }
+
+        coordinator.registerContentTarget(
+            tab = AppTopLevelTab.RECOMMEND,
+            region = HomeFocusRegion.Grid,
+            target = gridTarget,
+        )
+        coordinator.requestRestoreVideoKey(
+            tab = AppTopLevelTab.RECOMMEND,
+            key = "BV1:reentrant",
+            onRestored = {},
+        )
+
+        assertEquals(1, restoreRequests)
+    }
+
+    @Test
     fun `back return pending restore enters content mode without showing top bar`() {
         val coordinator = HomeFocusCoordinator(AppTopLevelTab.RECOMMEND)
         val topBarTarget = FakeFocusTarget(canFocus = true)

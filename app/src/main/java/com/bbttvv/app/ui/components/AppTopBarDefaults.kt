@@ -6,7 +6,7 @@ object AppTopBarDefaults {
     val HeaderContentHorizontalPadding = 32.dp
     val HeaderContentTopPadding = 8.dp
     val HeaderContentBottomPadding = 48.dp
-    val HomeVideoGridBottomPadding = 0.dp
+    val HomeVideoGridBottomPadding = 96.dp
     val TopPadding = 24.dp
     val BottomPadding = 14.dp
     val ContainerHorizontalPadding = 8.dp

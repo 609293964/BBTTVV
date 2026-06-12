@@ -1,14 +1,15 @@
 # Gradle / Android build output
 .gradle/
 .kotlin/
-build/
-**/build/
+/build/
+/*/build/
 captures/
 *.apk
 *.ap_
 *.aab
 *.aar
 *.jar
+!/gradle/wrapper/gradle-wrapper.jar
 *.class
 
 # Local Android SDK and IDE state (Android Studio & IntelliJ)
@@ -73,11 +74,7 @@ ehthumbs.db
 *~
 
 # Development plans, tasks, walkthroughs and test reports
-*plan*.md
-*report*.md
-*plan*.txt
-*report*.txt
-*plan*.json
-*report*.json
-task*.md
-walkthrough*.md
+/.codex/
+/.local/
+/plans/
+/reports/

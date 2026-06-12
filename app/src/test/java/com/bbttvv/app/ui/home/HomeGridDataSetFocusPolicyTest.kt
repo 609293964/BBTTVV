@@ -2,33 +2,9 @@ package com.bbttvv.app.ui.home
 
 import androidx.recyclerview.widget.RecyclerView
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeGridDataSetFocusPolicyTest {
-    @Test
-    fun `focused child is kept when its key survives the next list`() {
-        assertTrue(
-            HomeGridDataSetFocusPolicy.shouldKeepFocusedChild(
-                focusIsRecyclerContainer = false,
-                focusedKey = "bvid:1",
-                nextPositionForKey = 8,
-            )
-        )
-    }
-
-    @Test
-    fun `container focus must be restored to a child even when the key survives`() {
-        assertFalse(
-            HomeGridDataSetFocusPolicy.shouldKeepFocusedChild(
-                focusIsRecyclerContainer = true,
-                focusedKey = "bvid:1",
-                nextPositionForKey = 8,
-            )
-        )
-    }
-
     @Test
     fun `pending restore prefers surviving stable key position`() {
         assertEquals(

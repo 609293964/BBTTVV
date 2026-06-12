@@ -1,6 +1,7 @@
 package com.bbttvv.app.feature.profile
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,8 +27,10 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvConfirmDialog
 import com.bbttvv.app.ui.components.TvDialogActionButton
+import com.bbttvv.app.ui.home.HomeEmptyFocusTarget
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRegion
+import com.bbttvv.app.ui.home.LocalHomeTabActive
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 
 @Composable
@@ -171,6 +174,7 @@ internal fun ProfileVideoGrid(
     onRequestSidebarFocus: () -> Boolean = { false }
 ) {
     val gridFocusState = remember { com.bbttvv.app.ui.home.HomeRecommendGridFocusState() }
+    val isHomeTabActive = LocalHomeTabActive.current
     LaunchedEffect(resetToTop, scrollResetKey) {
         if (resetToTop && scrollResetKey != null) {
             gridFocusState.resetRememberedFocusToTop()
@@ -180,15 +184,39 @@ internal fun ProfileVideoGrid(
     Column(modifier = modifier.fillMaxSize().clipToBounds()) {
         when {
             isLoading && items.isEmpty() -> {
-                Text("正在加载内容...", color = Color(0xD9FFFFFF))
+                ProfileVideoGridStatus(
+                    text = "正在加载内容...",
+                    color = Color(0xD9FFFFFF),
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
+                    focusRegion = focusRegion,
+                    isHomeTabActive = isHomeTabActive,
+                    onDpadUp = onBackToTopBar ?: onRequestSidebarFocus,
+                )
             }
 
             !errorMessage.isNullOrBlank() && items.isEmpty() -> {
-                Text(errorMessage, color = Color(0xFFFFC4CF))
+                ProfileVideoGridStatus(
+                    text = errorMessage,
+                    color = Color(0xFFFFC4CF),
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
+                    focusRegion = focusRegion,
+                    isHomeTabActive = isHomeTabActive,
+                    onDpadUp = onBackToTopBar ?: onRequestSidebarFocus,
+                )
             }
 
             items.isEmpty() -> {
-                Text(emptyText, color = Color(0xD9FFFFFF))
+                ProfileVideoGridStatus(
+                    text = emptyText,
+                    color = Color(0xD9FFFFFF),
+                    focusCoordinator = focusCoordinator,
+                    focusTab = focusTab,
+                    focusRegion = focusRegion,
+                    isHomeTabActive = isHomeTabActive,
+                    onDpadUp = onBackToTopBar ?: onRequestSidebarFocus,
+                )
             }
 
             else -> {
@@ -232,6 +260,41 @@ internal fun ProfileVideoGrid(
                     Text(errorMessage, color = Color(0xFFFFC4CF))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ProfileVideoGridStatus(
+    text: String,
+    color: Color,
+    focusCoordinator: HomeFocusCoordinator?,
+    focusTab: AppTopLevelTab?,
+    focusRegion: HomeFocusRegion,
+    isHomeTabActive: Boolean,
+    onDpadUp: () -> Boolean,
+) {
+    if (focusCoordinator != null && focusTab != null) {
+        HomeEmptyFocusTarget(
+            tab = focusTab,
+            focusCoordinator = focusCoordinator,
+            isActive = isHomeTabActive,
+            region = focusRegion,
+            modifier = Modifier.fillMaxSize(),
+            onDpadUp = onDpadUp,
+        ) {
+            Text(
+                text = text,
+                color = color,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+    } else {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = text, color = color)
         }
     }
 }

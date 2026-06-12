@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +71,7 @@ import com.bbttvv.app.data.repository.DynamicFollowUpdateUpItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.components.AppTopBarDefaults
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 private val LiveCardShape = RoundedCornerShape(8.dp)
@@ -95,6 +97,7 @@ internal fun DynamicScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isHomeTabActive = LocalHomeTabActive.current
     val context = LocalContext.current
+    val hostView = LocalView.current
     val displayMode by SettingsManager.getDynamicPageDisplayMode(context)
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
@@ -158,11 +161,25 @@ internal fun DynamicScreen(
     }
 
     if (!hasAnyContent && isLoadingVisibleRows) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text = "加载动态、直播与关注...", color = MaterialTheme.colorScheme.onBackground)
+        HomeEmptyFocusTarget(
+            tab = AppTopLevelTab.DYNAMIC,
+            focusCoordinator = focusCoordinator,
+            isActive = isHomeTabActive,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Text(
+                text = "加载动态、直播与关注...",
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
     } else if (!hasAnyContent && emptyStateMessage != null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        HomeEmptyFocusTarget(
+            tab = AppTopLevelTab.DYNAMIC,
+            focusCoordinator = focusCoordinator,
+            isActive = isHomeTabActive,
+            modifier = Modifier.fillMaxSize(),
+        ) {
             Text(
                 text = emptyStateMessage,
                 color = resolveDynamicStateTextColor(
@@ -170,7 +187,9 @@ internal fun DynamicScreen(
                     liveErrorMsg = uiState.liveErrorMsg
                 ),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 48.dp)
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 48.dp)
             )
         }
     } else {
@@ -210,7 +229,14 @@ internal fun DynamicScreen(
             }
             val targetIndex = (preferredIndex ?: lastFocusedLiveUserIndex)
                 .coerceIn(0, liveUserFocusRequesters.lastIndex)
+            GridFocusDebugLog.d {
+                "DynamicScreen.requestLiveUserFocus before preferredIndex=$preferredIndex " +
+                    "targetIndex=$targetIndex lastFocusedIndex=$lastFocusedLiveUserIndex " +
+                    "itemCount=${liveUserFocusRequesters.size} " +
+                    GridFocusDebugLog.view(hostView.rootView.findFocus())
+            }
             return runCatching {
+                var requestAttempts = 1
                 var focused = liveUserFocusRequesters[targetIndex].requestFocus()
                 var finalIndex = targetIndex
                 if (!focused) {
@@ -218,6 +244,7 @@ internal fun DynamicScreen(
                     for (delta in 1..maxDelta) {
                         val left = targetIndex - delta
                         if (left in liveUserFocusRequesters.indices) {
+                            requestAttempts += 1
                             focused = liveUserFocusRequesters[left].requestFocus()
                             if (focused) {
                                 finalIndex = left
@@ -226,6 +253,7 @@ internal fun DynamicScreen(
                         }
                         val right = targetIndex + delta
                         if (right in liveUserFocusRequesters.indices) {
+                            requestAttempts += 1
                             focused = liveUserFocusRequesters[right].requestFocus()
                             if (focused) {
                                 finalIndex = right
@@ -236,14 +264,21 @@ internal fun DynamicScreen(
                 }
                 if (focused) {
                     lastFocusedLiveUserIndex = finalIndex
-                    onContentRowFocused(0)
-                    focusCoordinator.onContentRegionFocused(
-                        AppTopLevelTab.DYNAMIC,
-                        HomeFocusRegion.DynamicLiveUsers
-                    )
+                }
+                GridFocusDebugLog.d {
+                    "DynamicScreen.requestLiveUserFocus after requestFocusSuccess=$focused " +
+                        "requestAttempts=$requestAttempts finalIndex=$finalIndex " +
+                        GridFocusDebugLog.view(hostView.rootView.findFocus())
                 }
                 focused
-            }.getOrDefault(false)
+            }.getOrElse { error ->
+                GridFocusDebugLog.d {
+                    "DynamicScreen.requestLiveUserFocus failed targetIndex=$targetIndex " +
+                        "error=${error.javaClass.simpleName} " +
+                        GridFocusDebugLog.view(hostView.rootView.findFocus())
+                }
+                false
+            }
         }
 
         val requestLiveUserFocus = remember(
@@ -267,7 +302,14 @@ internal fun DynamicScreen(
             }
             val targetIndex = (preferredIndex ?: lastFocusedFollowUpdateIndex)
                 .coerceIn(0, followUpdateFocusRequesters.lastIndex)
+            GridFocusDebugLog.d {
+                "DynamicScreen.requestFollowUpdateFocus before preferredIndex=$preferredIndex " +
+                    "targetIndex=$targetIndex lastFocusedIndex=$lastFocusedFollowUpdateIndex " +
+                    "itemCount=${followUpdateFocusRequesters.size} " +
+                    GridFocusDebugLog.view(hostView.rootView.findFocus())
+            }
             return runCatching {
+                var requestAttempts = 1
                 var focused = followUpdateFocusRequesters[targetIndex].requestFocus()
                 var finalIndex = targetIndex
                 if (!focused) {
@@ -275,6 +317,7 @@ internal fun DynamicScreen(
                     for (delta in 1..maxDelta) {
                         val left = targetIndex - delta
                         if (left in followUpdateFocusRequesters.indices) {
+                            requestAttempts += 1
                             focused = followUpdateFocusRequesters[left].requestFocus()
                             if (focused) {
                                 finalIndex = left
@@ -283,6 +326,7 @@ internal fun DynamicScreen(
                         }
                         val right = targetIndex + delta
                         if (right in followUpdateFocusRequesters.indices) {
+                            requestAttempts += 1
                             focused = followUpdateFocusRequesters[right].requestFocus()
                             if (focused) {
                                 finalIndex = right
@@ -293,14 +337,21 @@ internal fun DynamicScreen(
                 }
                 if (focused) {
                     lastFocusedFollowUpdateIndex = finalIndex
-                    onContentRowFocused(0)
-                    focusCoordinator.onContentRegionFocused(
-                        AppTopLevelTab.DYNAMIC,
-                        HomeFocusRegion.DynamicFollowUpdates
-                    )
+                }
+                GridFocusDebugLog.d {
+                    "DynamicScreen.requestFollowUpdateFocus after requestFocusSuccess=$focused " +
+                        "requestAttempts=$requestAttempts finalIndex=$finalIndex " +
+                        GridFocusDebugLog.view(hostView.rootView.findFocus())
                 }
                 focused
-            }.getOrDefault(false)
+            }.getOrElse { error ->
+                GridFocusDebugLog.d {
+                    "DynamicScreen.requestFollowUpdateFocus failed targetIndex=$targetIndex " +
+                        "error=${error.javaClass.simpleName} " +
+                        GridFocusDebugLog.view(hostView.rootView.findFocus())
+                }
+                false
+            }
         }
 
         val requestFollowUpdateFocus = remember(

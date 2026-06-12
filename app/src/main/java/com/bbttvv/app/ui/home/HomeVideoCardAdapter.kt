@@ -23,6 +23,7 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.FormatUtils
 import com.bbttvv.app.databinding.ItemVideoCardBinding
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 
 private val avatarCircleCropTransformation = CircleCropTransformation()
 
@@ -83,6 +84,11 @@ internal class HomeVideoCardAdapter(
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
+        GridFocusDebugLog.d {
+            "HomeVideoCardAdapter.onBindViewHolder adapterPosition=$position " +
+                "itemKey=${getItem(position).key} itemCount=$itemCount " +
+                "holderFocused=${holder.itemView.hasFocus()}"
+        }
         holder.bind(
             item = getItem(position),
             showHistoryProgressOnly = showHistoryProgressOnly,
@@ -100,6 +106,11 @@ internal class HomeVideoCardAdapter(
     }
 
     override fun onViewRecycled(holder: VideoViewHolder) {
+        GridFocusDebugLog.d {
+            "HomeVideoCardAdapter.onViewRecycled adapterPosition=${holder.bindingAdapterPosition} " +
+                "itemKey=${holder.boundKey} holderFocused=${holder.itemView.hasFocus()} " +
+                GridFocusDebugLog.view(holder.itemView.rootView?.findFocus())
+        }
         holder.clearBinding()
         super.onViewRecycled(holder)
     }
@@ -142,7 +153,18 @@ internal class HomeVideoCardAdapter(
         this.showDanmakuCount = showDanmakuCount
         this.fixedItemWidthPx = fixedItemWidthPx
         if (shouldRebind && itemCount > 0) {
+            GridFocusDebugLog.d {
+                "HomeVideoCardAdapter.updateLayoutOptions shouldRebind=true " +
+                    "notifyItemRangeChanged=true itemCount=$itemCount " +
+                    "showHistoryProgressOnly=$showHistoryProgressOnly " +
+                    "showDanmakuCount=$showDanmakuCount fixedItemWidthPx=$fixedItemWidthPx"
+            }
             notifyItemRangeChanged(0, itemCount)
+        } else {
+            GridFocusDebugLog.d {
+                "HomeVideoCardAdapter.updateLayoutOptions shouldRebind=$shouldRebind " +
+                    "notifyItemRangeChanged=false itemCount=$itemCount"
+            }
         }
     }
 
@@ -239,6 +261,11 @@ internal class HomeVideoCardAdapter(
                 applySelectedState(hasFocus || boundIsLogicallySelected)
                 val position = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
                 val item = boundItem
+                GridFocusDebugLog.d {
+                    "HomeVideoCardAdapter.VideoViewHolder.onFocusChanged hasFocus=$hasFocus " +
+                        "adapterPosition=${position ?: RecyclerView.NO_POSITION} itemKey=${item?.key} " +
+                        GridFocusDebugLog.view(binding.root.rootView?.findFocus())
+                }
                 if (hasFocus) {
                     val focusedPosition = position ?: return@setOnFocusChangeListener
                     if (BuildConfig.DEBUG) {

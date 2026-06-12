@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,10 +35,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +71,7 @@ fun TvTextInput(
     minHeight: Dp = if (singleLine) 48.dp else 96.dp,
     horizontalPadding: Dp = 16.dp,
     verticalPadding: Dp = 12.dp,
+    moveCursorToEndOnEdit: Boolean = false,
     leadingContent: (@Composable (Color) -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
@@ -75,6 +79,19 @@ fun TvTextInput(
     val view = LocalView.current
     var focused by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var fieldValueState by remember {
+        mutableStateOf(TextFieldValue(text = value))
+    }
+    val fieldValue = fieldValueState.copy(text = value)
+    var lastTextValue by remember(value) { mutableStateOf(value) }
+
+    SideEffect {
+        if (fieldValue.selection != fieldValueState.selection ||
+            fieldValue.composition != fieldValueState.composition
+        ) {
+            fieldValueState = fieldValue
+        }
+    }
 
     fun leaveEditing() {
         editing = false
@@ -124,8 +141,15 @@ fun TvTextInput(
             )
         }
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            value = fieldValue,
+            onValueChange = { updatedValue ->
+                fieldValueState = updatedValue
+                val textChanged = updatedValue.text != lastTextValue
+                lastTextValue = updatedValue.text
+                if (textChanged) {
+                    onValueChange(updatedValue.text)
+                }
+            },
             singleLine = singleLine,
             minLines = minLines,
             maxLines = maxLines,
@@ -161,6 +185,13 @@ fun TvTextInput(
                         AndroidKeyEvent.KEYCODE_ENTER,
                         AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> {
                             if (!editing) {
+                                if (moveCursorToEndOnEdit) {
+                                    fieldValueState = fieldValueState.copy(
+                                        text = value,
+                                        selection = TextRange(value.length),
+                                        composition = null
+                                    )
+                                }
                                 editing = true
                                 keyboardController?.show()
                                 true

@@ -3,16 +3,6 @@ package com.bbttvv.app.ui.home
 import androidx.recyclerview.widget.RecyclerView
 
 internal object HomeGridDataSetFocusPolicy {
-    fun shouldKeepFocusedChild(
-        focusIsRecyclerContainer: Boolean,
-        focusedKey: String?,
-        nextPositionForKey: Int?,
-    ): Boolean {
-        return !focusIsRecyclerContainer &&
-            focusedKey != null &&
-            nextPositionForKey != null
-    }
-
     fun pendingPosition(
         nextItemCount: Int,
         nextPositionForKey: Int?,

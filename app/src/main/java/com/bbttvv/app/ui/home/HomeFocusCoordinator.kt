@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 
 /**
  * 首页焦点区域枚举
@@ -274,6 +275,7 @@ internal class HomeFocusCoordinator(
     private var pendingIntent: HomeFocusIntent? = HomeFocusIntent.FocusTopBar
     private var pendingRestoreCallback: ((String) -> Unit)? = null
     private var pendingRestoreCancelCallback: (() -> Unit)? = null
+    private var isDrainingPendingFocus: Boolean = false
     private var pendingBackToTopBarReset: Boolean = false
     private var contentTopBarVisible by mutableStateOf(false)
     private var topBarTarget: HomeFocusTarget? = null
@@ -358,6 +360,10 @@ internal class HomeFocusCoordinator(
         tab: AppTopLevelTab,
         region: HomeFocusRegion,
     ) {
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.onContentRegionFocused tab=$tab region=$region " +
+                "selectedHomeTab=$selectedHomeTab pendingIntent=$pendingIntent focusMode=$focusMode"
+        }
         if (tab != selectedHomeTab) return
         lastContentRegionByTab[tab] = region
         enterContentMode(
@@ -560,6 +566,10 @@ internal class HomeFocusCoordinator(
     }
 
     fun enqueueFocusIntent(intent: HomeFocusIntent) {
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.enqueueFocusIntent before intent=$intent " +
+                "pendingIntent=$pendingIntent focusMode=$focusMode"
+        }
         if (intent !is HomeFocusIntent.RestoreVideoKey) {
             pendingRestoreCallback = null
         }
@@ -569,26 +579,50 @@ internal class HomeFocusCoordinator(
 
     fun drainPendingFocus(): Boolean {
         val intent = pendingIntent ?: return false
-        val result = when (intent) {
-            HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
-            is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
-            HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)
-            is HomeFocusIntent.FocusRegion -> tryRequestRegionFocus(
-                tab = intent.tab,
-                region = intent.region,
-                entryHint = intent.entryHint,
-            )
-            is HomeFocusIntent.RestoreVideoKey -> tryRestoreVideoKey(intent)
+        if (isDrainingPendingFocus) {
+            GridFocusDebugLog.d {
+                "HomeFocusCoordinator.drainPendingFocus skipped reentrant=true intent=$intent " +
+                    "focusMode=$focusMode"
+            }
+            return true
+        }
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.drainPendingFocus before intent=$intent " +
+                "selectedHomeTab=$selectedHomeTab focusMode=$focusMode"
+        }
+        isDrainingPendingFocus = true
+        val result = try {
+            when (intent) {
+                HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
+                is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
+                HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)
+                is HomeFocusIntent.FocusRegion -> tryRequestRegionFocus(
+                    tab = intent.tab,
+                    region = intent.region,
+                    entryHint = intent.entryHint,
+                )
+                is HomeFocusIntent.RestoreVideoKey -> tryRestoreVideoKey(intent)
+            }
+        } finally {
+            isDrainingPendingFocus = false
         }
         if (result.isFocused) {
             pendingIntent = null
+        }
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.drainPendingFocus after intent=$intent result=$result " +
+                "pendingIntent=$pendingIntent focusMode=$focusMode"
         }
         return result.isAccepted
     }
 
     fun recoverFocusAfterEscape(): Boolean {
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.recoverFocusAfterEscape before pendingIntent=$pendingIntent " +
+                "focusMode=$focusMode selectedHomeTab=$selectedHomeTab"
+        }
         if (drainPendingFocus()) return true
-        return when (focusMode) {
+        val recovered = when (focusMode) {
             is HomeFocusMode.Content -> {
                 val contentResult = tryRequestSelectedContentFocus(selectedHomeTab)
                 if (contentResult.isAccepted) {
@@ -608,6 +642,11 @@ internal class HomeFocusCoordinator(
                 }
             }
         }
+        GridFocusDebugLog.d {
+            "HomeFocusCoordinator.recoverFocusAfterEscape after recovered=$recovered " +
+                "pendingIntent=$pendingIntent focusMode=$focusMode selectedHomeTab=$selectedHomeTab"
+        }
+        return recovered
     }
 
     fun clearSelectedContentVisualState(): Boolean {

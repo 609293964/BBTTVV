@@ -21,6 +21,7 @@ import com.bbttvv.app.app.BbtvApplication
 import com.bbttvv.app.navigation.AppNavigation
 import com.bbttvv.app.ui.focus.LocalTvFocusEscapeGuard
 import com.bbttvv.app.ui.focus.LocalTvFocusReturn
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.focus.TvFocusEscapeGuard
 import com.bbttvv.app.ui.focus.TvFocusReturn
 import com.bbttvv.app.ui.theme.AppTheme
@@ -67,9 +68,23 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (tvFocusEscapeGuard.handleKeyEvent(event, currentFocus)) {
+        GridFocusDebugLog.d {
+            "MainActivity.dispatchKeyEvent before ${GridFocusDebugLog.event(event)} " +
+                GridFocusDebugLog.view(currentFocus)
+        }
+        val recovered = tvFocusEscapeGuard.handleKeyEvent(event, currentFocus)
+        GridFocusDebugLog.d {
+            "MainActivity.dispatchKeyEvent guardResult=$recovered ${GridFocusDebugLog.event(event)} " +
+                GridFocusDebugLog.view(currentFocus)
+        }
+        if (recovered) {
             return true
         }
-        return super.dispatchKeyEvent(event)
+        val handled = super.dispatchKeyEvent(event)
+        GridFocusDebugLog.d {
+            "MainActivity.dispatchKeyEvent superResult=$handled ${GridFocusDebugLog.event(event)} " +
+                GridFocusDebugLog.view(currentFocus)
+        }
+        return handled
     }
 }

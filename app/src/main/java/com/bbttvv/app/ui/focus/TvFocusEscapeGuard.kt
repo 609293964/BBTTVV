@@ -69,11 +69,24 @@ internal class TvFocusEscapeGuard {
         event: KeyEvent,
         focusedView: View?,
     ): Boolean {
-        val entry = selectTarget(focusedView) ?: return false
+        GridFocusDebugLog.d {
+            "TvFocusEscapeGuard.handleKeyEvent entry ${GridFocusDebugLog.event(event)} " +
+                "${GridFocusDebugLog.view(focusedView)} lastTarget=$lastFocusedTargetKey targets=${targets.keys}"
+        }
+        val entry = selectTarget(focusedView)
+        if (entry == null) {
+            GridFocusDebugLog.d {
+                "TvFocusEscapeGuard.handleKeyEvent noTarget ${GridFocusDebugLog.event(event)}"
+            }
+            return false
+        }
         val target = entry.target
         val hasExpectedFocus = focusedView?.let(target::acceptsFocus) == true
         if (hasExpectedFocus) {
             rememberTarget(entry)
+            GridFocusDebugLog.d {
+                "TvFocusEscapeGuard.handleKeyEvent expectedFocus target=${entry.key} recovered=false"
+            }
             return false
         }
 
@@ -86,7 +99,13 @@ internal class TvFocusEscapeGuard {
             focusNeedsRecovery = focusedView == null || escapedFocus,
             hasRecoveryTarget = true,
         )
-        if (!shouldRecover) return false
+        if (!shouldRecover) {
+            GridFocusDebugLog.d {
+                "TvFocusEscapeGuard.handleKeyEvent skipRecovery target=${entry.key} " +
+                    "escaped=$escapedFocus ${GridFocusDebugLog.event(event)}"
+            }
+            return false
+        }
 
         val reason = if (focusedView == null) {
             TvFocusEscapeReason.MissingFocus
@@ -95,6 +114,10 @@ internal class TvFocusEscapeGuard {
         }
         val recovered = target.recoverFocus(reason)
         rememberTarget(entry)
+        GridFocusDebugLog.d {
+            "TvFocusEscapeGuard.recoverFocus target=${entry.key} reason=$reason recovered=$recovered " +
+                "${GridFocusDebugLog.event(event)} ${GridFocusDebugLog.view(focusedView)}"
+        }
         return recovered || reason == TvFocusEscapeReason.MissingFocus
     }
 

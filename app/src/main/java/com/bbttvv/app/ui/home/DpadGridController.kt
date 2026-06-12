@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.BuildConfig
+import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 
 internal class DpadGridController(
@@ -103,9 +104,17 @@ internal class DpadGridController(
     }
 
     fun onItemFocused(position: Int): Boolean {
+        GridFocusDebugLog.d {
+            "DpadGridController.onItemFocused before adapterPosition=$position ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
         if (position == RecyclerView.NO_POSITION) return false
         if (shouldIgnoreDirectionalScrollFallbackFocus(position)) {
             recyclerView?.let(::parkFocusInRecyclerViewForScroll)
+            GridFocusDebugLog.d {
+                "DpadGridController.onItemFocused ignoredDirectionalFallback adapterPosition=$position " +
+                    debugSnapshot()
+            }
             return false
         }
 
@@ -122,18 +131,40 @@ internal class DpadGridController(
         clearDirectionalScrollParking()
         lastKnownFocusedPosition = position
         lastKnownFocusedColumn = spanCountOrNull()?.let { position % it } ?: RecyclerView.NO_POSITION
+        detachFocusRestoreToken++
         clearPendingLoadMoreFocus()
         centerLongPressHandled = false
+        GridFocusDebugLog.d {
+            "DpadGridController.onItemFocused after accepted=true adapterPosition=$position " +
+                debugSnapshot() + " " + GridFocusDebugLog.recycler(recyclerView)
+        }
         return true
     }
 
     fun onItemsCommitted(): Boolean {
-        return applyPendingLoadMoreFocus()
+        GridFocusDebugLog.d {
+            "DpadGridController.onItemsCommitted before ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
+        val focused = applyPendingLoadMoreFocus()
+        GridFocusDebugLog.d {
+            "DpadGridController.onItemsCommitted after requestFocusSuccess=$focused ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
+        return focused
     }
 
     fun cancelAllPendingRequests() {
+        GridFocusDebugLog.d {
+            "DpadGridController.cancelAllPendingRequests before cancelAllPendingRequests=true " +
+                debugSnapshot()
+        }
         focusRequestToken++
         clearPendingLoadMoreFocus()
+        GridFocusDebugLog.d {
+            "DpadGridController.cancelAllPendingRequests after cancelAllPendingRequests=true " +
+                debugSnapshot()
+        }
     }
 
     fun hasPendingLoadMoreFocus(): Boolean {
@@ -146,16 +177,27 @@ internal class DpadGridController(
         keyCode: Int,
         event: KeyEvent,
     ): Boolean {
+        GridFocusDebugLog.d {
+            "DpadGridController.handleItemKeyEvent before ${GridFocusDebugLog.event(event)} " +
+                "candidatePosition=$position ${debugSnapshot()} ${GridFocusDebugLog.view(itemView)} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
         if (!callbacks.isEnabled()) return false
         if (handleCenterLongPress(itemView, keyCode, event)) return true
         if (event.action != KeyEvent.ACTION_DOWN) return false
         if (shouldConsumeLoadMorePendingKey(keyCode)) return true
         markVerticalNavigation(keyCode)
         val resolvedPosition = resolveAdapterPosition(itemView = itemView, fallbackPosition = position)
-        return handleItemKeyDown(
+        val handled = handleItemKeyDown(
             position = resolvedPosition,
             keyCode = keyCode,
         )
+        GridFocusDebugLog.d {
+            "DpadGridController.handleItemKeyEvent after handled=$handled ${GridFocusDebugLog.event(event)} " +
+                "resolvedPosition=$resolvedPosition ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recyclerView)
+        }
+        return handled
     }
 
     fun handleItemKeyDown(position: Int, keyCode: Int): Boolean {
@@ -176,6 +218,11 @@ internal class DpadGridController(
             itemCount = itemCount,
             spanCount = spanCount,
         ) ?: return false
+        GridFocusDebugLog.d {
+            "DpadGridController.handleItemKeyDown keyCode=$keyCode candidatePosition=$position " +
+                "resolvedPosition=$resolvedPosition edge=$edge ${debugSnapshot()} " +
+                GridFocusDebugLog.recycler(recycler)
+        }
 
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
@@ -742,8 +789,19 @@ internal class DpadGridController(
         recycler.findViewHolderForAdapterPosition(position)?.itemView?.let { itemView ->
             if (itemView.isValidFocusTarget()) {
                 unparkFocusInRecyclerViewIfNeeded(recycler)
-                if (itemView.requestFocus()) {
+                val focused = itemView.requestFocus()
+                GridFocusDebugLog.d {
+                    "DpadGridController.tryFocusAtPosition attached calledRequestFocus=true " +
+                        "requestFocusSuccess=$focused requestToken=$requestToken adapterPosition=$position " +
+                        "attemptsLeft=$attemptsLeft ${debugSnapshot()} " +
+                        GridFocusDebugLog.recycler(recycler)
+                }
+                if (focused) {
                     onFocused?.invoke()
+                    GridFocusDebugLog.d {
+                        "DpadGridController.onFocusSettled source=tryFocusAtPosition " +
+                            "adapterPosition=$position requestToken=$requestToken ${debugSnapshot()}"
+                    }
                     callbacks.onFocusSettled()
                     return true
                 }
@@ -794,11 +852,24 @@ internal class DpadGridController(
                         }
                     }
                 }
-                if (closestView != null && closestView.requestFocus()) {
-                    onFocused?.invoke()
-                    callbacks.onFocusSettled()
-                    logHomeFocus { "DpadGridController Fallback SUCCESS: expected=$position, actual=$closestPosition" }
-                    return true
+                if (closestView != null) {
+                    val focused = closestView.requestFocus()
+                    GridFocusDebugLog.d {
+                        "DpadGridController.tryFocusAtPosition fallback calledRequestFocus=true " +
+                            "requestFocusSuccess=$focused requestToken=$requestToken " +
+                            "expectedPosition=$position actualPosition=$closestPosition ${debugSnapshot()} " +
+                            GridFocusDebugLog.recycler(recycler)
+                    }
+                    if (focused) {
+                        onFocused?.invoke()
+                        GridFocusDebugLog.d {
+                            "DpadGridController.onFocusSettled source=fallback expectedPosition=$position " +
+                                "actualPosition=$closestPosition requestToken=$requestToken ${debugSnapshot()}"
+                        }
+                        callbacks.onFocusSettled()
+                        logHomeFocus { "DpadGridController Fallback SUCCESS: expected=$position, actual=$closestPosition" }
+                        return true
+                    }
                 }
             }
             return false
@@ -830,6 +901,13 @@ internal class DpadGridController(
         onSettled: () -> Unit,
     ): Boolean {
         if (dyPx == 0) {
+            if (targetPosition != RecyclerView.NO_POSITION) {
+                beginDirectionalScrollParking(
+                    recycler = recycler,
+                    targetPosition = targetPosition,
+                    requestToken = requestToken,
+                )
+            }
             if (this.recyclerView === recycler && focusRequestToken == requestToken) {
                 onSettled()
             }
@@ -872,13 +950,11 @@ internal class DpadGridController(
             }
         }
 
-        directionalScrollTargetPosition = targetPosition
-        directionalScrollRequestToken = requestToken
-        directionalScrollSettlePasses = 0
-        callbacks.parkFocusForScroll(targetPosition)
-        parkFocusInRecyclerViewForScroll(recycler)
-        directionalScrollParkedUntilMs = SystemClock.uptimeMillis() + DirectionalScrollParkedWindowMs
-        scheduleDirectionalScrollParkingTimeout(recycler, requestToken)
+        beginDirectionalScrollParking(
+            recycler = recycler,
+            targetPosition = targetPosition,
+            requestToken = requestToken,
+        )
         recycler.addOnScrollListener(listener)
         recycler.smoothScrollBy(0, dyPx)
         recycler.postOnAnimation {
@@ -897,6 +973,20 @@ internal class DpadGridController(
             SmoothFocusFallbackMs,
         )
         return true
+    }
+
+    private fun beginDirectionalScrollParking(
+        recycler: RecyclerView,
+        targetPosition: Int,
+        requestToken: Int,
+    ) {
+        directionalScrollTargetPosition = targetPosition
+        directionalScrollRequestToken = requestToken
+        directionalScrollSettlePasses = 0
+        callbacks.parkFocusForScroll(targetPosition)
+        parkFocusInRecyclerViewForScroll(recycler)
+        directionalScrollParkedUntilMs = SystemClock.uptimeMillis() + DirectionalScrollParkedWindowMs
+        scheduleDirectionalScrollParkingTimeout(recycler, requestToken)
     }
 
     private fun resolveFocusablePosition(
@@ -940,11 +1030,13 @@ internal class DpadGridController(
     private fun markVerticalNavigation(keyCode: Int) {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
+                detachFocusRestoreToken++
                 lastVerticalNavAtMs = SystemClock.uptimeMillis()
                 lastVerticalNavDirection = View.FOCUS_UP
             }
 
             KeyEvent.KEYCODE_DPAD_DOWN -> {
+                detachFocusRestoreToken++
                 lastVerticalNavAtMs = SystemClock.uptimeMillis()
                 lastVerticalNavDirection = View.FOCUS_DOWN
             }
@@ -1041,6 +1133,14 @@ internal class DpadGridController(
         recycler.post {
             if (this.recyclerView !== recycler || detachFocusRestoreToken != restoreToken) return@post
             if (!callbacks.isEnabled() || pendingLoadMoreFocus != null) return@post
+            if (directionalScrollRequestToken != 0) {
+                GridFocusDebugLog.d {
+                    "DpadGridController.restoreFocusAfterChildDetach skipped " +
+                        "reason=directionalRequestActive ${debugSnapshot()} " +
+                        GridFocusDebugLog.recycler(recycler)
+                }
+                return@post
+            }
 
             val adapter = recycler.adapter ?: return@post
             val layoutManager = recycler.layoutManager as? GridLayoutManager ?: return@post
@@ -1082,6 +1182,10 @@ internal class DpadGridController(
             val fallbackVisible = firstVisible.coerceIn(0, itemCount - 1)
             val targetPosition = lastKnownVisible ?: directionalCandidate ?: sameColumnVisible ?: fallbackVisible
             val requestToken = ++focusRequestToken
+            GridFocusDebugLog.d {
+                "DpadGridController.restoreFocusAfterChildDetach request targetPosition=$targetPosition " +
+                    "requestToken=$requestToken ${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+            }
             tryFocusAtPosition(
                 recycler = recycler,
                 position = targetPosition,
@@ -1260,7 +1364,19 @@ internal class DpadGridController(
         if (!recycler.isFocusable) {
             recycler.isFocusable = true
         }
+        if (currentFocused === recycler) {
+            GridFocusDebugLog.d {
+                "DpadGridController.parkFocusInRecyclerView calledRequestFocus=false " +
+                    "requestFocusSuccess=true reason=alreadyParked ${debugSnapshot()} " +
+                    GridFocusDebugLog.recycler(recycler)
+            }
+            return true
+        }
         return recycler.requestFocus().also { parked ->
+            GridFocusDebugLog.d {
+                "DpadGridController.parkFocusInRecyclerView calledRequestFocus=true " +
+                    "requestFocusSuccess=$parked ${debugSnapshot()} ${GridFocusDebugLog.recycler(recycler)}"
+            }
             if (!parked) {
                 unparkFocusInRecyclerViewIfNeeded(recycler)
             }
@@ -1277,8 +1393,24 @@ internal class DpadGridController(
     }
 
     private fun clearPendingLoadMoreFocus() {
+        GridFocusDebugLog.d {
+            "DpadGridController.clearPendingLoadMoreFocus before ${debugSnapshot()}"
+        }
         pendingLoadMoreFocus = null
         unparkFocusInRecyclerViewIfNeeded()
+        GridFocusDebugLog.d {
+            "DpadGridController.clearPendingLoadMoreFocus after ${debugSnapshot()}"
+        }
+    }
+
+    internal fun debugSnapshot(): String {
+        val pending = pendingLoadMoreFocus
+        return "lastKnownFocusedPosition=$lastKnownFocusedPosition " +
+            "lastKnownFocusedColumn=$lastKnownFocusedColumn " +
+            "pendingFocusKey=null pendingFocusPosition=${pending?.anchorPosition ?: RecyclerView.NO_POSITION} " +
+            "pendingLoadMoreOldItemCount=${pending?.oldItemCount ?: 0} requestToken=$focusRequestToken " +
+            "directionalTargetPosition=$directionalScrollTargetPosition " +
+            "directionalRequestToken=$directionalScrollRequestToken"
     }
 
     private fun clearPendingIfTarget(position: Int) {

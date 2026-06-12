@@ -128,45 +128,47 @@ internal fun HomeContentDispatcher(
 
     Box(modifier = Modifier.fillMaxSize()) {
         visibleHomeTabs.forEach { tab ->
-            KeepAliveHomeTabPage(
-                tab = tab,
-                selectedHomeTab = selectedHomeTab,
-            ) {
-                HomeTabContent(
+            key(tab) {
+                KeepAliveHomeTabPage(
                     tab = tab,
-                    recommendVideoItems = recommendVideoItems,
-                    viewModel = viewModel,
-                    dynamicRefreshRequestId = dynamicRefreshRequestId,
-                    tabGridFocusStates = tabGridFocusStates,
-                    recommendGridFocusState = recommendGridFocusState,
-                    focusCoordinator = focusCoordinator,
-                    recyclerPools = recyclerPools,
-                    topBarHeightPx = topBarHeightPx,
-                    collapseHeaderEnabled = collapseHeaderEnabled && tab == selectedHomeTab,
-                    collapsingHeaderState = collapsingHeaderStates.stateFor(tab),
-                    onRequestTopBarFocus = onRequestTopBarFocus,
-                    onTabSelected = onTabSelected,
-                    onVideoClick = onVideoClick,
-                    onLiveClick = onLiveClick,
-                    onRecommendVideoClick = onRecommendVideoClick,
-                    onSearchVideoClick = onSearchVideoClick,
-                    onDynamicVideoClick = onDynamicVideoClick,
-                    onOpenSettings = onOpenSettings,
-                    onProfileVideoClick = onProfileVideoClick,
-                    onOpenUp = onOpenUp,
-                    restoreRecommendInitialScrollIndex = if (tab == selectedHomeTab) {
-                        restoreRecommendInitialScrollIndex
-                    } else {
-                        RecyclerView.NO_POSITION
-                    },
-                    onOpenRecommendMenu = { video, focusKey ->
-                        suppressRecommendMenuConfirmKeyUp = true
-                        pendingRecommendMenuRequest = RecommendContextMenuRequest(
-                            video = video,
-                            focusKey = focusKey,
-                        )
-                    },
-                )
+                    selectedHomeTab = selectedHomeTab,
+                ) {
+                    HomeTabContent(
+                        tab = tab,
+                        recommendVideoItems = recommendVideoItems,
+                        viewModel = viewModel,
+                        dynamicRefreshRequestId = dynamicRefreshRequestId,
+                        tabGridFocusStates = tabGridFocusStates,
+                        recommendGridFocusState = recommendGridFocusState,
+                        focusCoordinator = focusCoordinator,
+                        recyclerPools = recyclerPools,
+                        topBarHeightPx = topBarHeightPx,
+                        collapseHeaderEnabled = collapseHeaderEnabled && tab == selectedHomeTab,
+                        collapsingHeaderState = collapsingHeaderStates.stateFor(tab),
+                        onRequestTopBarFocus = onRequestTopBarFocus,
+                        onTabSelected = onTabSelected,
+                        onVideoClick = onVideoClick,
+                        onLiveClick = onLiveClick,
+                        onRecommendVideoClick = onRecommendVideoClick,
+                        onSearchVideoClick = onSearchVideoClick,
+                        onDynamicVideoClick = onDynamicVideoClick,
+                        onOpenSettings = onOpenSettings,
+                        onProfileVideoClick = onProfileVideoClick,
+                        onOpenUp = onOpenUp,
+                        restoreRecommendInitialScrollIndex = if (tab == selectedHomeTab) {
+                            restoreRecommendInitialScrollIndex
+                        } else {
+                            RecyclerView.NO_POSITION
+                        },
+                        onOpenRecommendMenu = { video, focusKey ->
+                            suppressRecommendMenuConfirmKeyUp = true
+                            pendingRecommendMenuRequest = RecommendContextMenuRequest(
+                                video = video,
+                                focusKey = focusKey,
+                            )
+                        },
+                    )
+                }
             }
         }
 
@@ -192,21 +194,19 @@ private fun BoxScope.KeepAliveHomeTabPage(
     content: @Composable () -> Unit,
 ) {
     val isSelected = tab == selectedHomeTab
-    key(tab) {
-        CompositionLocalProvider(LocalHomeTabActive provides isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(if (isSelected) 1f else 0f)
-                    .graphicsLayer {
-                        alpha = if (isSelected) 1f else 0f
-                    }
-                    .focusProperties {
-                        canFocus = isSelected
-                    }
-            ) {
-                content()
-            }
+    CompositionLocalProvider(LocalHomeTabActive provides isSelected) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(if (isSelected) 1f else 0f)
+                .graphicsLayer {
+                    alpha = if (isSelected) 1f else 0f
+                }
+                .focusProperties {
+                    canFocus = isSelected
+                }
+        ) {
+            content()
         }
     }
 }
