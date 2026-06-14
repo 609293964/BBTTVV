@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -35,6 +36,7 @@ import com.bbttvv.app.feature.video.screen.PlayerScreen
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.detail.DetailOpenMode
 import com.bbttvv.app.ui.detail.videoDetailRoutes
+import com.bbttvv.app.ui.home.HomeRecyclerPools
 import com.bbttvv.app.ui.home.HomeScreen
 import com.bbttvv.app.ui.home.HomeViewModel
 
@@ -43,6 +45,7 @@ fun AppNavigation() {
     val context = LocalContext.current
     val navController = rememberNavController()
     val navigationState = rememberAppNavigationState()
+    val homeRecyclerPools = remember { HomeRecyclerPools() }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isOnHome = navigationState.isOnHome(currentRoute)
@@ -62,6 +65,12 @@ fun AppNavigation() {
         visibleTopLevelTabs.joinToString(separator = "|") { tab -> tab.name }
     }
     val safeHomeTab = navigationState.safeHomeTab(visibleTopLevelTabs)
+
+    DisposableEffect(homeRecyclerPools) {
+        onDispose {
+            homeRecyclerPools.clear()
+        }
+    }
 
     LaunchedEffect(currentRoute) {
         navigationState.onRouteChanged(currentRoute)
@@ -126,6 +135,7 @@ fun AppNavigation() {
             val homeViewModel: HomeViewModel = viewModel()
             HomeScreen(
                 viewModel = homeViewModel,
+                recyclerPools = homeRecyclerPools,
                 visibleTabs = visibleTopLevelTabs,
                 selectedTabIndex = safeHomeTab.index,
                 updateContentOnTabFocusEnabled = updateContentOnTabFocusEnabled,

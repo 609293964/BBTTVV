@@ -1,5 +1,6 @@
 package com.bbttvv.app.core.network
 
+import java.io.IOException
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,5 +23,16 @@ class NetworkHttpClientsTest {
 
         assertFalse(NetworkHttpClients.shouldAttachBilibiliReferer(url))
         assertEquals("https://www.bilibili.com", NetworkHttpClients.resolveBilibiliOrigin(url))
+    }
+
+    @Test
+    fun canceledRequestsAreNotReportedAsApiErrors() {
+        assertFalse(NetworkHttpClients.shouldReportApiException(IOException("Canceled")))
+        assertFalse(NetworkHttpClients.shouldReportApiException(IOException("canceled")))
+    }
+
+    @Test
+    fun nonCancellationExceptionsAreStillReportedAsApiErrors() {
+        assertTrue(NetworkHttpClients.shouldReportApiException(IOException("timeout")))
     }
 }

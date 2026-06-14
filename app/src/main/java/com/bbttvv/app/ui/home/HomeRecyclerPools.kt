@@ -10,4 +10,8 @@ internal class HomeRecyclerPools {
     val videoCardPool: RecyclerView.RecycledViewPool = RecyclerView.RecycledViewPool().apply {
         setMaxRecycledViews(HomeRecyclerViewTypes.VideoCard, 24)
     }
+
+    fun clear() {
+        videoCardPool.clear()
+    }
 }

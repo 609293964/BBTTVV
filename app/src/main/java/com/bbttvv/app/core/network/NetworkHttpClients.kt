@@ -6,6 +6,7 @@ import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.CrashReporter
 import com.bbttvv.app.core.util.Logger
 import java.io.File
+import java.io.IOException
 import java.net.InetAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
@@ -234,6 +235,10 @@ internal object NetworkHttpClients {
         }
     }
 
+    internal fun shouldReportApiException(error: Exception): Boolean {
+        return !isNormalRequestCancellation(error)
+    }
+
     private fun proceedWithApiErrorReporting(
         request: okhttp3.Request,
         proceed: (okhttp3.Request) -> okhttp3.Response,
@@ -250,13 +255,24 @@ internal object NetworkHttpClients {
             }
             response
         } catch (error: Exception) {
-            CrashReporter.reportApiError(
-                endpoint = "$endpointPrefix${request.method} ${request.url.encodedPath}",
-                httpCode = -1,
-                errorMessage = error.message ?: error.javaClass.simpleName
-            )
+            if (shouldReportApiException(error)) {
+                CrashReporter.reportApiError(
+                    endpoint = "$endpointPrefix${request.method} ${request.url.encodedPath}",
+                    httpCode = -1,
+                    errorMessage = error.message ?: error.javaClass.simpleName
+                )
+            }
             throw error
         }
+    }
+
+    private fun isNormalRequestCancellation(error: Exception): Boolean {
+        if (error is IOException && error.message.equals("Canceled", ignoreCase = true)) {
+            return true
+        }
+        return error.cause?.let { cause ->
+            cause is IOException && cause.message.equals("Canceled", ignoreCase = true)
+        } == true
     }
 
     private fun isPlaybackMediaHost(host: String): Boolean {

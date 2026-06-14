@@ -8,14 +8,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusEntryHint
 import com.bbttvv.app.ui.home.HomeFocusRegion
+import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.LocalHomeTabActive
 
@@ -23,21 +27,42 @@ internal class ProfileContentFocusTargetState {
     val focusRequester = FocusRequester()
     val initialFocusRequester = FocusRequester()
     private val focusRequestToken = mutableIntStateOf(0)
+    private var completedRequestToken = 0
     private val hasFocusState = mutableStateOf(false)
 
     val requestToken: Int
         get() = focusRequestToken.intValue
 
-    fun requestFocus(): Boolean {
+    fun requestFocusResult(): HomeFocusRequestResult {
         val focused = tryRequestFocusNow()
         if (!focused) {
             focusRequestToken.intValue += 1
+        } else {
+            completedRequestToken = focusRequestToken.intValue
         }
-        return true
+        return if (focused) {
+            HomeFocusRequestResult.Focused
+        } else {
+            HomeFocusRequestResult.Pending
+        }
+    }
+
+    fun requestFocus(): Boolean {
+        return requestFocusResult().isAccepted
     }
 
     fun tryRequestFocusNow(): Boolean {
         return requestFocus(initialFocusRequester) || requestFocus(focusRequester)
+    }
+
+    fun drainPendingFocus(): Boolean {
+        val requestToken = focusRequestToken.intValue
+        if (requestToken <= completedRequestToken) return false
+        val focused = tryRequestFocusNow()
+        if (focused) {
+            completedRequestToken = requestToken
+        }
+        return focused
     }
 
     fun onFocusChanged(hasFocus: Boolean) {
@@ -53,6 +78,9 @@ internal class ProfileContentFocusTargetState {
     }
 }
 
+internal val LocalProfileContentFocusScope =
+    staticCompositionLocalOf<ProfileContentFocusScope?> { null }
+
 @Composable
 internal fun rememberProfileContentFocusTargetState(
     focusCoordinator: HomeFocusCoordinator?,
@@ -60,14 +88,19 @@ internal fun rememberProfileContentFocusTargetState(
 ): ProfileContentFocusTargetState {
     val state = remember { ProfileContentFocusTargetState() }
     val isHomeTabActive = LocalHomeTabActive.current
+    val contentScope = LocalProfileContentFocusScope.current
 
-    LaunchedEffect(state.requestToken, isHomeTabActive) {
-        if (isHomeTabActive && state.requestToken > 0) {
-            state.tryRequestFocusNow()
+    LaunchedEffect(state.requestToken, isHomeTabActive, contentScope) {
+        if (
+            isHomeTabActive &&
+            contentScope.isEligible() &&
+            state.requestToken > 0
+        ) {
+            state.drainPendingFocus()
         }
     }
 
-    DisposableEffect(focusCoordinator, focusTab, state, isHomeTabActive) {
+    DisposableEffect(focusCoordinator, focusTab, state, isHomeTabActive, contentScope) {
         val tab = focusTab
         val registration = if (isHomeTabActive && focusCoordinator != null && tab != null) {
             focusCoordinator.registerContentTarget(
@@ -75,7 +108,23 @@ internal fun rememberProfileContentFocusTargetState(
                 region = HomeFocusRegion.ProfileContent,
                 target = object : HomeFocusTarget {
                     override fun tryRequestFocus(): Boolean {
+                        if (!contentScope.isEligible()) {
+                            return false
+                        }
                         return state.requestFocus()
+                    }
+
+                    override fun requestFocusResult(): HomeFocusRequestResult {
+                        if (!contentScope.isEligible()) {
+                            return HomeFocusRequestResult.Pending
+                        }
+                        return state.requestFocusResult()
+                    }
+
+                    override fun requestFocusForEntryResult(
+                        entryHint: HomeFocusEntryHint,
+                    ): HomeFocusRequestResult {
+                        return requestFocusResult()
                     }
 
                     override fun hasFocus(): Boolean {
@@ -106,6 +155,7 @@ internal fun Modifier.profileContentFocusTarget(
     onDpadLeft: (() -> Boolean)? = null,
 ): Modifier {
     val isHomeTabActive = LocalHomeTabActive.current
+    val contentScope = LocalProfileContentFocusScope.current
     val focusModifier = this.onFocusChanged { focusState ->
         val hasFocus = focusState.hasFocus || focusState.isFocused
         state.onFocusChanged(hasFocus)
@@ -127,6 +177,19 @@ internal fun Modifier.profileContentFocusTarget(
     }
 
     return directionalModifier
+        .onGloballyPositioned {
+            if (
+                isHomeTabActive &&
+                contentScope.isEligible() &&
+                state.requestToken > 0
+            ) {
+                state.drainPendingFocus()
+            }
+        }
         .focusRequester(state.focusRequester)
         .focusGroup()
+}
+
+private fun ProfileContentFocusScope?.isEligible(): Boolean {
+    return this == null || isCurrent()
 }

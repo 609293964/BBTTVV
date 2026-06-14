@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,6 +94,7 @@ internal fun LoggedInSidebar(
     onSelectMenu: (ProfileMenu) -> Unit,
     menuListState: androidx.compose.foundation.lazy.LazyListState,
     menuFocusRequesters: Map<ProfileMenu, FocusRequester>,
+    profileFocusCoordinator: ProfileFocusCoordinator,
     modifier: Modifier = Modifier
 ) {
     val navData = uiState.navData ?: return
@@ -131,13 +134,29 @@ internal fun LoggedInSidebar(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp)
         ) {
-            items(profileMenus) { menu ->
+            items(profileMenus, key = ProfileMenu::name) { menu ->
+                val focusRequester = menuFocusRequesters[menu]
+                DisposableEffect(profileFocusCoordinator, menu, focusRequester) {
+                    val registration = if (focusRequester != null) {
+                        profileFocusCoordinator.registerMenuTarget(menu) {
+                            runCatching { focusRequester.requestFocus() }.getOrDefault(false)
+                        }
+                    } else {
+                        null
+                    }
+                    onDispose {
+                        registration?.unregister()
+                    }
+                }
                 ProfileMenuItemRow(
                     label = menu.label,
                     selected = menu == selectedMenu,
                     isDanger = menu == ProfileMenu.LOGOUT,
                     updateContentOnTabFocusEnabled = updateContentOnTabFocusEnabled,
-                    focusRequester = menuFocusRequesters[menu],
+                    focusRequester = focusRequester,
+                    onLaidOut = {
+                        profileFocusCoordinator.onMenuTargetLaidOut(menu)
+                    },
                     onDpadUp = {
                         if (menu == profileMenus.firstOrNull()) {
                             onRequestTopBarFocus()
@@ -182,6 +201,7 @@ private fun ProfileMenuItemRow(
     isDanger: Boolean,
     updateContentOnTabFocusEnabled: Boolean,
     focusRequester: FocusRequester?,
+    onLaidOut: () -> Unit = {},
     onDpadUp: () -> Boolean = { false },
     onDpadRight: () -> Boolean = { false },
     onFocusChanged: (Boolean) -> Unit = {},
@@ -193,6 +213,7 @@ private fun ProfileMenuItemRow(
     Surface(
         modifier = Modifier
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .onGloballyPositioned { onLaidOut() }
             .onPreviewKeyEvent { keyEvent ->
                 val event = keyEvent.nativeKeyEvent
                 if (event.action != AndroidKeyEvent.ACTION_DOWN) {

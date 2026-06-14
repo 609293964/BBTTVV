@@ -732,20 +732,16 @@ private fun DynamicFollowUpdateCard(
                 }
             }
             .width(88.dp)
-            .graphicsLayer {
-                clip = true
-                shape = FollowUpdateCardShape
-            }
     ) {
         Column(
             modifier = Modifier
-                .clip(FollowUpdateCardShape)
                 .background(
-                    if (isFocused) {
+                    color = if (isFocused) {
                         if (isLightTheme) Color(0x1A000000) else Color(0x1AFFFFFF)
                     } else {
                         Color.Transparent
-                    }
+                    },
+                    shape = FollowUpdateCardShape,
                 )
                 .padding(vertical = 8.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -793,10 +789,6 @@ private fun DynamicFollowUpdateFixedIcon(
         Box(
             modifier = Modifier
                 .size(62.dp)
-                .graphicsLayer {
-                    clip = true
-                    shape = CircleShape
-                }
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
                     color = if (isFocused) {
@@ -807,11 +799,12 @@ private fun DynamicFollowUpdateFixedIcon(
                     shape = CircleShape
                 )
                 .background(
-                    if (isFocused) {
+                    color = if (isFocused) {
                         if (isLightTheme) Color(0xFFFB7299) else Color.White
                     } else {
                         if (isLightTheme) Color(0x0F000000) else Color(0x26FFFFFF)
-                    }
+                    },
+                    shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -842,10 +835,6 @@ private fun DynamicFollowUpdateAvatar(
         Box(
             modifier = Modifier
                 .size(62.dp)
-                .graphicsLayer {
-                    clip = true
-                    shape = CircleShape
-                }
                 .border(
                     width = if (isFocused) 2.dp else 1.dp,
                     color = if (isFocused) {
@@ -867,10 +856,7 @@ private fun DynamicFollowUpdateAvatar(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(54.dp)
-                    .graphicsLayer {
-                        clip = true
-                        shape = CircleShape
-                    }
+                    .clip(CircleShape)
                     .background(Color.DarkGray)
             )
         }
@@ -930,20 +916,16 @@ fun LiveAvatarCard(
                 }
             }
             .width(72.dp)
-            .graphicsLayer {
-                clip = true
-                shape = LiveCardShape
-            }
     ) {
         Column(
             modifier = Modifier
-                .clip(LiveCardShape)
                 .background(
-                    if (isFocused) {
+                    color = if (isFocused) {
                         if (isLightTheme) Color(0x1A000000) else Color(0x1AFFFFFF)
                     } else {
                         Color.Transparent
-                    }
+                    },
+                    shape = LiveCardShape,
                 )
                 .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -953,10 +935,6 @@ fun LiveAvatarCard(
                 Box(
                     modifier = Modifier
                         .size(64.dp)
-                        .graphicsLayer {
-                            clip = true
-                            shape = CircleShape
-                        }
                         .border(2.dp, Color(0xFFFB7299), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -970,10 +948,7 @@ fun LiveAvatarCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(56.dp)
-                            .graphicsLayer {
-                                clip = true
-                                shape = CircleShape
-                            }
+                            .clip(CircleShape)
                             .background(Color.DarkGray)
                     )
                 }
@@ -982,11 +957,7 @@ fun LiveAvatarCard(
                 Box(
                     modifier = Modifier
                         .padding(bottom = 0.dp)
-                        .graphicsLayer {
-                            clip = true
-                            shape = LiveTagShape
-                        }
-                        .background(Color(0xFFFB7299))
+                        .background(Color(0xFFFB7299), LiveTagShape)
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
                     Text(

@@ -451,12 +451,13 @@ class ProfileViewModel(
         }
         if (reset) {
             resetHistoryCursor()
+            val shouldClearHistoryItems = historyLoadedForMid != expectedMid
             _uiState.update {
                 it.copy(
                     isHistoryLoading = true,
                     isHistoryLoadingMore = false,
                     historyErrorMessage = null,
-                    historyItems = emptyList(),
+                    historyItems = if (shouldClearHistoryItems) emptyList() else it.historyItems,
                     historyHasMore = false
                 )
             }
@@ -842,6 +843,16 @@ class ProfileViewModel(
         }
     }
 
+    private fun hasSameHistoryIdentitySequence(
+        currentItems: List<HistoryData>,
+        expectedItems: List<HistoryData>
+    ): Boolean {
+        if (currentItems.size != expectedItems.size) return false
+        return currentItems.indices.all { index ->
+            resolveHistoryListKey(currentItems[index]) == resolveHistoryListKey(expectedItems[index])
+        }
+    }
+
     private fun resolveVideoListKey(item: VideoItem): String {
         return item.bvid.takeIf { it.isNotBlank() }
             ?: item.collectionId.takeIf { it > 0L }?.let { "collection:$it" }
@@ -887,6 +898,10 @@ class ProfileViewModel(
         historyEnrichmentJob = viewModelScope.launch {
             val enrichedItems = enrichHistoryItemsWithViewInfo(items)
             if (!isActive || _uiState.value.navData?.mid != expectedMid) return@launch
+            val currentItems = _uiState.value.historyItems
+            if (!hasSameHistoryIdentitySequence(currentItems, items) || enrichedItems == currentItems) {
+                return@launch
+            }
             _uiState.update { state ->
                 state.copy(historyItems = enrichedItems)
             }

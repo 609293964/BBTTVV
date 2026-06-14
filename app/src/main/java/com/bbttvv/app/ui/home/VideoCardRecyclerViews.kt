@@ -1,6 +1,8 @@
 package com.bbttvv.app.ui.home
 
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -226,16 +228,21 @@ internal fun VideoCardRecyclerGridItems(
         )
     }
 
-    DisposableEffect(dpadGridController, focusState) {
+    DisposableEffect(dpadGridController, focusState, videoCardRecycledViewPool) {
         focusState.setPhysicalScrollAllowedProvider {
             !dpadGridController.hasPendingLoadMoreFocus()
         }
         onDispose {
             focusState.setPhysicalScrollAllowedProvider(null)
-            recyclerViewRef.value?.let(focusState::detach)
-            recyclerViewRef.value = null
             preloadThrottler.cancel()
             dpadGridController.detach()
+            recyclerViewRef.value?.let { recyclerView ->
+                focusState.detach(recyclerView)
+                if (videoCardRecycledViewPool != null) {
+                    recyclerView.swapAdapter(null, true)
+                }
+            }
+            recyclerViewRef.value = null
         }
     }
 
@@ -936,8 +943,8 @@ private class RecyclerVerticalOffsetDispatcher {
 }
 
 private class RecyclerGridPreloadThrottler {
-    private var lastPreloadKey: RecyclerGridPreloadKey? = null
-    private var lastPreloadAtMs: Long = 0L
+    private val handler = Handler(Looper.getMainLooper())
+    private var pendingPreload: Runnable? = null
 
     fun preloadRowsAhead(
         recyclerView: RecyclerView,
@@ -946,45 +953,33 @@ private class RecyclerGridPreloadThrottler {
         rowCount: Int,
     ) {
         val adapter = recyclerView.adapter as? HomeVideoCardAdapter ?: return
-        val preloadPositions = DpadGridPreloadPolicy.positionsAhead(
+        DpadGridPreloadPolicy.positionsAhead(
             position = position,
             itemCount = adapter.itemCount,
             spanCount = spanCount,
             rowCount = rowCount,
         ) ?: return
 
-        val now = SystemClock.uptimeMillis()
-        val preloadKey = RecyclerGridPreloadKey(
-            firstPosition = preloadPositions.first,
-            lastPosition = preloadPositions.last,
-        )
-        if (
-            preloadKey == lastPreloadKey &&
-            now - lastPreloadAtMs <= RecyclerGridPreloadDuplicateWindowMs
-        ) {
-            return
+        pendingPreload?.let(handler::removeCallbacks)
+        val request = Runnable {
+            pendingPreload = null
+            if (!recyclerView.isAttachedToWindow || recyclerView.adapter !== adapter) return@Runnable
+            adapter.preloadRowsAhead(
+                recyclerView = recyclerView,
+                position = position,
+                spanCount = spanCount,
+                rowCount = rowCount,
+            )
         }
-        lastPreloadKey = preloadKey
-        lastPreloadAtMs = now
-
-        adapter.preloadRowsAhead(
-            recyclerView = recyclerView,
-            position = position,
-            spanCount = spanCount,
-            rowCount = rowCount,
-        )
+        pendingPreload = request
+        handler.postDelayed(request, RecyclerGridPreloadDebounceMs)
     }
 
     fun cancel() {
-        lastPreloadKey = null
-        lastPreloadAtMs = 0L
+        pendingPreload?.let(handler::removeCallbacks)
+        pendingPreload = null
     }
 }
-
-private data class RecyclerGridPreloadKey(
-    val firstPosition: Int,
-    val lastPosition: Int,
-)
 
 private class VideoGridFocusDispatchState {
     private var lastDispatchedKey: String? = null
@@ -1111,7 +1106,7 @@ private data class RecyclerPaddingPx(
 )
 
 private const val FocusSettledPreloadRows = 2
-private const val RecyclerGridPreloadDuplicateWindowMs = 700L
+private const val RecyclerGridPreloadDebounceMs = 120L
 private const val DuplicateFocusDispatchWindowMs = 500L
 private const val FocusSearchScrollFocusMaxAttempts = 12
 

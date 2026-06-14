@@ -41,8 +41,9 @@ import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     viewModel: HomeViewModel,
+    recyclerPools: HomeRecyclerPools,
     visibleTabs: List<AppTopLevelTab>,
     selectedTabIndex: Int,
     updateContentOnTabFocusEnabled: Boolean,
@@ -75,8 +76,10 @@ fun HomeScreen(
         index = selectedTabIndex,
         visibleTabs = visibleTabs
     )
+    val tabResidencyState = remember {
+        HomeTabResidencyState(initialSelectedTab = selectedHomeTab)
+    }
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
-    val recyclerPools = remember { HomeRecyclerPools() }
     DisposableEffect(focusCoordinator, onCancelVideoFocusRestore) {
         focusCoordinator.setPendingRestoreCancelCallback(onCancelVideoFocusRestore)
         onDispose {
@@ -91,6 +94,17 @@ fun HomeScreen(
     val isVideoFocusRestorePending = selectedHomeTab == restoreTargetTab &&
         hasPendingVideoFocusRestore &&
         restoreVideoFocusKey != null
+    LaunchedEffect(homeTabs) {
+        tabResidencyState.updateVisibleTabs(homeTabs)
+    }
+    LaunchedEffect(selectedHomeTab) {
+        tabResidencyState.select(selectedHomeTab)
+    }
+    LaunchedEffect(hasPendingVideoFocusRestore, restoreTargetTab) {
+        tabResidencyState.updatePinnedTab(
+            restoreTargetTab.takeIf { hasPendingVideoFocusRestore }
+        )
+    }
     LaunchedEffect(visibleTabs) {
         tabGridFocusStates.retainVisibleTabs(visibleTabs.toSet())
         collapsingHeaderStates.retainVisibleTabs(visibleTabs.toSet())
@@ -211,6 +225,7 @@ fun HomeScreen(
         scene: HomeFocusScene,
         keepTopBarFocus: Boolean = false,
     ) {
+        tabResidencyState.select(targetTab)
         resetCollapsingTabForSwitch(
             tab = targetTab,
             collapsingHeaderStates = collapsingHeaderStates,
@@ -315,6 +330,7 @@ fun HomeScreen(
                 recommendGridFocusState = recommendGridFocusState,
                 focusCoordinator = focusCoordinator,
                 recyclerPools = recyclerPools,
+                tabResidencyState = tabResidencyState,
                 // Keep-alive RecyclerView tabs must retain their TopBar padding while
                 // Search/Profile is selected, otherwise they can draw under the tabs
                 // for a frame when switching back.

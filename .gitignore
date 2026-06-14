@@ -35,6 +35,7 @@ secrets.properties
 
 # Logs, diagnostics, and temporary dumps
 logs/
+perf-logs/
 tmp/
 *.log
 *.logcat

@@ -4,89 +4,183 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
+import com.bbttvv.app.ui.home.HomeFocusRequestResult
+import kotlin.math.abs
+
+internal fun interface ProfileMenuFocusRegistration {
+    fun unregister()
+}
+
+internal data class ProfileContentFocusScope(
+    val coordinator: ProfileFocusCoordinator,
+    val menu: ProfileMenu,
+    val generation: Int,
+) {
+    fun isCurrent(): Boolean = coordinator.isCurrentContentTarget(menu, generation)
+}
+
+private data class PendingProfileMenuFocus(
+    val menu: ProfileMenu,
+    val generation: Int,
+)
 
 /**
- * 个人页焦点协调器
- *
- * 管理 Profile 页侧边栏菜单焦点，每个 ProfileMenu 对应独立的 FocusRequester。
- * 内容区域通过 ProfileContentFocusTargetState 注册为 HomeFocusRegion.ProfileContent 目标。
+ * Coordinates sidebar and content focus with generation-scoped pending requests.
  */
 internal class ProfileFocusCoordinator(
     val menuListState: LazyListState,
     val menuFocusRequesters: Map<ProfileMenu, FocusRequester>,
-    private val requestSidebarFocusAction: () -> Unit
 ) {
-    fun requestSidebarFocus(): Boolean {
-        requestSidebarFocusAction()
-        return true
+    private val mountedMenuTargets = mutableMapOf<ProfileMenu, () -> Boolean>()
+    private var profileMenus: List<ProfileMenu> = emptyList()
+    private var selectedMenu: ProfileMenu = ProfileMenu.HISTORY
+    private var sidebarGeneration = 0
+    private var pendingSidebarFocus by mutableStateOf<PendingProfileMenuFocus?>(null)
+
+    var contentGeneration: Int by mutableIntStateOf(0)
+        private set
+
+    private var contentMenu: ProfileMenu by mutableStateOf(ProfileMenu.HISTORY)
+
+    val pendingMenu: ProfileMenu?
+        get() = pendingSidebarFocus?.menu
+
+    val pendingGeneration: Int
+        get() = pendingSidebarFocus?.generation ?: 0
+
+    fun updateSelection(menu: ProfileMenu, menus: List<ProfileMenu>) {
+        val previousMenus = profileMenus
+        profileMenus = menus
+        val legalMenu = ProfileMenuFocusPolicy.resolve(menu, previousMenus, menus)
+        selectedMenu = legalMenu
+        prepareContentMenu(legalMenu)
+
+        val pending = pendingSidebarFocus
+        if (pending != null && pending.menu !in menus) {
+            queueSidebarFocus(legalMenu)
+        }
+    }
+
+    fun prepareContentMenu(menu: ProfileMenu) {
+        if (contentMenu == menu) return
+        contentMenu = menu
+        contentGeneration += 1
+    }
+
+    fun isCurrentContentTarget(menu: ProfileMenu, generation: Int): Boolean {
+        return contentMenu == menu && contentGeneration == generation
+    }
+
+    fun requestSidebarFocus(): Boolean = requestSidebarFocusResult().isAccepted
+
+    fun requestSidebarFocusResult(): HomeFocusRequestResult {
+        val targetMenu = ProfileMenuFocusPolicy.resolve(
+            selectedMenu = selectedMenu,
+            previousMenus = profileMenus,
+            currentMenus = profileMenus,
+        )
+        if (pendingSidebarFocus?.menu != targetMenu) {
+            queueSidebarFocus(targetMenu)
+        }
+        return drainPendingSidebarFocus()
+    }
+
+    fun registerMenuTarget(
+        menu: ProfileMenu,
+        requestFocus: () -> Boolean,
+    ): ProfileMenuFocusRegistration {
+        mountedMenuTargets[menu] = requestFocus
+        drainPendingSidebarFocus()
+        return ProfileMenuFocusRegistration {
+            if (mountedMenuTargets[menu] === requestFocus) {
+                mountedMenuTargets.remove(menu)
+            }
+        }
+    }
+
+    fun onMenuTargetLaidOut(menu: ProfileMenu) {
+        if (pendingSidebarFocus?.menu == menu) {
+            drainPendingSidebarFocus()
+        }
+    }
+
+    fun drainPendingSidebarFocus(expectedGeneration: Int? = null): HomeFocusRequestResult {
+        val pending = pendingSidebarFocus ?: return HomeFocusRequestResult.Unavailable
+        if (expectedGeneration != null && pending.generation != expectedGeneration) {
+            return HomeFocusRequestResult.Pending
+        }
+        val requestFocus = mountedMenuTargets[pending.menu]
+            ?: return HomeFocusRequestResult.Pending
+        return if (requestFocus()) {
+            pendingSidebarFocus = null
+            HomeFocusRequestResult.Focused
+        } else {
+            HomeFocusRequestResult.Pending
+        }
+    }
+
+    private fun queueSidebarFocus(menu: ProfileMenu) {
+        sidebarGeneration += 1
+        pendingSidebarFocus = PendingProfileMenuFocus(
+            menu = menu,
+            generation = sidebarGeneration,
+        )
+    }
+}
+
+internal object ProfileMenuFocusPolicy {
+    fun resolve(
+        selectedMenu: ProfileMenu,
+        previousMenus: List<ProfileMenu>,
+        currentMenus: List<ProfileMenu>,
+    ): ProfileMenu {
+        if (selectedMenu in currentMenus) return selectedMenu
+        if (currentMenus.isEmpty()) return ProfileMenu.HISTORY
+        val oldIndex = previousMenus.indexOf(selectedMenu)
+        if (oldIndex < 0) return currentMenus.first()
+        return currentMenus.minByOrNull { menu ->
+            val candidateIndex = previousMenus.indexOf(menu)
+            if (candidateIndex < 0) Int.MAX_VALUE else abs(candidateIndex - oldIndex)
+        } ?: currentMenus.first()
     }
 }
 
 @Composable
 internal fun rememberProfileFocusCoordinator(
     selectedMenu: ProfileMenu,
-    profileMenus: List<ProfileMenu>
+    profileMenus: List<ProfileMenu>,
 ): ProfileFocusCoordinator {
     val menuFocusRequesters = remember { ProfileMenu.values().associateWith { FocusRequester() } }
     val menuListState = rememberLazyListState()
-    val sidebarFocusRequestToken = remember { mutableIntStateOf(0) }
     val coordinator = remember(menuListState, menuFocusRequesters) {
         ProfileFocusCoordinator(
             menuListState = menuListState,
             menuFocusRequesters = menuFocusRequesters,
-            requestSidebarFocusAction = { sidebarFocusRequestToken.intValue += 1 }
         )
     }
 
-    LaunchedEffect(sidebarFocusRequestToken.intValue, selectedMenu, profileMenus) {
-        if (sidebarFocusRequestToken.intValue == 0) return@LaunchedEffect
-        val selectedMenuIndex = profileMenus.indexOf(selectedMenu)
-        if (selectedMenuIndex >= 0) {
-            val isSelectedMenuVisible = menuListState.layoutInfo.visibleItemsInfo
-                .any { item -> item.index == selectedMenuIndex }
-            if (!isSelectedMenuVisible) {
-                menuListState.scrollToItem(selectedMenuIndex)
-                withFrameNanos { }
-            }
+    SideEffect {
+        coordinator.updateSelection(selectedMenu, profileMenus)
+    }
+
+    val pendingMenu = coordinator.pendingMenu
+    val pendingGeneration = coordinator.pendingGeneration
+    LaunchedEffect(pendingMenu, pendingGeneration, profileMenus) {
+        val menu = pendingMenu ?: return@LaunchedEffect
+        val menuIndex = profileMenus.indexOf(menu)
+        if (menuIndex < 0) return@LaunchedEffect
+        val isVisible = menuListState.layoutInfo.visibleItemsInfo.any { it.index == menuIndex }
+        if (!isVisible) {
+            menuListState.scrollToItem(menuIndex)
         }
-
-        // 弹性重试与多级安全兜底逻辑，确保滚动和组件挂载完成，绝对防止焦点在屏幕中消失逃逸
-        val requester = menuFocusRequesters[selectedMenu]
-        if (requester != null) {
-            var success = false
-            for (retry in 0..5) {
-                val result = runCatching { requester.requestFocus() }
-                if (result.isSuccess) {
-                    success = true
-                    break
-                }
-                // 若未附着（通常由于滚动/渲染延迟抛出 IllegalStateException），则间隔 16ms 进行非阻塞等待重试
-                kotlinx.coroutines.delay(16)
-            }
-
-            // 如果多次重试后仍然失败（如由于某种刷新导致该项临时失效），启用兜底机制，寻找其他可用菜单项聚焦，保障焦点在侧边栏内
-            if (!success) {
-                for (menu in profileMenus) {
-                    val fallbackRequester = menuFocusRequesters[menu]
-                    if (fallbackRequester != null) {
-                        val fallbackResult = runCatching { fallbackRequester.requestFocus() }
-                        if (fallbackResult.isSuccess) {
-                            success = true
-                            break
-                        }
-                    }
-                }
-            }
-
-            // 最后的物理安全防线，若兜底也失败，强行做最后一次重试尝试
-            if (!success) {
-                runCatching { requester.requestFocus() }
-            }
-        }
+        coordinator.drainPendingSidebarFocus(pendingGeneration)
     }
 
     return coordinator

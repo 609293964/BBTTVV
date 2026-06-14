@@ -42,6 +42,14 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
         holder.bind(tabs[position])
     }
 
+    override fun onBindViewHolder(holder: TabViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains(TabSelectionPayload)) {
+            holder.updateSelectionVisual()
+            return
+        }
+        super.onBindViewHolder(holder, position, payloads)
+    }
+
     override fun getItemCount(): Int = tabs.size
 
     override fun getItemId(position: Int): Long = tabs[position].ordinal.toLong()
@@ -110,7 +118,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     private fun notifyTabChanged(tab: AppTopLevelTab?) {
         val position = positionOf(tab)
         if (position != RecyclerView.NO_POSITION) {
-            notifyItemChanged(position)
+            notifyItemChanged(position, TabSelectionPayload)
         }
     }
 
@@ -121,7 +129,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
 
         init {
             binding.root.isFocusable = true
-            binding.root.isFocusableInTouchMode = false
+            binding.root.isFocusableInTouchMode = true
             binding.root.isClickable = true
 
             binding.root.setOnClickListener {
@@ -172,6 +180,11 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
         fun bind(tab: AppTopLevelTab) {
             boundTab = tab
             binding.tvLabel.text = tab.title
+            binding.root.contentDescription = tab.title
+            updateVisual(animate = false)
+        }
+
+        fun updateSelectionVisual() {
             updateVisual(animate = false)
         }
 
@@ -229,5 +242,9 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
         } else {
             Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
         }
+    }
+
+    private companion object {
+        val TabSelectionPayload = Any()
     }
 }

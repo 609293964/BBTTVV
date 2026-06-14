@@ -21,6 +21,7 @@ import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.R
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.FormatUtils
+import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.databinding.ItemVideoCardBinding
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
 import com.bbttvv.app.ui.focus.GridFocusDebugLog
@@ -70,6 +71,7 @@ internal class HomeVideoCardAdapter(
     private val supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)? = null,
 ) : ListAdapter<HomeRecommendVideoCardItem, HomeVideoCardAdapter.VideoViewHolder>(VideoDiffCallback) {
     private var visualFocusKey: String? = null
+    private var cardPalette: HomeVideoCardPalette? = null
 
     init {
         setHasStableIds(true)
@@ -80,7 +82,10 @@ internal class HomeVideoCardAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val binding = ItemVideoCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return VideoViewHolder(binding)
+        val palette = cardPalette ?: HomeVideoCardPalette.resolve(parent.context).also {
+            cardPalette = it
+        }
+        return VideoViewHolder(binding, palette)
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
@@ -103,6 +108,27 @@ internal class HomeVideoCardAdapter(
             supportingTextProvider = supportingTextProvider,
             isLogicallySelected = getItem(position).key == visualFocusKey,
         )
+    }
+
+    override fun onBindViewHolder(
+        holder: VideoViewHolder,
+        position: Int,
+        payloads: MutableList<Any>,
+    ) {
+        val cardPayload = payloads
+            .filterIsInstance<HomeVideoCardPayload>()
+            .reduceOrNull(HomeVideoCardPayload::merge)
+        if (cardPayload != null) {
+            holder.bindPayload(
+                item = getItem(position),
+                payload = cardPayload,
+                showHistoryProgressOnly = showHistoryProgressOnly,
+                showDanmakuCount = showDanmakuCount,
+                supportingTextProvider = supportingTextProvider,
+            )
+        } else {
+            super.onBindViewHolder(holder, position, payloads)
+        }
     }
 
     override fun onViewRecycled(holder: VideoViewHolder) {
@@ -221,7 +247,10 @@ internal class HomeVideoCardAdapter(
         }
     }
 
-    class VideoViewHolder(private val binding: ItemVideoCardBinding) : RecyclerView.ViewHolder(binding.root) {
+    class VideoViewHolder(
+        private val binding: ItemVideoCardBinding,
+        private val palette: HomeVideoCardPalette,
+    ) : RecyclerView.ViewHolder(binding.root) {
         private var consumeBackKeyUp = false
         private var boundItem: HomeRecommendVideoCardItem? = null
         private var boundOnItemClick: ((HomeRecommendVideoCardItem) -> Unit)? = null
@@ -348,35 +377,14 @@ internal class HomeVideoCardAdapter(
             val video = item.video
             val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
 
-            val context = binding.root.context
-            val themeMode = SettingsManager.getThemeModeSync(context)
-            val isLightTheme = themeMode == SettingsManager.ThemeMode.LIGHT
-
-            binding.root.setStrokeColor(if (isLightTheme) lightStrokeColorStateList else darkStrokeColorStateList)
-
-            if (isLightTheme) {
-                binding.tvTitle.setTextColor(Color.parseColor("#18191C"))
-                binding.tvSubtitle.setTextColor(Color.parseColor("#61666D"))
-                binding.tvPubdate.setTextColor(Color.parseColor("#61666D"))
-                binding.tvReasonHint.setTextColor(Color.parseColor("#E04060"))
-            } else {
-                binding.tvTitle.setTextColor(Color.parseColor("#F4F6F8"))
-                binding.tvSubtitle.setTextColor(Color.parseColor("#999999"))
-                binding.tvPubdate.setTextColor(Color.parseColor("#999999"))
-                binding.tvReasonHint.setTextColor(Color.parseColor("#CFE5EDF7"))
-            }
+            binding.root.setStrokeColor(palette.strokeColors)
+            binding.tvTitle.setTextColor(palette.titleColor)
+            binding.tvSubtitle.setTextColor(palette.subtitleColor)
+            binding.tvPubdate.setTextColor(palette.subtitleColor)
+            binding.tvReasonHint.setTextColor(palette.reasonColor)
 
             binding.tvTitle.text = uiModel.title
             binding.tvSubtitle.text = uiModel.ownerName
-            binding.tvPubdate.text = uiModel.pubDateText
-            val supportingText = supportingTextProvider?.invoke(item).orEmpty()
-            if (supportingText.isBlank()) {
-                binding.tvReasonHint.visibility = View.GONE
-                binding.tvReasonHint.text = null
-            } else {
-                binding.tvReasonHint.visibility = View.VISIBLE
-                binding.tvReasonHint.text = supportingText
-            }
 
             val coverUrl = FormatUtils.buildSizedImageUrl(uiModel.coverUrl, 480, 270)
             binding.ivCover.loadIfUrlChanged(R.id.tag_cover_url, coverUrl) {
@@ -387,13 +395,8 @@ internal class HomeVideoCardAdapter(
             }
 
             // Keep the title area lightweight on low-end TV devices: no per-card blur work.
-            val infoBackgroundColor = if (isLightTheme) {
-                Color.parseColor("#F2F4F7")
-            } else {
-                Color.parseColor("#CC1F1F21")
-            }
             binding.clInfo.setTag(null)
-            binding.clInfo.setBackgroundColor(infoBackgroundColor)
+            binding.clInfo.setBackgroundColor(palette.infoBackgroundColor)
 
             val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
             binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
@@ -401,6 +404,67 @@ internal class HomeVideoCardAdapter(
                 allowHardware(true)
                 transformations(avatarCircleCropTransformation)
             }
+
+            bindMetadata(
+                item = item,
+                showHistoryProgressOnly = showHistoryProgressOnly,
+                showDanmakuCount = showDanmakuCount,
+                supportingTextProvider = supportingTextProvider,
+            )
+        }
+
+        fun bindPayload(
+            item: HomeRecommendVideoCardItem,
+            payload: HomeVideoCardPayload,
+            showHistoryProgressOnly: Boolean,
+            showDanmakuCount: Boolean,
+            supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)?,
+        ) {
+            boundItem = item
+            val uiModel = item.video.toHomeVideoCardUiModel(showHistoryProgressOnly)
+            if (payload.titleChanged) {
+                binding.tvTitle.text = uiModel.title
+            }
+            if (payload.ownerChanged) {
+                binding.tvSubtitle.text = uiModel.ownerName
+                val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
+                binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
+                    crossfade(false)
+                    allowHardware(true)
+                    transformations(avatarCircleCropTransformation)
+                }
+            }
+            if (payload.coverChanged) {
+                val coverUrl = FormatUtils.buildSizedImageUrl(uiModel.coverUrl, 480, 270)
+                binding.ivCover.loadIfUrlChanged(R.id.tag_cover_url, coverUrl) {
+                    crossfade(false)
+                    allowHardware(true)
+                    precision(Precision.INEXACT)
+                    size(Size(480, 270))
+                }
+            }
+            if (payload.metadataChanged) {
+                bindMetadata(
+                    item = item,
+                    showHistoryProgressOnly = showHistoryProgressOnly,
+                    showDanmakuCount = showDanmakuCount,
+                    supportingTextProvider = supportingTextProvider,
+                )
+            } else {
+                bindSupportingText(item, supportingTextProvider)
+            }
+        }
+
+        private fun bindMetadata(
+            item: HomeRecommendVideoCardItem,
+            showHistoryProgressOnly: Boolean,
+            showDanmakuCount: Boolean,
+            supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)?,
+        ) {
+            val video = item.video
+            val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
+            binding.tvPubdate.text = uiModel.pubDateText
+            bindSupportingText(item, supportingTextProvider)
 
             val isBangumiCard = video.bvid.startsWith("ss") || video.bvid.startsWith("ep")
             val isLiveCard = !isBangumiCard && video.aid == 0L && video.cid == 0L && video.duration <= 0
@@ -424,6 +488,20 @@ internal class HomeVideoCardAdapter(
                 binding.tvDanmaku.visibility = if (showDanmakuCount) View.VISIBLE else View.GONE
                 binding.tvDanmaku.text = if (showDanmakuCount) formatCompact(video.stat.danmaku) else null
                 binding.tvProgressLeft.visibility = View.GONE
+            }
+        }
+
+        private fun bindSupportingText(
+            item: HomeRecommendVideoCardItem,
+            supportingTextProvider: ((HomeRecommendVideoCardItem) -> String?)?,
+        ) {
+            val supportingText = supportingTextProvider?.invoke(item).orEmpty()
+            if (supportingText.isBlank()) {
+                binding.tvReasonHint.visibility = View.GONE
+                binding.tvReasonHint.text = null
+            } else {
+                binding.tvReasonHint.visibility = View.VISIBLE
+                binding.tvReasonHint.text = supportingText
             }
         }
 
@@ -502,7 +580,89 @@ internal class HomeVideoCardAdapter(
         ): Boolean {
             return oldItem.video == newItem.video
         }
+
+        override fun getChangePayload(
+            oldItem: HomeRecommendVideoCardItem,
+            newItem: HomeRecommendVideoCardItem,
+        ): Any? {
+            return oldItem.video.buildCardPayload(newItem.video)
+        }
     }
+}
+
+internal data class HomeVideoCardPayload(
+    val coverChanged: Boolean,
+    val titleChanged: Boolean,
+    val ownerChanged: Boolean,
+    val metadataChanged: Boolean,
+) {
+    fun merge(other: HomeVideoCardPayload): HomeVideoCardPayload {
+        return HomeVideoCardPayload(
+            coverChanged = coverChanged || other.coverChanged,
+            titleChanged = titleChanged || other.titleChanged,
+            ownerChanged = ownerChanged || other.ownerChanged,
+            metadataChanged = metadataChanged || other.metadataChanged,
+        )
+    }
+}
+
+internal data class HomeVideoCardPalette(
+    val strokeColors: android.content.res.ColorStateList,
+    val titleColor: Int,
+    val subtitleColor: Int,
+    val reasonColor: Int,
+    val infoBackgroundColor: Int,
+) {
+    companion object {
+        fun resolve(context: android.content.Context): HomeVideoCardPalette {
+            val isLightTheme =
+                SettingsManager.getThemeModeSync(context) == SettingsManager.ThemeMode.LIGHT
+            return if (isLightTheme) {
+                HomeVideoCardPalette(
+                    strokeColors = lightStrokeColorStateList,
+                    titleColor = Color.rgb(24, 25, 28),
+                    subtitleColor = Color.rgb(97, 102, 109),
+                    reasonColor = Color.rgb(224, 64, 96),
+                    infoBackgroundColor = Color.rgb(242, 244, 247),
+                )
+            } else {
+                HomeVideoCardPalette(
+                    strokeColors = darkStrokeColorStateList,
+                    titleColor = Color.rgb(244, 246, 248),
+                    subtitleColor = Color.rgb(153, 153, 153),
+                    reasonColor = Color.argb(207, 229, 237, 247),
+                    infoBackgroundColor = Color.argb(204, 31, 31, 33),
+                )
+            }
+        }
+    }
+}
+
+private fun VideoItem.buildCardPayload(other: VideoItem): HomeVideoCardPayload? {
+    if (this == other) return null
+    val supportedChange = copy(
+        pic = other.pic,
+        title = other.title,
+        owner = other.owner,
+        stat = other.stat,
+        duration = other.duration,
+        progress = other.progress,
+        view_at = other.view_at,
+        pubdate = other.pubdate,
+        collectionSubtitle = other.collectionSubtitle,
+    ) == other
+    if (!supportedChange) return null
+    return HomeVideoCardPayload(
+        coverChanged = pic != other.pic,
+        titleChanged = title != other.title,
+        ownerChanged = owner != other.owner,
+        metadataChanged = stat != other.stat ||
+            duration != other.duration ||
+            progress != other.progress ||
+            view_at != other.view_at ||
+            pubdate != other.pubdate ||
+            collectionSubtitle != other.collectionSubtitle,
+    )
 }
 
 private fun formatCompact(count: Int): String {

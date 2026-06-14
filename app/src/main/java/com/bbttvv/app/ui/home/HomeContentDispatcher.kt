@@ -1,5 +1,11 @@
 package com.bbttvv.app.ui.home
 
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
+import android.os.Debug
+import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -10,11 +16,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -23,6 +31,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,6 +46,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.VideoItem
+import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvContextMenu
@@ -88,6 +98,7 @@ internal fun HomeContentDispatcher(
     recommendGridFocusState: HomeRecommendGridFocusState,
     focusCoordinator: HomeFocusCoordinator,
     recyclerPools: HomeRecyclerPools,
+    tabResidencyState: HomeTabResidencyState,
     topBarHeightPx: Int,
     collapseHeaderEnabled: Boolean,
     collapsingHeaderStates: HomeTabCollapsingHeaderStates,
@@ -106,6 +117,57 @@ internal fun HomeContentDispatcher(
     var pendingRecommendMenuRequest by remember { mutableStateOf<RecommendContextMenuRequest?>(null) }
     var pendingRecommendFocusReturnKey by remember { mutableStateOf<String?>(null) }
     var suppressRecommendMenuConfirmKeyUp by remember { mutableStateOf(false) }
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val composedHomeTabs = HomeTabCompositionPolicy.resolve(
+        visibleTabs = visibleHomeTabs,
+        selectedTab = selectedHomeTab,
+        residentTabs = tabResidencyState.residentTabsInDisplayOrder(),
+    )
+    val context = LocalContext.current
+    val rootView = LocalView.current
+
+    LaunchedEffect(
+        recommendVideoItems.isNotEmpty(),
+        tabResidencyState.generation,
+        visibleHomeTabs,
+    ) {
+        if (recommendVideoItems.isEmpty()) return@LaunchedEffect
+        withFrameNanos { }
+        tabResidencyState.prewarmNextAdjacent()
+    }
+
+    DisposableEffect(context.applicationContext, tabResidencyState, recyclerPools) {
+        val applicationContext = context.applicationContext
+        val callbacks = object : ComponentCallbacks2 {
+            override fun onConfigurationChanged(newConfig: Configuration) = Unit
+
+            override fun onLowMemory() {
+                tabResidencyState.trimToSelected()
+                recyclerPools.clear()
+            }
+
+            override fun onTrimMemory(level: Int) {
+                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                    tabResidencyState.trimToSelected()
+                    recyclerPools.clear()
+                }
+            }
+        }
+        applicationContext.registerComponentCallbacks(callbacks)
+        onDispose {
+            applicationContext.unregisterComponentCallbacks(callbacks)
+        }
+    }
+
+    LaunchedEffect(composedHomeTabs) {
+        if (!BuildConfig.DEBUG) return@LaunchedEffect
+        withFrameNanos { }
+        Log.d(
+            "HomeResidency",
+            "selected=$selectedHomeTab resident=${composedHomeTabs.joinToString()} " +
+                "views=${rootView.countViewTreeNodes()} pssKb=${Debug.getPss()}",
+        )
+    }
 
     LaunchedEffect(selectedHomeTab) {
         if (selectedHomeTab != AppTopLevelTab.RECOMMEND) {
@@ -127,47 +189,49 @@ internal fun HomeContentDispatcher(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        visibleHomeTabs.forEach { tab ->
-            key(tab) {
-                KeepAliveHomeTabPage(
-                    tab = tab,
-                    selectedHomeTab = selectedHomeTab,
-                ) {
-                    HomeTabContent(
+        composedHomeTabs.forEach { tab ->
+            saveableStateHolder.SaveableStateProvider(tab.name) {
+                key(tab) {
+                    KeepAliveHomeTabPage(
                         tab = tab,
-                        recommendVideoItems = recommendVideoItems,
-                        viewModel = viewModel,
-                        dynamicRefreshRequestId = dynamicRefreshRequestId,
-                        tabGridFocusStates = tabGridFocusStates,
-                        recommendGridFocusState = recommendGridFocusState,
-                        focusCoordinator = focusCoordinator,
-                        recyclerPools = recyclerPools,
-                        topBarHeightPx = topBarHeightPx,
-                        collapseHeaderEnabled = collapseHeaderEnabled && tab == selectedHomeTab,
-                        collapsingHeaderState = collapsingHeaderStates.stateFor(tab),
-                        onRequestTopBarFocus = onRequestTopBarFocus,
-                        onTabSelected = onTabSelected,
-                        onVideoClick = onVideoClick,
-                        onLiveClick = onLiveClick,
-                        onRecommendVideoClick = onRecommendVideoClick,
-                        onSearchVideoClick = onSearchVideoClick,
-                        onDynamicVideoClick = onDynamicVideoClick,
-                        onOpenSettings = onOpenSettings,
-                        onProfileVideoClick = onProfileVideoClick,
-                        onOpenUp = onOpenUp,
-                        restoreRecommendInitialScrollIndex = if (tab == selectedHomeTab) {
-                            restoreRecommendInitialScrollIndex
-                        } else {
-                            RecyclerView.NO_POSITION
-                        },
-                        onOpenRecommendMenu = { video, focusKey ->
-                            suppressRecommendMenuConfirmKeyUp = true
-                            pendingRecommendMenuRequest = RecommendContextMenuRequest(
-                                video = video,
-                                focusKey = focusKey,
-                            )
-                        },
-                    )
+                        selectedHomeTab = selectedHomeTab,
+                    ) {
+                        HomeTabContent(
+                            tab = tab,
+                            recommendVideoItems = recommendVideoItems,
+                            viewModel = viewModel,
+                            dynamicRefreshRequestId = dynamicRefreshRequestId,
+                            tabGridFocusStates = tabGridFocusStates,
+                            recommendGridFocusState = recommendGridFocusState,
+                            focusCoordinator = focusCoordinator,
+                            recyclerPools = recyclerPools,
+                            topBarHeightPx = topBarHeightPx,
+                            collapseHeaderEnabled = collapseHeaderEnabled && tab == selectedHomeTab,
+                            collapsingHeaderState = collapsingHeaderStates.stateFor(tab),
+                            onRequestTopBarFocus = onRequestTopBarFocus,
+                            onTabSelected = onTabSelected,
+                            onVideoClick = onVideoClick,
+                            onLiveClick = onLiveClick,
+                            onRecommendVideoClick = onRecommendVideoClick,
+                            onSearchVideoClick = onSearchVideoClick,
+                            onDynamicVideoClick = onDynamicVideoClick,
+                            onOpenSettings = onOpenSettings,
+                            onProfileVideoClick = onProfileVideoClick,
+                            onOpenUp = onOpenUp,
+                            restoreRecommendInitialScrollIndex = if (tab == selectedHomeTab) {
+                                restoreRecommendInitialScrollIndex
+                            } else {
+                                RecyclerView.NO_POSITION
+                            },
+                            onOpenRecommendMenu = { video, focusKey ->
+                                suppressRecommendMenuConfirmKeyUp = true
+                                pendingRecommendMenuRequest = RecommendContextMenuRequest(
+                                    video = video,
+                                    focusKey = focusKey,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -185,6 +249,27 @@ internal fun HomeContentDispatcher(
             }
         )
     }
+}
+
+internal object HomeTabCompositionPolicy {
+    fun resolve(
+        visibleTabs: List<AppTopLevelTab>,
+        selectedTab: AppTopLevelTab,
+        residentTabs: Collection<AppTopLevelTab>,
+    ): List<AppTopLevelTab> {
+        return visibleTabs.filter { tab ->
+            tab == selectedTab || tab in residentTabs
+        }
+    }
+}
+
+private fun View.countViewTreeNodes(): Int {
+    if (this !is ViewGroup) return 1
+    var count = 1
+    for (index in 0 until childCount) {
+        count += getChildAt(index).countViewTreeNodes()
+    }
+    return count
 }
 
 @Composable

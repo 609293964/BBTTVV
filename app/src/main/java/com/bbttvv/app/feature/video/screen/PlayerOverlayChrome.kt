@@ -153,7 +153,6 @@ internal fun PlayerInfoOverlay(
     modifier: Modifier = Modifier,
 ) {
     val isLightTheme = LocalIsLightTheme.current
-    val currentPlaybackState = playbackState.value
     Column(
         modifier = modifier
             .widthIn(max = 1080.dp)
@@ -198,8 +197,8 @@ internal fun PlayerInfoOverlay(
             )
         }
 
-        PlaybackProgressBlock(
-            playbackState = currentPlaybackState,
+        PlayerRealtimeProgress(
+            playbackState = playbackState,
             sponsorMarkers = sponsorMarkers,
             heatmapPoints = uiState.heatmapPoints,
             modifier = progressModifier,
@@ -207,6 +206,25 @@ internal fun PlayerInfoOverlay(
             isFocused = isProgressFocused,
         )
     }
+}
+
+@Composable
+private fun PlayerRealtimeProgress(
+    playbackState: State<PlayerPlaybackState>,
+    sponsorMarkers: List<SponsorProgressMark>,
+    heatmapPoints: List<ProgressHeatmapPoint>,
+    modifier: Modifier = Modifier,
+    positionOverrideMs: Long? = null,
+    isFocused: Boolean = false,
+) {
+    PlaybackProgressBlock(
+        playbackState = playbackState.value,
+        sponsorMarkers = sponsorMarkers,
+        heatmapPoints = heatmapPoints,
+        modifier = modifier,
+        positionOverrideMs = positionOverrideMs,
+        isFocused = isFocused,
+    )
 }
 
 @Composable

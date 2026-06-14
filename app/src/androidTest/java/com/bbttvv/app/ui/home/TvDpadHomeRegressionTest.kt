@@ -26,6 +26,11 @@ class TvDpadHomeRegressionTest {
     private val robot = TvDpadRobot(device, targetPackage)
 
     @Test
+    fun coldLaunchFocusesHomeTopBarWithoutBackRecovery() = withHome {
+        assertTrue("Cold launch should focus a home top tab", robot.waitUntilFocusedOnTopTab())
+    }
+
+    @Test
     fun topTabDownToContentAndUpReturnsTopBarFocus() = withHome {
         robot.ensureHomeTopBar()
         assumeTrue("推荐 tab should be focusable before D-Pad regression", robot.focusTopTab("推荐"))
@@ -75,6 +80,27 @@ class TvDpadHomeRegressionTest {
         robot.settle()
 
         assertTrue("Focus should remain inside BBTTVV after dynamic D-Pad movement", robot.hasFocusedObjectInApp())
+    }
+
+    @Test
+    fun profileRapidMenuMoveAndImmediateRightEntersCurrentContent() = withHome {
+        robot.ensureHomeTopBar()
+        assumeTrue("Profile tab should be available", robot.focusTopTab("我的"))
+
+        robot.press(KeyEvent.KEYCODE_DPAD_DOWN)
+        robot.settle()
+        assumeTrue(
+            "Logged-in Profile sidebar is required for focus generation regression",
+            robot.hasAnyText("历史记录", "我的收藏"),
+        )
+
+        robot.press(KeyEvent.KEYCODE_DPAD_DOWN)
+        robot.press(KeyEvent.KEYCODE_DPAD_DOWN)
+        robot.press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        robot.settle(WaitMedium)
+
+        assertTrue("Profile rapid movement must keep focus inside BBTTVV", robot.hasFocusedObjectInApp())
+        assertFalse("Right should leave the Profile sidebar", robot.isFocusedOnProfileMenu())
     }
 
     @Test
@@ -223,6 +249,10 @@ private class TvDpadRobot(
         return false
     }
 
+    fun hasAnyText(vararg labels: String): Boolean = labels.any(::hasText)
+
+    fun isFocusedOnProfileMenu(): Boolean = focusedLabel() in ProfileMenuLabels
+
     fun waitUntilTextGone(label: String): Boolean {
         val deadline = System.currentTimeMillis() + WaitLong
         while (System.currentTimeMillis() < deadline) {
@@ -259,6 +289,19 @@ private class TvDpadRobot(
 
     private companion object {
         private val TopTabLabels = setOf("搜索", "推荐", "推荐单", "热门", "直播", "动态", "稍后再看", "我的")
+        private val ProfileMenuLabels = setOf(
+            "历史记录",
+            "我的收藏",
+            "我的追番",
+            "稍后再看",
+            "切换账号",
+            "更换图标",
+            "设置",
+            "弹幕设置",
+            "插件中心",
+            "操作说明",
+            "登出",
+        )
         private const val WaitTiny = 250L
         private const val WaitShort = 1_000L
         private const val WaitMedium = 3_000L

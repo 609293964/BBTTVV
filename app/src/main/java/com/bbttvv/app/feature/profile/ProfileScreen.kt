@@ -1,11 +1,8 @@
 package com.bbttvv.app.feature.profile
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -27,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -44,6 +44,7 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.home.HomeFocusEntryHint
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.LocalHomeTabActive
@@ -125,10 +126,10 @@ internal fun ProfileScreen(
         if (!isHomeTabActive) return@LaunchedEffect
         if (navData?.isLogin != true) return@LaunchedEffect
         when (selectedMenu) {
-            ProfileMenu.HISTORY -> viewModel.ensureHistoryLoaded(force = true)
+            ProfileMenu.HISTORY -> viewModel.ensureHistoryLoaded()
             ProfileMenu.FAVORITE -> viewModel.ensureFavoriteLoaded()
             ProfileMenu.BANGUMI -> viewModel.ensureBangumiLoaded()
-            ProfileMenu.WATCH_LATER -> viewModel.ensureWatchLaterLoaded(force = true)
+            ProfileMenu.WATCH_LATER -> viewModel.ensureWatchLaterLoaded()
             else -> Unit
         }
     }
@@ -142,8 +143,8 @@ internal fun ProfileScreen(
                 return@LifecycleEventObserver
             }
             when (selectedMenu) {
-                ProfileMenu.HISTORY -> viewModel.ensureHistoryLoaded(force = true)
-                ProfileMenu.WATCH_LATER -> viewModel.ensureWatchLaterLoaded(force = true)
+                ProfileMenu.HISTORY -> viewModel.ensureHistoryLoaded()
+                ProfileMenu.WATCH_LATER -> viewModel.ensureWatchLaterLoaded()
                 else -> Unit
             }
         }
@@ -233,7 +234,7 @@ internal fun WatchLaterVideosScreen(
     LaunchedEffect(uiState.navData?.mid, uiState.navData?.isLogin, isHomeTabActive) {
         if (!isHomeTabActive) return@LaunchedEffect
         if (uiState.navData?.isLogin == true) {
-            viewModel.ensureWatchLaterLoaded(force = true)
+            viewModel.ensureWatchLaterLoaded()
         }
     }
 
@@ -243,7 +244,7 @@ internal fun WatchLaterVideosScreen(
         } else {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && uiState.navData?.isLogin == true) {
-                viewModel.ensureWatchLaterLoaded(force = true)
+                viewModel.ensureWatchLaterLoaded()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -347,6 +348,13 @@ private fun LoggedInProfileLayout(
                         return profileFocusCoordinator.requestSidebarFocus()
                     }
 
+                    override fun requestFocusResult() =
+                        profileFocusCoordinator.requestSidebarFocusResult()
+
+                    override fun requestFocusForEntryResult(
+                        entryHint: HomeFocusEntryHint,
+                    ) = profileFocusCoordinator.requestSidebarFocusResult()
+
                     override fun hasFocus(): Boolean {
                         return latestSidebarHasFocus
                     }
@@ -370,7 +378,10 @@ private fun LoggedInProfileLayout(
             selectedMenu = selectedMenu,
             profileMenus = profileMenus,
             updateContentOnTabFocusEnabled = updateContentOnTabFocusEnabled,
-            onSelectMenu = onSelectMenu,
+            onSelectMenu = { menu ->
+                profileFocusCoordinator.prepareContentMenu(menu)
+                onSelectMenu(menu)
+            },
             onRequestTopBarFocus = onRequestTopBarFocus,
             onSidebarFocusChanged = { focused ->
                 sidebarHasFocus = focused
@@ -381,6 +392,7 @@ private fun LoggedInProfileLayout(
             },
             menuListState = profileFocusCoordinator.menuListState,
             menuFocusRequesters = profileFocusCoordinator.menuFocusRequesters,
+            profileFocusCoordinator = profileFocusCoordinator,
             onRequestContentFocus = ::requestProfileContentFocus,
             modifier = Modifier.width(324.dp)
         )
@@ -403,7 +415,8 @@ private fun LoggedInProfileLayout(
             focusTab = focusTab,
             videoCardRecycledViewPool = videoCardRecycledViewPool,
             onRequestSidebarFocus = profileFocusCoordinator::requestSidebarFocus,
-            onRequestTopBarFocus = onRequestTopBarFocus
+            onRequestTopBarFocus = onRequestTopBarFocus,
+            profileFocusCoordinator = profileFocusCoordinator,
         )
     }
 }
@@ -435,18 +448,32 @@ private fun ProfileContentPanel(
     focusTab: AppTopLevelTab?,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestSidebarFocus: () -> Boolean,
-    onRequestTopBarFocus: () -> Boolean
+    onRequestTopBarFocus: () -> Boolean,
+    profileFocusCoordinator: ProfileFocusCoordinator,
 ) {
     Box(modifier = modifier) {
-        AnimatedContent(
-            targetState = selectedMenu,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(durationMillis = 180, delayMillis = 30)) togetherWith
-                    fadeOut(animationSpec = tween(durationMillis = 120))
-            },
-            label = "ProfileContentPanel",
-        ) { menu ->
-            when (menu) {
+        val contentGeneration = profileFocusCoordinator.contentGeneration
+        key(selectedMenu, contentGeneration) {
+            val alpha = remember { Animatable(0.88f) }
+            LaunchedEffect(Unit) {
+                alpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 120),
+                )
+            }
+            CompositionLocalProvider(
+                LocalProfileContentFocusScope provides ProfileContentFocusScope(
+                    coordinator = profileFocusCoordinator,
+                    menu = selectedMenu,
+                    generation = contentGeneration,
+                )
+            ) {
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        this.alpha = alpha.value
+                    }
+                ) {
+                    when (selectedMenu) {
                 ProfileMenu.HISTORY -> ProfileHistoryPanel(
                     historyItems = uiState.historyItems,
                     isLoading = uiState.isHistoryLoading,
@@ -543,6 +570,8 @@ private fun ProfileContentPanel(
                     onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.LOGOUT -> LogoutPanel()
+                    }
+                }
             }
         }
     }

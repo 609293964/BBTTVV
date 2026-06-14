@@ -49,6 +49,12 @@ internal fun AppTopBar(
     val latestFocusTargetTab by rememberUpdatedState(focusTargetTab)
     val latestFocusEnabled by rememberUpdatedState(focusEnabled)
 
+    DisposableEffect(controller) {
+        onDispose {
+            controller.detach()
+        }
+    }
+
     DisposableEffect(focusCoordinator, controller, tabsKey) {
         val registration = focusCoordinator?.registerTopBarTarget(
             object : HomeFocusTarget {
@@ -149,10 +155,48 @@ private class AppTopBarController {
     var adapter: AppTopBarAdapter? = null
         private set
     private var focusRequestToken: Int = 0
+    private var focusEnabled: Boolean = true
+    private var pendingFocusRequest: PendingFocusRequest? = null
+
+    private data class PendingFocusRequest(
+        val targetTab: AppTopLevelTab,
+        val expectedSelectedTab: AppTopLevelTab?,
+        val token: Int,
+    )
+
+    private val childAttachListener = object : RecyclerView.OnChildAttachStateChangeListener {
+        override fun onChildViewAttachedToWindow(view: View) {
+            view.post {
+                drainPendingFocusRequest()
+            }
+        }
+
+        override fun onChildViewDetachedFromWindow(view: View) = Unit
+    }
+
+    private val layoutChangeListener =
+        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            drainPendingFocusRequest()
+        }
 
     fun attach(recyclerView: RecyclerView, adapter: AppTopBarAdapter) {
+        if (this.recyclerView === recyclerView && this.adapter === adapter) return
+        detach()
         this.recyclerView = recyclerView
         this.adapter = adapter
+        recyclerView.addOnChildAttachStateChangeListener(childAttachListener)
+        recyclerView.addOnLayoutChangeListener(layoutChangeListener)
+    }
+
+    fun detach() {
+        recyclerView?.let { recycler ->
+            recycler.removeOnChildAttachStateChangeListener(childAttachListener)
+            recycler.removeOnLayoutChangeListener(layoutChangeListener)
+        }
+        recyclerView = null
+        adapter = null
+        pendingFocusRequest = null
+        focusRequestToken++
     }
 
     fun tryRequestFocus(tab: AppTopLevelTab?): Boolean {
@@ -165,51 +209,62 @@ private class AppTopBarController {
         val targetTab = topBarAdapter.focusTargetOrFallback(tab) ?: return HomeFocusRequestResult.Unavailable
         val expectedSelectedTab = topBarAdapter.currentSelectedTab()
         val requestToken = ++focusRequestToken
-        return requestFocus(
-            recycler = recycler,
-            topBarAdapter = topBarAdapter,
+        pendingFocusRequest = PendingFocusRequest(
             targetTab = targetTab,
             expectedSelectedTab = expectedSelectedTab,
-            requestToken = requestToken
+            token = requestToken,
         )
+        return drainPendingFocusRequest(scrollIfNeeded = true)
     }
 
-    private fun requestFocus(
-        recycler: RecyclerView,
-        topBarAdapter: AppTopBarAdapter,
-        targetTab: AppTopLevelTab,
-        expectedSelectedTab: AppTopLevelTab?,
-        requestToken: Int
+    private fun drainPendingFocusRequest(
+        scrollIfNeeded: Boolean = false,
     ): HomeFocusRequestResult {
-        val position = topBarAdapter.positionOf(targetTab).takeIf { it != RecyclerView.NO_POSITION }
-            ?: return HomeFocusRequestResult.Unavailable
+        val request = pendingFocusRequest ?: return HomeFocusRequestResult.Unavailable
+        if (!focusEnabled) {
+            pendingFocusRequest = null
+            return HomeFocusRequestResult.Unavailable
+        }
+        val recycler = recyclerView ?: return HomeFocusRequestResult.Pending
+        val topBarAdapter = adapter ?: return HomeFocusRequestResult.Pending
+        if (focusRequestToken != request.token) {
+            pendingFocusRequest = null
+            return HomeFocusRequestResult.Unavailable
+        }
+        if (topBarAdapter.currentSelectedTab() != request.expectedSelectedTab) {
+            pendingFocusRequest = null
+            return HomeFocusRequestResult.Unavailable
+        }
+        val targetTab = topBarAdapter.focusTargetOrFallback(request.targetTab)
+            ?: return HomeFocusRequestResult.Pending
+        val position = topBarAdapter.positionOf(targetTab)
+            .takeIf { it != RecyclerView.NO_POSITION }
+            ?: return HomeFocusRequestResult.Pending
         val holder = recycler.findViewHolderForAdapterPosition(position)
         if (holder?.itemView?.requestFocus() == true) {
+            pendingFocusRequest = null
             return HomeFocusRequestResult.Focused
         }
-        scrollToFocusablePosition(recycler, position)
-        recycler.post {
-            if (focusRequestToken != requestToken) return@post
-            if (recyclerView !== recycler || adapter !== topBarAdapter) return@post
-            if (topBarAdapter.currentSelectedTab() != expectedSelectedTab) return@post
-            val latestTargetTab = topBarAdapter.focusTargetOrFallback(targetTab) ?: return@post
-            val latestPosition = topBarAdapter.positionOf(latestTargetTab)
-                .takeIf { it != RecyclerView.NO_POSITION }
-                ?: return@post
-            if (latestPosition != position) {
-                scrollToFocusablePosition(recycler, latestPosition)
+        if (scrollIfNeeded) {
+            scrollToFocusablePosition(recycler, position)
+            recycler.post {
+                drainPendingFocusRequest()
             }
-            recycler.findViewHolderForAdapterPosition(latestPosition)?.itemView?.requestFocus()
         }
         return HomeFocusRequestResult.Pending
     }
 
     fun setFocusEnabled(enabled: Boolean) {
+        focusEnabled = enabled
         val recycler = recyclerView ?: return
         recycler.descendantFocusability = if (enabled) {
             ViewGroup.FOCUS_AFTER_DESCENDANTS
         } else {
             ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        if (!enabled) {
+            pendingFocusRequest = null
+            focusRequestToken++
         }
         if (!enabled && hasFocus()) {
             recycler.rootView?.findFocus()?.clearFocus()
