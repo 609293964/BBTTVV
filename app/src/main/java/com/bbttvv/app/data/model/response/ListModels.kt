@@ -144,6 +144,7 @@ data class VideoItem(
     val aid: Long = 0,   // [修复] 新增 aid 字段，移动端推荐流可能只返回 aid
     val cid: Long = 0,   //  明确的 CID 字段，用于播放
     val title: String = "",
+    val searchHighlightedTitle: String = "",
     val pic: String = "",
     val owner: Owner = Owner(),
     val stat: Stat = Stat(),
@@ -157,7 +158,9 @@ data class VideoItem(
     val collectionMid: Long = 0,
     val collectionMediaCount: Int = 0,
     val collectionSubtitle: String = "",
-    val rights: VideoRights? = null
+    val rights: VideoRights? = null,
+    val contentType: String = "",
+    val navigationUrl: String = ""
 )
 
 @Serializable
@@ -580,4 +583,3 @@ data class MobileFeedPlayerArgs(
     val cid: Long = 0,
     val duration: Long = 0
 )
-

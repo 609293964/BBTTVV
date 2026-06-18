@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 import kotlin.math.pow
 
+internal val LIVE_DANMAKU_AUTH_PROTOCOL_VERSION = DanmakuProtocol.PROTO_VER_BROTLI
+
 data class LiveDanmakuEndpoint(
     val url: String,
 )
@@ -274,7 +276,7 @@ class LiveDanmakuClient(
         currentAuthBody = JSONObject().apply {
             put("uid", config.uid)
             put("roomid", config.realRoomId)
-            put("protover", 2)
+            put("protover", LIVE_DANMAKU_AUTH_PROTOCOL_VERSION)
             put("platform", "web")
             put("type", 2)
             put("key", config.token)

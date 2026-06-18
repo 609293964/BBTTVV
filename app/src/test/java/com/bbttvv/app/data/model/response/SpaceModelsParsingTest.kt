@@ -77,4 +77,19 @@ class SpaceModelsParsingTest {
         assertEquals("https://www.bilibili.com/read/cv12345", article.jump_url)
         assertEquals(listOf("https://i0.hdslb.com/a.jpg"), article.covers)
     }
+
+    @Test
+    fun aggregateFavoriteAcceptsPicAsCoverAlias() {
+        val item = json.decodeFromString<SpaceAggregateFavoriteItem>(
+            """
+            {
+              "id": 1,
+              "title": "收藏夹",
+              "pic": "https://i0.hdslb.com/favorite.jpg"
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("https://i0.hdslb.com/favorite.jpg", item.cover)
+    }
 }

@@ -2,10 +2,8 @@ package com.bbttvv.app.ui.home
 
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
-import android.os.Debug
+import android.os.SystemClock
 import android.util.Log
-import android.view.View
-import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -31,7 +29,6 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -51,6 +48,7 @@ import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvContextMenu
 import com.bbttvv.app.ui.components.TvContextMenuAction
+import kotlinx.coroutines.delay
 
 @Composable
 fun TabViewModelScope(
@@ -124,7 +122,6 @@ internal fun HomeContentDispatcher(
         residentTabs = tabResidencyState.residentTabsInDisplayOrder(),
     )
     val context = LocalContext.current
-    val rootView = LocalView.current
 
     LaunchedEffect(
         recommendVideoItems.isNotEmpty(),
@@ -132,6 +129,7 @@ internal fun HomeContentDispatcher(
         visibleHomeTabs,
     ) {
         if (recommendVideoItems.isEmpty()) return@LaunchedEffect
+        delay(HomeTabPrewarmIdleDelayMs)
         withFrameNanos { }
         tabResidencyState.prewarmNextAdjacent()
     }
@@ -159,13 +157,11 @@ internal fun HomeContentDispatcher(
         }
     }
 
-    LaunchedEffect(composedHomeTabs) {
+    LaunchedEffect(selectedHomeTab, composedHomeTabs) {
         if (!BuildConfig.DEBUG) return@LaunchedEffect
-        withFrameNanos { }
         Log.d(
             "HomeResidency",
-            "selected=$selectedHomeTab resident=${composedHomeTabs.joinToString()} " +
-                "views=${rootView.countViewTreeNodes()} pssKb=${Debug.getPss()}",
+            "selected=$selectedHomeTab resident=${composedHomeTabs.joinToString()}",
         )
     }
 
@@ -263,15 +259,6 @@ internal object HomeTabCompositionPolicy {
     }
 }
 
-private fun View.countViewTreeNodes(): Int {
-    if (this !is ViewGroup) return 1
-    var count = 1
-    for (index in 0 until childCount) {
-        count += getChildAt(index).countViewTreeNodes()
-    }
-    return count
-}
-
 @Composable
 private fun BoxScope.KeepAliveHomeTabPage(
     tab: AppTopLevelTab,
@@ -279,6 +266,11 @@ private fun BoxScope.KeepAliveHomeTabPage(
     content: @Composable () -> Unit,
 ) {
     val isSelected = tab == selectedHomeTab
+    LaunchedEffect(isSelected) {
+        if (!isSelected) return@LaunchedEffect
+        withFrameNanos { }
+        HomeTabSwitchTrace.onTabVisible(tab)
+    }
     CompositionLocalProvider(LocalHomeTabActive provides isSelected) {
         Box(
             modifier = Modifier
@@ -295,6 +287,46 @@ private fun BoxScope.KeepAliveHomeTabPage(
         }
     }
 }
+
+internal object HomeTabSwitchTrace {
+    private data class PendingSwitch(
+        val target: AppTopLevelTab,
+        val requestedAtMs: Long,
+    )
+
+    private var pendingSwitch: PendingSwitch? = null
+
+    fun onSwitchRequested(
+        from: AppTopLevelTab,
+        to: AppTopLevelTab,
+    ) {
+        if (!BuildConfig.DEBUG || from == to) return
+        val requestedAtMs = SystemClock.uptimeMillis()
+        pendingSwitch = PendingSwitch(
+            target = to,
+            requestedAtMs = requestedAtMs,
+        )
+        Log.d(
+            HomeTabSwitchTag,
+            "request from=$from to=$to uptimeMs=$requestedAtMs",
+        )
+    }
+
+    fun onTabVisible(tab: AppTopLevelTab) {
+        if (!BuildConfig.DEBUG) return
+        val nowMs = SystemClock.uptimeMillis()
+        val pending = pendingSwitch?.takeIf { it.target == tab } ?: return
+        val latencyMs = (nowMs - pending.requestedAtMs).coerceAtLeast(0L)
+        pendingSwitch = null
+        Log.d(
+            HomeTabSwitchTag,
+            "visible tab=$tab latencyMs=$latencyMs uptimeMs=$nowMs",
+        )
+    }
+}
+
+private const val HomeTabPrewarmIdleDelayMs = 180L
+private const val HomeTabSwitchTag = "HomeTabSwitch"
 
 @Composable
 private fun HomeTabContent(

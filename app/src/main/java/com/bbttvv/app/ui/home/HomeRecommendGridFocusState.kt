@@ -522,9 +522,16 @@ internal class HomeRecommendGridFocusState {
         val recycler = currentRecyclerView() ?: return
         if ((recycler.adapter?.itemCount ?: 0) <= 0) return
         pendingScrollToTop = false
-        logHomeFocus { "applyPendingScrollToTop: scrollToPositionWithOffset(0, paddingTop=${recycler.paddingTop})" }
         val shouldRestoreFocus = restoreFocusAfterPendingScrollToTop
         restoreFocusAfterPendingScrollToTop = true
+        if (recycler.isAtTopRespectingPadding()) {
+            logHomeFocus { "applyPendingScrollToTop: skip alreadyAtTop paddingTop=${recycler.paddingTop}" }
+            if (shouldRestoreFocus) {
+                schedulePendingFocusAfterLayout()
+            }
+            return
+        }
+        logHomeFocus { "applyPendingScrollToTop: scrollToPositionWithOffset(0, paddingTop=${recycler.paddingTop})" }
         recycler.scrollToTopRespectingPadding()
         if (shouldRestoreFocus) {
             schedulePendingFocusAfterLayout()
@@ -1204,6 +1211,13 @@ internal class HomeRecommendGridFocusState {
         } else {
             scrollToPosition(0)
         }
+    }
+
+    private fun RecyclerView.isAtTopRespectingPadding(): Boolean {
+        val manager = layoutManager as? GridLayoutManager ?: return false
+        if (manager.findFirstVisibleItemPosition() != 0) return false
+        val firstView = manager.findViewByPosition(0) ?: return false
+        return firstView.top == paddingTop
     }
 
     private fun nextFocusRequestToken(): Int {

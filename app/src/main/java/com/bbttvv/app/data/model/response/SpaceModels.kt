@@ -216,6 +216,7 @@ data class SpaceAggregateFavoriteItem(
     val fid: Long = 0,
     val mid: Long = 0,
     val title: String = "",
+    @JsonNames("pic", "cover_url", "coverUrl")
     val cover: String = "",
     val count: Int = 0,
     @SerialName("media_id")

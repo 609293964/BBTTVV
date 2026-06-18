@@ -3,6 +3,7 @@ package com.bbttvv.app.feature.video.usecase
 import com.bbttvv.app.data.model.VideoQuality
 import com.bbttvv.app.data.model.response.Dash
 import com.bbttvv.app.data.model.response.DashVideo
+import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.model.response.PlayUrlData
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -71,6 +72,34 @@ class VideoPlaybackUseCaseTest {
             requireNotNull(source.qualityOptions.firstOrNull { it.id == VideoQuality.DOLBY_VISION.code })
         assertFalse(dolbyVisionOption.isSupported)
         assertEquals("当前设备不支持杜比视界", dolbyVisionOption.unsupportedReason)
+    }
+
+    @Test
+    fun `play url duration wins over page fallback`() {
+        assertEquals(
+            60_000L,
+            resolvePlaybackDurationMs(
+                playUrlDurationMs = 60_000L,
+                fallbackDurationMs = 90_000L
+            )
+        )
+    }
+
+    @Test
+    fun `page duration fills missing play url duration`() {
+        val pages = listOf(
+            Page(cid = 1L, duration = 30L),
+            Page(cid = 2L, duration = 90L)
+        )
+
+        assertEquals(90_000L, resolvePageDurationMs(pages, currentCid = 2L))
+        assertEquals(
+            90_000L,
+            resolvePlaybackDurationMs(
+                playUrlDurationMs = 0L,
+                fallbackDurationMs = resolvePageDurationMs(pages, currentCid = 2L)
+            )
+        )
     }
 
     private fun playbackData(

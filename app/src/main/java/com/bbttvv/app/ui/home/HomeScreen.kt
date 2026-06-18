@@ -77,7 +77,11 @@ internal fun HomeScreen(
         visibleTabs = visibleTabs
     )
     val tabResidencyState = remember {
-        HomeTabResidencyState(initialSelectedTab = selectedHomeTab)
+        HomeTabResidencyState(
+            initialSelectedTab = selectedHomeTab,
+            maxResidentTabs = 4,
+            persistentResidentTabs = setOf(AppTopLevelTab.RECOMMEND),
+        )
     }
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
     DisposableEffect(focusCoordinator, onCancelVideoFocusRestore) {
@@ -225,17 +229,16 @@ internal fun HomeScreen(
         scene: HomeFocusScene,
         keepTopBarFocus: Boolean = false,
     ) {
+        HomeTabSwitchTrace.onSwitchRequested(
+            from = selectedHomeTab,
+            to = targetTab,
+        )
         tabResidencyState.select(targetTab)
         resetCollapsingTabForSwitch(
             tab = targetTab,
             collapsingHeaderStates = collapsingHeaderStates,
         )
         if (keepTopBarFocus) {
-            resetHomeTabGridToTopForTopBarReturn(
-                tab = targetTab,
-                recommendGridFocusState = recommendGridFocusState,
-                tabGridFocusStates = tabGridFocusStates,
-            )
             focusCoordinator.requestTopBarTabFocusAfterSwitch(
                 tab = targetTab,
                 scene = scene,

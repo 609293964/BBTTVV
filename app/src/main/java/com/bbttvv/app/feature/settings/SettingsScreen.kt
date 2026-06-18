@@ -55,6 +55,7 @@ import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
+import com.bbttvv.app.core.store.nextPlayerPlaybackSpeedPreset
 import com.bbttvv.app.core.store.nextPlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.core.util.CacheUtils
@@ -1182,13 +1183,7 @@ private fun resolvePlayerPlaybackEndActionDescription(
 }
 
 private fun nextPlaybackSpeed(speed: Float): Float {
-    return when (speed) {
-        0.75f -> 1.0f
-        1.0f -> 1.25f
-        1.25f -> 1.5f
-        1.5f -> 2.0f
-        else -> 0.75f
-    }
+    return nextPlayerPlaybackSpeedPreset(speed)
 }
 
 private fun nextAudioBalanceLevel(current: com.bbttvv.app.core.player.AudioBalanceLevel): com.bbttvv.app.core.player.AudioBalanceLevel {

@@ -13,6 +13,7 @@ import com.bbttvv.app.ui.components.AppTopLevelTab
 internal class HomeTabResidencyState(
     initialSelectedTab: AppTopLevelTab,
     private val maxResidentTabs: Int = DEFAULT_MAX_RESIDENT_TABS,
+    private val persistentResidentTabs: Set<AppTopLevelTab> = emptySet(),
 ) {
     init {
         require(maxResidentTabs > 0)
@@ -52,6 +53,7 @@ internal class HomeTabResidencyState(
             nextVisibleTabs.firstOrNull()?.let(::select)
         } else {
             ensureResident(selectedTab)
+            ensurePersistentResidents()
             trimToLimit()
             advanceGeneration()
         }
@@ -72,8 +74,14 @@ internal class HomeTabResidencyState(
         ensureResident(previousSelectedTab)
         ensureResident(tab)
         ensureResident(pinnedTab)
+        ensurePersistentResidents()
         if (selectionChanged) {
-            val retainedTabs = setOfNotNull(selectedTab, previousSelectedTab, pinnedTab)
+            val retainedTabs = buildSet {
+                add(selectedTab)
+                previousSelectedTab?.let(::add)
+                pinnedTab?.let(::add)
+                persistentResidentTabs.filterTo(this) { it in visibleTabs }
+            }
             residentTabs.removeAll { it !in retainedTabs }
             recency.removeAll { it !in retainedTabs }
         }
@@ -145,13 +153,22 @@ internal class HomeTabResidencyState(
         touch(tab)
     }
 
+    private fun ensurePersistentResidents() {
+        persistentResidentTabs.forEach(::ensureResident)
+    }
+
     private fun touch(tab: AppTopLevelTab) {
         recency.remove(tab)
         recency.addLast(tab)
     }
 
     private fun trimToLimit() {
-        val protectedTabs = setOfNotNull(selectedTab, previousSelectedTab, pinnedTab)
+        val protectedTabs = buildSet {
+            add(selectedTab)
+            previousSelectedTab?.let(::add)
+            pinnedTab?.let(::add)
+            persistentResidentTabs.filterTo(this) { it in visibleTabs }
+        }
         while (residentTabs.size > maxResidentTabs) {
             val eviction = recency.firstOrNull { it !in protectedTabs }
                 ?: recency.firstOrNull { it != selectedTab && it != pinnedTab }

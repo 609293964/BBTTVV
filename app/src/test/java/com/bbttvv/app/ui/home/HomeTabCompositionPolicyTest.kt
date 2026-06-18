@@ -85,6 +85,38 @@ class HomeTabCompositionPolicyTest {
     }
 
     @Test
+    fun `recommend stays resident across dynamic navigation with bounded adjacent prewarm`() {
+        val state = HomeTabResidencyState(
+            initialSelectedTab = AppTopLevelTab.RECOMMEND,
+            maxResidentTabs = 4,
+            persistentResidentTabs = setOf(AppTopLevelTab.RECOMMEND),
+        )
+        state.updateVisibleTabs(visibleTabs)
+
+        state.select(AppTopLevelTab.POPULAR)
+        assertEquals(AppTopLevelTab.LIVE, state.prewarmNextAdjacent())
+        state.select(AppTopLevelTab.LIVE)
+        assertEquals(AppTopLevelTab.DYNAMIC, state.prewarmNextAdjacent())
+        state.select(AppTopLevelTab.DYNAMIC)
+        assertEquals(AppTopLevelTab.PROFILE, state.prewarmNextAdjacent())
+
+        assertEquals(true, AppTopLevelTab.RECOMMEND in state.residentTabsInDisplayOrder())
+        assertEquals(4, state.residentTabsInDisplayOrder().size)
+
+        state.select(AppTopLevelTab.LIVE)
+        assertEquals(AppTopLevelTab.POPULAR, state.prewarmNextAdjacent())
+        assertEquals(
+            listOf(
+                AppTopLevelTab.RECOMMEND,
+                AppTopLevelTab.POPULAR,
+                AppTopLevelTab.LIVE,
+                AppTopLevelTab.DYNAMIC,
+            ),
+            state.residentTabsInDisplayOrder(),
+        )
+    }
+
+    @Test
     fun `memory trim keeps only selected tab`() {
         val state = HomeTabResidencyState(
             initialSelectedTab = AppTopLevelTab.RECOMMEND,

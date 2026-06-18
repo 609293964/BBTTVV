@@ -26,13 +26,70 @@ class DynamicPaginationRegistryTest {
         val currentApplied = registry.update(
             scope = DynamicFeedScope.DYNAMIC_SCREEN,
             offset = "current",
+            updateBaseline = "baseline",
             hasMore = false,
             generation = currentGeneration
         )
 
         assertTrue(currentApplied)
         assertEquals("current", registry.offset(DynamicFeedScope.DYNAMIC_SCREEN))
+        assertEquals("baseline", registry.updateBaseline(DynamicFeedScope.DYNAMIC_SCREEN))
         assertFalse(registry.hasMore(DynamicFeedScope.DYNAMIC_SCREEN))
+    }
+
+    @Test
+    fun incrementalRefreshPreservesOlderCursorAndAdvancesBaseline() {
+        val result = resolveDynamicPaginationStateAfterPage(
+            paginationBeforeRefresh = DynamicPaginationState(
+                offset = "older-page",
+                updateBaseline = "old-baseline",
+                hasMore = true,
+                generation = 3L
+            ),
+            responseOffset = "incremental-window",
+            responseUpdateBaseline = "new-baseline",
+            responseHasMore = false,
+            preserveExistingPagination = true
+        )
+
+        assertEquals("older-page", result.offset)
+        assertEquals("new-baseline", result.updateBaseline)
+        assertTrue(result.hasMore)
+        assertEquals(3L, result.generation)
+    }
+
+    @Test
+    fun fullRefreshUsesResponsePagination() {
+        val result = resolveDynamicPaginationStateAfterPage(
+            paginationBeforeRefresh = DynamicPaginationState(generation = 4L),
+            responseOffset = "fresh-page",
+            responseUpdateBaseline = "fresh-baseline",
+            responseHasMore = false,
+            preserveExistingPagination = false
+        )
+
+        assertEquals("fresh-page", result.offset)
+        assertEquals("fresh-baseline", result.updateBaseline)
+        assertFalse(result.hasMore)
+        assertEquals(4L, result.generation)
+    }
+
+    @Test
+    fun incrementalRefreshRequiresExistingBaseline() {
+        assertFalse(
+            shouldUseDynamicIncrementalRefresh(
+                refresh = true,
+                incrementalRefreshEnabled = true,
+                updateBaseline = ""
+            )
+        )
+        assertTrue(
+            shouldUseDynamicIncrementalRefresh(
+                refresh = true,
+                incrementalRefreshEnabled = true,
+                updateBaseline = "baseline"
+            )
+        )
     }
 
     @Test

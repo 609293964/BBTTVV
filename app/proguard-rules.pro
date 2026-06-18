@@ -31,6 +31,11 @@
 # Keep Kotlin metadata used by serializers and reflective type resolution.
 -keep class kotlin.Metadata { *; }
 
+# Keep the Compose detail entrypoint and generated nested classes. This mirrors
+# the upstream release-only Android 16/R8 safeguard while preserving shrinking elsewhere.
+-keep class com.bbttvv.app.ui.detail.DetailScreenKt { *; }
+-keep class com.bbttvv.app.ui.detail.DetailScreenKt$* { *; }
+
 # Protobuf / gRPC generated classes.
 -keep class ** extends com.google.protobuf.GeneratedMessageLite { *; }
 -keep class ** extends com.google.protobuf.GeneratedMessageLite$Builder { *; }

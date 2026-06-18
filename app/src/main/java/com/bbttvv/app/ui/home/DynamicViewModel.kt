@@ -179,6 +179,10 @@ class DynamicViewModel : ViewModel() {
 
     private fun loadDynamicVideos(refresh: Boolean, showLoading: Boolean) {
         val snapshot = videoFeed.snapshot()
+        val existingItems = if (refresh) videoFeed.sourceSnapshot() else emptyList()
+        val useIncrementalRefresh = refresh &&
+            existingItems.isNotEmpty() &&
+            DynamicRepository.canIncrementallyRefresh()
         if (refresh) {
             hasMoreVideos = true
         } else {
@@ -197,13 +201,24 @@ class DynamicViewModel : ViewModel() {
             }
             try {
                 val fetchPage: suspend (Int) -> PagedFeedGridState.Page<Int, DynamicItem, DynamicItem> = { pageKey ->
-                        val newVideos = DynamicRepository.getDynamicFeed(refresh = refresh)
+                        val newVideos = DynamicRepository.getDynamicFeed(
+                            refresh = refresh,
+                            incrementalRefresh = useIncrementalRefresh
+                        )
                             .getOrElse { error -> throw error }
+                        val resolvedVideos = if (useIncrementalRefresh) {
+                            mergeIncrementalDynamicItems(
+                                existing = existingItems,
+                                incoming = newVideos
+                            )
+                        } else {
+                            newVideos
+                        }
                         PagedFeedGridState.Page(
-                            sourceItems = newVideos,
-                            visibleItems = newVideos,
+                            sourceItems = resolvedVideos,
+                            visibleItems = resolvedVideos,
                             nextKey = pageKey + 1,
-                            endReached = newVideos.isEmpty()
+                            endReached = !DynamicRepository.hasMoreData()
                         )
                     }
                 val result = if (refresh) {
@@ -288,4 +303,23 @@ class DynamicViewModel : ViewModel() {
     fun prefetchVideoDetail(video: VideoItem, videos: List<VideoItem>, index: Int) {
         prefetchVideoDetail(video)
     }
+}
+
+internal fun mergeIncrementalDynamicItems(
+    existing: List<DynamicItem>,
+    incoming: List<DynamicItem>
+): List<DynamicItem> {
+    if (existing.isEmpty()) return incoming.distinctBy(::dynamicFeedItemKey)
+    if (incoming.isEmpty()) return existing
+
+    val merged = LinkedHashMap<String, DynamicItem>(incoming.size + existing.size)
+    incoming.forEach { item -> merged[dynamicFeedItemKey(item)] = item }
+    existing.forEach { item -> merged.putIfAbsent(dynamicFeedItemKey(item), item) }
+    return merged.values.toList()
+}
+
+internal fun dynamicFeedItemKey(item: DynamicItem): String {
+    if (item.id_str.isNotBlank()) return item.id_str
+    val author = item.modules.module_author
+    return "${item.type}-${author?.mid ?: 0L}-${author?.pub_ts ?: 0L}"
 }

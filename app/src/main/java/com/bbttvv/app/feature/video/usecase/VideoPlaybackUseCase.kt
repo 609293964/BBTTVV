@@ -86,6 +86,23 @@ sealed class PlaybackLoadResult {
     data class Error(val message: String) : PlaybackLoadResult()
 }
 
+internal fun resolvePlaybackDurationMs(
+    playUrlDurationMs: Long,
+    fallbackDurationMs: Long
+): Long {
+    val safePlayUrlDurationMs = playUrlDurationMs.coerceAtLeast(0L)
+    if (safePlayUrlDurationMs > 0L) return safePlayUrlDurationMs
+    return fallbackDurationMs.coerceAtLeast(0L)
+}
+
+internal fun resolvePageDurationMs(
+    pages: List<Page>,
+    currentCid: Long
+): Long {
+    val durationSeconds = pages.firstOrNull { page -> page.cid == currentCid }?.duration ?: 0L
+    return durationSeconds.coerceAtLeast(0L) * 1000L
+}
+
 class VideoPlaybackUseCase {
     private companion object {
         const val TV_SAFE_PRIMARY_CODEC = "avc1"
@@ -191,6 +208,7 @@ class VideoPlaybackUseCase {
                             val source = resolvePlaybackSource(
                                 playUrlData = playData,
                                 currentCid = info.cid,
+                                fallbackDurationMs = resolvePageDurationMs(pages, info.cid),
                                 preferredQuality = preferredQuality,
                                 cdnPreference = cdnPreference,
                                 isHevcSupported = isHevcSupported,
@@ -246,6 +264,7 @@ class VideoPlaybackUseCase {
                     val source = resolvePlaybackSource(
                         playUrlData = playData,
                         currentCid = info.cid,
+                        fallbackDurationMs = resolvePageDurationMs(pages, info.cid),
                         preferredQuality = preferredQuality,
                         cdnPreference = cdnPreference,
                         isHevcSupported = isHevcSupported,
@@ -358,6 +377,7 @@ class VideoPlaybackUseCase {
     fun resolvePlaybackSource(
         playUrlData: PlayUrlData,
         currentCid: Long,
+        fallbackDurationMs: Long = 0L,
         preferredQuality: Int,
         cdnPreference: SettingsManager.PlayerCdnPreference = SettingsManager.PlayerCdnPreference.BILIVIDEO,
         isHevcSupported: Boolean = true,
@@ -366,6 +386,10 @@ class VideoPlaybackUseCase {
         isDolbyVisionSupported: Boolean = true,
         referer: String = "https://www.bilibili.com"
     ): PlaybackSource? {
+        val resolvedDurationMs = resolvePlaybackDurationMs(
+            playUrlDurationMs = playUrlData.timelength,
+            fallbackDurationMs = fallbackDurationMs
+        )
         val resumePositionMs = resolveAutoResumePositionMs(
             currentCid = currentCid,
             playUrlData = playUrlData
@@ -443,7 +467,7 @@ class VideoPlaybackUseCase {
                 qualityOptions = qualityOptions,
                 dashVideos = playUrlData.dash?.video.orEmpty(),
                 dashAudios = allDashAudios,
-                durationMs = playUrlData.timelength,
+                durationMs = resolvedDurationMs,
                 selectedVideoCodec = resolveCodecLabel(dashVideo?.codecs, dashVideo?.codecid),
                 selectedAudioCodec = resolveCodecLabel(dashAudio?.codecs, dashAudio?.codecid),
                 selectedVideoCodecId = dashVideo?.videoCodecSelectionKey() ?: playUrlData.videoCodecid,
@@ -474,7 +498,7 @@ class VideoPlaybackUseCase {
                 qualityOptions = qualityOptions,
                 dashVideos = emptyList(),
                 dashAudios = emptyList(),
-                durationMs = playUrlData.timelength,
+                durationMs = resolvedDurationMs,
                 selectedVideoCodec = resolveCodecLabel(null, playUrlData.videoCodecid),
                 selectedAudioCodec = "",
                 selectedVideoCodecId = playUrlData.videoCodecid,

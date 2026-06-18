@@ -12,6 +12,7 @@ import com.bbttvv.app.core.store.player.DANMAKU_AREA_RATIO_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_OPACITY_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_STROKE_WIDTH_VALUES
 import com.bbttvv.app.core.store.player.DANMAKU_TEXT_SIZE_VALUES
+import com.bbttvv.app.core.store.PLAYER_PLAYBACK_SPEED_PRESETS
 import com.bbttvv.app.core.store.player.DanmakuFontWeightPreset
 import com.bbttvv.app.core.store.player.DanmakuLaneDensityPreset
 import com.bbttvv.app.core.store.player.DanmakuSettings
@@ -112,7 +113,7 @@ internal fun buildPlayerPanelOptions(
     isDanmakuEnabled: Boolean,
 ): List<PanelOption> {
     return when (activePanel) {
-        PlayerAction.Speed -> listOf(0.1f, 0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+        PlayerAction.Speed -> PLAYER_PLAYBACK_SPEED_PRESETS
             .map { speed ->
                 PanelOption(
                     key = speed.toString(),

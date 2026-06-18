@@ -89,9 +89,11 @@ data class SearchTypeData(
 
 @Serializable
 data class SearchVideoItem(
+    val type: String = "",
     @Serializable(with = FlexibleLongSerializer::class)
     val id: Long = 0,
     val bvid: String = "",
+    val arcurl: String = "",
     val title: String = "",
     val pic: String = "",
     val author: String = "",
@@ -119,13 +121,16 @@ data class SearchVideoItem(
                 .replace("&amp;", "&")        // 修复 & 符号转义
                 .replace("&lt;", "<")         // 修复 < 符号
                 .replace("&gt;", ">"),        // 修复 > 符号
+            searchHighlightedTitle = title,
 
             pic = if (pic.startsWith("//")) "https:$pic" else pic,
             owner = Owner(mid = mid, name = author),
             stat = Stat(view = play, danmaku = video_review),
             duration = parseDuration(duration),
             //  传递发布时间
-            pubdate = pubdate
+            pubdate = pubdate,
+            contentType = type,
+            navigationUrl = arcurl
         )
     }
 
@@ -447,4 +452,3 @@ data class LiveRoomSearchItem(
         )
     }
 }
-
