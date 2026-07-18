@@ -39,9 +39,24 @@ import coil.size.Precision
 import com.bbttvv.app.core.util.FormatUtils
 
 internal val DetailBackdropGradientColors = listOf(
-    Color(0x950A0A0C),
-    Color(0xC00C0C0E),
-    Color(0xED101012)
+    Color(0xEB0A0A0C),
+    Color(0xD60C0C0E),
+    Color(0xC2101012)
+)
+internal val DetailLightBackdropGradientColors = listOf(
+    Color(0xF2F4F6F8),
+    Color(0xE0F4F6F8),
+    Color(0xC7F4F6F8)
+)
+internal val DetailBackdropBottomGradientColors = listOf(
+    Color.Transparent,
+    Color(0x59141414),
+    Color(0xEB141414)
+)
+internal val DetailLightBackdropBottomGradientColors = listOf(
+    Color.Transparent,
+    Color(0x66F4F6F8),
+    Color(0xF2F4F6F8)
 )
 internal val DetailPrimaryPillColor = Color(0xFFF4F6F8)
 internal val DetailPrimaryTextColor = Color(0xFF121212)

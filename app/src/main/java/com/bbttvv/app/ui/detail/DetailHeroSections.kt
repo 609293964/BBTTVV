@@ -93,14 +93,15 @@ private const val DetailTripleHoldDurationMs = 1_500
 @Composable
 internal fun DetailCoverBackdrop(model: ImageRequest) {
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    val gradientColors = if (isLightTheme) {
-        listOf(
-            Color(0xB3F4F6F8), // 70% opacity white-gray
-            Color(0xD9F4F6F8), // 85% opacity
-            Color(0xF2F4F6F8)  // 95% opacity
-        )
+    val horizontalGradientColors = if (isLightTheme) {
+        DetailLightBackdropGradientColors
     } else {
         DetailBackdropGradientColors
+    }
+    val bottomGradientColors = if (isLightTheme) {
+        DetailLightBackdropBottomGradientColors
+    } else {
+        DetailBackdropBottomGradientColors
     }
 
     AsyncImage(
@@ -114,8 +115,17 @@ internal fun DetailCoverBackdrop(model: ImageRequest) {
         modifier = Modifier
             .fillMaxSize()
             .background(
-                Brush.linearGradient(
-                    colors = gradientColors
+                Brush.horizontalGradient(
+                    colors = horizontalGradientColors
+                )
+            )
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = bottomGradientColors
                 )
             )
     )

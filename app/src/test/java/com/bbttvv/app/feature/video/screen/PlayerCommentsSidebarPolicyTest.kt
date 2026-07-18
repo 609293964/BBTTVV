@@ -6,8 +6,8 @@ import org.junit.Test
 
 class PlayerCommentsSidebarPolicyTest {
     @Test
-    fun `sidebar occupies exactly one quarter of player width`() {
-        assertEquals(0.25f, PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION, 0.0001f)
+    fun `sidebar occupies thirty percent of player width`() {
+        assertEquals(0.30f, PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION, 0.0001f)
     }
 
     @Test

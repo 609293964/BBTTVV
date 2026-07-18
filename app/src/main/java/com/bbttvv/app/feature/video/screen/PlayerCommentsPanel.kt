@@ -60,7 +60,7 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-internal const val PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION = 0.25f
+internal const val PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION = 0.30f
 
 @Composable
 internal fun PlayerCommentsPanel(
