@@ -78,4 +78,21 @@ class PlayerSponsorPromptKeysTest {
         assertEquals(0, skipCount)
         assertEquals(0, dismissCount)
     }
+
+    @Test
+    fun `confirm repeat is consumed without skipping twice`() {
+        var skipCount = 0
+
+        val handled = handleSponsorSkipNoticeKeyEvent(
+            action = KeyEvent.ACTION_DOWN,
+            keyCode = KeyEvent.KEYCODE_DPAD_CENTER,
+            repeatCount = 1,
+            showSponsorSkipNotice = true,
+            onSkipSponsor = { skipCount++ },
+            onDismissSponsorNotice = {},
+        )
+
+        assertTrue(handled)
+        assertEquals(0, skipCount)
+    }
 }

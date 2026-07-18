@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,8 +35,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -51,12 +55,11 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.core.store.DEFAULT_APP_USER_AGENT
-import com.bbttvv.app.core.store.PlayerSettingsCache
+import com.bbttvv.app.core.store.PLAYER_PLAYBACK_SPEED_PRESETS
+import com.bbttvv.app.core.store.PLAYER_VOLUME_CALIBRATION_SCALES
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
-import com.bbttvv.app.core.store.nextPlayerPlaybackSpeedPreset
-import com.bbttvv.app.core.store.nextPlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.data.repository.BlockedUpRepository
@@ -68,18 +71,27 @@ import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import kotlinx.coroutines.launch
 
-enum class SettingsCategory(val title: String) {
-    PLAYBACK("播放设置"),
-    AUDIO("音频配置"),
-    UI_UX("界面交互"),
-    FEED("推荐数据"),
-    NETWORK("网络连接"),
-    SYSTEM("系统关于")
-}
-
 private object SettingsFocusReturnKeys {
     const val Back = "settings:back"
     const val UserAgent = "settings:user_agent"
+}
+
+private enum class SettingsChoice(val rowKey: String) {
+    DEFAULT_SPEED("settings_default_speed"),
+    PLAYBACK_END("settings_playback_end"),
+    VOLUME_CALIBRATION("settings_volume_calibration"),
+    AUDIO_BALANCE("settings_volume_balance"),
+    FEED_API("settings_feed_api_type"),
+    HOME_REFRESH_COUNT("settings_home_refresh_count"),
+    DYNAMIC_PAGE_MODE("settings_dynamic_page_display_mode"),
+}
+
+internal enum class SettingsRowKind {
+    Toggle,
+    Choice,
+    Navigation,
+    Action,
+    Info,
 }
 
 private const val MOBILE_FEED_TOKEN_MISSING_MESSAGE =
@@ -97,6 +109,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
 
     val playbackFirstFocus = remember { FocusRequester() }
+    val danmakuFirstFocus = remember { FocusRequester() }
     val audioFirstFocus = remember { FocusRequester() }
     val uiFirstFocus = remember { FocusRequester() }
     val feedFirstFocus = remember { FocusRequester() }
@@ -134,13 +147,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                 !focusedView.isSameOrDescendantOf(hostView)
         },
         recoverFocus = {
-            requestBackFocus()
+            runCatching {
+                categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+            }.getOrDefault(false) || requestBackFocus()
         },
     )
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        requestBackFocus()
+        runCatching { categoryFocusRequesters.first().requestFocus() }
     }
 
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -219,6 +234,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 .focusProperties {
                                     right = when (category) {
                                         SettingsCategory.PLAYBACK -> playbackFirstFocus
+                                        SettingsCategory.DANMAKU -> danmakuFirstFocus
                                         SettingsCategory.AUDIO -> audioFirstFocus
                                         SettingsCategory.UI_UX -> uiFirstFocus
                                         SettingsCategory.FEED -> feedFirstFocus
@@ -268,19 +284,28 @@ fun SettingsScreen(onBack: () -> Unit) {
                             isFocusedInRightPanel = state.hasFocus
                         }
                 ) {
-                    TvSettingsList(
-                        selectedCategory = selectedCategory,
-                        modifier = Modifier.fillMaxSize(),
-                        compact = true,
-                        showBuildInfo = true,
-                        categoryFocusRequesters = categoryFocusRequesters,
-                        playbackFirstFocus = playbackFirstFocus,
-                        audioFirstFocus = audioFirstFocus,
-                        uiFirstFocus = uiFirstFocus,
-                        feedFirstFocus = feedFirstFocus,
-                        networkFirstFocus = networkFirstFocus,
-                        systemFirstFocus = systemFirstFocus
-                    )
+                    if (selectedCategory == SettingsCategory.DANMAKU) {
+                        TvDanmakuSettingsList(
+                            modifier = Modifier.fillMaxSize(),
+                            compact = false,
+                            leftFocusRequester = categoryFocusRequesters[selectedCategory.ordinal],
+                            initialFocusRequester = danmakuFirstFocus,
+                        )
+                    } else {
+                        TvSettingsList(
+                            selectedCategory = selectedCategory,
+                            modifier = Modifier.fillMaxSize(),
+                            compact = false,
+                            showBuildInfo = true,
+                            categoryFocusRequesters = categoryFocusRequesters,
+                            playbackFirstFocus = playbackFirstFocus,
+                            audioFirstFocus = audioFirstFocus,
+                            uiFirstFocus = uiFirstFocus,
+                            feedFirstFocus = feedFirstFocus,
+                            networkFirstFocus = networkFirstFocus,
+                            systemFirstFocus = systemFirstFocus
+                        )
+                    }
                 }
             }
         }
@@ -289,8 +314,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
 @Composable
 fun TvSettingsList(
-    selectedCategory: SettingsCategory? = null,
     modifier: Modifier = Modifier,
+    selectedCategory: SettingsCategory? = null,
     compact: Boolean = false,
     showBuildInfo: Boolean = true,
     categoryFocusRequesters: List<FocusRequester> = emptyList(),
@@ -355,7 +380,7 @@ fun TvSettingsList(
         )
     val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = false)
-    val preferredSpeed by PlayerSettingsStore.getPreferredPlaybackSpeed(context)
+    val defaultPlaybackSpeed by PlayerSettingsStore.getDefaultPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
     val volumeCalibrationScale by PlayerSettingsStore.getVolumeCalibrationScale(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
@@ -370,8 +395,19 @@ fun TvSettingsList(
     var cacheRefreshTick by remember { mutableIntStateOf(0) }
     var isClearingCache by remember { mutableStateOf(false) }
     var showUserAgentDialog by remember { mutableStateOf(false) }
+    var activeChoice by remember { mutableStateOf<SettingsChoice?>(null) }
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
     val userAgentFocusRequester = remember { FocusRequester() }
+    val choiceFocusRequesters = remember {
+        SettingsChoice.entries.associateWith { FocusRequester() }
+    }
+    val choiceAnchorBounds = remember { mutableStateMapOf<SettingsChoice, Rect>() }
+
+    fun Modifier.captureChoiceAnchor(choice: SettingsChoice): Modifier {
+        return onGloballyPositioned { coordinates ->
+            choiceAnchorBounds[choice] = coordinates.boundsInWindow()
+        }
+    }
 
     LaunchedEffect(context, cacheRefreshTick) {
         cacheSize = "\u8BA1\u7B97\u4E2D..."
@@ -382,20 +418,29 @@ fun TvSettingsList(
         }
     }
 
+    LaunchedEffect(feedApiType) {
+        if (feedApiType == SettingsManager.FeedApiType.NORMAL) {
+            SettingsManager.setFeedApiType(context, SettingsManager.FeedApiType.WEB)
+        }
+    }
+
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
         focusRequester = userAgentFocusRequester,
     )
+    SettingsChoice.entries.forEach { choice ->
+        RegisterTvFocusReturnTarget(
+            key = choice.rowKey,
+            focusRequester = choiceFocusRequesters.getValue(choice),
+        )
+    }
 
     var lastFocusedKey by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(selectedCategory) {
-        lastFocusedKey = null
-    }
 
     val defaultFirstKey = when (selectedCategory) {
         null -> "settings_auto_highest_quality"
         SettingsCategory.PLAYBACK -> "settings_auto_highest_quality"
+        SettingsCategory.DANMAKU -> "danmaku_default_enabled"
         SettingsCategory.AUDIO -> "settings_volume_calibration"
         SettingsCategory.UI_UX -> "settings_show_online_count"
         SettingsCategory.FEED -> "settings_feed_api_type"
@@ -403,13 +448,18 @@ fun TvSettingsList(
         SettingsCategory.SYSTEM -> "settings_privacy_mode"
     }
 
-    val targetFirstKey = lastFocusedKey ?: defaultFirstKey
+    val targetFirstKey = lastFocusedKey
+        ?.takeIf { key ->
+            selectedCategory == null || key in SettingsCatalog.keysByCategory.getValue(selectedCategory)
+        }
+        ?: defaultFirstKey
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var isFocusedInRightPanel by remember { mutableStateOf(false) }
 
     val currentCategoryFocusRequester = when (selectedCategory) {
         SettingsCategory.PLAYBACK -> playbackFirstFocus
+        SettingsCategory.DANMAKU -> null
         SettingsCategory.AUDIO -> audioFirstFocus
         SettingsCategory.UI_UX -> uiFirstFocus
         SettingsCategory.FEED -> feedFirstFocus
@@ -420,7 +470,7 @@ fun TvSettingsList(
 
     LaunchedEffect(targetFirstKey, selectedCategory, isFocusedInRightPanel) {
         if (!isFocusedInRightPanel && selectedCategory != null) {
-            val targetIndex = getIndexForKey(targetFirstKey, selectedCategory)
+            val targetIndex = SettingsCatalog.itemIndex(selectedCategory, targetFirstKey)
             runCatching {
                 listState.scrollToItem(targetIndex)
             }
@@ -492,18 +542,21 @@ fun TvSettingsList(
             item(key = "settings_default_speed") {
                 SettingsRow(
                     title = "默认倍速",
-                    subtitle = "循环切换 0.75x / 1.0x / 1.25x / 1.5x / 2.0x。",
-                    value = "${preferredSpeed}x",
+                    subtitle = if (rememberLastSpeed) {
+                        "未记录上次速度时使用；可选 0.5x 到 2.0x。"
+                    } else {
+                        "新播放会话默认使用；可选 0.5x 到 2.0x。"
+                    },
+                    value = "${defaultPlaybackSpeed}x",
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_default_speed", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            PlayerSettingsStore.setDefaultPlaybackSpeed(
-                                context,
-                                nextPlaybackSpeed(preferredSpeed)
-                            )
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_default_speed",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.DEFAULT_SPEED)
+                        ).captureChoiceAnchor(SettingsChoice.DEFAULT_SPEED),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.DEFAULT_SPEED }
                 )
             }
             item(key = "settings_auto_resume") {
@@ -528,16 +581,15 @@ fun TvSettingsList(
                     title = "播放结束后",
                     subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
                     value = playerPlaybackEndAction.label,
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_playback_end", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            SettingsManager.setPlayerPlaybackEndAction(
-                                context,
-                                nextPlayerPlaybackEndAction(playerPlaybackEndAction)
-                            )
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_playback_end",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.PLAYBACK_END)
+                        ).captureChoiceAnchor(SettingsChoice.PLAYBACK_END),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.PLAYBACK_END }
                 )
             }
         }
@@ -549,15 +601,15 @@ fun TvSettingsList(
                     title = "应用音量校准",
                     subtitle = "调整 BBTTVV 播放输出音量，不改变电视系统音量。超过 100% 可能失真。",
                     value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_volume_calibration", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            val nextScale = nextPlayerVolumeCalibrationScale(volumeCalibrationScale)
-                            PlayerSettingsCache.updateVolumeCalibrationScale(nextScale)
-                            PlayerSettingsStore.setVolumeCalibrationScale(context, nextScale)
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_volume_calibration",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.VOLUME_CALIBRATION)
+                        ).captureChoiceAnchor(SettingsChoice.VOLUME_CALIBRATION),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.VOLUME_CALIBRATION }
                 )
             }
             item(key = "settings_volume_balance") {
@@ -565,16 +617,15 @@ fun TvSettingsList(
                     title = "音量均衡",
                     subtitle = "自动调整不同视频的音量差异，避免切换视频时音量忽大忽小。",
                     value = audioBalanceLevel.label,
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_volume_balance", leftModifier),
-                    onClick = {
-                        val nextLevel = nextAudioBalanceLevel(audioBalanceLevel)
-                        com.bbttvv.app.core.player.VolumeBalanceController.setLevel(nextLevel)
-                        PlayerSettingsCache.updateAudioBalanceLevel(nextLevel)
-                        scope.launch {
-                            PlayerSettingsStore.setAudioBalanceLevel(context, nextLevel)
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_volume_balance",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.AUDIO_BALANCE)
+                        ).captureChoiceAnchor(SettingsChoice.AUDIO_BALANCE),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.AUDIO_BALANCE }
                 )
             }
             item(key = "settings_audio_passthrough") {
@@ -586,7 +637,6 @@ fun TvSettingsList(
                     modifier = getRowModifier("settings_audio_passthrough", leftModifier),
                     onClick = {
                         val newValue = !audioPassthrough
-                        PlayerSettingsCache.updateAudioPassthrough(newValue)
                         scope.launch {
                             PlayerSettingsStore.setAudioPassthrough(context, newValue)
                         }
@@ -711,7 +761,7 @@ fun TvSettingsList(
             item(key = "settings_theme_mode") {
                 SettingsRow(
                     title = "系统主题模式",
-                    subtitle = "切换应用的全局主题界面。亮色主题下播放器、评论 and 设置等区域都将升级为高级磨砂白玻璃拟态加黑色文字界面。",
+                    subtitle = "切换应用全局明暗主题；播放器、评论和设置等区域会同步更新。",
                     value = themeMode.label,
                     compact = compact,
                     modifier = getRowModifier("settings_theme_mode", leftModifier),
@@ -736,24 +786,15 @@ fun TvSettingsList(
                     title = "推荐页数据源",
                     subtitle = resolveFeedApiTypeDescription(feedApiType),
                     value = resolveFeedApiTypeLabel(feedApiType),
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_feed_api_type", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            val next = nextFeedApiType(feedApiType)
-                            if (
-                                next == SettingsManager.FeedApiType.MOBILE &&
-                                TokenManager.accessTokenCache.isNullOrBlank()
-                            ) {
-                                Toast.makeText(
-                                    context,
-                                    MOBILE_FEED_TOKEN_MISSING_MESSAGE,
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                            SettingsManager.setFeedApiType(context, next)
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_feed_api_type",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.FEED_API)
+                        ).captureChoiceAnchor(SettingsChoice.FEED_API),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.FEED_API }
                 )
             }
             item(key = "settings_home_refresh_count") {
@@ -761,14 +802,15 @@ fun TvSettingsList(
                     title = "首页刷新数量",
                     subtitle = "单次刷新时拉取的推荐视频数量。",
                     value = homeRefreshCount.toString(),
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_home_refresh_count", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            val next = if (homeRefreshCount >= 40) 10 else homeRefreshCount + 5
-                            SettingsManager.setHomeRefreshCount(context, next)
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_home_refresh_count",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.HOME_REFRESH_COUNT)
+                        ).captureChoiceAnchor(SettingsChoice.HOME_REFRESH_COUNT),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.HOME_REFRESH_COUNT }
                 )
             }
             item(key = "settings_dynamic_page_display_mode") {
@@ -776,16 +818,15 @@ fun TvSettingsList(
                     title = "动态页显示管理",
                     subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
                     value = dynamicPageDisplayMode.label,
+                    kind = SettingsRowKind.Choice,
                     compact = compact,
-                    modifier = getRowModifier("settings_dynamic_page_display_mode", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            SettingsManager.setDynamicPageDisplayMode(
-                                context,
-                                nextDynamicPageDisplayMode(dynamicPageDisplayMode)
-                            )
-                        }
-                    }
+                    modifier = getRowModifier(
+                        "settings_dynamic_page_display_mode",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.DYNAMIC_PAGE_MODE)
+                        ).captureChoiceAnchor(SettingsChoice.DYNAMIC_PAGE_MODE),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.DYNAMIC_PAGE_MODE }
                 )
             }
         }
@@ -797,6 +838,7 @@ fun TvSettingsList(
                     title = "User-Agent",
                     subtitle = "当前：${buildUserAgentPreview(userAgent)}",
                     value = if (userAgent == DEFAULT_APP_USER_AGENT) "默认" else "自定义",
+                    kind = SettingsRowKind.Navigation,
                     compact = compact,
                     modifier = getRowModifier(
                         "settings_user_agent",
@@ -810,7 +852,7 @@ fun TvSettingsList(
             }
             item(key = "settings_ipv4_only") {
                 SettingsRow(
-                    title = "是否只允许使用IPV4",
+                    title = "仅使用 IPv4",
                     subtitle = "开启后只走 IPv4 解析；在双栈网络异常时可作为兼容开关。",
                     value = onOff(ipv4OnlyEnabled),
                     compact = compact,
@@ -845,6 +887,7 @@ fun TvSettingsList(
                     title = "黑名单数量",
                     subtitle = "当前已屏蔽的 UP 数量。",
                     value = blockedUps.size.toString(),
+                    kind = SettingsRowKind.Info,
                     compact = compact,
                     modifier = getRowModifier("settings_blocked_ups_count", leftModifier),
                     enabled = false,
@@ -860,6 +903,7 @@ fun TvSettingsList(
                         "清理预览图、网络缓存和播放器残留。"
                     },
                     value = if (isClearingCache) "清理中..." else cacheSize,
+                    kind = SettingsRowKind.Action,
                     compact = compact,
                     modifier = getRowModifier("settings_clear_cache", leftModifier),
                     enabled = !isClearingCache,
@@ -959,6 +1003,145 @@ fun TvSettingsList(
             }
         )
     }
+
+    when (activeChoice) {
+        SettingsChoice.DEFAULT_SPEED -> TvSettingsChoicePopup(
+            title = "选择默认倍速",
+            options = (PLAYER_PLAYBACK_SPEED_PRESETS + defaultPlaybackSpeed)
+                .distinct()
+                .sorted()
+                .map { speed ->
+                    TvSettingsChoiceOption(speed, "${speed}x")
+            },
+            selectedValue = defaultPlaybackSpeed,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.DEFAULT_SPEED],
+            returnFocusKey = SettingsChoice.DEFAULT_SPEED.rowKey,
+            onSelect = { speed ->
+                scope.launch {
+                    PlayerSettingsStore.setDefaultPlaybackSpeed(context, speed)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.PLAYBACK_END -> TvSettingsChoicePopup(
+            title = "选择播放结束行为",
+            options = SettingsManager.PlayerPlaybackEndAction.entries.map { action ->
+                TvSettingsChoiceOption(action, action.label)
+            },
+            selectedValue = playerPlaybackEndAction,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.PLAYBACK_END],
+            returnFocusKey = SettingsChoice.PLAYBACK_END.rowKey,
+            onSelect = { action ->
+                scope.launch {
+                    SettingsManager.setPlayerPlaybackEndAction(context, action)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.VOLUME_CALIBRATION -> TvSettingsChoicePopup(
+            title = "选择应用音量",
+            options = PLAYER_VOLUME_CALIBRATION_SCALES.map { scale ->
+                TvSettingsChoiceOption(scale, formatPlayerVolumeCalibrationLabel(scale))
+            },
+            selectedValue = volumeCalibrationScale,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.VOLUME_CALIBRATION],
+            returnFocusKey = SettingsChoice.VOLUME_CALIBRATION.rowKey,
+            onSelect = { scale ->
+                scope.launch {
+                    PlayerSettingsStore.setVolumeCalibrationScale(context, scale)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.AUDIO_BALANCE -> TvSettingsChoicePopup(
+            title = "选择音量均衡",
+            options = com.bbttvv.app.core.player.AudioBalanceLevel.ordered.map { level ->
+                TvSettingsChoiceOption(level, level.label)
+            },
+            selectedValue = audioBalanceLevel,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.AUDIO_BALANCE],
+            returnFocusKey = SettingsChoice.AUDIO_BALANCE.rowKey,
+            onSelect = { level ->
+                com.bbttvv.app.core.player.VolumeBalanceController.setLevel(level)
+                scope.launch {
+                    PlayerSettingsStore.setAudioBalanceLevel(context, level)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.FEED_API -> TvSettingsChoicePopup(
+            title = "选择推荐页数据源",
+            options = listOf(
+                SettingsManager.FeedApiType.WEB,
+                SettingsManager.FeedApiType.MOBILE,
+            ).map { type -> TvSettingsChoiceOption(type, resolveFeedApiTypeLabel(type)) },
+            selectedValue = feedApiType,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.FEED_API],
+            returnFocusKey = SettingsChoice.FEED_API.rowKey,
+            onSelect = { type ->
+                if (
+                    type == SettingsManager.FeedApiType.MOBILE &&
+                    TokenManager.accessTokenCache.isNullOrBlank()
+                ) {
+                    Toast.makeText(
+                        context,
+                        MOBILE_FEED_TOKEN_MISSING_MESSAGE,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                } else {
+                    scope.launch {
+                        SettingsManager.setFeedApiType(context, type)
+                        activeChoice = null
+                    }
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.HOME_REFRESH_COUNT -> TvSettingsChoicePopup(
+            title = "选择首页刷新数量",
+            options = (10..40 step 5).map { count ->
+                TvSettingsChoiceOption(count, "$count 条")
+            },
+            selectedValue = homeRefreshCount,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.HOME_REFRESH_COUNT],
+            returnFocusKey = SettingsChoice.HOME_REFRESH_COUNT.rowKey,
+            onSelect = { count ->
+                scope.launch {
+                    SettingsManager.setHomeRefreshCount(context, count)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        SettingsChoice.DYNAMIC_PAGE_MODE -> TvSettingsChoicePopup(
+            title = "选择动态页显示内容",
+            options = SettingsManager.DynamicPageDisplayMode.entries.map { mode ->
+                TvSettingsChoiceOption(mode, mode.label)
+            },
+            selectedValue = dynamicPageDisplayMode,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.DYNAMIC_PAGE_MODE],
+            returnFocusKey = SettingsChoice.DYNAMIC_PAGE_MODE.rowKey,
+            onSelect = { mode ->
+                scope.launch {
+                    SettingsManager.setDynamicPageDisplayMode(context, mode)
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
+        null -> Unit
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -1019,6 +1202,7 @@ internal fun SettingsRow(
     compact: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    kind: SettingsRowKind = SettingsRowKind.Toggle,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -1094,7 +1278,7 @@ internal fun SettingsRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 48.dp else 66.dp)
+                .height(if (compact) 48.dp else 78.dp)
                 .padding(horizontal = if (compact) 14.dp else 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -1114,7 +1298,7 @@ internal fun SettingsRow(
                         text = subtitle,
                         color = subtitleColor,
                         fontSize = 14.sp,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -1132,7 +1316,11 @@ internal fun SettingsRow(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = value,
+                    text = when (kind) {
+                        SettingsRowKind.Choice -> "$value  ▾"
+                        SettingsRowKind.Navigation -> "$value  ›"
+                        else -> value
+                    },
                     color = valueTextColor,
                     fontSize = if (compact) 13.sp else 14.sp,
                     fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
@@ -1143,14 +1331,6 @@ internal fun SettingsRow(
 }
 
 internal fun onOff(enabled: Boolean): String = if (enabled) "\u5F00" else "\u5173"
-
-private fun nextFeedApiType(type: SettingsManager.FeedApiType): SettingsManager.FeedApiType {
-    return when (type) {
-        SettingsManager.FeedApiType.WEB -> SettingsManager.FeedApiType.MOBILE
-        SettingsManager.FeedApiType.MOBILE -> SettingsManager.FeedApiType.WEB
-        SettingsManager.FeedApiType.NORMAL -> SettingsManager.FeedApiType.WEB
-    }
-}
 
 private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
     return when (type) {
@@ -1168,17 +1348,6 @@ private fun resolveFeedApiTypeDescription(type: SettingsManager.FeedApiType): St
     }
 }
 
-private fun nextDynamicPageDisplayMode(
-    mode: SettingsManager.DynamicPageDisplayMode
-): SettingsManager.DynamicPageDisplayMode {
-    return when (mode) {
-        SettingsManager.DynamicPageDisplayMode.LIVE -> SettingsManager.DynamicPageDisplayMode.DYNAMIC
-        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> SettingsManager.DynamicPageDisplayMode.ALL
-        SettingsManager.DynamicPageDisplayMode.ALL -> SettingsManager.DynamicPageDisplayMode.NONE
-        SettingsManager.DynamicPageDisplayMode.NONE -> SettingsManager.DynamicPageDisplayMode.LIVE
-    }
-}
-
 private fun resolveDynamicPageDisplayModeDescription(
     mode: SettingsManager.DynamicPageDisplayMode
 ): String {
@@ -1187,17 +1356,6 @@ private fun resolveDynamicPageDisplayModeDescription(
         SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "\u52A8\u6001\u9875\u4EC5\u663E\u793A\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u6A2A\u680F\u3002"
         SettingsManager.DynamicPageDisplayMode.ALL -> "\u52A8\u6001\u9875\u540C\u65F6\u663E\u793A\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\u3002"
         SettingsManager.DynamicPageDisplayMode.NONE -> "\u52A8\u6001\u9875\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u53EA\u4FDD\u7559\u89C6\u9891\u5217\u8868\u3002"
-    }
-}
-
-private fun nextPlayerPlaybackEndAction(
-    action: SettingsManager.PlayerPlaybackEndAction
-): SettingsManager.PlayerPlaybackEndAction {
-    return when (action) {
-        SettingsManager.PlayerPlaybackEndAction.NONE -> SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT
-        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> SettingsManager.PlayerPlaybackEndAction.LOOP_ONE
-        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> SettingsManager.PlayerPlaybackEndAction.RETURN
-        SettingsManager.PlayerPlaybackEndAction.RETURN -> SettingsManager.PlayerPlaybackEndAction.NONE
     }
 }
 
@@ -1212,70 +1370,6 @@ private fun resolvePlayerPlaybackEndActionDescription(
     }
 }
 
-private fun nextPlaybackSpeed(speed: Float): Float {
-    return nextPlayerPlaybackSpeedPreset(speed)
-}
-
-private fun nextAudioBalanceLevel(current: com.bbttvv.app.core.player.AudioBalanceLevel): com.bbttvv.app.core.player.AudioBalanceLevel {
-    val ordered = com.bbttvv.app.core.player.AudioBalanceLevel.ordered
-    val index = ordered.indexOf(current)
-    return if (index == -1 || index == ordered.lastIndex) ordered.first() else ordered[index + 1]
-}
-
 private fun buildUserAgentPreview(userAgent: String): String {
     return userAgent.trim().replace(Regex("\\s+"), " ").take(52)
-}
-
-private fun getIndexForKey(key: String, category: SettingsCategory): Int {
-    return when (category) {
-        SettingsCategory.PLAYBACK -> when (key) {
-            "settings_playback_title" -> 0
-            "settings_auto_highest_quality" -> 1
-            "settings_remember_last_speed" -> 2
-            "settings_default_speed" -> 3
-            "settings_auto_resume" -> 4
-            "settings_playback_end" -> 5
-            else -> 1
-        }
-        SettingsCategory.AUDIO -> when (key) {
-            "settings_audio_title" -> 0
-            "settings_volume_calibration" -> 1
-            "settings_volume_balance" -> 2
-            "settings_audio_passthrough" -> 3
-            else -> 1
-        }
-        SettingsCategory.UI_UX -> when (key) {
-            "settings_ui_ux_title" -> 0
-            "settings_show_online_count" -> 1
-            "settings_video_detail_comments" -> 2
-            "settings_update_content_on_tab_focus" -> 3
-            "settings_watch_later_in_top_tabs" -> 4
-            "settings_single_back_to_home" -> 5
-            "settings_theme_mode" -> 6
-            else -> 1
-        }
-        SettingsCategory.FEED -> when (key) {
-            "settings_feed_title" -> 0
-            "settings_feed_api_type" -> 1
-            "settings_home_refresh_count" -> 2
-            "settings_dynamic_page_display_mode" -> 3
-            else -> 1
-        }
-        SettingsCategory.NETWORK -> when (key) {
-            "settings_network_title" -> 0
-            "settings_user_agent" -> 1
-            "settings_ipv4_only" -> 2
-            else -> 1
-        }
-        SettingsCategory.SYSTEM -> when (key) {
-            "settings_system_title" -> 0
-            "settings_privacy_mode" -> 1
-            "settings_blocked_ups_count" -> 2
-            "settings_clear_cache" -> 3
-            "settings_version" -> 4
-            "settings_build_type" -> 5
-            "settings_package_name" -> 6
-            else -> 1
-        }
-    }
 }

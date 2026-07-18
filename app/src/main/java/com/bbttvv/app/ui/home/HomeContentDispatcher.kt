@@ -106,7 +106,7 @@ internal fun HomeContentDispatcher(
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onSearchVideoClick: (String, VideoItem) -> Unit,
     onDynamicVideoClick: (String, VideoItem) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (String) -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit = {},
     restoreRecommendInitialScrollIndex: Int = -1,
@@ -335,7 +335,7 @@ private fun HomeTabContent(
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onSearchVideoClick: (String, VideoItem) -> Unit,
     onDynamicVideoClick: (String, VideoItem) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (String) -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit,
     onOpenUp: (Long) -> Unit,
     restoreRecommendInitialScrollIndex: Int,
@@ -734,7 +734,7 @@ private fun ProfileTabContent(
     focusCoordinator: HomeFocusCoordinator,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onRequestTopBarFocus: (HomeFocusScene) -> Boolean,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (String) -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, VideoItem) -> Unit
 ) {
     TabViewModelScope(selectedHomeTab, viewModel) {

@@ -5,6 +5,7 @@ import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
 import com.bbttvv.app.data.repository.SponsorBlockRepository
 import com.bbttvv.app.feature.plugin.SponsorBlockConfig
+import com.bbttvv.app.feature.plugin.SponsorCategoryMode
 import com.bbttvv.app.feature.plugin.findSponsorBlockPlugin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -30,29 +31,33 @@ internal class SponsorBlockController(
     val showSkipButton: StateFlow<Boolean> = _showSkipButton.asStateFlow()
 
     private val skippedSegmentIds = mutableSetOf<String>()
+    private val reportedSegmentIds = mutableSetOf<String>()
     private var segmentsJob: Job? = null
     private var loadSequence: Long = 0L
     private var segmentsBvid: String = ""
+    private var segmentsCid: Long = 0L
 
-    fun load(bvid: String) {
+    fun load(bvid: String, cid: Long) {
         reset()
         val normalizedBvid = bvid.trim()
-        if (normalizedBvid.isBlank()) return
+        if (normalizedBvid.isBlank() || cid <= 0L) return
         segmentsBvid = normalizedBvid
+        segmentsCid = cid
         val sequence = ++loadSequence
         segmentsJob = scope.launch {
             try {
-                val loadedSegments = SponsorBlockRepository.getSegments(normalizedBvid)
+                val loadedSegments = SponsorBlockRepository.getSegments(normalizedBvid, cid)
                 if (
                     !isActive ||
                     sequence != loadSequence ||
-                    segmentsBvid != normalizedBvid
+                    segmentsBvid != normalizedBvid ||
+                    segmentsCid != cid
                 ) {
                     return@launch
                 }
                 _segments.value = loadedSegments
                 skippedSegmentIds.clear()
-                Logger.d(TAG, " SponsorBlock: loaded ${loadedSegments.size} segments for $normalizedBvid")
+                Logger.d(TAG, " SponsorBlock: loaded ${loadedSegments.size} segments for $normalizedBvid cid=$cid")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Logger.w(TAG, " SponsorBlock: load failed: ${e.message}")
@@ -67,7 +72,9 @@ internal class SponsorBlockController(
 
         val sponsorConfig = resolveSponsorBlockConfig()
         val filteredSegments = loadedSegments.filter { segment ->
-            segment.isSkipType && sponsorConfig.isCategoryEnabled(segment.category)
+            val mode = sponsorConfig.playbackMode(segment.category)
+            segment.isSkipType &&
+                (mode == SponsorCategoryMode.MANUAL || mode == SponsorCategoryMode.AUTO)
         }
         if (filteredSegments.isEmpty()) {
             _currentSegment.value = null
@@ -81,12 +88,13 @@ internal class SponsorBlockController(
         if (segment != null && segment.UUID !in skippedSegmentIds) {
             _currentSegment.value = segment
 
-            if (sponsorConfig.autoSkip) {
+            if (sponsorConfig.playbackMode(segment.category) == SponsorCategoryMode.AUTO) {
                 engine.seekTo(segment.endTimeMs)
                 skippedSegmentIds.add(segment.UUID)
                 _currentSegment.value = null
                 _showSkipButton.value = false
                 onSponsorSkipped(segment)
+                reportViewed(segment)
                 return true
             } else {
                 _showSkipButton.value = true
@@ -109,6 +117,7 @@ internal class SponsorBlockController(
         _showSkipButton.value = false
 
         onSponsorSkipped(segment)
+        reportViewed(segment)
     }
 
     fun dismissCurrent() {
@@ -123,10 +132,19 @@ internal class SponsorBlockController(
         segmentsJob = null
         loadSequence += 1
         segmentsBvid = ""
+        segmentsCid = 0L
         _segments.value = emptyList()
         _currentSegment.value = null
         _showSkipButton.value = false
         skippedSegmentIds.clear()
+        reportedSegmentIds.clear()
+    }
+
+    private fun reportViewed(segment: SponsorSegment) {
+        if (!reportedSegmentIds.add(segment.UUID)) return
+        scope.launch {
+            SponsorBlockRepository.reportViewedSegment(segment.UUID)
+        }
     }
 
     private fun resolveSponsorBlockConfig(): SponsorBlockConfig {

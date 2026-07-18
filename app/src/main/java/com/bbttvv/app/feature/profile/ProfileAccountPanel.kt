@@ -39,14 +39,13 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.core.store.StoredAccountSession
-import com.bbttvv.app.feature.settings.TvDanmakuSettingsList
-import com.bbttvv.app.feature.settings.TvSettingsList
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 
 @Composable
 internal fun ProfileSettingsPanel(
+    onOpenSettings: () -> Unit,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     onRequestSidebarFocus: () -> Boolean = { false },
@@ -61,7 +60,7 @@ internal fun ProfileSettingsPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(text = "设置", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
-        TvSettingsList(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .profileContentFocusTarget(
@@ -70,41 +69,18 @@ internal fun ProfileSettingsPanel(
                     focusTab = focusTab,
                     onDpadLeft = onRequestSidebarFocus,
                 ),
-            compact = true,
-            showBuildInfo = false,
-            initialFocusRequester = contentFocusTarget.initialFocusRequester,
-        )
-    }
-}
-
-@Composable
-internal fun ProfileDanmakuSettingsPanel(
-    focusCoordinator: HomeFocusCoordinator? = null,
-    focusTab: AppTopLevelTab? = null,
-    onRequestSidebarFocus: () -> Boolean = { false },
-) {
-    val contentFocusTarget = rememberProfileContentFocusTargetState(
-        focusCoordinator = focusCoordinator,
-        focusTab = focusTab,
-    )
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    Column(
-        modifier = Modifier.fillMaxSize().padding(top = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(text = "弹幕设置", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
-        TvDanmakuSettingsList(
-            modifier = Modifier
-                .fillMaxSize()
-                .profileContentFocusTarget(
-                    state = contentFocusTarget,
-                    focusCoordinator = focusCoordinator,
-                    focusTab = focusTab,
-                    onDpadLeft = onRequestSidebarFocus,
-                ),
-            compact = true,
-            initialFocusRequester = contentFocusTarget.initialFocusRequester,
-        )
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ProfileInfoCard(
+                title = "统一设置中心",
+                value = "播放、弹幕、音频、界面、内容、网络与系统选项集中在完整设置页中。",
+            )
+            ProfilePrimaryAction(
+                text = "打开完整设置",
+                onClick = onOpenSettings,
+                modifier = Modifier.focusRequester(contentFocusTarget.initialFocusRequester),
+            )
+        }
     }
 }
 
@@ -338,7 +314,6 @@ private fun AccountActionButton(
 
 @Composable
 internal fun ChangeIconPanel(
-    onOpenSettings: () -> Unit,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
     onRequestSidebarFocus: () -> Boolean = { false },
@@ -361,11 +336,11 @@ internal fun ChangeIconPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = "更换图标", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
-        ProfileInfoCard("图标入口已预留", "后续可以在完整设置页中继续接你的 TV 图标方案！")
-        ProfilePrimaryAction(
-            text = "打开设置页",
-            onClick = onOpenSettings,
+        ProfileInfoCard(
+            title = "图标入口已预留",
+            value = "后续可在这里选择 TV 启动图标；当前版本暂不提供可切换图标。",
             modifier = Modifier.focusRequester(contentFocusTarget.initialFocusRequester),
+            focusable = true,
         )
     }
 }

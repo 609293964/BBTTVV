@@ -127,9 +127,9 @@ abstract class BasePlayerViewModel : ViewModel() {
      * 加载空降片段
      */
     @MainThread
-    protected fun loadSponsorSegments(bvid: String) {
+    protected fun loadSponsorSegments(bvid: String, cid: Long) {
         ensureMainThread("loadSponsorSegments")
-        sponsorBlockController.load(bvid)
+        sponsorBlockController.load(bvid, cid)
     }
 
     /**

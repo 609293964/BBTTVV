@@ -19,10 +19,22 @@ object SponsorCategory {
     const val INTERACTION = "interaction"   // 一键三连提示
     const val PREVIEW = "preview"           // 预告/回顾片段
     const val FILLER = "filler"             // 无关片段/跑题
+    const val MUSIC_OFFTOPIC = "music_offtopic" // 音乐视频中的非音乐片段
     const val POI_HIGHLIGHT = "poi_highlight" // 精彩片段标记
+    const val CHAPTER = "chapter"           // 章节
+    const val EXCLUSIVE_ACCESS = "exclusive_access" // 整片标签（当前仅解析，不参与播放动作）
     
-    val ALL_SKIP_CATEGORIES = listOf(
-        SPONSOR, SELFPROMO, INTRO, OUTRO, INTERACTION, PREVIEW, FILLER
+    val PLAYBACK_CATEGORIES = listOf(
+        SPONSOR,
+        SELFPROMO,
+        INTRO,
+        OUTRO,
+        INTERACTION,
+        PREVIEW,
+        FILLER,
+        MUSIC_OFFTOPIC,
+        POI_HIGHLIGHT,
+        CHAPTER,
     )
     
     fun getCategoryName(category: String): String = when (category) {
@@ -33,7 +45,10 @@ object SponsorCategory {
         INTERACTION -> "互动提示"
         PREVIEW -> "预告/回顾"
         FILLER -> "无关片段"
+        MUSIC_OFFTOPIC -> "非音乐片段"
         POI_HIGHLIGHT -> "精彩片段"
+        CHAPTER -> "章节"
+        EXCLUSIVE_ACCESS -> "整片推广标签"
         else -> category
     }
 }
@@ -46,6 +61,9 @@ object SponsorActionType {
     const val MUTE = "mute"     // 静音
     const val FULL = "full"     // 整个视频标记
     const val POI = "poi"       // 精彩片段点
+    const val CHAPTER = "chapter" // 章节
+
+    val PLAYBACK_ACTION_TYPES = listOf(SKIP, POI, CHAPTER)
 }
 
 @Serializable
@@ -76,6 +94,9 @@ data class SponsorSegment(
     val UUID: String,                 // 片段唯一标识
     val category: String,             // 片段类别
     val actionType: String,           // 动作类型
+    @Serializable(with = FlexibleLongSerializer::class)
+    val cid: Long = 0L,               // 分 P CID；旧数据可能缺失
+    val description: String? = null,  // 章节标题等可选说明
     val locked: Int = 0,              // 是否锁定
     val votes: Int = 0,               // 投票数
     val videoDuration: Float = 0f     // 提交时的视频时长
@@ -100,6 +121,13 @@ data class SponsorSegment(
     
     /** 是否为跳过类型 */
     val isSkipType: Boolean get() = actionType == SponsorActionType.SKIP
+
+    /** 是否为遥控器可跳转的导航点 */
+    val isNavigationType: Boolean
+        get() = actionType == SponsorActionType.POI ||
+            actionType == SponsorActionType.CHAPTER ||
+            category == SponsorCategory.POI_HIGHLIGHT ||
+            category == SponsorCategory.CHAPTER
 }
 
 data class SponsorProgressMarker(
@@ -108,4 +136,3 @@ data class SponsorProgressMarker(
     val startTimeMs: Long,
     val endTimeMs: Long
 )
-

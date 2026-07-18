@@ -12,7 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,6 +30,7 @@ import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.VideoDetailRepository
 import com.bbttvv.app.feature.plugin.TodayWatchPlugin
+import com.bbttvv.app.feature.profile.ProfileSettingsFocusKeys
 import com.bbttvv.app.feature.settings.SettingsScreen
 import com.bbttvv.app.feature.live.LivePlayerScreen
 import com.bbttvv.app.feature.publisher.PublisherScreen
@@ -39,6 +43,7 @@ import com.bbttvv.app.ui.detail.videoDetailRoutes
 import com.bbttvv.app.ui.home.HomeRecyclerPools
 import com.bbttvv.app.ui.home.HomeScreen
 import com.bbttvv.app.ui.home.HomeViewModel
+import com.bbttvv.app.ui.focus.LocalTvFocusReturn
 
 @Composable
 fun AppNavigation() {
@@ -48,6 +53,9 @@ fun AppNavigation() {
     val homeRecyclerPools = remember { HomeRecyclerPools() }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val tvFocusReturn = LocalTvFocusReturn.current
+    var previousRoute by remember { mutableStateOf<String?>(null) }
+    var settingsReturnKey by remember { mutableStateOf<String?>(null) }
     val isOnHome = navigationState.isOnHome(currentRoute)
     val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
         .collectAsStateWithLifecycle(
@@ -77,7 +85,21 @@ fun AppNavigation() {
     }
 
     LaunchedEffect(currentRoute) {
+        val shouldRestoreSettingsSource =
+            previousRoute == ScreenRoutes.Settings.route && currentRoute == ScreenRoutes.Home.route
         navigationState.onRouteChanged(currentRoute)
+        previousRoute = currentRoute
+        if (shouldRestoreSettingsSource) {
+            val sourceKey = settingsReturnKey
+            settingsReturnKey = null
+            if (sourceKey != null && tvFocusReturn != null) {
+                repeat(3) {
+                    withFrameNanos { }
+                    tvFocusReturn.capture(sourceKey, ProfileSettingsFocusKeys.All)
+                    if (tvFocusReturn.restore()) return@LaunchedEffect
+                }
+            }
+        }
     }
 
     LaunchedEffect(visibleTopLevelTabsKey) {
@@ -183,7 +205,8 @@ fun AppNavigation() {
                         navigationState.prepareForHomeTabDetailOpen(AppTopLevelTab.DYNAMIC, focusKey)
                     }
                 },
-                onOpenSettings = {
+                onOpenSettings = { sourceFocusKey ->
+                    settingsReturnKey = sourceFocusKey
                     navController.navigate(ScreenRoutes.Settings.route)
                 },
                 onProfileVideoClick = { tab, focusKey, video ->

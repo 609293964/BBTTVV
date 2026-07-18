@@ -25,6 +25,7 @@ internal enum class PlayerAction(val label: String, val symbol: String) {
     Speed("播放速度", "倍"),
     Quality("画质选择", "清"),
     Danmaku("弹幕设置", "弹"),
+    SponsorNavigation("空降导航", "空"),
     Debug("调试信息", "D"),
 }
 
@@ -100,6 +101,7 @@ internal sealed interface PlayerOverlayEffect {
     ) : PlayerOverlayEffect
     data class SetPlaybackSpeed(val speed: Float) : PlayerOverlayEffect
     data class ChangeQuality(val qualityId: Int) : PlayerOverlayEffect
+    data class JumpToSponsorSegment(val segmentUuid: String) : PlayerOverlayEffect
     data class ActivateDanmakuSetting(val key: String) : PlayerOverlayEffect
 }
 
@@ -245,6 +247,7 @@ internal class PlayerOverlayStateMachine {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (event.repeatCount > 0) return true
                 when {
                     uiState.activePanel != null -> activatePanelOption(panelOptions, onEffect)
                     uiState.overlayMode == PlayerOverlayMode.FullControls -> {
@@ -575,7 +578,8 @@ internal class PlayerOverlayStateMachine {
             }
 
             PlayerAction.Speed,
-            PlayerAction.Quality -> {
+            PlayerAction.Quality,
+            PlayerAction.SponsorNavigation -> {
                 uiState = uiState.copy(
                     activePanel = action,
                     fullControlsFocus = PlayerFullControlsFocus.Actions,
@@ -602,6 +606,7 @@ internal class PlayerOverlayStateMachine {
             }
 
             PlayerAction.Danmaku -> onEffect(PlayerOverlayEffect.ActivateDanmakuSetting(option.key))
+            PlayerAction.SponsorNavigation -> onEffect(PlayerOverlayEffect.JumpToSponsorSegment(option.key))
             PlayerAction.Comments,
             PlayerAction.Debug -> Unit
         }

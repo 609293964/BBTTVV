@@ -10,7 +10,16 @@ import kotlinx.coroutines.flow.update
 
 object PlayerSettingsCache {
     @Volatile
-    private var initialized = false
+    private var preferredPlaybackSpeedInitialized = false
+
+    @Volatile
+    private var volumeCalibrationInitialized = false
+
+    @Volatile
+    private var audioBalanceInitialized = false
+
+    @Volatile
+    private var audioPassthroughInitialized = false
 
     @Volatile
     private var preferredPlaybackSpeed: Float = 1.0f
@@ -32,44 +41,47 @@ object PlayerSettingsCache {
         volumeCalibrationScale = PlayerSettingsStore.getVolumeCalibrationScaleSync(context)
         audioBalanceLevel = PlayerSettingsStore.getAudioBalanceLevelSync(context)
         audioPassthrough = PlayerSettingsStore.getAudioPassthroughSync(context)
-        initialized = true
+        preferredPlaybackSpeedInitialized = true
+        volumeCalibrationInitialized = true
+        audioBalanceInitialized = true
+        audioPassthroughInitialized = true
     }
 
-    fun updatePreferredPlaybackSpeed(speed: Float) {
-        preferredPlaybackSpeed = speed
-        initialized = true
+    fun refreshPreferredPlaybackSpeed(context: Context) {
+        preferredPlaybackSpeed = PlayerSettingsStore.getPreferredPlaybackSpeedSync(context)
+        preferredPlaybackSpeedInitialized = true
     }
 
     fun getPreferredPlaybackSpeed(defaultValue: Float = 1.0f): Float {
-        return if (initialized) preferredPlaybackSpeed else defaultValue
+        return if (preferredPlaybackSpeedInitialized) preferredPlaybackSpeed else defaultValue
     }
 
     fun updateVolumeCalibrationScale(scale: Float) {
         val normalized = normalizePlayerVolumeCalibrationScale(scale)
         volumeCalibrationScale = normalized
-        initialized = true
+        volumeCalibrationInitialized = true
         _volumeCalibrationUpdateToken.update { it + 1L }
     }
 
     fun getVolumeCalibrationScale(defaultValue: Float = 1.0f): Float {
-        return if (initialized) volumeCalibrationScale else defaultValue
+        return if (volumeCalibrationInitialized) volumeCalibrationScale else defaultValue
     }
 
     fun updateAudioBalanceLevel(level: AudioBalanceLevel) {
         audioBalanceLevel = level
-        initialized = true
+        audioBalanceInitialized = true
     }
 
     fun getAudioBalanceLevel(): AudioBalanceLevel {
-        return if (initialized) audioBalanceLevel else AudioBalanceLevel.Off
+        return if (audioBalanceInitialized) audioBalanceLevel else AudioBalanceLevel.Off
     }
 
     fun updateAudioPassthrough(enabled: Boolean) {
         audioPassthrough = enabled
-        initialized = true
+        audioPassthroughInitialized = true
     }
 
     fun getAudioPassthrough(): Boolean {
-        return if (initialized) audioPassthrough else false
+        return if (audioPassthroughInitialized) audioPassthrough else false
     }
 }

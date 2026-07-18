@@ -4,7 +4,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 fun normalizePlaybackSpeed(speed: Float): Float {
-    return speed.coerceIn(0.1f, 8.0f)
+    return speed.coerceIn(0.5f, 3.0f)
 }
 
 const val DEFAULT_LONG_PRESS_SPEED = 2.0f
@@ -61,4 +61,3 @@ fun formatPlayerVolumeCalibrationLabel(scale: Float): String {
         "$percent%"
     }
 }
-

@@ -391,7 +391,6 @@ class PlayerViewModel : BasePlayerViewModel() {
         ensureMainThread("setPlaybackSpeed")
         val appContext = NetworkModule.appContext
         exoPlayer?.playbackParameters = PlaybackParameters(speed)
-        PlayerSettingsCache.updatePreferredPlaybackSpeed(speed)
         if (appContext != null) {
             viewModelScope.launch {
                 PlayerSettingsStore.setLastPlaybackSpeed(appContext, speed)
@@ -444,6 +443,18 @@ class PlayerViewModel : BasePlayerViewModel() {
     fun dismissSponsorNotice() {
         ensureMainThread("dismissSponsorNotice")
         dismissSponsorSkipButton()
+    }
+
+    @MainThread
+    fun jumpToSponsorSegment(segmentUuid: String) {
+        ensureMainThread("jumpToSponsorSegment")
+        val segment = sponsorSegments.value.firstOrNull { candidate ->
+            candidate.UUID == segmentUuid && candidate.isNavigationType
+        } ?: return
+        seekTo(segment.startTimeMs.coerceAtLeast(0L))
+        _uiState.update { state ->
+            state.copy(statusMessage = "已跳转到${segment.categoryName}")
+        }
     }
 
     @MainThread

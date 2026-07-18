@@ -11,6 +11,7 @@ internal fun handleSponsorSkipNoticeKeyEvent(
     return handleSponsorSkipNoticeKeyEvent(
         action = event.action,
         keyCode = event.keyCode,
+        repeatCount = event.repeatCount,
         showSponsorSkipNotice = showSponsorSkipNotice,
         onSkipSponsor = onSkipSponsor,
         onDismissSponsorNotice = onDismissSponsorNotice,
@@ -20,6 +21,7 @@ internal fun handleSponsorSkipNoticeKeyEvent(
 internal fun handleSponsorSkipNoticeKeyEvent(
     action: Int,
     keyCode: Int,
+    repeatCount: Int = 0,
     showSponsorSkipNotice: Boolean,
     onSkipSponsor: () -> Unit,
     onDismissSponsorNotice: () -> Unit,
@@ -29,7 +31,7 @@ internal fun handleSponsorSkipNoticeKeyEvent(
         KeyEvent.KEYCODE_DPAD_CENTER,
         KeyEvent.KEYCODE_ENTER,
         KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-            onSkipSponsor()
+            if (repeatCount == 0) onSkipSponsor()
             true
         }
 

@@ -31,8 +31,8 @@ class PlaybackSpeedPreferencePolicyTest {
 
     @Test
     fun `playback speed should be clamped into supported range`() {
-        assertEquals(0.1f, normalizePlaybackSpeed(0.0f))
-        assertEquals(8.0f, normalizePlaybackSpeed(9.5f))
+        assertEquals(0.5f, normalizePlaybackSpeed(0.0f))
+        assertEquals(3.0f, normalizePlaybackSpeed(9.5f))
     }
 
     @Test
@@ -103,4 +103,3 @@ class PlaybackSpeedPreferencePolicyTest {
         assertEquals(1.0f, normalizeDanmakuDisplayArea(1.4f))
     }
 }
-

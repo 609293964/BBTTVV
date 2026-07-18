@@ -75,8 +75,11 @@ fun PlayerScreen(
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
     val isDebugOverlayVisible = overlayUiState.showDebugOverlay
-    val actions = remember {
-        buildPlayerActions()
+    val hasSponsorNavigation = remember(sponsorUiState.segments) {
+        sponsorUiState.segments.any { segment -> segment.isNavigationType }
+    }
+    val actions = remember(hasSponsorNavigation) {
+        buildPlayerActions(hasSponsorNavigation = hasSponsorNavigation)
     }
     LaunchedEffect(actions) {
         overlayStateMachine.syncActions(actions)
@@ -86,12 +89,14 @@ fun PlayerScreen(
         uiState,
         presentationState.danmakuSettings,
         isDanmakuEnabled,
+        sponsorUiState.segments,
     ) {
         buildPlayerPanelOptions(
             activePanel = overlayUiState.activePanel,
             uiState = uiState,
             danmakuSettings = presentationState.danmakuSettings,
             isDanmakuEnabled = isDanmakuEnabled,
+            sponsorSegments = sponsorUiState.segments,
         )
     }
     val panelOptionsFocusKey = buildPanelOptionsFocusKey(panelOptions)

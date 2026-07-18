@@ -24,6 +24,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Create
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -108,6 +109,7 @@ private fun actionIcon(action: PlayerAction): ImageVector {
         PlayerAction.Speed -> Icons.Outlined.PlayArrow
         PlayerAction.Quality -> Icons.Outlined.Settings
         PlayerAction.Danmaku -> Icons.Outlined.Create
+        PlayerAction.SponsorNavigation -> Icons.Outlined.DateRange
         PlayerAction.Debug -> Icons.Outlined.Info
     }
 }

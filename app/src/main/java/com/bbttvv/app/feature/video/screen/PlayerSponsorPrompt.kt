@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.data.model.response.SponsorBlockMarkerMode
+import com.bbttvv.app.data.model.response.SponsorActionType
 import com.bbttvv.app.data.model.response.SponsorCategory
 import com.bbttvv.app.data.model.response.SponsorSegment
 import com.bbttvv.app.feature.plugin.SponsorBlockConfig
@@ -31,7 +32,14 @@ internal data class SponsorProgressMark(
     val startFraction: Float,
     val endFraction: Float,
     val category: String,
+    val kind: SponsorProgressMarkKind = SponsorProgressMarkKind.Range,
 )
+
+internal enum class SponsorProgressMarkKind {
+    Range,
+    Point,
+    Chapter,
+}
 
 internal fun buildSponsorProgressMarks(
     segments: List<SponsorSegment>,
@@ -43,19 +51,35 @@ internal fun buildSponsorProgressMarks(
         return emptyList()
     }
     return segments.mapNotNull { segment ->
-        if (!segment.isSkipType || !config.isCategoryEnabled(segment.category)) return@mapNotNull null
-        if (config.markerMode == SponsorBlockMarkerMode.SPONSOR_ONLY && segment.category != SponsorCategory.SPONSOR) {
+        val kind = when {
+            segment.actionType == SponsorActionType.CHAPTER || segment.category == SponsorCategory.CHAPTER -> {
+                SponsorProgressMarkKind.Chapter
+            }
+            segment.actionType == SponsorActionType.POI || segment.category == SponsorCategory.POI_HIGHLIGHT -> {
+                SponsorProgressMarkKind.Point
+            }
+            segment.isSkipType && config.isCategoryEnabled(segment.category) -> SponsorProgressMarkKind.Range
+            else -> return@mapNotNull null
+        }
+        if (config.markerMode == SponsorBlockMarkerMode.SPONSOR_ONLY &&
+            (kind != SponsorProgressMarkKind.Range || segment.category != SponsorCategory.SPONSOR)
+        ) {
             return@mapNotNull null
         }
         val start = segment.startTimeMs.coerceAtLeast(0L)
         val end = segment.endTimeMs.coerceAtLeast(0L)
-        if (end <= start) return@mapNotNull null
+        if (kind == SponsorProgressMarkKind.Range && end <= start) return@mapNotNull null
         val startFraction = (start.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-        val endFraction = (end.toFloat() / durationMs.toFloat()).coerceIn(startFraction, 1f)
+        val endFraction = if (kind == SponsorProgressMarkKind.Range) {
+            (end.toFloat() / durationMs.toFloat()).coerceIn(startFraction, 1f)
+        } else {
+            startFraction
+        }
         SponsorProgressMark(
             startFraction = startFraction,
             endFraction = endFraction,
             category = segment.category,
+            kind = kind,
         )
     }
 }

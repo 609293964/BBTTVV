@@ -19,6 +19,7 @@ import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
+import com.bbttvv.app.data.model.response.SponsorSegment
 import java.util.Locale
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
@@ -102,8 +103,10 @@ internal fun rememberPlayerOverlayPresentationState(
     return presentationState
 }
 
-internal fun buildPlayerActions(): List<PlayerAction> {
-    return PlayerAction.entries
+internal fun buildPlayerActions(hasSponsorNavigation: Boolean = false): List<PlayerAction> {
+    return PlayerAction.entries.filter { action ->
+        action != PlayerAction.SponsorNavigation || hasSponsorNavigation
+    }
 }
 
 internal fun buildPlayerPanelOptions(
@@ -111,6 +114,7 @@ internal fun buildPlayerPanelOptions(
     uiState: PlayerUiState,
     danmakuSettings: DanmakuSettings,
     isDanmakuEnabled: Boolean,
+    sponsorSegments: List<SponsorSegment> = emptyList(),
 ): List<PanelOption> {
     return when (activePanel) {
         PlayerAction.Speed -> PLAYER_PLAYBACK_SPEED_PRESETS
@@ -136,6 +140,7 @@ internal fun buildPlayerPanelOptions(
             danmakuSettings = danmakuSettings,
             isDanmakuEnabled = isDanmakuEnabled,
         )
+        PlayerAction.SponsorNavigation -> buildSponsorNavigationOptions(sponsorSegments)
         PlayerAction.Comments,
         PlayerAction.Debug,
         null -> emptyList()
@@ -145,6 +150,7 @@ internal fun buildPlayerPanelOptions(
 internal fun panelTitleFor(action: PlayerAction?): String {
     return when (action) {
         PlayerAction.Danmaku -> "弹幕设置"
+        PlayerAction.SponsorNavigation -> "空降导航"
         else -> action?.label.orEmpty()
     }
 }
@@ -191,6 +197,11 @@ internal fun handlePlayerOverlayEffect(
             viewModel.changeQuality(effect.qualityId)
         }
 
+        is PlayerOverlayEffect.JumpToSponsorSegment -> {
+            presentationState.hideCommentsPanel()
+            viewModel.jumpToSponsorSegment(effect.segmentUuid)
+        }
+
         is PlayerOverlayEffect.ActivateDanmakuSetting -> {
             presentationState.hideCommentsPanel()
             handleDanmakuPanelAction(
@@ -215,6 +226,23 @@ internal fun handlePlayerOverlayEffect(
             onExitPlayer()
         }
     }
+}
+
+internal fun buildSponsorNavigationOptions(segments: List<SponsorSegment>): List<PanelOption> {
+    return segments.asSequence()
+        .filter { segment -> segment.isNavigationType && segment.startTimeMs >= 0L }
+        .distinctBy { segment -> segment.UUID }
+        .sortedBy { segment -> segment.startTimeMs }
+        .map { segment ->
+            PanelOption(
+                key = segment.UUID,
+                label = segment.description?.trim().takeUnless { it.isNullOrEmpty() }
+                    ?: segment.categoryName,
+                subtitle = formatDuration(segment.startTimeMs),
+                valueText = "跳转",
+            )
+        }
+        .toList()
 }
 
 private fun buildDanmakuPanelOptions(

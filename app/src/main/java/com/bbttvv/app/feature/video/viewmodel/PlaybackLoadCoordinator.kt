@@ -47,7 +47,7 @@ internal class PlaybackLoadCoordinator(
     private val requestDanmakuLoad: (cid: Long, aid: Long, startPositionMs: Long, force: Boolean) -> Unit,
     private val isDanmakuEnabled: () -> Boolean,
     private val resetSponsorState: () -> Unit,
-    private val loadSponsorSegments: (bvid: String) -> Unit,
+    private val loadSponsorSegments: (bvid: String, cid: Long) -> Unit,
     private val applyPlaybackSource: (
         source: PlaybackSource,
         seekToMs: Long,
@@ -245,7 +245,7 @@ internal class PlaybackLoadCoordinator(
                 true,
             )
         }
-        loadSponsorSegments(result.info.bvid)
+        loadSponsorSegments(result.info.bvid, result.info.cid)
         videoShotController.load(result.info.bvid, result.info.cid)
         refreshPlayerSnapshot()
 

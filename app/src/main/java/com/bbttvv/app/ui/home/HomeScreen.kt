@@ -58,7 +58,7 @@ internal fun HomeScreen(
     onRecommendVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
     onSearchVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
     onDynamicVideoClick: (String, VideoItem) -> Unit = { _, video -> onVideoClick(video) },
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (String) -> Unit,
     onProfileVideoClick: (AppTopLevelTab, String, com.bbttvv.app.data.model.response.VideoItem) -> Unit = { _, _, _ -> },
     onOpenUp: (Long) -> Unit = {}
 ) {

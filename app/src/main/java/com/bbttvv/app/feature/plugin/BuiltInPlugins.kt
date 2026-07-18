@@ -40,6 +40,27 @@ private val pluginJson = Json {
 }
 
 @Serializable
+enum class SponsorCategoryMode {
+    DISABLED,
+    MARKER_ONLY,
+    MANUAL,
+    AUTO,
+}
+
+fun SponsorCategoryMode.categoryModeLabel(): String = when (this) {
+    SponsorCategoryMode.DISABLED -> "关闭"
+    SponsorCategoryMode.MARKER_ONLY -> "仅标记"
+    SponsorCategoryMode.MANUAL -> "手动跳过"
+    SponsorCategoryMode.AUTO -> "自动跳过"
+}
+
+private fun resolveSponsorCategoryMode(rawValue: String?): SponsorCategoryMode {
+    return SponsorCategoryMode.entries.firstOrNull { mode ->
+        mode.name.equals(rawValue, ignoreCase = true)
+    } ?: SponsorCategoryMode.DISABLED
+}
+
+@Serializable
 data class SponsorBlockConfig(
     val autoSkip: Boolean = true,
     val markerModeRaw: String = SponsorBlockMarkerMode.SPONSOR_ONLY.name,
@@ -50,12 +71,19 @@ data class SponsorBlockConfig(
     val skipOutro: Boolean = true,
     val skipInteraction: Boolean = true,
     val skipPreview: Boolean = false,
-    val skipFiller: Boolean = false
+    val skipFiller: Boolean = false,
+    val musicOfftopicModeRaw: String = SponsorCategoryMode.DISABLED.name,
 ) {
     val markerMode: SponsorBlockMarkerMode
         get() = resolveSponsorBlockMarkerMode(markerModeRaw)
 
-    fun normalized(): SponsorBlockConfig = copy(markerModeRaw = markerMode.name)
+    val musicOfftopicMode: SponsorCategoryMode
+        get() = resolveSponsorCategoryMode(musicOfftopicModeRaw)
+
+    fun normalized(): SponsorBlockConfig = copy(
+        markerModeRaw = markerMode.name,
+        musicOfftopicModeRaw = musicOfftopicMode.name,
+    )
 
     fun isCategoryEnabled(category: String): Boolean = when (category) {
         SponsorCategory.SPONSOR -> skipSponsor
@@ -65,7 +93,16 @@ data class SponsorBlockConfig(
         SponsorCategory.INTERACTION -> skipInteraction
         SponsorCategory.PREVIEW -> skipPreview
         SponsorCategory.FILLER -> skipFiller
-        else -> true
+        SponsorCategory.MUSIC_OFFTOPIC -> musicOfftopicMode != SponsorCategoryMode.DISABLED
+        SponsorCategory.POI_HIGHLIGHT,
+        SponsorCategory.CHAPTER -> true
+        else -> false
+    }
+
+    fun playbackMode(category: String): SponsorCategoryMode {
+        if (category == SponsorCategory.MUSIC_OFFTOPIC) return musicOfftopicMode
+        if (!isCategoryEnabled(category)) return SponsorCategoryMode.DISABLED
+        return if (autoSkip) SponsorCategoryMode.AUTO else SponsorCategoryMode.MANUAL
     }
 }
 
@@ -142,6 +179,10 @@ class SponsorBlockPlugin : Plugin {
 
     fun setSkipFiller(enabled: Boolean) {
         persistConfig(_configState.value.copy(skipFiller = enabled))
+    }
+
+    fun setMusicOfftopicMode(mode: SponsorCategoryMode) {
+        persistConfig(_configState.value.copy(musicOfftopicModeRaw = mode.name))
     }
 
     private suspend fun loadConfigFromStore() {

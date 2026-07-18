@@ -10,10 +10,18 @@ import org.junit.Test
 
 class PlayerOverlayActionsTest {
     @Test
-    fun `player actions include all entries including debug`() {
+    fun `player actions omit sponsor navigation until data is available`() {
         val actions = buildPlayerActions()
 
-        assertEquals(PlayerAction.entries, actions)
+        assertFalse(PlayerAction.SponsorNavigation in actions)
+        assertTrue(PlayerAction.Debug in actions)
+    }
+
+    @Test
+    fun `player actions expose sponsor navigation when data is available`() {
+        val actions = buildPlayerActions(hasSponsorNavigation = true)
+
+        assertTrue(PlayerAction.SponsorNavigation in actions)
     }
 
     @Test

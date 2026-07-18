@@ -58,7 +58,6 @@ internal enum class ProfileMenu(val label: String) {
     SWITCH_ACCOUNT("切换账号"),
     CHANGE_ICON("更换图标"),
     SETTINGS("设置"),
-    DANMAKU_SETTINGS("弹幕设置"),
     PLUGINS("插件中心"),
     GUIDE("操作说明"),
     LOGOUT("登出")
@@ -70,7 +69,6 @@ private val profileMenuDisplayOrder = listOf(
     ProfileMenu.BANGUMI,
     ProfileMenu.WATCH_LATER,
     ProfileMenu.SETTINGS,
-    ProfileMenu.DANMAKU_SETTINGS,
     ProfileMenu.PLUGINS,
     ProfileMenu.SWITCH_ACCOUNT,
     ProfileMenu.CHANGE_ICON,
@@ -85,7 +83,7 @@ internal const val WATCH_LATER_VIDEO_GRID_COLUMNS = 4
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun ProfileScreen(
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (String) -> Unit,
     onOpenVideo: (String, VideoItem) -> Unit,
     onRequestTopBarFocus: () -> Boolean = { false },
     focusCoordinator: HomeFocusCoordinator? = null,
@@ -172,17 +170,34 @@ internal fun ProfileScreen(
             ) {
                 when {
                     uiState.isLoading -> TvStatusPane(message = "正在加载我的页面...")
-                    !uiState.errorMessage.isNullOrBlank() -> TvStatusPane(
-                        title = "我的页面加载失败",
-                        message = uiState.errorMessage ?: "请检查网络连接后重试",
-                        actionLabel = "重试",
-                        onAction = viewModel::refresh,
-                        onDpadUp = onRequestTopBarFocus,
+                    !uiState.errorMessage.isNullOrBlank() -> {
+                        val settingsFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                        com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget(
+                            key = ProfileSettingsFocusKeys.ErrorAction,
+                            focusRequester = settingsFocusRequester,
+                        )
+                        TvStatusPane(
+                            title = "我的页面加载失败",
+                            message = uiState.errorMessage ?: "请检查网络连接后重试",
+                            actionLabel = "重试",
+                            onAction = viewModel::refresh,
+                            secondaryActionLabel = "打开设置",
+                            onSecondaryAction = { onOpenSettings(ProfileSettingsFocusKeys.ErrorAction) },
+                            secondaryActionFocusRequester = settingsFocusRequester,
+                            onDpadUp = onRequestTopBarFocus,
+                        )
+                    }
+                    navData == null || !navData.isLogin -> GuestProfileLayout(
+                        uiState = uiState,
+                        onLoginSuccess = {
+                            selectedMenu = ProfileMenu.HISTORY
+                            viewModel.refresh()
+                        },
+                        onOpenSettings = { onOpenSettings(ProfileSettingsFocusKeys.GuestAction) },
+                        onRequestTopBarFocus = onRequestTopBarFocus,
+                        focusCoordinator = focusCoordinator,
+                        focusTab = focusTab,
                     )
-                    navData == null || !navData.isLogin -> GuestProfileLayout(uiState = uiState, onLoginSuccess = {
-                        selectedMenu = ProfileMenu.HISTORY
-                        viewModel.refresh()
-                    }, onRequestTopBarFocus = onRequestTopBarFocus, focusCoordinator = focusCoordinator, focusTab = focusTab)
                     else -> LoggedInProfileLayout(
                         uiState = uiState,
                         selectedMenu = selectedMenu,
@@ -200,7 +215,7 @@ internal fun ProfileScreen(
                                 selectedMenu = menu
                             }
                         },
-                        onOpenSettings = onOpenSettings,
+                        onOpenSettings = { onOpenSettings(ProfileSettingsFocusKeys.LoggedInMenu) },
                         onOpenVideo = { focusKey, video ->
                             viewModel.primeVideoDetail(video)
                             onOpenVideo(focusKey, video)
@@ -400,6 +415,14 @@ private fun LoggedInProfileLayout(
                 profileFocusCoordinator.prepareContentMenu(menu)
                 onSelectMenu(menu)
             },
+            onActivateMenu = { menu ->
+                if (menu == ProfileMenu.SETTINGS) {
+                    onOpenSettings()
+                } else {
+                    profileFocusCoordinator.prepareContentMenu(menu)
+                    onSelectMenu(menu)
+                }
+            },
             onRequestTopBarFocus = onRequestTopBarFocus,
             onSidebarFocusChanged = { focused ->
                 sidebarHasFocus = focused
@@ -507,11 +530,7 @@ private fun ProfileContentPanel(
                     videoCardRecycledViewPool = videoCardRecycledViewPool
                 )
                 ProfileMenu.SETTINGS -> ProfileSettingsPanel(
-                    focusCoordinator = focusCoordinator,
-                    focusTab = focusTab,
-                    onRequestSidebarFocus = onRequestSidebarFocus
-                )
-                ProfileMenu.DANMAKU_SETTINGS -> ProfileDanmakuSettingsPanel(
+                    onOpenSettings = onOpenSettings,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     onRequestSidebarFocus = onRequestSidebarFocus
@@ -572,7 +591,6 @@ private fun ProfileContentPanel(
                     focusTab = focusTab
                 )
                 ProfileMenu.CHANGE_ICON -> ChangeIconPanel(
-                    onOpenSettings = onOpenSettings,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab,
                     onRequestSidebarFocus = onRequestSidebarFocus

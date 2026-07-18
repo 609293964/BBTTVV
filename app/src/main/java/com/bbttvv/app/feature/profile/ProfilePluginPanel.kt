@@ -60,6 +60,8 @@ import com.bbttvv.app.feature.plugin.CdnRegionPlugin
 import com.bbttvv.app.feature.plugin.CdnRegionPluginCache
 import com.bbttvv.app.feature.plugin.HOME_FEED_ANONYMIZER_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.HomeFeedAnonymizerPlugin
+import com.bbttvv.app.feature.plugin.SponsorCategoryMode
+import com.bbttvv.app.feature.plugin.categoryModeLabel
 import com.bbttvv.app.feature.plugin.TodayWatchTasteInsightState
 import com.bbttvv.app.feature.plugin.buildHomeFeedAnonymizerCreditRows
 import com.bbttvv.app.feature.plugin.buildHomeFeedAnonymizerStatsUiModel
@@ -398,6 +400,10 @@ private fun SponsorBlockPluginPanel(
         val modes = SponsorBlockMarkerMode.entries
         modes[(modes.indexOf(config.markerMode) + 1).mod(modes.size)]
     }
+    val nextMusicOfftopicMode = remember(config.musicOfftopicMode) {
+        val modes = SponsorCategoryMode.entries
+        modes[(modes.indexOf(config.musicOfftopicMode) + 1).mod(modes.size)]
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         PluginCenterRowCard(
@@ -477,7 +483,18 @@ private fun SponsorBlockPluginPanel(
             isSubItem = true,
             onClick = { plugin.setSkipFiller(!config.skipFiller) }
         )
-        ProfileInfoCard("已接入播放链路", "现在插件管理器里的空降助手和实际播放器走的是同一套开关，打开后会直接作用到视频播放。", compact = true)
+        PluginCenterRowCard(
+            title = "音乐中的非音乐片段",
+            subtitle = "面向把电视当音乐播放器的场景；默认关闭，避免误伤访谈和现场内容。",
+            value = "${config.musicOfftopicMode.categoryModeLabel()} -> ${nextMusicOfftopicMode.categoryModeLabel()}",
+            isSubItem = true,
+            onClick = { plugin.setMusicOfftopicMode(nextMusicOfftopicMode) }
+        )
+        ProfileInfoCard(
+            "已接入播放链路",
+            "空降助手会按当前分 P 加载片段；精彩点与章节会出现在播放器的空降导航中。",
+            compact = true
+        )
     }
 }
 

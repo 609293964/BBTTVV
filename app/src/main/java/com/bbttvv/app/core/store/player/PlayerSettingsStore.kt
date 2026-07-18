@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.bbttvv.app.core.player.AudioBalanceLevel
+import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.normalizePlayerVolumeCalibrationScale
 import com.bbttvv.app.core.store.normalizePlaybackSpeed
 import com.bbttvv.app.core.store.resolvePreferredPlaybackSpeed
@@ -42,6 +43,7 @@ object PlayerSettingsStore {
             .edit()
             .putFloat(cacheKeyDefaultPlaybackSpeed, normalized)
             .apply()
+        PlayerSettingsCache.refreshPreferredPlaybackSpeed(context)
     }
 
     fun getRememberLastPlaybackSpeed(context: Context): Flow<Boolean> = context.settingsDataStore.data
@@ -55,6 +57,7 @@ object PlayerSettingsStore {
             .edit()
             .putBoolean(cacheKeyRememberLastSpeed, enabled)
             .apply()
+        PlayerSettingsCache.refreshPreferredPlaybackSpeed(context)
     }
 
     fun getLastPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
@@ -69,6 +72,7 @@ object PlayerSettingsStore {
             .edit()
             .putFloat(cacheKeyLastPlaybackSpeed, normalized)
             .apply()
+        PlayerSettingsCache.refreshPreferredPlaybackSpeed(context)
     }
 
     fun getPreferredPlaybackSpeed(context: Context): Flow<Float> = combine(
@@ -101,6 +105,7 @@ object PlayerSettingsStore {
             .edit()
             .putFloat(cacheKeyVolumeCalibrationScale, normalized)
             .apply()
+        PlayerSettingsCache.updateVolumeCalibrationScale(normalized)
     }
 
     fun getVolumeCalibrationScaleSync(context: Context): Float {
@@ -123,6 +128,7 @@ object PlayerSettingsStore {
             .edit()
             .putString(cacheKeyAudioBalanceLevel, level.prefValue)
             .apply()
+        PlayerSettingsCache.updateAudioBalanceLevel(level)
     }
 
     fun getAudioBalanceLevelSync(context: Context): AudioBalanceLevel {
@@ -143,6 +149,7 @@ object PlayerSettingsStore {
             .edit()
             .putBoolean(cacheKeyAudioPassthrough, enabled)
             .apply()
+        PlayerSettingsCache.updateAudioPassthrough(enabled)
     }
 
     fun getAudioPassthroughSync(context: Context): Boolean {

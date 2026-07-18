@@ -4,12 +4,16 @@ package com.bbttvv.app.data.repository
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorCategory
+import com.bbttvv.app.data.model.response.SponsorActionType
 import com.bbttvv.app.data.model.response.SponsorSegment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.TimeUnit
 
 internal fun buildSponsorBlockHttpClient(baseClient: OkHttpClient): OkHttpClient {
@@ -38,17 +42,23 @@ object SponsorBlockRepository {
     /**
      * 获取视频的空降片段
      * @param bvid 视频 BV 号
-     * @param categories 要获取的片段类别，默认获取所有跳过类别
+     * @param cid 当前分 P 的 CID
+     * @param categories 要获取的片段类别
      * @return 片段列表，失败返回空列表
      */
     suspend fun getSegments(
         bvid: String,
-        categories: List<String> = SponsorCategory.ALL_SKIP_CATEGORIES
+        cid: Long,
+        categories: List<String> = SponsorCategory.PLAYBACK_CATEGORIES,
+        actionTypes: List<String> = SponsorActionType.PLAYBACK_ACTION_TYPES,
     ): List<SponsorSegment> = withContext(Dispatchers.IO) {
         try {
-            // 构建 URL，添加类别参数
-            val categoryParams = categories.joinToString("&") { "category=$it" }
-            val url = "$BASE_URL/skipSegments?videoID=$bvid&$categoryParams"
+            val url = buildSponsorBlockSegmentsUrl(
+                bvid = bvid,
+                cid = cid,
+                categories = categories,
+                actionTypes = actionTypes,
+            )
             
             val request = Request.Builder()
                 .url(url)
@@ -56,29 +66,48 @@ object SponsorBlockRepository {
                 .get()
                 .build()
             
-            val response = client.newCall(request).execute()
-            
-            when (response.code) {
-                200 -> {
-                    val body = response.body.string()
-                    val segments = json.decodeFromString<List<SponsorSegment>>(body)
-                    Logger.d(TAG) { "获取到 ${segments.size} 个空降片段 for $bvid" }
-                    segments.filter { it.isSkipType } // 只返回跳过类型的片段
-                }
-                404 -> {
-                    // 没有空降数据，这是正常情况
-                    Logger.d(TAG) { "视频 $bvid 没有空降数据" }
-                    emptyList()
-                }
-                else -> {
-                    android.util.Log.w(TAG, "API 返回错误: ${response.code}")
-                    emptyList()
+            client.newCall(request).execute().use { response ->
+                when (response.code) {
+                    200 -> {
+                        val body = response.body.string()
+                        val segments = json.decodeFromString<List<SponsorSegment>>(body)
+                        val currentCidSegments = filterSponsorSegmentsForCid(segments, cid)
+                        Logger.d(TAG) {
+                            "获取到 ${currentCidSegments.size} 个空降片段 for $bvid cid=$cid"
+                        }
+                        currentCidSegments
+                    }
+                    404 -> {
+                        Logger.d(TAG) { "视频 $bvid cid=$cid 没有空降数据" }
+                        emptyList()
+                    }
+                    else -> {
+                        android.util.Log.w(TAG, "API 返回错误: ${response.code}")
+                        emptyList()
+                    }
                 }
             }
         } catch (e: Exception) {
             android.util.Log.e(TAG, "获取空降片段失败: ${e.message}")
             emptyList()
         }
+    }
+
+    suspend fun reportViewedSegment(segmentUuid: String): Boolean = withContext(Dispatchers.IO) {
+        if (segmentUuid.isBlank()) return@withContext false
+        runCatching {
+            val url = "$BASE_URL/viewedVideoSponsorTime".toHttpUrl().newBuilder()
+                .addQueryParameter("UUID", segmentUuid)
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "BBTTVV/2.4.1")
+                .post(ByteArray(0).toRequestBody())
+                .build()
+            client.newCall(request).execute().use { response -> response.isSuccessful }
+        }.onFailure { error ->
+            Logger.w(TAG, "空降片段跳过次数上报失败: ${error.message}")
+        }.getOrDefault(false)
     }
     
     /**
@@ -117,4 +146,28 @@ object SponsorBlockRepository {
             timeToStart > 0 && timeToStart <= lookAheadSeconds
         }
     }
+}
+
+internal fun buildSponsorBlockSegmentsUrl(
+    bvid: String,
+    cid: Long,
+    categories: List<String>,
+    actionTypes: List<String>,
+): HttpUrl {
+    return "https://bsbsb.top/api/skipSegments".toHttpUrl().newBuilder()
+        .addQueryParameter("videoID", bvid.trim())
+        .apply {
+            if (cid > 0L) addQueryParameter("cid", cid.toString())
+            categories.distinct().forEach { category -> addQueryParameter("category", category) }
+            actionTypes.distinct().forEach { actionType -> addQueryParameter("actionType", actionType) }
+        }
+        .build()
+}
+
+internal fun filterSponsorSegmentsForCid(
+    segments: List<SponsorSegment>,
+    cid: Long,
+): List<SponsorSegment> {
+    if (cid <= 0L) return segments
+    return segments.filter { segment -> segment.cid <= 0L || segment.cid == cid }
 }

@@ -11,6 +11,9 @@ internal fun sponsorMarkColor(category: String): Color {
         SponsorCategory.OUTRO -> Color(0xFF38BDF8).copy(alpha = 0.82f)
         SponsorCategory.INTERACTION -> Color(0xFFFBBF24).copy(alpha = 0.84f)
         SponsorCategory.SELFPROMO -> Color(0xFFA78BFA).copy(alpha = 0.84f)
+        SponsorCategory.MUSIC_OFFTOPIC -> Color(0xFF22C55E).copy(alpha = 0.84f)
+        SponsorCategory.POI_HIGHLIGHT -> Color(0xFFFFD166).copy(alpha = 0.94f)
+        SponsorCategory.CHAPTER -> Color(0xFF60A5FA).copy(alpha = 0.94f)
         else -> Color(0xFF34D399).copy(alpha = 0.82f)
     }
 }

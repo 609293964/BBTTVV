@@ -329,6 +329,7 @@ private fun actionSecondaryText(
             .ifBlank { null }
             ?.let(::compactActionValue)
         PlayerAction.Danmaku -> if (isDanmakuEnabled) "开启" else "关闭"
+        PlayerAction.SponsorNavigation -> null
         PlayerAction.Debug -> null
     }
 }

@@ -3,6 +3,7 @@ package com.bbttvv.app.ui.components
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -29,17 +30,26 @@ fun TvStatusPane(
     title: String? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    actionFocusRequester: FocusRequester? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
+    secondaryActionFocusRequester: FocusRequester? = null,
     requestInitialFocus: Boolean = true,
     onDpadUp: () -> Boolean = { false },
 ) {
     val isLightTheme = LocalIsLightTheme.current
-    val actionFocusRequester = androidx.compose.runtime.remember { FocusRequester() }
+    val fallbackActionFocusRequester = androidx.compose.runtime.remember { FocusRequester() }
+    val fallbackSecondaryActionFocusRequester = androidx.compose.runtime.remember { FocusRequester() }
+    val resolvedActionFocusRequester = actionFocusRequester ?: fallbackActionFocusRequester
+    val resolvedSecondaryActionFocusRequester =
+        secondaryActionFocusRequester ?: fallbackSecondaryActionFocusRequester
     val hasAction = !actionLabel.isNullOrBlank() && onAction != null
+    val hasSecondaryAction = !secondaryActionLabel.isNullOrBlank() && onSecondaryAction != null
 
-    LaunchedEffect(hasAction, requestInitialFocus, actionFocusRequester) {
+    LaunchedEffect(hasAction, requestInitialFocus, resolvedActionFocusRequester) {
         if (hasAction && requestInitialFocus) {
             withFrameNanos { }
-            runCatching { actionFocusRequester.requestFocus() }
+            runCatching { resolvedActionFocusRequester.requestFocus() }
         }
     }
 
@@ -72,13 +82,25 @@ fun TvStatusPane(
             lineHeight = 24.sp,
             textAlign = TextAlign.Center,
         )
-        if (hasAction) {
-            TvDialogActionButton(
-                text = actionLabel.orEmpty(),
-                onClick = { onAction.invoke() },
-                modifier = Modifier.focusRequester(actionFocusRequester),
-                minWidth = 112.dp,
-            )
+        if (hasAction || hasSecondaryAction) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (hasAction) {
+                    TvDialogActionButton(
+                        text = actionLabel.orEmpty(),
+                        onClick = { onAction.invoke() },
+                        modifier = Modifier.focusRequester(resolvedActionFocusRequester),
+                        minWidth = 112.dp,
+                    )
+                }
+                if (hasSecondaryAction) {
+                    TvDialogActionButton(
+                        text = secondaryActionLabel.orEmpty(),
+                        onClick = { onSecondaryAction.invoke() },
+                        modifier = Modifier.focusRequester(resolvedSecondaryActionFocusRequester),
+                        minWidth = 112.dp,
+                    )
+                }
+            }
         }
     }
 }

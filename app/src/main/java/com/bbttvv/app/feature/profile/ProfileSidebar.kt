@@ -45,6 +45,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 
 private data class ProfileMetric(val label: String, val value: String)
 
@@ -121,12 +122,13 @@ internal fun LoggedInSidebar(
     updateContentOnTabFocusEnabled: Boolean,
     onRequestTopBarFocus: () -> Boolean,
     onRequestContentFocus: () -> Boolean,
+    modifier: Modifier = Modifier,
     onSidebarFocusChanged: (Boolean) -> Unit = {},
     onSelectMenu: (ProfileMenu) -> Unit,
+    onActivateMenu: (ProfileMenu) -> Unit,
     menuListState: androidx.compose.foundation.lazy.LazyListState,
     menuFocusRequesters: Map<ProfileMenu, FocusRequester>,
     profileFocusCoordinator: ProfileFocusCoordinator,
-    modifier: Modifier = Modifier
 ) {
     val navData = uiState.navData ?: return
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -179,6 +181,12 @@ internal fun LoggedInSidebar(
                         registration?.unregister()
                     }
                 }
+                if (menu == ProfileMenu.SETTINGS && focusRequester != null) {
+                    RegisterTvFocusReturnTarget(
+                        key = ProfileSettingsFocusKeys.LoggedInMenu,
+                        focusRequester = focusRequester,
+                    )
+                }
                 ProfileMenuItemRow(
                     label = menu.label,
                     selected = menu == selectedMenu,
@@ -197,7 +205,8 @@ internal fun LoggedInSidebar(
                     },
                     onDpadRight = onRequestContentFocus,
                     onFocusChanged = onSidebarFocusChanged,
-                    onClick = { onSelectMenu(menu) }
+                    onFocusSelect = { onSelectMenu(menu) },
+                    onClick = { onActivateMenu(menu) },
                 )
             }
         }
@@ -236,6 +245,7 @@ private fun ProfileMenuItemRow(
     onDpadUp: () -> Boolean = { false },
     onDpadRight: () -> Boolean = { false },
     onFocusChanged: (Boolean) -> Unit = {},
+    onFocusSelect: () -> Unit,
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -261,7 +271,7 @@ private fun ProfileMenuItemRow(
                 isFocused = focusState.isFocused
                 onFocusChanged(focusState.isFocused)
                 if (focusState.isFocused && updateContentOnTabFocusEnabled && !selected && !isDanger) {
-                    onClick()
+                    onFocusSelect()
                 }
             },
         onClick = onClick,

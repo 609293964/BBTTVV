@@ -524,13 +524,34 @@ private fun SegmentedProgressBar(
         marks.forEach { mark ->
             val start = (size.width * mark.startFraction).coerceIn(0f, size.width)
             val end = (size.width * mark.endFraction).coerceIn(start, size.width)
-            val width = (end - start).coerceAtLeast(2f)
-            drawRoundRect(
-                color = sponsorMarkColor(mark.category),
-                topLeft = Offset(start, progressTop),
-                size = Size(width = width, height = progressHeight),
-                cornerRadius = corner,
-            )
+            val markColor = sponsorMarkColor(mark.category)
+            when (mark.kind) {
+                SponsorProgressMarkKind.Range -> {
+                    val width = (end - start).coerceAtLeast(2f)
+                    drawRoundRect(
+                        color = markColor,
+                        topLeft = Offset(start, progressTop),
+                        size = Size(width = width, height = progressHeight),
+                        cornerRadius = corner,
+                    )
+                }
+                SponsorProgressMarkKind.Point -> {
+                    drawCircle(
+                        color = markColor,
+                        radius = 3.dp.toPx().coerceAtLeast(progressHeight * 0.6f),
+                        center = Offset(start, progressTop + progressHeight / 2f),
+                    )
+                }
+                SponsorProgressMarkKind.Chapter -> {
+                    drawLine(
+                        color = markColor,
+                        start = Offset(start, progressTop - 2.dp.toPx()),
+                        end = Offset(start, progressTop + progressHeight),
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
         }
     }
 }
