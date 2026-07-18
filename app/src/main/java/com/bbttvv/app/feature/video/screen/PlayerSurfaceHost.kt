@@ -15,7 +15,6 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 @Composable
 internal fun PlayerSurfaceHost(
     exoPlayer: ExoPlayer,
-    keepScreenOn: Boolean,
     overlayMode: PlayerOverlayMode,
     onHiddenOverlayKey: (KeyEvent) -> Boolean,
     onViewAvailable: (PlayerView) -> Unit,
@@ -25,7 +24,6 @@ internal fun PlayerSurfaceHost(
 ) {
     PlayerSurface(
         exoPlayer = exoPlayer,
-        keepScreenOn = keepScreenOn,
         overlayMode = overlayMode,
         onHiddenOverlayKey = onHiddenOverlayKey,
         onViewAvailable = onViewAvailable,

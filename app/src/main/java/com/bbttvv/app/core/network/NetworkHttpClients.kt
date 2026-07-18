@@ -12,6 +12,7 @@ import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import okhttp3.Cache
 import okhttp3.ConnectionPool
+import okhttp3.CookieJar
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -84,6 +85,41 @@ internal object NetworkHttpClients {
                     proceed = chain::proceed,
                     endpointPrefix = "",
                 )
+            }
+            .build()
+    }
+
+    fun buildImageOkHttpClient(
+        sharedClient: OkHttpClient,
+        appContext: () -> Context?,
+    ): OkHttpClient {
+        val builder = sharedClient.newBuilder()
+            // Coil owns the image disk cache. Keeping the API HTTP cache here would
+            // store the same image bytes twice and let image traffic evict API data.
+            .cache(null)
+            .cookieJar(CookieJar.NO_COOKIES)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+
+        // The shared client reports API failures and waits for account warmup. Image
+        // requests do not need either behavior, especially while a TV is offline.
+        builder.interceptors().clear()
+        builder.networkInterceptors().clear()
+
+        return builder
+            .addInterceptor { chain ->
+                val original = chain.request()
+                val url = original.url
+                val requestBuilder = original.newBuilder()
+                    .header("User-Agent", resolveAppUserAgent(appContext()))
+                    .header("Origin", resolveBilibiliOrigin(url))
+
+                if (shouldAttachBilibiliReferer(url)) {
+                    requestBuilder.header("Referer", resolveBilibiliReferer(url))
+                }
+
+                chain.proceed(requestBuilder.build())
             }
             .build()
     }

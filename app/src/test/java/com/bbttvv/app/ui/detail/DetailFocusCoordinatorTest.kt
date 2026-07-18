@@ -110,6 +110,39 @@ class DetailFocusCoordinatorTest {
         assertEquals(1, commentTarget.focusRequests)
     }
 
+    @Test
+    fun `play focus cancels a pending comment restore`() {
+        val coordinator = DetailFocusCoordinator()
+        val commentTarget = FakeDetailFocusTarget(canFocus = true)
+        var restored: Long? = null
+
+        coordinator.requestRestoreComment(42L) { rpid -> restored = rpid }
+        coordinator.rememberPlayButtonFocus()
+        coordinator.registerCommentTarget(42L, commentTarget)
+
+        assertFalse(coordinator.drainPendingFocus())
+        assertNull(restored)
+        assertEquals(0, commentTarget.focusRequests)
+    }
+
+    @Test
+    fun `escape fallback to play cancels a pending comment restore`() {
+        val coordinator = DetailFocusCoordinator()
+        val playTarget = FakeDetailFocusTarget(canFocus = true)
+        val commentTarget = FakeDetailFocusTarget(canFocus = true)
+        var restored: Long? = null
+
+        coordinator.requestRestoreComment(42L) { rpid -> restored = rpid }
+        coordinator.registerPlayButtonTarget(playTarget)
+
+        assertTrue(coordinator.recoverFocusAfterEscape())
+        coordinator.registerCommentTarget(42L, commentTarget)
+
+        assertNull(restored)
+        assertEquals(1, playTarget.focusRequests)
+        assertEquals(0, commentTarget.focusRequests)
+    }
+
     private class FakeDetailFocusTarget(
         var canFocus: Boolean,
     ) : DetailFocusTarget {

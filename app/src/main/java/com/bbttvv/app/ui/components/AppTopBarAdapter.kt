@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.databinding.ItemAppTopTabBinding
 
@@ -14,11 +15,11 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     private val tabs = ArrayList<AppTopLevelTab>()
     private var selectedTab: AppTopLevelTab? = null
     private var updateSelectedTabOnFocus: Boolean = true
-    private var allowFocusedTabSelection: Boolean = false
+    private val directionalSelectionTracker = AppTopBarDirectionalSelectionTracker()
     private var onTabSelected: (AppTopLevelTab) -> Unit = {}
     private var onSelectedTabConfirmed: (AppTopLevelTab) -> Unit = {}
     private var onDpadDown: () -> Boolean = { false }
-    private var onTopBarFocusChanged: (Boolean) -> Unit = {}
+    private var onTopBarFocused: () -> Unit = {}
     private var isLightTheme: Boolean = false
 
     fun setIsLightTheme(isLight: Boolean) {
@@ -52,20 +53,23 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
 
     override fun getItemCount(): Int = tabs.size
 
-    override fun getItemId(position: Int): Long = tabs[position].ordinal.toLong()
+    override fun getItemId(position: Int): Long = tabs[position].stableId
 
     fun updateCallbacks(
         updateSelectedTabOnFocus: Boolean,
         onTabSelected: (AppTopLevelTab) -> Unit,
         onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
         onDpadDown: () -> Boolean,
-        onTopBarFocusChanged: (Boolean) -> Unit
+        onTopBarFocused: () -> Unit
     ) {
         this.updateSelectedTabOnFocus = updateSelectedTabOnFocus
+        if (!updateSelectedTabOnFocus) {
+            directionalSelectionTracker.clear()
+        }
         this.onTabSelected = onTabSelected
         this.onSelectedTabConfirmed = onSelectedTabConfirmed
         this.onDpadDown = onDpadDown
-        this.onTopBarFocusChanged = onTopBarFocusChanged
+        this.onTopBarFocused = onTopBarFocused
     }
 
     fun submitTabs(
@@ -74,10 +78,23 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     ) {
         val tabsChanged = tabs != newTabs
         if (tabsChanged) {
+            val previousTabs = tabs.toList()
+            val previousSelectedTab = selectedTab
+            val diff = DiffUtil.calculateDiff(
+                AppTopBarDiffCallback(
+                    oldTabs = previousTabs,
+                    newTabs = newTabs,
+                )
+            )
+            directionalSelectionTracker.clear()
             tabs.clear()
             tabs.addAll(newTabs)
             selectedTab = newSelectedTab
-            notifyDataSetChanged()
+            diff.dispatchUpdatesTo(this)
+            if (previousSelectedTab != newSelectedTab) {
+                notifyTabChanged(previousSelectedTab)
+                notifyTabChanged(newSelectedTab)
+            }
             return
         }
 
@@ -94,6 +111,10 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     }
 
     fun currentSelectedTab(): AppTopLevelTab? = selectedTab
+
+    fun cancelPendingDirectionalSelection() {
+        directionalSelectionTracker.clear()
+    }
 
     fun focusTargetOrFallback(tab: AppTopLevelTab?): AppTopLevelTab? {
         return tab?.takeIf { it in tabs }
@@ -139,12 +160,12 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             binding.root.setOnFocusChangeListener { _, hasFocus ->
                 updateVisual(animate = true)
                 if (!hasFocus) return@setOnFocusChangeListener
-                onTopBarFocusChanged(true)
+                onTopBarFocused()
                 val tab = boundTab ?: return@setOnFocusChangeListener
-                if (updateSelectedTabOnFocus && allowFocusedTabSelection && tab != selectedTab) {
+                val selectFromDirectionalFocus = directionalSelectionTracker.consume(tab)
+                if (updateSelectedTabOnFocus && selectFromDirectionalFocus && tab != selectedTab) {
                     select(tab)
                 }
-                allowFocusedTabSelection = false
             }
 
             binding.root.setOnKeyListener { _, keyCode, event ->
@@ -152,27 +173,44 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                     return@setOnKeyListener false
                 }
                 when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_UP -> true
-                    KeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown()
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        directionalSelectionTracker.clear()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        directionalSelectionTracker.clear()
+                        onDpadDown()
+                    }
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
                         val position = bindingAdapterPosition
-                        if (position <= 0) {
+                        val target = tabs.getOrNull(position - 1)
+                        if (target == null) {
+                            directionalSelectionTracker.clear()
                             true
                         } else {
-                            allowFocusedTabSelection = true
+                            directionalSelectionTracker.expect(target)
                             false
                         }
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         val position = bindingAdapterPosition
-                        if (position == RecyclerView.NO_POSITION || position >= itemCount - 1) {
+                        val target = if (position == RecyclerView.NO_POSITION) {
+                            null
+                        } else {
+                            tabs.getOrNull(position + 1)
+                        }
+                        if (target == null) {
+                            directionalSelectionTracker.clear()
                             true
                         } else {
-                            allowFocusedTabSelection = true
+                            directionalSelectionTracker.expect(target)
                             false
                         }
                     }
-                    else -> false
+                    else -> {
+                        directionalSelectionTracker.clear()
+                        false
+                    }
                 }
             }
         }
@@ -246,5 +284,22 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
 
     private companion object {
         val TabSelectionPayload = Any()
+    }
+}
+
+private class AppTopBarDiffCallback(
+    private val oldTabs: List<AppTopLevelTab>,
+    private val newTabs: List<AppTopLevelTab>,
+) : DiffUtil.Callback() {
+    override fun getOldListSize(): Int = oldTabs.size
+
+    override fun getNewListSize(): Int = newTabs.size
+
+    override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+        return oldTabs[oldItemPosition].stableId == newTabs[newItemPosition].stableId
+    }
+
+    override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+        return oldTabs[oldItemPosition] == newTabs[newItemPosition]
     }
 }

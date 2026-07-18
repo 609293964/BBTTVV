@@ -46,6 +46,20 @@ class TvDpadHomeRegressionTest {
     }
 
     @Test
+    fun topTabLeftMovesToExactNeighborAndStopsAtBoundary() = withHome {
+        robot.ensureHomeTopBar()
+        assumeTrue("推荐 tab should be focusable before boundary regression", robot.focusTopTab("推荐"))
+
+        robot.press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertTrue(robot.waitUntilFocusedOnTopTab("搜索"))
+
+        robot.press(KeyEvent.KEYCODE_DPAD_LEFT)
+        robot.settle()
+
+        assertTrue("Left boundary must keep focus on 搜索", robot.focusedLabel() == "搜索")
+    }
+
+    @Test
     fun recommendDetailBackRestoresContentFocus() = withHome {
         robot.ensureHomeTopBar()
         assumeTrue(robot.focusTopTab("推荐"))
@@ -194,11 +208,11 @@ private class TvDpadRobot(
         repeat(4) {
             press(KeyEvent.KEYCODE_DPAD_UP)
             settle(WaitTiny)
-            if (isFocusedOnTopTab()) return true
+            if (focusedLabel() == label) return true
         }
         clickText(label)
         settle()
-        return focusedLabel() == label || isFocusedOnTopTab()
+        return focusedLabel() == label
     }
 
     fun focusHomeContent(): Boolean {
@@ -211,6 +225,15 @@ private class TvDpadRobot(
         val deadline = System.currentTimeMillis() + WaitLong
         while (System.currentTimeMillis() < deadline) {
             if (isFocusedOnTopTab()) return true
+            settle(WaitTiny)
+        }
+        return false
+    }
+
+    fun waitUntilFocusedOnTopTab(label: String): Boolean {
+        val deadline = System.currentTimeMillis() + WaitLong
+        while (System.currentTimeMillis() < deadline) {
+            if (focusedLabel() == label) return true
             settle(WaitTiny)
         }
         return false

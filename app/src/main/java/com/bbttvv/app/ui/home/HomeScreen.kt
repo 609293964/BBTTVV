@@ -46,7 +46,7 @@ internal fun HomeScreen(
     recyclerPools: HomeRecyclerPools,
     visibleTabs: List<AppTopLevelTab>,
     selectedTabIndex: Int,
-    updateContentOnTabFocusEnabled: Boolean,
+    selectTopTabOnFocusEnabled: Boolean,
     restoreVideoFocusKey: String? = null,
     restoreVideoFocusTab: AppTopLevelTab? = null,
     hasPendingVideoFocusRestore: Boolean = restoreVideoFocusKey != null,
@@ -79,8 +79,9 @@ internal fun HomeScreen(
     val tabResidencyState = remember {
         HomeTabResidencyState(
             initialSelectedTab = selectedHomeTab,
-            maxResidentTabs = 4,
-            persistentResidentTabs = setOf(AppTopLevelTab.RECOMMEND),
+            // CPU-bound TVs should only measure/layout the current page and the
+            // immediately previous page. ViewModel state remains retained separately.
+            maxResidentTabs = 2,
         )
     }
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }
@@ -360,7 +361,7 @@ internal fun HomeScreen(
             HomeTopBarHost(
                 tabs = homeTabs,
                 selectedHomeTab = selectedHomeTab,
-                updateSelectedTabOnFocus = updateContentOnTabFocusEnabled,
+                updateSelectedTabOnFocus = selectTopTabOnFocusEnabled,
                 focusCoordinator = focusCoordinator,
                 onTabSelected = { targetTab ->
                     selectHomeTab(
@@ -374,18 +375,16 @@ internal fun HomeScreen(
                     focusCoordinator.handleTopBarDpadDown()
                 },
                 focusEnabled = topBarFocusEnabled,
-                onTopBarFocusChanged = { isFocused ->
-                    if (isFocused) {
-                        collapsingHeaderStates.stateFor(selectedHomeTab).reset()
-                        if (focusCoordinator.consumeBackToTopBarResetIntent()) {
-                            resetHomeTabGridToTopForTopBarReturn(
-                                tab = selectedHomeTab,
-                                recommendGridFocusState = recommendGridFocusState,
-                                tabGridFocusStates = tabGridFocusStates,
-                            )
-                        }
-                        focusCoordinator.onTopBarFocused()
+                onTopBarFocused = {
+                    collapsingHeaderStates.stateFor(selectedHomeTab).reset()
+                    if (focusCoordinator.consumeBackToTopBarResetIntent()) {
+                        resetHomeTabGridToTopForTopBarReturn(
+                            tab = selectedHomeTab,
+                            recommendGridFocusState = recommendGridFocusState,
+                            tabGridFocusStates = tabGridFocusStates,
+                        )
                     }
+                    focusCoordinator.onTopBarFocused()
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -494,7 +493,7 @@ private fun HomeTopBarHost(
     onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
     onDpadDown: () -> Boolean,
     focusEnabled: Boolean,
-    onTopBarFocusChanged: (Boolean) -> Unit,
+    onTopBarFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AppTopBar(
@@ -506,7 +505,7 @@ private fun HomeTopBarHost(
         onDpadDown = onDpadDown,
         focusEnabled = focusEnabled,
         focusCoordinator = focusCoordinator,
-        onTopBarFocusChanged = onTopBarFocusChanged,
+        onTopBarFocused = onTopBarFocused,
         modifier = modifier
             .fillMaxWidth()
             .padding(

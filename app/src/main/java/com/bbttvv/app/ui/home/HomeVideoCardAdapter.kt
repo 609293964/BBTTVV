@@ -7,10 +7,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.annotation.IdRes
+import androidx.core.graphics.toColorInt
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.Color
+import coil.dispose
 import coil.imageLoader
 import coil.load
 import coil.request.ImageRequest
@@ -28,6 +30,21 @@ import com.bbttvv.app.ui.focus.GridFocusDebugLog
 
 private val avatarCircleCropTransformation = CircleCropTransformation()
 
+internal object HomeVideoCardImageRetryPolicy {
+    private val retryDelaysMs = longArrayOf(1_500L, 5_000L)
+
+    fun delayMillis(completedAttempt: Int): Long? {
+        return retryDelaysMs.getOrNull(completedAttempt)
+    }
+}
+
+private data class FailedImageRequestMarker(
+    val url: String,
+    val attempt: Int,
+)
+
+private object BlankImageRequestMarker
+
 private val lightStrokeColorStateList = android.content.res.ColorStateList(
     arrayOf(
         intArrayOf(android.R.attr.state_focused),
@@ -36,9 +53,9 @@ private val lightStrokeColorStateList = android.content.res.ColorStateList(
         intArrayOf()
     ),
     intArrayOf(
-        Color.parseColor("#FB7299"), // focused: brand pink
-        Color.parseColor("#FF6699"), // selected: pink
-        Color.parseColor("#FB7299"), // pressed: brand pink
+        "#FB7299".toColorInt(), // focused: brand pink
+        "#FF6699".toColorInt(), // selected: pink
+        "#FB7299".toColorInt(), // pressed: brand pink
         Color.TRANSPARENT           // default: transparent
     )
 )
@@ -51,9 +68,9 @@ private val darkStrokeColorStateList = android.content.res.ColorStateList(
         intArrayOf()
     ),
     intArrayOf(
-        Color.parseColor("#FFFFFF"), // focused: white
-        Color.parseColor("#FFFFFF"), // selected: visual focus anchor
-        Color.parseColor("#FFFFFF"), // pressed: white
+        "#FFFFFF".toColorInt(), // focused: white
+        "#FFFFFF".toColorInt(), // selected: visual focus anchor
+        "#FFFFFF".toColorInt(), // pressed: white
         Color.TRANSPARENT           // default: transparent
     )
 )
@@ -241,6 +258,7 @@ internal class HomeVideoCardAdapter(
                 ImageRequest.Builder(context)
                     .data(avatarUrl)
                     .allowHardware(true)
+                    .size(Size(64, 64))
                     .transformations(avatarCircleCropTransformation)
                     .build()
             )
@@ -386,24 +404,13 @@ internal class HomeVideoCardAdapter(
             binding.tvTitle.text = uiModel.title
             binding.tvSubtitle.text = uiModel.ownerName
 
-            val coverUrl = FormatUtils.buildSizedImageUrl(uiModel.coverUrl, 480, 270)
-            binding.ivCover.loadIfUrlChanged(R.id.tag_cover_url, coverUrl) {
-                crossfade(false)
-                allowHardware(true)
-                precision(Precision.INEXACT)
-                size(Size(480, 270))
-            }
+            bindCover(uiModel.coverUrl)
 
             // Keep the title area lightweight on low-end TV devices: no per-card blur work.
             binding.clInfo.setTag(null)
             binding.clInfo.setBackgroundColor(palette.infoBackgroundColor)
 
-            val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
-            binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
-                crossfade(false)
-                allowHardware(true)
-                transformations(avatarCircleCropTransformation)
-            }
+            bindAvatar(uiModel.ownerFaceUrl)
 
             bindMetadata(
                 item = item,
@@ -411,6 +418,7 @@ internal class HomeVideoCardAdapter(
                 showDanmakuCount = showDanmakuCount,
                 supportingTextProvider = supportingTextProvider,
             )
+            bindAccessibilityDescription(item, showHistoryProgressOnly, showDanmakuCount)
         }
 
         fun bindPayload(
@@ -427,21 +435,10 @@ internal class HomeVideoCardAdapter(
             }
             if (payload.ownerChanged) {
                 binding.tvSubtitle.text = uiModel.ownerName
-                val avatarUrl = FormatUtils.buildSizedImageUrl(uiModel.ownerFaceUrl, 64, 64)
-                binding.ivAvatar.loadIfUrlChanged(R.id.tag_avatar_url, avatarUrl) {
-                    crossfade(false)
-                    allowHardware(true)
-                    transformations(avatarCircleCropTransformation)
-                }
+                bindAvatar(uiModel.ownerFaceUrl)
             }
             if (payload.coverChanged) {
-                val coverUrl = FormatUtils.buildSizedImageUrl(uiModel.coverUrl, 480, 270)
-                binding.ivCover.loadIfUrlChanged(R.id.tag_cover_url, coverUrl) {
-                    crossfade(false)
-                    allowHardware(true)
-                    precision(Precision.INEXACT)
-                    size(Size(480, 270))
-                }
+                bindCover(uiModel.coverUrl)
             }
             if (payload.metadataChanged) {
                 bindMetadata(
@@ -452,6 +449,35 @@ internal class HomeVideoCardAdapter(
                 )
             } else {
                 bindSupportingText(item, supportingTextProvider)
+            }
+            bindAccessibilityDescription(item, showHistoryProgressOnly, showDanmakuCount)
+        }
+
+        private fun bindCover(rawUrl: String) {
+            val coverUrl = FormatUtils.buildSizedImageUrl(rawUrl, 480, 270)
+            binding.ivCover.loadIfUrlChanged(
+                tagId = R.id.tag_cover_url,
+                url = coverUrl,
+                placeholderResId = R.drawable.video_card_cover_placeholder,
+            ) {
+                crossfade(false)
+                allowHardware(true)
+                precision(Precision.INEXACT)
+                size(Size(480, 270))
+            }
+        }
+
+        private fun bindAvatar(rawUrl: String) {
+            val avatarUrl = FormatUtils.buildSizedImageUrl(rawUrl, 64, 64)
+            binding.ivAvatar.loadIfUrlChanged(
+                tagId = R.id.tag_avatar_url,
+                url = avatarUrl,
+                placeholderResId = R.drawable.video_card_avatar_placeholder,
+            ) {
+                crossfade(false)
+                allowHardware(true)
+                size(Size(64, 64))
+                transformations(avatarCircleCropTransformation)
             }
         }
 
@@ -483,11 +509,72 @@ internal class HomeVideoCardAdapter(
                 binding.tvDuration.visibility = View.VISIBLE
                 binding.tvDuration.text = uiModel.durationMetaText
                 binding.llStats.visibility = View.VISIBLE
-                binding.tvView.text = formatCompact(video.stat.view)
+                binding.tvView.text = FormatUtils.formatStat(video.stat.view.toLong())
                 binding.ivStatDanmaku.visibility = if (showDanmakuCount) View.VISIBLE else View.GONE
                 binding.tvDanmaku.visibility = if (showDanmakuCount) View.VISIBLE else View.GONE
-                binding.tvDanmaku.text = if (showDanmakuCount) formatCompact(video.stat.danmaku) else null
+                binding.tvDanmaku.text = if (showDanmakuCount) {
+                    FormatUtils.formatStat(video.stat.danmaku.toLong())
+                } else {
+                    null
+                }
                 binding.tvProgressLeft.visibility = View.GONE
+            }
+        }
+
+        private fun bindAccessibilityDescription(
+            item: HomeRecommendVideoCardItem,
+            showHistoryProgressOnly: Boolean,
+            showDanmakuCount: Boolean,
+        ) {
+            val video = item.video
+            val uiModel = video.toHomeVideoCardUiModel(showHistoryProgressOnly)
+            val context = binding.root.context
+            val isBangumiCard = video.bvid.startsWith("ss") || video.bvid.startsWith("ep")
+            val isLiveCard = !isBangumiCard && video.aid == 0L && video.cid == 0L && video.duration <= 0
+            val details = buildList {
+                if (uiModel.ownerName.isNotBlank()) {
+                    add(context.getString(R.string.video_card_accessibility_owner, uiModel.ownerName))
+                }
+                when {
+                    isLiveCard -> {
+                        uiModel.leadingMetaText.takeIf(String::isNotBlank)?.let(::add)
+                    }
+
+                    isBangumiCard -> {
+                        uiModel.durationMetaText.takeIf(String::isNotBlank)?.let(::add)
+                    }
+
+                    else -> {
+                        if (video.stat.view > 0) {
+                            add(
+                                context.getString(
+                                    R.string.video_card_accessibility_play_count,
+                                    FormatUtils.formatStat(video.stat.view.toLong()),
+                                )
+                            )
+                        }
+                        if (showDanmakuCount && video.stat.danmaku > 0) {
+                            add(
+                                context.getString(
+                                    R.string.video_card_accessibility_danmaku_count,
+                                    FormatUtils.formatStat(video.stat.danmaku.toLong()),
+                                )
+                            )
+                        }
+                        if (video.duration > 0 && uiModel.durationMetaText.isNotBlank()) {
+                            add(uiModel.durationMetaText)
+                        }
+                    }
+                }
+            }
+            binding.root.contentDescription = if (details.isEmpty()) {
+                uiModel.title
+            } else {
+                context.getString(
+                    R.string.video_card_accessibility_description,
+                    uiModel.title,
+                    details.joinToString(separator = "，"),
+                )
             }
         }
 
@@ -517,6 +604,14 @@ internal class HomeVideoCardAdapter(
             boundIsLogicallySelected = false
             binding.root.isLongClickable = false
             applySelectedState(false)
+
+            binding.ivCover.dispose()
+            binding.ivAvatar.dispose()
+            binding.ivCover.setTag(R.id.tag_cover_url, null)
+            binding.ivAvatar.setTag(R.id.tag_avatar_url, null)
+            binding.ivCover.setImageResource(R.drawable.video_card_cover_placeholder)
+            binding.ivAvatar.setImageResource(R.drawable.video_card_avatar_placeholder)
+            binding.root.contentDescription = null
 
             binding.clInfo.setTag(null)
             binding.clInfo.background = null
@@ -665,31 +760,58 @@ private fun VideoItem.buildCardPayload(other: VideoItem): HomeVideoCardPayload? 
     )
 }
 
-private fun formatCompact(count: Int): String {
-    return if (count >= 10000) {
-        val w = count / 10000
-        val r = (count % 10000) / 1000
-        if (r == 0) "${w}w" else "$w.${r}w"
-    } else {
-        count.toString()
-    }
-}
-
 private fun ImageView.loadIfUrlChanged(
     @IdRes tagId: Int,
     url: String,
+    placeholderResId: Int,
+    retryAttempt: Int = 0,
     builder: ImageRequest.Builder.() -> Unit,
 ) {
     val oldUrl = getTag(tagId) as? String
     if (oldUrl == url) return
 
-    setTag(tagId, url.takeIf { it.isNotBlank() })
     if (url.isBlank()) {
-        setImageDrawable(null)
+        setTag(tagId, BlankImageRequestMarker)
+        dispose()
+        setImageResource(placeholderResId)
         return
     }
 
-    load(url, builder = builder)
+    setTag(tagId, url)
+
+    load(url) {
+        placeholder(placeholderResId)
+        error(placeholderResId)
+        fallback(placeholderResId)
+        builder()
+        listener(
+            onError = { _, _ ->
+                // A failed URL is not a successfully bound URL. A distinct marker
+                // lets later binds retry without allowing an old delayed retry to
+                // overwrite a holder that has since been rebound to another item.
+                if (getTag(tagId) == url) {
+                    val failedMarker = FailedImageRequestMarker(url, retryAttempt)
+                    setTag(tagId, failedMarker)
+                    HomeVideoCardImageRetryPolicy.delayMillis(retryAttempt)?.let { delayMs ->
+                        postDelayed(
+                            {
+                                if (isAttachedToWindow && getTag(tagId) === failedMarker) {
+                                    loadIfUrlChanged(
+                                        tagId = tagId,
+                                        url = url,
+                                        placeholderResId = placeholderResId,
+                                        retryAttempt = retryAttempt + 1,
+                                        builder = builder,
+                                    )
+                                }
+                            },
+                            delayMs,
+                        )
+                    }
+                }
+            }
+        )
+    }
 }
 
 private fun isVideoCardBackKey(keyCode: Int): Boolean {

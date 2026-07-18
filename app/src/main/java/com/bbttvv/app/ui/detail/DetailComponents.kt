@@ -1,7 +1,6 @@
 package com.bbttvv.app.ui.detail
 
 import android.content.Context
-import com.bbttvv.app.core.util.BlurTransformation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,7 +37,6 @@ import androidx.tv.material3.Text
 import coil.request.ImageRequest
 import coil.size.Precision
 import com.bbttvv.app.core.util.FormatUtils
-import java.util.Locale
 
 internal val DetailBackdropGradientColors = listOf(
     Color(0x950A0A0C),
@@ -65,16 +63,16 @@ internal val DetailDefaultPillMetrics = DetailPillMetrics(
     height = 44.dp,
     minWidth = 74.dp,
     horizontalPadding = 16.dp,
-    textSize = 14.sp,
+    textSize = 15.sp,
     iconSpacing = 8.dp,
     focusedScale = 1.0f
 )
 
 internal val DetailCompactActionPillMetrics = DetailPillMetrics(
-    height = 32.dp,
-    minWidth = 58.dp,
+    height = 40.dp,
+    minWidth = 64.dp,
     horizontalPadding = 16.dp,
-    textSize = 14.sp,
+    textSize = 15.sp,
     iconSpacing = 8.dp,
     focusedScale = 1.0f
 )
@@ -221,28 +219,8 @@ internal fun buildSizedImageRequest(
         .build()
 }
 
-internal fun buildBlurredImageRequest(
-    context: Context,
-    url: String,
-    widthPx: Int,
-    heightPx: Int
-): ImageRequest {
-    return ImageRequest.Builder(context)
-        .data(FormatUtils.buildSizedImageUrl(url, widthPx, heightPx))
-        .crossfade(false)
-        .allowHardware(false) // Required for BlurTransformation to fetch Bitmap on RenderScript
-        .transformations(BlurTransformation(context, radius = 12f, sampling = 4f))
-        .precision(Precision.INEXACT)
-        .size(widthPx, heightPx)
-        .build()
-}
-
 internal fun formatNumber(number: Int): String {
-    return if (number >= 10000) {
-        String.format(Locale.US, "%.1fw", number / 10000.0)
-    } else {
-        number.toString()
-    }
+    return FormatUtils.formatStat(number.toLong())
 }
 
 internal fun normalizeImageUrl(url: String): String {

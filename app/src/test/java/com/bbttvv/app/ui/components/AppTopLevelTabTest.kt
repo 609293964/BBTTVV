@@ -1,6 +1,7 @@
 package com.bbttvv.app.ui.components
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class AppTopLevelTabTest {
@@ -34,6 +35,36 @@ class AppTopLevelTabTest {
                 index = AppTopLevelTab.TODAY_WATCH.index,
                 visibleTabs = tabs
             )
+        )
+    }
+
+    @Test
+    fun `watch later can be removed without changing the remaining tab order`() {
+        val tabs = AppTopLevelTab.resolveVisibleTabs(
+            todayWatchEnabled = true,
+            watchLaterInTopTabsEnabled = false,
+        )
+
+        assertFalse(AppTopLevelTab.WATCH_LATER in tabs)
+        assertEquals(
+            listOf(
+                AppTopLevelTab.SEARCH,
+                AppTopLevelTab.RECOMMEND,
+                AppTopLevelTab.TODAY_WATCH,
+                AppTopLevelTab.POPULAR,
+                AppTopLevelTab.LIVE,
+                AppTopLevelTab.DYNAMIC,
+                AppTopLevelTab.PROFILE,
+            ),
+            tabs,
+        )
+    }
+
+    @Test
+    fun `stable ids are unique`() {
+        assertEquals(
+            AppTopLevelTab.all.size,
+            AppTopLevelTab.all.map(AppTopLevelTab::stableId).toSet().size,
         )
     }
 }

@@ -42,6 +42,7 @@ data class DetailCommentsState(
     val totalCount: Int = 0,
     val totalPages: Int = 1,
     val isLoading: Boolean = false,
+    val hasLoadedOnce: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -153,12 +154,10 @@ class DetailViewModel : ViewModel() {
 
                 if (infoResp.code == 0 && infoResp.data != null) {
                     val viewInfo = infoResp.data
-                    val cachedFollowerCount = SubtitleAndAuxRepository.getCachedCreatorCardStats(viewInfo.owner.mid)
-                        ?.followerCount
-                    val cachedAccountBalance = SubtitleAndAuxRepository.getCachedNavInfo()
-                        ?.money
-                        ?.toInt()
-                        ?.coerceAtLeast(0)
+                    val cachedFollowerCount =
+                        SubtitleAndAuxRepository.getCachedCreatorCardStats(viewInfo.owner.mid)?.followerCount
+                    val cachedAccountBalance =
+                        SubtitleAndAuxRepository.getCachedNavInfo()?.money?.toInt()?.coerceAtLeast(0)
                     _uiState.update { state ->
                         val totalCount = maxOf(state.comments.totalCount, viewInfo.stat.reply)
                         state.copy(
@@ -713,6 +712,11 @@ class DetailViewModel : ViewModel() {
         }
     }
 
+    private fun cancelCommentLoadingJobs() {
+        deferredCommentsJob?.cancel()
+        commentsJob?.cancel()
+    }
+
     private fun loadComments(
         requestBvid: String,
         aid: Long,
@@ -725,14 +729,14 @@ class DetailViewModel : ViewModel() {
                 state.copy(
                     comments = state.comments.copy(
                         isLoading = false,
+                        hasLoadedOnce = true,
                         totalCount = maxOf(state.comments.totalCount, fallbackTotalCount)
                     )
                 )
             }
             return
         }
-        deferredCommentsJob?.cancel()
-        commentsJob?.cancel()
+        cancelCommentLoadingJobs()
 
         val previousComments = _uiState.value.comments
         _uiState.update { state ->
@@ -776,6 +780,7 @@ class DetailViewModel : ViewModel() {
                             totalCount = resolvedTotalCount,
                             totalPages = calculateTotalPages(resolvedTotalCount, previousComments.pageSize),
                             isLoading = false,
+                            hasLoadedOnce = true,
                             errorMessage = null
                         )
                     )
@@ -785,6 +790,7 @@ class DetailViewModel : ViewModel() {
                     state.copy(
                         comments = state.comments.copy(
                             isLoading = false,
+                            hasLoadedOnce = true,
                             errorMessage = error.message ?: "评论加载失败"
                         )
                     )

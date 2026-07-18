@@ -119,7 +119,8 @@ object SettingsManager {
     private const val CACHE_IPV4_ONLY_ENABLED = "ipv4_only_enabled"
     private const val CACHE_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
     private const val CACHE_VIDEO_DETAIL_COMMENTS_ENABLED = "video_detail_comments_enabled"
-    private const val CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
+    private const val CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
+    private const val CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED = "home_top_tab_select_on_focus_enabled"
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
     private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
     private const val CACHE_SINGLE_BACK_TO_HOME = "single_back_to_home"
@@ -147,7 +148,10 @@ object SettingsManager {
     private val keyIpv4OnlyEnabled = booleanPreferencesKey(CACHE_IPV4_ONLY_ENABLED)
     private val keyPlayerAutoResumeEnabled = booleanPreferencesKey(CACHE_PLAYER_AUTO_RESUME_ENABLED)
     private val keyVideoDetailCommentsEnabled = booleanPreferencesKey(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED)
-    private val keyUpdateContentOnTabFocusEnabled = booleanPreferencesKey(CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
+    private val keyProfileUpdateContentOnTabFocusEnabled =
+        booleanPreferencesKey(CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
+    private val keyHomeTopTabSelectOnFocusEnabled =
+        booleanPreferencesKey(CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED)
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
     private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
@@ -430,17 +434,34 @@ object SettingsManager {
         updateSyncCache(context) { putBoolean(CACHE_SHOW_ONLINE_COUNT, enabled) }
     }
 
-    fun getUpdateContentOnTabFocusEnabled(context: Context): Flow<Boolean> {
+    fun getProfileUpdateContentOnTabFocusEnabled(context: Context): Flow<Boolean> {
         return context.settingsDataStore.data.map { preferences ->
-            preferences[keyUpdateContentOnTabFocusEnabled] ?: true
+            preferences[keyProfileUpdateContentOnTabFocusEnabled] ?: true
         }
     }
 
-    suspend fun setUpdateContentOnTabFocusEnabled(context: Context, enabled: Boolean) {
+    suspend fun setProfileUpdateContentOnTabFocusEnabled(context: Context, enabled: Boolean) {
         updatePreference(context) { preferences ->
-            preferences[keyUpdateContentOnTabFocusEnabled] = enabled
+            preferences[keyProfileUpdateContentOnTabFocusEnabled] = enabled
         }
-        updateSyncCache(context) { putBoolean(CACHE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED, enabled) }
+        updateSyncCache(context) {
+            putBoolean(CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED, enabled)
+        }
+    }
+
+    fun getHomeTopTabSelectOnFocusEnabled(context: Context): Flow<Boolean> {
+        return context.settingsDataStore.data.map { preferences ->
+            preferences[keyHomeTopTabSelectOnFocusEnabled] ?: true
+        }
+    }
+
+    suspend fun setHomeTopTabSelectOnFocusEnabled(context: Context, enabled: Boolean) {
+        updatePreference(context) { preferences ->
+            preferences[keyHomeTopTabSelectOnFocusEnabled] = enabled
+        }
+        updateSyncCache(context) {
+            putBoolean(CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED, enabled)
+        }
     }
 
     fun getSubtitleAutoPreference(context: Context): Flow<SubtitleAutoPreference> {
@@ -575,6 +596,20 @@ object SettingsManager {
 
     fun getVideoDetailCommentsEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED, false)
+    }
+
+    fun getProfileUpdateContentOnTabFocusEnabledSync(context: Context): Boolean {
+        return context.syncPrefs().getBoolean(
+            CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED,
+            true,
+        )
+    }
+
+    fun getHomeTopTabSelectOnFocusEnabledSync(context: Context): Boolean {
+        return context.syncPrefs().getBoolean(
+            CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED,
+            true,
+        )
     }
 
     fun getWatchLaterInTopTabsEnabledSync(context: Context): Boolean {

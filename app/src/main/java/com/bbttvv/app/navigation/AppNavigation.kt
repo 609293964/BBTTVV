@@ -49,10 +49,14 @@ fun AppNavigation() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isOnHome = navigationState.isOnHome(currentRoute)
-    val updateContentOnTabFocusEnabled by SettingsManager.getUpdateContentOnTabFocusEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = true)
+    val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getHomeTopTabSelectOnFocusEnabledSync(context)
+        )
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getWatchLaterInTopTabsEnabledSync(context)
+        )
     val plugins by PluginManager.pluginsFlow.collectAsStateWithLifecycle(initialValue = PluginManager.plugins)
     val todayWatchEnabled = plugins.any { it.plugin.id == TodayWatchPlugin.PLUGIN_ID && it.enabled }
     val visibleTopLevelTabs = remember(todayWatchEnabled, watchLaterInTopTabsEnabled) {
@@ -138,7 +142,7 @@ fun AppNavigation() {
                 recyclerPools = homeRecyclerPools,
                 visibleTabs = visibleTopLevelTabs,
                 selectedTabIndex = safeHomeTab.index,
-                updateContentOnTabFocusEnabled = updateContentOnTabFocusEnabled,
+                selectTopTabOnFocusEnabled = homeTopTabSelectOnFocusEnabled,
                 restoreVideoFocusKey = navigationState.restoreVideoFocusKey(currentRoute),
                 restoreVideoFocusTab = navigationState.restoreVideoFocusTab(currentRoute),
                 hasPendingVideoFocusRestore = navigationState.hasReadyHomeVideoFocusRestore(currentRoute),

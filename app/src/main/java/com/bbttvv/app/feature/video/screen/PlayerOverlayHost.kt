@@ -66,13 +66,15 @@ internal fun BoxScope.PlayerOverlayHost(
     onBackFromCommentThread: () -> Unit,
 ) {
     if (overlayUiState.overlayMode == PlayerOverlayMode.FullControls) {
-        PlayerControlsScrim()
-        PlayerTopStatusBadges(
-            uiState = uiState,
-            topRightBadges = topRightBadges,
-            showOnlineCount = showOnlineCount,
-            showDebugOverlay = isDebugOverlayVisible,
-        )
+        if (shouldRenderPlayerChrome(isCommentsPanelVisible)) {
+            PlayerControlsScrim()
+            PlayerTopStatusBadges(
+                uiState = uiState,
+                topRightBadges = topRightBadges,
+                showOnlineCount = showOnlineCount,
+                showDebugOverlay = isDebugOverlayVisible,
+            )
+        }
         PlayerControlsLayer(
             uiState = uiState,
             commentsUiState = commentsUiState,
@@ -224,72 +226,75 @@ private fun BoxScope.PlayerControlsLayer(
                 }
             },
     ) {
-        PlayerInfoOverlay(
-            uiState = uiState,
-            playbackState = playbackState,
-            sponsorMarkers = sponsorMarkers,
-            isProgressFocused = overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Progress &&
-                overlayUiState.activePanel == null,
-            progressPreviewState = overlayUiState.simpleSeekState,
-            progressModifier = Modifier
-                .focusRequester(progressFocusRequester)
-                .focusable(),
-            actionBar = {
-                PlayerActionBar(
-                    actions = actions,
-                    selectedIndex = overlayUiState.selectedActionIndex,
-                    hasFocus = overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Actions ||
-                        overlayUiState.activePanel != null,
-                    isDanmakuEnabled = isDanmakuEnabled,
-                    actionFocusRequesters = actionFocusRequesters,
-                )
-            },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(
-                    start = PlayerLayoutTokens.overlayHorizontalPadding,
-                    end = PlayerLayoutTokens.overlayHorizontalPadding,
-                    bottom = PlayerLayoutTokens.overlayBottomPadding,
-                ),
-        )
-
-        overlayUiState.simpleSeekState?.let { seekState ->
-            SimpleSeekOverlay(
-                state = seekState,
-                previewFrame = seekPreviewFrame,
+        if (shouldRenderPlayerChrome(isCommentsPanelVisible)) {
+            PlayerInfoOverlay(
+                uiState = uiState,
                 playbackState = playbackState,
+                sponsorMarkers = sponsorMarkers,
+                isProgressFocused = overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Progress &&
+                    overlayUiState.activePanel == null,
+                showMediaInfo = overlayUiState.simpleSeekState == null,
+                progressPreviewState = overlayUiState.simpleSeekState,
+                progressModifier = Modifier
+                    .focusRequester(progressFocusRequester)
+                    .focusable(),
+                actionBar = {
+                    PlayerActionBar(
+                        actions = actions,
+                        selectedIndex = overlayUiState.selectedActionIndex,
+                        hasFocus = overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Actions ||
+                            overlayUiState.activePanel != null,
+                        isDanmakuEnabled = isDanmakuEnabled,
+                        actionFocusRequesters = actionFocusRequesters,
+                    )
+                },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(
                         start = PlayerLayoutTokens.overlayHorizontalPadding,
                         end = PlayerLayoutTokens.overlayHorizontalPadding,
-                        bottom = PlayerLayoutTokens.seekPreviewBottomPadding,
-                    )
-                    .widthIn(max = 1080.dp)
-                    .fillMaxWidth(),
+                        bottom = PlayerLayoutTokens.overlayBottomPadding,
+                    ),
             )
-        }
 
-        overlayUiState.activePanel?.let { activePanel ->
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(
-                        start = PlayerLayoutTokens.overlayHorizontalPadding,
-                        end = PlayerLayoutTokens.overlayHorizontalPadding,
-                        bottom = PlayerLayoutTokens.panelBottomPadding,
-                    )
-                    .widthIn(max = 1080.dp)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.BottomEnd,
-            ) {
-                PlayerOptionsPanel(
-                    title = panelTitleFor(activePanel),
-                    options = panelOptions,
-                    selectedIndex = overlayUiState.selectedPanelIndex,
-                    visualEffectsState = visualEffectsState,
-                    optionFocusRequesters = panelFocusRequesters,
+            overlayUiState.simpleSeekState?.let { seekState ->
+                SimpleSeekOverlay(
+                    state = seekState,
+                    previewFrame = seekPreviewFrame,
+                    playbackState = playbackState,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = PlayerLayoutTokens.overlayHorizontalPadding,
+                            end = PlayerLayoutTokens.overlayHorizontalPadding,
+                            bottom = PlayerLayoutTokens.seekPreviewBottomPadding,
+                        )
+                        .widthIn(max = 1080.dp)
+                        .fillMaxWidth(),
                 )
+            }
+
+            overlayUiState.activePanel?.let { activePanel ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = PlayerLayoutTokens.overlayHorizontalPadding,
+                            end = PlayerLayoutTokens.overlayHorizontalPadding,
+                            bottom = PlayerLayoutTokens.panelBottomPadding,
+                        )
+                        .widthIn(max = 1080.dp)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    PlayerOptionsPanel(
+                        title = panelTitleFor(activePanel),
+                        options = panelOptions,
+                        selectedIndex = overlayUiState.selectedPanelIndex,
+                        visualEffectsState = visualEffectsState,
+                        optionFocusRequesters = panelFocusRequesters,
+                    )
+                }
             }
         }
 
@@ -306,6 +311,10 @@ private fun BoxScope.PlayerControlsLayer(
             )
         }
     }
+}
+
+internal fun shouldRenderPlayerChrome(isCommentsPanelVisible: Boolean): Boolean {
+    return !isCommentsPanelVisible
 }
 
 private fun actionSecondaryText(
@@ -336,11 +345,10 @@ private fun OnlineCountPill(
     text: String,
     modifier: Modifier = Modifier,
 ) {
-    val isLightTheme = LocalIsLightTheme.current
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.15f))
+            .background(Color.Black.copy(alpha = 0.72f))
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -353,7 +361,7 @@ private fun OnlineCountPill(
         )
         Text(
             text = text,
-            color = if (isLightTheme) Color(0xFF18191C) else Color(0xEAF7FAFF),
+            color = Color.White,
             fontSize = 12.sp,
             maxLines = 1,
         )
@@ -365,28 +373,21 @@ private fun BadgeRow(
     badges: List<PlaybackBadge>,
     modifier: Modifier = Modifier,
 ) {
-    val isLightTheme = LocalIsLightTheme.current
     LazyRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(badges) { badge ->
-            val bgAlpha = if (badge.isActive) 0.28f else 0.15f
+            val bgAlpha = if (badge.isActive) 0.82f else 0.68f
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        if (isLightTheme) {
-                            if (badge.isActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.65f)
-                        } else {
-                            Color.White.copy(alpha = bgAlpha)
-                        }
-                    )
+                    .background(Color.Black.copy(alpha = bgAlpha))
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = badge.label,
-                    color = if (isLightTheme) Color(0xFF18191C) else Color.White,
+                    color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )

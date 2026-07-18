@@ -65,6 +65,7 @@ internal class DetailFocusCoordinator {
 
     fun rememberPlayButtonFocus() {
         lastFocusedCommentRpid = null
+        cancelPendingCommentRestore()
     }
 
     fun rememberCommentFocus(rpid: Long) {
@@ -90,6 +91,16 @@ internal class DetailFocusCoordinator {
         drainPendingFocus()
     }
 
+    fun cancelPendingCommentRestore(rpid: Long? = null): Boolean {
+        val pendingRestore = pendingIntent as? DetailFocusIntent.RestoreComment ?: return false
+        if (rpid != null && pendingRestore.rpid != rpid) return false
+        pendingIntent = null
+        if (lastFocusedCommentRpid == pendingRestore.rpid) {
+            lastFocusedCommentRpid = null
+        }
+        return true
+    }
+
     fun recoverFocusAfterEscape(): Boolean {
         val rememberedCommentRpid = lastFocusedCommentRpid
         if (rememberedCommentRpid != null && tryRequestCommentFocus(rememberedCommentRpid)) {
@@ -98,7 +109,9 @@ internal class DetailFocusCoordinator {
         if (rememberedCommentRpid != null) {
             lastFocusedCommentRpid = null
         }
-        return tryRequestPlayButtonFocus()
+        return tryRequestPlayButtonFocus().also { focused ->
+            if (focused) rememberPlayButtonFocus()
+        }
     }
 
     fun tryRequestPlayButtonFocus(): Boolean {

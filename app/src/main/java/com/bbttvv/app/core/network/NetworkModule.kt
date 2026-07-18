@@ -27,12 +27,20 @@ object NetworkModule {
         return NetworkHttpClients.buildPlaybackOkHttpClient(sharedClient)
     }
 
+    internal fun buildImageOkHttpClient(sharedClient: OkHttpClient): OkHttpClient {
+        return NetworkHttpClients.buildImageOkHttpClient(sharedClient) { appContext }
+    }
+
     val okHttpClient: OkHttpClient by lazy {
         ApiClientProvider.okHttpClient
     }
 
     val playbackOkHttpClient: OkHttpClient by lazy {
         ApiClientProvider.playbackOkHttpClient
+    }
+
+    val imageOkHttpClient: OkHttpClient by lazy {
+        buildImageOkHttpClient(okHttpClient)
     }
 
     val guestOkHttpClient: OkHttpClient by lazy {

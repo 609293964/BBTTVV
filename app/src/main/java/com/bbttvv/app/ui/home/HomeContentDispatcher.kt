@@ -48,7 +48,6 @@ import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.TvContextMenu
 import com.bbttvv.app.ui.components.TvContextMenuAction
-import kotlinx.coroutines.delay
 
 @Composable
 fun TabViewModelScope(
@@ -122,17 +121,6 @@ internal fun HomeContentDispatcher(
         residentTabs = tabResidencyState.residentTabsInDisplayOrder(),
     )
     val context = LocalContext.current
-
-    LaunchedEffect(
-        recommendVideoItems.isNotEmpty(),
-        tabResidencyState.generation,
-        visibleHomeTabs,
-    ) {
-        if (recommendVideoItems.isEmpty()) return@LaunchedEffect
-        delay(HomeTabPrewarmIdleDelayMs)
-        withFrameNanos { }
-        tabResidencyState.prewarmNextAdjacent()
-    }
 
     DisposableEffect(context.applicationContext, tabResidencyState, recyclerPools) {
         val applicationContext = context.applicationContext
@@ -325,7 +313,6 @@ internal object HomeTabSwitchTrace {
     }
 }
 
-private const val HomeTabPrewarmIdleDelayMs = 180L
 private const val HomeTabSwitchTag = "HomeTabSwitch"
 
 @Composable
@@ -582,6 +569,7 @@ private fun RecommendTabContent(
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onOpenRecommendMenu: (VideoItem, String) -> Unit
 ) {
+    val loadState by viewModel.recommendLoadState.collectAsStateWithLifecycle()
     HomeCollapsingHeaderGrid(
         topBarHeightPx = topBarHeightPx,
         state = collapsingHeaderState,
@@ -615,6 +603,7 @@ private fun RecommendTabContent(
                     videoCardRecycledViewPool = videoCardRecycledViewPool,
                     onVerticalScrollOffsetChanged = onScrollOffset,
                     canLoadMore = viewModel::canLoadMoreRecommend,
+                    loadMoreInProgress = loadState.isLoading,
                     onLoadMore = viewModel::loadMore,
                     onMenuRefresh = viewModel::refresh,
                     onVideoFocused = { video, _ ->

@@ -43,6 +43,7 @@ import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusTarget
+import com.bbttvv.app.ui.home.GridLoadMoreFocusRecoveryPolicy
 import com.bbttvv.app.ui.home.LocalHomeTabActive
 import com.bbttvv.app.ui.home.applyHomeTabActiveState
 import com.bbttvv.app.ui.home.installChildFocusParkingOnDetach
@@ -62,6 +63,7 @@ internal fun UpSearchRecyclerGrid(
     focusTab: AppTopLevelTab? = null,
     onVerticalScrollOffsetChanged: (Int) -> Unit = {},
     canLoadMore: () -> Boolean = { false },
+    loadMoreInProgress: Boolean? = null,
     onLoadMore: () -> Unit = {},
     onTopRowDpadUp: () -> Boolean = { false },
     onOpenUp: (Long) -> Unit,
@@ -339,7 +341,19 @@ internal fun UpSearchRecyclerGrid(
             (recyclerView.adapter as? UpSearchAdapter)?.let { adapter ->
                 adapter.updateColors(recyclerView, colors)
                 val listChanged = adapter.currentList != items
-                if (!listChanged) return@let
+                if (!listChanged) {
+                    if (
+                        GridLoadMoreFocusRecoveryPolicy.shouldRestoreFocus(
+                            hasPendingLoadMoreFocus = dpadGridController.hasPendingLoadMoreFocus(),
+                            listChanged = false,
+                            loadMoreInProgress = loadMoreInProgress,
+                        )
+                    ) {
+                        dpadGridController.cancelAllPendingRequests()
+                        focusState.tryFocusVisibleItem()
+                    }
+                    return@let
+                }
                 if (!dpadGridController.hasPendingLoadMoreFocus()) {
                     focusState.prepareForDataSetChange()
                 }

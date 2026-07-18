@@ -1,7 +1,6 @@
 package com.bbttvv.app.feature.video.screen
 
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,11 +29,6 @@ internal fun BoxScope.PlayerCommentsPanelHost(
         onOpenThread = onOpenThread,
         onBackFromThread = onBackFromThread,
         modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .padding(
-                top = PlayerLayoutTokens.commentsPanelEdgePadding,
-                end = PlayerLayoutTokens.commentsPanelEdgePadding,
-                bottom = PlayerLayoutTokens.commentsPanelEdgePadding,
-            ),
+            .align(Alignment.CenterEnd),
     )
 }

@@ -1,8 +1,8 @@
 ﻿package com.bbttvv.app.core.theme
 
-import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.tv.material3.ColorScheme
 
 private const val PRIMARY_TEXT_MIN_CONTRAST = 4.5f
 private const val SECONDARY_TEXT_MIN_CONTRAST = 3.0f
@@ -111,4 +111,3 @@ internal fun enforceDynamicLightTextContrast(
         )
     )
 }
-

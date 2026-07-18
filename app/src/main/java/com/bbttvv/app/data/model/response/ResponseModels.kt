@@ -505,6 +505,7 @@ object FlexibleBooleanSerializer : KSerializer<Boolean> {
 
 @Serializable
 data class ReplyContent(
+    @Serializable(with = UnescapedStringSerializer::class)
     val message: String = "",
     val device: String? = "",
     val emote: Map<String, ReplyEmote>? = null,

@@ -33,7 +33,7 @@ internal fun AppTopBar(
     onDpadDown: () -> Boolean,
     focusEnabled: Boolean = true,
     focusCoordinator: HomeFocusCoordinator? = null,
-    onTopBarFocusChanged: (Boolean) -> Unit = {},
+    onTopBarFocused: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isLightTheme = LocalIsLightTheme.current
@@ -45,7 +45,7 @@ internal fun AppTopBar(
     val latestOnTabSelected by rememberUpdatedState(onTabSelected)
     val latestOnSelectedTabConfirmed by rememberUpdatedState(onSelectedTabConfirmed)
     val latestOnDpadDown by rememberUpdatedState(onDpadDown)
-    val latestOnTopBarFocusChanged by rememberUpdatedState(onTopBarFocusChanged)
+    val latestOnTopBarFocused by rememberUpdatedState(onTopBarFocused)
     val latestFocusTargetTab by rememberUpdatedState(focusTargetTab)
     val latestFocusEnabled by rememberUpdatedState(focusEnabled)
 
@@ -141,7 +141,7 @@ internal fun AppTopBar(
                 onTabSelected = latestOnTabSelected,
                 onSelectedTabConfirmed = latestOnSelectedTabConfirmed,
                 onDpadDown = latestOnDpadDown,
-                onTopBarFocusChanged = latestOnTopBarFocusChanged
+                onTopBarFocused = latestOnTopBarFocused
             )
             controller.adapter?.submitTabs(tabs, selectedTab)
             focusCoordinator?.drainPendingFocus()
@@ -207,6 +207,7 @@ private class AppTopBarController {
         val recycler = recyclerView ?: return HomeFocusRequestResult.Unavailable
         val topBarAdapter = adapter ?: return HomeFocusRequestResult.Unavailable
         val targetTab = topBarAdapter.focusTargetOrFallback(tab) ?: return HomeFocusRequestResult.Unavailable
+        topBarAdapter.cancelPendingDirectionalSelection()
         val expectedSelectedTab = topBarAdapter.currentSelectedTab()
         val requestToken = ++focusRequestToken
         pendingFocusRequest = PendingFocusRequest(
@@ -256,6 +257,9 @@ private class AppTopBarController {
 
     fun setFocusEnabled(enabled: Boolean) {
         focusEnabled = enabled
+        if (!enabled) {
+            adapter?.cancelPendingDirectionalSelection()
+        }
         val recycler = recyclerView ?: return
         recycler.descendantFocusability = if (enabled) {
             ViewGroup.FOCUS_AFTER_DESCENDANTS

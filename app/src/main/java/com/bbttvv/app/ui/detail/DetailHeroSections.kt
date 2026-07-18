@@ -193,11 +193,11 @@ internal fun DetailHeroSection(
             if (viewInfo.desc.isNotBlank() && viewInfo.desc != "-") {
                 Text(
                     text = viewInfo.desc.take(220),
-                    fontSize = 14.sp,
+                    fontSize = 16.sp,
                     color = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 21.sp
+                    lineHeight = 24.sp
                 )
             }
 
@@ -891,7 +891,7 @@ private fun DetailMetricItem(
     Row(verticalAlignment = Alignment.CenterVertically) {
         DetailMetricIcon(icon = icon, tint = tint, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(4.dp))
-        Text(text = text, color = tint, fontSize = 13.sp)
+        Text(text = text, color = tint, fontSize = 14.sp)
     }
 }
 

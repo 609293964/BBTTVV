@@ -238,6 +238,7 @@ internal fun ProfileVideoGrid(
                     showDanmakuCount = false,
                     loadMorePrefetchItems = gridColumnCount + 1,
                     canLoadMore = { hasMore && !isLoading && !isLoadingMore },
+                    loadMoreInProgress = isLoading || isLoadingMore,
                     onLoadMore = onLoadMore,
                     onTopRowDpadUp = onBackToTopBar ?: onRequestSidebarFocus,
                     consumeTopRowDpadUp = true,

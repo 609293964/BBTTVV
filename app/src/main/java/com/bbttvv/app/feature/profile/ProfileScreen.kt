@@ -43,6 +43,7 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.components.TvStatusPane
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusEntryHint
 import com.bbttvv.app.ui.home.HomeFocusRegion
@@ -97,10 +98,15 @@ internal fun ProfileScreen(
     val isHomeTabActive = LocalHomeTabActive.current
     val navData = uiState.navData
     val lifecycleOwner = LocalLifecycleOwner.current
-    val updateContentOnTabFocusEnabled by SettingsManager.getUpdateContentOnTabFocusEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = true)
+    val updateContentOnTabFocusEnabled by SettingsManager
+        .getProfileUpdateContentOnTabFocusEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getProfileUpdateContentOnTabFocusEnabledSync(context)
+        )
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getWatchLaterInTopTabsEnabledSync(context)
+        )
     var selectedMenu by rememberSaveable { mutableStateOf(ProfileMenu.HISTORY) }
     val profileMenus = remember(watchLaterInTopTabsEnabled) {
         if (watchLaterInTopTabsEnabled) {
@@ -165,8 +171,14 @@ internal fun ProfileScreen(
                     .padding(start = 46.dp, end = 24.dp)
             ) {
                 when {
-                    uiState.isLoading -> CenterStatus("正在加载我的页面...")
-                    !uiState.errorMessage.isNullOrBlank() -> CenterStatus(uiState.errorMessage ?: "加载失败")
+                    uiState.isLoading -> TvStatusPane(message = "正在加载我的页面...")
+                    !uiState.errorMessage.isNullOrBlank() -> TvStatusPane(
+                        title = "我的页面加载失败",
+                        message = uiState.errorMessage ?: "请检查网络连接后重试",
+                        actionLabel = "重试",
+                        onAction = viewModel::refresh,
+                        onDpadUp = onRequestTopBarFocus,
+                    )
                     navData == null || !navData.isLogin -> GuestProfileLayout(uiState = uiState, onLoginSuccess = {
                         selectedMenu = ProfileMenu.HISTORY
                         viewModel.refresh()
@@ -266,8 +278,14 @@ internal fun WatchLaterVideosScreen(
     ) {
         val navData = uiState.navData
         when {
-            uiState.isLoading -> CenterStatus("正在加载稍后再看...")
-            !uiState.errorMessage.isNullOrBlank() -> CenterStatus(uiState.errorMessage ?: "加载失败")
+            uiState.isLoading -> TvStatusPane(message = "正在加载稍后再看...")
+            !uiState.errorMessage.isNullOrBlank() -> TvStatusPane(
+                title = "稍后再看加载失败",
+                message = uiState.errorMessage ?: "请检查网络连接后重试",
+                actionLabel = "重试",
+                onAction = viewModel::refresh,
+                onDpadUp = onRequestTopBarFocus,
+            )
             navData == null || !navData.isLogin -> CenterStatus("登录后可查看稍后再看")
             else -> ProfileWatchLaterPanel(
                 items = uiState.watchLaterItems,

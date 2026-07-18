@@ -361,6 +361,12 @@ interface BilibiliApi {
         @QueryMap params: Map<String, String>
     ): PlayerInfoResponse
 
+    @GET("x/player/v2")
+    suspend fun getPlayerInfoPlain(
+        @Query("bvid") bvid: String,
+        @Query("cid") cid: Long
+    ): PlayerInfoResponse
+
     @GET("x/stein/edgeinfo_v2")
     suspend fun getInteractEdgeInfo(
         @Query("bvid") bvid: String,

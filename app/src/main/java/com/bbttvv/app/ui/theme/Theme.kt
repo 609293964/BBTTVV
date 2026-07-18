@@ -5,6 +5,8 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import androidx.tv.material3.lightColorScheme
+import com.bbttvv.app.core.theme.BiliTypography
+import com.bbttvv.app.core.theme.enforceDynamicLightTextContrast
 import com.bbttvv.app.core.store.SettingsManager
 
 val LocalIsLightTheme = compositionLocalOf { false }
@@ -37,13 +39,18 @@ fun AppTheme(
     content: @Composable () -> Unit
 ) {
     val isLightTheme = themeMode == SettingsManager.ThemeMode.LIGHT
-    val colorScheme = if (isLightTheme) LightColorScheme else DarkColorScheme
+    val colorScheme = if (isLightTheme) {
+        enforceDynamicLightTextContrast(LightColorScheme)
+    } else {
+        DarkColorScheme
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(
         LocalIsLightTheme provides isLightTheme
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
+            typography = BiliTypography,
             content = content
         )
     }

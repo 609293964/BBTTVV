@@ -39,6 +39,19 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".system.TclShortcutAccessibilityService"
+            android:exported="true"
+            android:label="@string/tcl_shortcut_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/tcl_shortcut_accessibility_service" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

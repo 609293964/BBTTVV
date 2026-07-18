@@ -328,10 +328,19 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getVideoDetailCommentsEnabledSync(context)
         )
-    val updateContentOnTabFocusEnabled by SettingsManager.getUpdateContentOnTabFocusEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = true)
+    val updateContentOnTabFocusEnabled by SettingsManager
+        .getProfileUpdateContentOnTabFocusEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getProfileUpdateContentOnTabFocusEnabledSync(context)
+        )
+    val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getHomeTopTabSelectOnFocusEnabledSync(context)
+        )
     val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.getWatchLaterInTopTabsEnabledSync(context)
+        )
     val dynamicPageDisplayMode by SettingsManager.getDynamicPageDisplayMode(context)
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
@@ -632,9 +641,30 @@ fun TvSettingsList(
                     modifier = getRowModifier("settings_update_content_on_tab_focus", leftModifier),
                     onClick = {
                         scope.launch {
-                            SettingsManager.setUpdateContentOnTabFocusEnabled(
+                            SettingsManager.setProfileUpdateContentOnTabFocusEnabled(
                                 context,
                                 !updateContentOnTabFocusEnabled
+                            )
+                        }
+                    }
+                )
+            }
+            item(key = "settings_home_top_tab_select_on_focus") {
+                SettingsRow(
+                    title = "首页顶部 TAB 切换方式",
+                    subtitle = if (homeTopTabSelectOnFocusEnabled) {
+                        "移动焦点时立即切换页面，适合常规遥控器操作。"
+                    } else {
+                        "移动焦点只浏览 TAB，按确定键后才切换页面。"
+                    },
+                    value = if (homeTopTabSelectOnFocusEnabled) "焦点切换" else "确认切换",
+                    compact = compact,
+                    modifier = getRowModifier("settings_home_top_tab_select_on_focus", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            SettingsManager.setHomeTopTabSelectOnFocusEnabled(
+                                context,
+                                !homeTopTabSelectOnFocusEnabled,
                             )
                         }
                     }
@@ -974,7 +1004,7 @@ internal fun SettingsSectionTitle(title: String, compact: Boolean) {
     Text(
         text = title,
         color = if (isLightTheme) Color(0xFF61666D) else Color(0x8FFFFFFF),
-        fontSize = if (compact) 11.sp else 13.sp,
+        fontSize = if (compact) 14.sp else 15.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 6.dp)
     )
@@ -1064,7 +1094,7 @@ internal fun SettingsRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 44.dp else 62.dp)
+                .height(if (compact) 48.dp else 66.dp)
                 .padding(horizontal = if (compact) 14.dp else 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -1076,14 +1106,14 @@ internal fun SettingsRow(
                 Text(
                     text = title,
                     color = titleColor,
-                    fontSize = if (compact) 13.sp else 15.sp,
+                    fontSize = if (compact) 15.sp else 16.sp,
                     fontWeight = FontWeight.Medium
                 )
                 if (!compact) {
                     Text(
                         text = subtitle,
                         color = subtitleColor,
-                        fontSize = if (compact) 9.sp else 11.sp,
+                        fontSize = 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1104,7 +1134,7 @@ internal fun SettingsRow(
                 Text(
                     text = value,
                     color = valueTextColor,
-                    fontSize = if (compact) 11.sp else 13.sp,
+                    fontSize = if (compact) 13.sp else 14.sp,
                     fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
                 )
             }

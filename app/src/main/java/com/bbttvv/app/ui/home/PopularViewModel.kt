@@ -9,11 +9,8 @@ import com.bbttvv.app.core.plugin.json.JsonPluginManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.FeedRepository
-import com.bbttvv.app.data.repository.VideoDetailRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,10 +55,7 @@ class PopularViewModel : ViewModel() {
     val uiState: StateFlow<PopularUiState> = _uiState.asStateFlow()
 
     private val categoryFeeds = mutableMapOf<Int, PagedFeedGridState<Int, VideoItem, VideoItem>>()
-    private var detailPrefetchJob: Job? = null
-    private var pendingPrefetchBvid: String? = null
-    private var lastPrefetchedBvid: String? = null
-    private var lastFocusRequestAtMs: Long? = null
+    private val detailPrefetcher = HomeDetailPrefetcher(viewModelScope)
     private var initialLoadStarted = false
 
     init {
@@ -107,37 +101,20 @@ class PopularViewModel : ViewModel() {
     }
 
     fun primeVideoDetail(video: VideoItem) {
-        if (video.bvid == pendingPrefetchBvid) {
-            detailPrefetchJob?.cancel()
-            pendingPrefetchBvid = null
-        }
-        lastFocusRequestAtMs = System.currentTimeMillis()
-        lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
-        VideoDetailRepository.prefetchDetailSummary(video)
+        detailPrefetcher.prime(video)
     }
 
     fun prefetchVideoDetail(video: VideoItem) {
-        if (video.bvid.isBlank()) return
-        if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
-        val now = System.currentTimeMillis()
-        val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
-        lastFocusRequestAtMs = now
-        detailPrefetchJob?.cancel()
-        pendingPrefetchBvid = video.bvid
-        detailPrefetchJob = viewModelScope.launch {
-            if (delayMs > 0L) {
-                delay(delayMs)
-            }
-            VideoDetailRepository.prefetchDetailSummary(video)
-            lastPrefetchedBvid = video.bvid
-            if (pendingPrefetchBvid == video.bvid) {
-                pendingPrefetchBvid = null
-            }
-        }
+        detailPrefetcher.prefetch(video)
     }
 
     fun prefetchVideoDetail(video: VideoItem, videos: List<VideoItem>, index: Int) {
         prefetchVideoDetail(video)
+    }
+
+    override fun onCleared() {
+        detailPrefetcher.clear()
+        super.onCleared()
     }
 
     private fun loadCategory(index: Int, refresh: Boolean) {

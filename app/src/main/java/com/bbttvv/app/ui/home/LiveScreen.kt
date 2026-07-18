@@ -181,6 +181,7 @@ internal fun LiveScreen(
                 videoCardRecycledViewPool = videoCardRecycledViewPool,
                 onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },
+                loadMoreInProgress = uiState.isLoading,
                 onLoadMore = viewModel::loadMore,
                 onMenuRefresh = viewModel::refresh,
                 onFocusedRowChanged = onContentRowFocused,

@@ -68,17 +68,48 @@ internal fun GuestProfileSidebar(storedAccountCount: Int, modifier: Modifier = M
                 ProfileMetric("粉丝", "0")
             )
         )
-        ProfileGhostHint("打开 TV 扫二维码登录")
-        ProfileGhostHint("登录后保留历史、收藏和账号会话")
-        ProfileGhostHint("登入成功后自动回到我的页")
+        ProfileGuestSteps(
+            steps = listOf(
+                "打开 TV 扫描右侧二维码",
+                "在手机端确认登录",
+                "成功后自动刷新历史、收藏和账号会话",
+            )
+        )
     }
 }
 
 @Composable
-private fun ProfileGhostHint(text: String) {
+private fun ProfileGuestSteps(steps: List<String>) {
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    Box(modifier = Modifier.fillMaxWidth().background(if (isLightTheme) Color(0x0C000000) else Color(0x14000000), RoundedCornerShape(28.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
-        Text(text = text, color = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF), lineHeight = 21.sp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (isLightTheme) Color.Black.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.08f),
+                RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        steps.forEachIndexed { index, text ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "${index + 1}",
+                    color = Color(0xFFFB7299),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = text,
+                    color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.9f),
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                )
+            }
+        }
     }
 }
 
@@ -176,7 +207,7 @@ internal fun LoggedInSidebar(
 @Composable
 private fun MiniBadge(text: String, backgroundColor: Color) {
     Box(modifier = Modifier.background(backgroundColor, RoundedCornerShape(7.dp)).padding(horizontal = 6.dp, vertical = 1.dp)) {
-        Text(text = text, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        Text(text = text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -186,8 +217,8 @@ private fun ProfileMetricRow(items: List<ProfileMetric>) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         items.forEach { item ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = item.value, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = item.label, color = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF), fontSize = 10.sp)
+                Text(text = item.value, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = item.label, color = if (isLightTheme) Color(0xFF61666D) else Color(0xE6FFFFFF), fontSize = 13.sp)
             }
         }
     }
@@ -247,7 +278,7 @@ private fun ProfileMenuItemRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(46.dp)
                 .border(
                     width = if (isFocused) 1.dp else if (selected) 1.dp else 0.dp,
                     color = when {
@@ -269,7 +300,7 @@ private fun ProfileMenuItemRow(
                     isDanger -> Color(0xFFF0B4BF)
                     else -> if (isLightTheme) Color(0xFF18191C) else Color.White
                 },
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal
             )
         }

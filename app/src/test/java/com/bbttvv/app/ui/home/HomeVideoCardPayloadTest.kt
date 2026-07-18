@@ -2,6 +2,7 @@ package com.bbttvv.app.ui.home
 
 import com.bbttvv.app.data.model.response.Stat
 import com.bbttvv.app.data.model.response.VideoItem
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -37,6 +38,13 @@ class HomeVideoCardPayloadTest {
         val newItem = card(oldItem.video.copy(isVertical = true))
 
         assertNull(HomeVideoCardAdapter.VideoDiffCallback.getChangePayload(oldItem, newItem))
+    }
+
+    @Test
+    fun `image retries are finite and back off`() {
+        assertEquals(1_500L, HomeVideoCardImageRetryPolicy.delayMillis(0))
+        assertEquals(5_000L, HomeVideoCardImageRetryPolicy.delayMillis(1))
+        assertNull(HomeVideoCardImageRetryPolicy.delayMillis(2))
     }
 
     private fun card(video: VideoItem): HomeRecommendVideoCardItem {

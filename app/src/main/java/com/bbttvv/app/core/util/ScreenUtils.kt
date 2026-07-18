@@ -4,15 +4,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
-import android.os.PowerManager
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 object ScreenUtils {
-    private var playbackWakeLock: PowerManager.WakeLock? = null
-
     fun setFullScreen(context: Context, isFull: Boolean) {
         val activity = context.findActivity() ?: return
         val window = activity.window
@@ -35,35 +32,10 @@ object ScreenUtils {
     fun setPlaybackKeepScreenOn(context: Context, keepScreenOn: Boolean) {
         val activity = context.findActivity() ?: return
         val window = activity.window
-        val decorView = window.decorView
         if (keepScreenOn) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        decorView.keepScreenOn = keepScreenOn
-        updatePlaybackWakeLock(activity = activity, keepScreenOn = keepScreenOn)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun updatePlaybackWakeLock(activity: Activity, keepScreenOn: Boolean) {
-        val powerManager = activity.applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            ?: return
-        if (keepScreenOn) {
-            val wakeLock = playbackWakeLock ?: powerManager
-                .newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
-                    "BBTTVV:PlaybackScreenOn"
-                )
-                .apply {
-                    setReferenceCounted(false)
-                }
-                .also { playbackWakeLock = it }
-            if (!wakeLock.isHeld) {
-                wakeLock.acquire()
-            }
-        } else {
-            playbackWakeLock?.takeIf { it.isHeld }?.release()
         }
     }
 

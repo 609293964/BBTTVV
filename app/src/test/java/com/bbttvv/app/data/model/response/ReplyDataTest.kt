@@ -1,5 +1,7 @@
 package com.bbttvv.app.data.model.response
 
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -22,5 +24,15 @@ class ReplyDataTest {
         )
 
         assertEquals(5, data.getSubReplyCount())
+    }
+
+    @Test
+    fun replyContentMessageUnescapesHtmlEntitiesWhenDecoded() {
+        val json = Json { ignoreUnknownKeys = true }
+        val content = json.decodeFromString<ReplyContent>(
+            """{"message":"I&#39;m &quot;watching&quot; &amp; testing"}"""
+        )
+
+        assertEquals("I'm \"watching\" & testing", content.message)
     }
 }

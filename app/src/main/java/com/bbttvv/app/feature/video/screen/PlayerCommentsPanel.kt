@@ -2,20 +2,23 @@
 package com.bbttvv.app.feature.video.screen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +37,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,15 +48,19 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentSortMode
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
+import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import com.bbttvv.app.ui.theme.LocalIsLightTheme
+
+internal const val PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION = 0.25f
 
 @Composable
 internal fun PlayerCommentsPanel(
@@ -124,202 +133,190 @@ internal fun PlayerCommentsPanel(
     }
 
     val isLightTheme = LocalIsLightTheme.current
-    val panelBgColor = if (isLightTheme) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.65f)
-    val panelBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f)
+    val panelBgColor = if (isLightTheme) Color(0xFFF8F9FB) else Color(0xF5141518)
+    val dividerColor = if (isLightTheme) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.16f)
     val mainTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
     val subTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f)
 
-    Column(
+    Row(
         modifier = modifier
-            .fillMaxWidth(0.4f)
-            .widthIn(min = 460.dp, max = 560.dp)
+            .fillMaxWidth(PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION)
+            .fillMaxHeight()
             .focusGroup()
             .focusProperties {
                 onExit = { cancelFocusChange() }
             }
-            .clip(RoundedCornerShape(28.dp))
-            .background(panelBgColor)
-            .border(1.dp, panelBorderColor, RoundedCornerShape(28.dp))
-            .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .background(panelBgColor),
     ) {
-        if (isViewingThread) {
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(dividerColor),
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Text(
-                        text = "认证回复",
+                        text = if (isViewingThread) "评论回复" else "视频评论",
                         color = mainTextColor,
-                        fontSize = 18.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                     )
                     Text(
-                        text = "共 ${formatCount(totalCount)} 条回复",
+                        text = playerCommentCountLabel(totalCount),
                         color = subTextColor,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 2.dp),
+                        maxLines = 1,
                     )
                 }
                 PlayerCommentPillButton(
-                    label = "返回评论",
-                    onClick = onBackFromThread,
+                    label = if (isViewingThread) "返回" else playerCommentSortLabel(uiState.sortMode),
+                    onClick = if (isViewingThread) onBackFromThread else onToggleSort,
                     focusRequester = primaryFocusRequester,
                 )
             }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "视频评论",
-                        color = mainTextColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "共 ${formatCount(totalCount)} 条评论",
-                        color = subTextColor,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 2.dp),
-                    )
-                }
-                PlayerCommentPillButton(
-                    label = "切换到${nextCommentSortMode(uiState.sortMode).label}",
-                    onClick = onToggleSort,
-                    focusRequester = primaryFocusRequester,
-                )
-            }
-        }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(dividerColor),
+            )
 
-        uiState.activeThreadRoot?.takeIf { isViewingThread }?.let { rootReply ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            uiState.activeThreadRoot?.takeIf { isViewingThread }?.let { rootReply ->
                 Text(
                     text = "主评论",
                     color = subTextColor,
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp),
                 )
-                PlayerCommentCard(
+                PlayerCommentListItem(
                     reply = rootReply,
                     onOpenThread = {},
                     showReplyAction = false,
                 )
             }
-        }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 240.dp, max = 560.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp),
-        ) {
-            when {
-                isLoading && listItems.isEmpty() -> {
-                    item(key = "loading") {
-                        PlayerCommentMessageCard(
-                            text = if (isViewingThread) "正在加载回复..." else "正在加载评论...",
-                        )
-                    }
-                }
-
-                !errorMessage.isNullOrBlank() && listItems.isEmpty() -> {
-                    item(key = "error") {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            PlayerCommentMessageCard(text = errorMessage)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                            ) {
-                                PlayerCommentPillButton(label = "重试", onClick = onRetry)
-                            }
-                        }
-                    }
-                }
-
-                listItems.isEmpty() -> {
-                    item(key = "empty") {
-                        PlayerCommentMessageCard(
-                            text = if (isViewingThread) "暂无回复" else "暂无评论",
-                        )
-                    }
-                }
-
-                else -> {
-                    itemsIndexed(
-                        items = listItems,
-                        key = { index, reply ->
-                            playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
-                        },
-                    ) { index, reply ->
-                        val commentKey = playerCommentItemKey(
-                            isViewingThread = isViewingThread,
-                            reply = reply,
-                            index = index,
-                        )
-                        val commentFocusRequester = remember(commentKey) { FocusRequester() }
-                        DisposableEffect(commentKey, commentFocusRequester, commentFocusCoordinator) {
-                            val registration = commentFocusCoordinator.registerCommentTarget(
-                                key = commentKey,
-                                target = object : PlayerFocusTarget {
-                                    override fun tryRequestFocus(): Boolean {
-                                        return runCatching {
-                                            commentFocusRequester.requestFocus()
-                                        }.getOrDefault(false)
-                                    }
-                                },
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(bottom = 12.dp),
+            ) {
+                when {
+                    isLoading && listItems.isEmpty() -> {
+                        item(key = "loading") {
+                            PlayerCommentMessage(
+                                text = if (isViewingThread) "正在加载回复..." else "正在加载评论...",
                             )
-                            onDispose {
-                                registration.unregister()
+                        }
+                    }
+
+                    !errorMessage.isNullOrBlank() && listItems.isEmpty() -> {
+                        item(key = "error") {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                PlayerCommentMessage(text = errorMessage, modifier = Modifier.padding(0.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    PlayerCommentPillButton(label = "重试", onClick = onRetry)
+                                }
                             }
                         }
-                        PlayerCommentCard(
-                            reply = reply,
-                            onOpenThread = onOpenThread,
-                            showReplyAction = !isViewingThread,
-                            focusRequester = commentFocusRequester,
-                            onFocused = { lastFocusedCommentKey = commentKey },
-                        )
+                    }
+
+                    listItems.isEmpty() -> {
+                        item(key = "empty") {
+                            PlayerCommentMessage(
+                                text = if (isViewingThread) "暂无回复" else "暂无评论",
+                            )
+                        }
+                    }
+
+                    else -> {
+                        itemsIndexed(
+                            items = listItems,
+                            key = { index, reply ->
+                                playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
+                            },
+                        ) { index, reply ->
+                            val commentKey = playerCommentItemKey(
+                                isViewingThread = isViewingThread,
+                                reply = reply,
+                                index = index,
+                            )
+                            val commentFocusRequester = remember(commentKey) { FocusRequester() }
+                            DisposableEffect(commentKey, commentFocusRequester, commentFocusCoordinator) {
+                                val registration = commentFocusCoordinator.registerCommentTarget(
+                                    key = commentKey,
+                                    target = object : PlayerFocusTarget {
+                                        override fun tryRequestFocus(): Boolean {
+                                            return runCatching {
+                                                commentFocusRequester.requestFocus()
+                                            }.getOrDefault(false)
+                                        }
+                                    },
+                                )
+                                onDispose {
+                                    registration.unregister()
+                                }
+                            }
+                            PlayerCommentListItem(
+                                reply = reply,
+                                onOpenThread = onOpenThread,
+                                showReplyAction = !isViewingThread,
+                                focusRequester = commentFocusRequester,
+                                onFocused = { lastFocusedCommentKey = commentKey },
+                            )
+                        }
                     }
                 }
-            }
 
-            if (listItems.isNotEmpty() && hasMore && !isAppending) {
-                item(key = "load_more_button") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        PlayerCommentPillButton(
-                            label = if (isViewingThread) "加载更多回复" else "加载更多评论",
-                            onClick = onLoadMore,
-                        )
+                if (listItems.isNotEmpty() && hasMore && !isAppending) {
+                    item(key = "load_more_button") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 14.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            PlayerCommentPillButton(
+                                label = if (isViewingThread) "加载更多回复" else "加载更多评论",
+                                onClick = onLoadMore,
+                            )
+                        }
                     }
                 }
-            }
 
-            if (listItems.isNotEmpty() && isAppending) {
-                item(key = "append_loading") {
-                    PlayerCommentFooterHint(text = "正在加载更多...")
-                }
-            } else if (listItems.isNotEmpty() && !hasMore) {
-                item(key = "end_of_list") {
-                    PlayerCommentFooterHint(text = "已经到底了")
+                if (listItems.isNotEmpty() && isAppending) {
+                    item(key = "append_loading") {
+                        PlayerCommentFooterHint(text = "正在加载更多...")
+                    }
+                } else if (listItems.isNotEmpty() && !hasMore) {
+                    item(key = "end_of_list") {
+                        PlayerCommentFooterHint(text = "已经到底了")
+                    }
                 }
             }
         }
@@ -336,12 +333,9 @@ private fun playerCommentItemKey(
     return "$scope:fallback:$index:${reply.ctime}:${reply.member.mid}:${reply.content.message.hashCode()}"
 }
 
-private fun nextCommentSortMode(sortMode: PlayerCommentSortMode): PlayerCommentSortMode {
-    return when (sortMode) {
-        PlayerCommentSortMode.Hot -> PlayerCommentSortMode.Time
-        PlayerCommentSortMode.Time -> PlayerCommentSortMode.Hot
-    }
-}
+internal fun playerCommentCountLabel(count: Int): String = "${formatCount(count)} 条"
+
+internal fun playerCommentSortLabel(sortMode: PlayerCommentSortMode): String = "按${sortMode.label}"
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -398,11 +392,11 @@ private fun PlayerCommentPillButton(
             .onFocusChanged { focusState -> isFocused = focusState.hasFocus },
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
             contentAlignment = Alignment.Center,
         ) {
             val textColor = when {
-                isFocused -> Color.White
+                isFocused -> if (isLightTheme) Color.White else Color(0xFF111111)
                 selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
                 else -> if (isLightTheme) Color(0xFF18191C) else Color.White
             }
@@ -418,7 +412,7 @@ private fun PlayerCommentPillButton(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun PlayerCommentCard(
+private fun PlayerCommentListItem(
     reply: ReplyItem,
     onOpenThread: (ReplyItem) -> Unit,
     showReplyAction: Boolean,
@@ -429,134 +423,208 @@ private fun PlayerCommentCard(
     val isLightTheme = LocalIsLightTheme.current
     val hasReplies = reply.rcount > 0 || reply.replies.orEmpty().isNotEmpty()
     val dateText = remember(reply.ctime) { formatCommentDate(reply.ctime) }
+    val locationText = reply.replyControl?.location.orEmpty()
+    val contextText = remember(dateText, locationText) {
+        listOf(dateText, locationText).filter(String::isNotBlank).joinToString(" · ")
+    }
     var isFocused by remember { mutableStateOf(false) }
-    val composedModifier = if (focusRequester != null) {
-        modifier.focusRequester(focusRequester)
+    val focusModifier = if (focusRequester != null) {
+        Modifier.focusRequester(focusRequester)
     } else {
-        modifier
+        Modifier
     }
-    
-    val containerColor = when {
-        isFocused -> if (isLightTheme) Color.White else Color.White.copy(alpha = 0.24f)
-        else -> if (isLightTheme) Color.Black.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.14f)
-    }
-    
-    val borderStroke = if (isFocused) {
-        androidx.compose.foundation.BorderStroke(2.dp, if (isLightTheme) Color(0xFFFB7299) else Color.White)
-    } else {
-        androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.18f))
-    }
+    val accentColor = Color(0xFFFB7299)
+    val dividerColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f)
+    val flatBorder = Border(
+        border = androidx.compose.foundation.BorderStroke(0.dp, Color.Transparent),
+        shape = RectangleShape,
+    )
 
-    Surface(
-        onClick = {
-            if (showReplyAction && hasReplies) {
-                onOpenThread(reply)
-            }
-        },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = containerColor,
-            focusedContainerColor = if (isLightTheme) Color.White else Color.White.copy(alpha = 0.24f),
-        ),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(
-                border = borderStroke,
-                shape = RoundedCornerShape(20.dp),
-            ),
-            focusedBorder = Border(
-                border = androidx.compose.foundation.BorderStroke(2.dp, if (isLightTheme) Color(0xFFFB7299) else Color.White),
-                shape = RoundedCornerShape(20.dp),
-            ),
-        ),
-        modifier = composedModifier
-            .fillMaxWidth()
-            .onFocusChanged { focusState ->
-                isFocused = focusState.hasFocus
-                if (focusState.hasFocus) {
-                    onFocused()
+    Box(
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Surface(
+            onClick = {
+                if (showReplyAction && hasReplies) {
+                    onOpenThread(reply)
                 }
             },
-    ) {
-        Column(
-            modifier = Modifier
+            shape = ClickableSurfaceDefaults.shape(RectangleShape),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = if (isLightTheme) {
+                    Color.Black.copy(alpha = 0.045f)
+                } else {
+                    Color.White.copy(alpha = 0.09f)
+                },
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = flatBorder,
+                focusedBorder = flatBorder,
+            ),
+            modifier = focusModifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.hasFocus
+                    if (focusState.hasFocus) {
+                        onFocused()
+                    }
+                },
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 16.dp, top = 14.dp, bottom = 15.dp),
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Text(
-                    text = reply.member.uname.ifBlank { "评论用户" },
-                    color = if (isLightTheme) {
-                        if (isFocused) Color(0xFFFB7299) else Color(0xFF18191C)
-                    } else Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                PlayerCommentAvatar(
+                    avatarUrl = reply.member.avatar,
+                    username = reply.member.uname,
                 )
-                if (dateText.isNotEmpty()) {
-                    Text(
-                        text = dateText,
-                        color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
-                        fontSize = 10.sp,
-                    )
-                }
-            }
-            Text(
-                text = reply.content.message.ifBlank { "此条评论暂时没有正文内容" },
-                color = if (isLightTheme) Color(0xFF18191C) else Color.White.copy(alpha = 0.92f),
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
-                maxLines = if (showReplyAction) 6 else 8,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(
-                        text = "点赞 ${formatCount(reply.like)}",
-                        color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
-                        fontSize = 10.sp,
-                    )
-                    if (showReplyAction) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
-                            text = "回复 ${formatCount(reply.rcount)}",
-                            color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.62f),
-                            fontSize = 10.sp,
+                            text = reply.member.uname.ifBlank { "评论用户" },
+                            color = if (isLightTheme) {
+                                if (isFocused) accentColor else Color(0xFF18191C)
+                            } else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        reply.member.levelInfo.currentLevel.takeIf { it > 0 }?.let { level ->
+                            Text(
+                                text = "LV$level",
+                                color = if (isLightTheme) Color(0xFF8A5A22) else Color(0xFFF0C98A),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    if (contextText.isNotEmpty()) {
+                        Text(
+                            text = contextText,
+                            color = if (isLightTheme) Color(0xFF7A7F87) else Color.White.copy(alpha = 0.56f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                }
-                if (showReplyAction && hasReplies) {
                     Text(
-                        text = "查看回复",
-                        color = if (isLightTheme) {
-                            if (isFocused) Color(0xFFFB7299) else Color(0xFF1D5AA5)
-                        } else {
-                            if (isFocused) Color.White else Color(0xFFDDEBFF)
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = reply.content.message.ifBlank { "此条评论暂时没有正文内容" },
+                        color = if (isLightTheme) Color(0xFF24262A) else Color.White.copy(alpha = 0.90f),
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        maxLines = if (showReplyAction) 6 else 8,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "赞 ${formatCount(reply.like)}",
+                                color = if (isLightTheme) Color(0xFF686D75) else Color.White.copy(alpha = 0.60f),
+                                fontSize = 11.sp,
+                            )
+                            if (showReplyAction) {
+                                Text(
+                                    text = "回复 ${formatCount(reply.rcount)}",
+                                    color = if (isLightTheme) Color(0xFF686D75) else Color.White.copy(alpha = 0.60f),
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        if (showReplyAction && hasReplies) {
+                            Text(
+                                text = "查看回复 ›",
+                                color = if (isFocused) accentColor else if (isLightTheme) Color(0xFF3467A8) else Color(0xFFDDEBFF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(start = if (isFocused) 0.dp else 18.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(dividerColor),
+            )
+            if (isFocused) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .width(3.dp)
+                        .fillMaxHeight()
+                        .background(accentColor),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun PlayerCommentMessageCard(
+private fun PlayerCommentAvatar(
+    avatarUrl: String,
+    username: String,
+) {
+    val isLightTheme = LocalIsLightTheme.current
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(if (isLightTheme) Color(0xFFE7E9EE) else Color.White.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (avatarUrl.isNotBlank()) {
+            AsyncImage(
+                model = rememberSizedImageModel(
+                    url = avatarUrl,
+                    widthPx = 72,
+                    heightPx = 72,
+                ),
+                contentDescription = username.ifBlank { "评论用户头像" },
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text(
+                text = username.trim().firstOrNull()?.toString().orEmpty().ifBlank { "评" },
+                color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerCommentMessage(
     text: String,
     modifier: Modifier = Modifier,
 ) {
@@ -564,16 +632,13 @@ private fun PlayerCommentMessageCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (isLightTheme) Color.Black.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.12f))
-            .border(1.dp, if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         Text(
             text = text,
-            color = if (isLightTheme) Color(0xFF18191C) else Color.White.copy(alpha = 0.82f),
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
+            color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
         )
     }
 }
@@ -590,7 +655,7 @@ private fun PlayerCommentFooterHint(text: String) {
         Text(
             text = text,
             color = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f),
-            fontSize = 11.sp,
+            fontSize = 13.sp,
         )
     }
 }
@@ -599,4 +664,3 @@ private fun formatCommentDate(timestampSec: Long): String {
     if (timestampSec <= 0L) return ""
     return SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.CHINA).format(Date(timestampSec * 1000L))
 }
-

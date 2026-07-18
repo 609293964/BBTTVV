@@ -1,5 +1,6 @@
 package com.bbttvv.app.ui.home
 
+import android.os.SystemClock
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.VideoDetailRepository
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +22,7 @@ internal class HomeDetailPrefetcher(
             detailPrefetchJob?.cancel()
             pendingPrefetchBvid = null
         }
-        lastFocusRequestAtMs = System.currentTimeMillis()
+        lastFocusRequestAtMs = SystemClock.uptimeMillis()
         lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
         VideoDetailRepository.prefetchDetailSummary(video)
     }
@@ -29,7 +30,7 @@ internal class HomeDetailPrefetcher(
     fun prefetch(video: VideoItem) {
         if (video.bvid.isBlank()) return
         if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
-        val now = System.currentTimeMillis()
+        val now = SystemClock.uptimeMillis()
         val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
         lastFocusRequestAtMs = now
         detailPrefetchJob?.cancel()

@@ -35,6 +35,23 @@ class HomeTabCompositionPolicyTest {
     }
 
     @Test
+    fun `cpu bound residency keeps only the selected and previous page`() {
+        val state = HomeTabResidencyState(
+            initialSelectedTab = AppTopLevelTab.RECOMMEND,
+            maxResidentTabs = 2,
+        )
+        state.updateVisibleTabs(visibleTabs)
+
+        state.select(AppTopLevelTab.POPULAR)
+        state.select(AppTopLevelTab.LIVE)
+
+        assertEquals(
+            listOf(AppTopLevelTab.POPULAR, AppTopLevelTab.LIVE),
+            state.residentTabsInDisplayOrder(),
+        )
+    }
+
+    @Test
     fun `hidden activated tabs are not composed`() {
         val result = HomeTabCompositionPolicy.resolve(
             visibleTabs = listOf(AppTopLevelTab.RECOMMEND, AppTopLevelTab.LIVE),

@@ -118,7 +118,7 @@ internal class TvFocusEscapeGuard {
             "TvFocusEscapeGuard.recoverFocus target=${entry.key} reason=$reason recovered=$recovered " +
                 "${GridFocusDebugLog.event(event)} ${GridFocusDebugLog.view(focusedView)}"
         }
-        return recovered || reason == TvFocusEscapeReason.MissingFocus
+        return TvFocusEscapePolicy.shouldConsumeRecoveryResult(recovered)
     }
 
     private fun selectTarget(focusedView: View?): TvFocusEscapeTargetEntry? {
@@ -172,6 +172,10 @@ internal object TvFocusEscapeTargetSelectionPolicy {
 }
 
 internal object TvFocusEscapePolicy {
+    fun shouldConsumeRecoveryResult(recovered: Boolean): Boolean {
+        return recovered
+    }
+
     fun shouldRecoverOnDirectionalKey(
         action: Int,
         repeatCount: Int,

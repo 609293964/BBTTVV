@@ -1,10 +1,6 @@
 package com.bbttvv.app.ui.detail
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
@@ -33,7 +29,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -48,6 +43,7 @@ import androidx.tv.material3.Text
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.components.TvStatusPane
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.TvFocusSandboxAnchor
@@ -97,17 +93,6 @@ fun DetailScreen(
         viewModel.prefetchPlaybackDanmaku(playCid)
         onPlay(playBvid, playAid, playCid)
     }
-    var hasEnteredDetail by remember(bvid) { mutableStateOf(false) }
-    val detailEnterProgress by animateFloatAsState(
-        targetValue = if (hasEnteredDetail) 1f else 0f,
-        animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
-        label = "detail_enter_progress"
-    )
-    val detailEnterOffsetPx = with(density) { 16.dp.toPx() }
-
-    LaunchedEffect(bvid) {
-        hasEnteredDetail = true
-    }
     LaunchedEffect(bvid, videoDetailCommentsEnabled) {
         AppPerformanceTracker.beginSpanOnce("first_detail_open")
         viewModel.loadDetail(
@@ -127,36 +112,23 @@ fun DetailScreen(
             .fillMaxSize()
             .background(if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF141414))
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = detailEnterProgress
-                    translationY = detailEnterOffsetPx * (1f - detailEnterProgress)
-                    val scale = 0.985f + 0.015f * detailEnterProgress
-                    scaleX = scale
-                    scaleY = scale
-                }
-        ) {
-            Crossfade(
-                targetState = uiState.viewInfo != null,
-                animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
-                label = "detail_content_crossfade"
-            ) { hasFullDetail ->
-                when {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Rendering preview and full detail together during Crossfade caused a
+            // visible frame-time spike on CPU-bound TV devices.
+            val hasFullDetail = uiState.viewInfo != null
+            when {
                     uiState.isError && !hasFullDetail -> {
-                        val statusFocusAnchor = rememberTvFocusAnchorState()
-                        TvFocusSandboxAnchor(
-                            state = statusFocusAnchor,
-                            requestInitialFocus = true,
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            Text(
-                                text = uiState.errorMsg ?: "加载详情失败",
-                                modifier = Modifier.align(Alignment.Center),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                        TvStatusPane(
+                            title = "详情加载失败",
+                            message = uiState.errorMsg ?: "请检查网络连接后重试",
+                            actionLabel = "重试",
+                            onAction = {
+                                viewModel.loadDetail(
+                                    bvid = bvid,
+                                    loadCommentsEnabled = videoDetailCommentsEnabled,
+                                )
+                            },
+                        )
                     }
 
                     !hasFullDetail -> {
@@ -262,15 +234,31 @@ fun DetailScreen(
                 val relatedVideosSectionIndex = detailRelatedVideosSectionIndex(
                     hasPagesSection = viewInfo.pages.size > 1
                 )
-                val hasRestoreCommentFocusTarget = restoreCommentFocusRpid?.let { targetRpid ->
-                    uiState.comments.items.any { comment -> comment.rpid == targetRpid }
-                } ?: false
+                val restoreCommentIndex = restoreCommentFocusRpid?.let { targetRpid ->
+                    uiState.comments.items.indexOfFirst { comment -> comment.rpid == targetRpid }
+                } ?: -1
+                val hasRestoreCommentFocusTarget = restoreCommentIndex >= 0
+                val hasFinishedLookingForRestoreTarget =
+                    !videoDetailCommentsEnabled ||
+                        (
+                            !uiState.comments.isLoading &&
+                                (
+                                    uiState.comments.errorMessage != null ||
+                                        uiState.comments.hasLoadedOnce
+                                    )
+                            )
+                val restoreCommentFocusUnavailable =
+                    restoreCommentFocusRpid != null &&
+                        !hasRestoreCommentFocusTarget &&
+                        hasFinishedLookingForRestoreTarget
 
-                LaunchedEffect(viewInfo.bvid, restoreCommentFocusRpid) {
-                    if (restoreCommentFocusRpid != null || hasRequestedInitialPlayFocus) {
-                        suppressInitialFocusBringIntoView = false
-                        return@LaunchedEffect
-                    }
+                fun abandonCommentFocusRestore() {
+                    val targetRpid = restoreCommentFocusRpid ?: return
+                    detailFocusCoordinator.cancelPendingCommentRestore(targetRpid)
+                    onCommentFocusRestored(targetRpid)
+                }
+
+                fun requestPlayFallback() {
                     hasSubmittedInitialPlayFocusRequest = true
                     detailFocusCoordinator.requestInitialPlayFocus {
                         hasRequestedInitialPlayFocus = true
@@ -281,9 +269,42 @@ fun DetailScreen(
                     }
                 }
 
-                LaunchedEffect(restoreCommentFocusRpid, hasRestoreCommentFocusTarget) {
+                LaunchedEffect(
+                    viewInfo.bvid,
+                    restoreCommentFocusRpid,
+                    restoreCommentFocusUnavailable,
+                ) {
+                    if (restoreCommentFocusUnavailable) {
+                        abandonCommentFocusRestore()
+                        requestPlayFallback()
+                        return@LaunchedEffect
+                    }
+                    if (restoreCommentFocusRpid != null || hasRequestedInitialPlayFocus) {
+                        suppressInitialFocusBringIntoView = false
+                        return@LaunchedEffect
+                    }
+                    if (!hasSubmittedInitialPlayFocusRequest) requestPlayFallback()
+                }
+
+                LaunchedEffect(
+                    restoreCommentFocusRpid,
+                    restoreCommentIndex,
+                    viewInfo.pages.size,
+                ) {
                     val targetRpid = restoreCommentFocusRpid ?: return@LaunchedEffect
-                    if (!hasRestoreCommentFocusTarget) return@LaunchedEffect
+                    if (restoreCommentIndex < 0) return@LaunchedEffect
+                    val isTargetVisible = detailListState.layoutInfo.visibleItemsInfo.any { item ->
+                        item.key == targetRpid
+                    }
+                    if (!isTargetVisible) {
+                        detailListState.scrollToItem(
+                            detailCommentItemSectionIndex(
+                                hasPagesSection = viewInfo.pages.size > 1,
+                                commentIndex = restoreCommentIndex,
+                            )
+                        )
+                        withFrameNanos { }
+                    }
                     detailFocusCoordinator.requestRestoreComment(
                         rpid = targetRpid,
                         onRestored = onCommentFocusRestored,
@@ -338,7 +359,9 @@ fun DetailScreen(
                 }
 
                 val backgroundCoverModel = remember(context, viewInfo.pic) {
-                    buildBlurredImageRequest(
+                    // Matches the preview shell request so Coil can reuse its cache;
+                    // avoid per-detail RenderScript bitmap blur work here.
+                    buildSizedImageRequest(
                         context,
                         viewInfo.pic,
                         DetailBackgroundCoverWidthPx,
@@ -403,6 +426,7 @@ fun DetailScreen(
                                     heroActionRowHasFocus = hasFocus
                                     if (hasFocus) {
                                         detailFocusCoordinator.rememberPlayButtonFocus()
+                                        abandonCommentFocusRestore()
                                     }
                                 },
                                 onPlayButtonPlaced = {
@@ -441,6 +465,7 @@ fun DetailScreen(
                                         horizontalRailHasFocus = hasFocus
                                         if (hasFocus) {
                                             relatedVideosRailHasFocus = false
+                                            abandonCommentFocusRestore()
                                         }
                                     },
                                     onPageFocus = {
@@ -465,6 +490,7 @@ fun DetailScreen(
                                     horizontalRailHasFocus = hasFocus
                                     if (hasFocus) {
                                         pagesRailHasFocus = false
+                                        abandonCommentFocusRestore()
                                     }
                                 },
                                 onHorizontalRailFocusChanged = { width ->
@@ -514,7 +540,6 @@ fun DetailScreen(
                     }
                 }
             }
-        }
         }
         }
         if (uiState.showTripleCelebration) {

@@ -1,17 +1,18 @@
 package com.bbttvv.app.ui.components
 
 enum class AppTopLevelTab(
+    val stableId: Long,
     val title: String,
     val isHomeContent: Boolean
 ) {
-    RECOMMEND("推荐", isHomeContent = true),
-    SEARCH("搜索", isHomeContent = true),
-    TODAY_WATCH("推荐单", isHomeContent = true),
-    POPULAR("热门", isHomeContent = true),
-    LIVE("直播", isHomeContent = true),
-    DYNAMIC("动态", isHomeContent = true),
-    WATCH_LATER("稍后再看", isHomeContent = true),
-    PROFILE("我的", isHomeContent = true);
+    RECOMMEND(1L, "推荐", isHomeContent = true),
+    SEARCH(2L, "搜索", isHomeContent = true),
+    TODAY_WATCH(3L, "推荐单", isHomeContent = true),
+    POPULAR(4L, "热门", isHomeContent = true),
+    LIVE(5L, "直播", isHomeContent = true),
+    DYNAMIC(6L, "动态", isHomeContent = true),
+    WATCH_LATER(7L, "稍后再看", isHomeContent = true),
+    PROFILE(8L, "我的", isHomeContent = true);
 
     val index: Int
         get() = ordinal

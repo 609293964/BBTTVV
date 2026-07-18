@@ -62,7 +62,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                     .maxSizeBytes(96L * 1024 * 1024)
                     .build()
             }
-            .okHttpClient(NetworkModule.okHttpClient)
+            .okHttpClient(NetworkModule.imageOkHttpClient)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
             .allowRgb565(true)

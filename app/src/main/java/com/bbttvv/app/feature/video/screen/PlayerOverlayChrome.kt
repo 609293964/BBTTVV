@@ -61,7 +61,6 @@ import com.bbttvv.app.ui.theme.LocalIsLightTheme
 @Composable
 internal fun PlayerSurface(
     exoPlayer: ExoPlayer,
-    keepScreenOn: Boolean,
     overlayMode: PlayerOverlayMode,
     onHiddenOverlayKey: (KeyEvent) -> Boolean,
     onViewAvailable: (PlayerView) -> Unit,
@@ -78,7 +77,6 @@ internal fun PlayerSurface(
                 useController = false
                 setKeepContentOnPlayerReset(true)
                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                this.keepScreenOn = keepScreenOn
                 isFocusable = true
                 isFocusableInTouchMode = true
                 setOnKeyListener { _, _, event ->
@@ -94,9 +92,6 @@ internal fun PlayerSurface(
             onViewAvailable(playerView)
             if (playerView.player !== exoPlayer) {
                 playerView.player = exoPlayer
-            }
-            if (playerView.keepScreenOn != keepScreenOn) {
-                playerView.keepScreenOn = keepScreenOn
             }
             if (overlayMode == PlayerOverlayMode.Hidden && !playerView.hasFocus()) {
                 onPlayerSurfaceFocusNeeded()
@@ -136,7 +131,7 @@ internal fun rememberRealtimePlaybackState(
             if (value != next) {
                 value = next
             }
-            delay(500L)
+            delay(250L)
         }
     }
 }
@@ -147,6 +142,7 @@ internal fun PlayerInfoOverlay(
     playbackState: State<PlayerPlaybackState>,
     sponsorMarkers: List<SponsorProgressMark>,
     isProgressFocused: Boolean,
+    showMediaInfo: Boolean = true,
     progressPreviewState: SimpleSeekState? = null,
     progressModifier: Modifier = Modifier,
     actionBar: @Composable (() -> Unit)? = null,
@@ -159,42 +155,44 @@ internal fun PlayerInfoOverlay(
             .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = uiState.info?.title.orEmpty().ifBlank { "正在加载视频..." },
-            color = if (isLightTheme) Color(0xFF18191C) else Color.White,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 34.sp,
-        )
-
-        if (actionBar != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MetadataRow(
-                    uiState = uiState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 32.dp),
-                )
-                actionBar()
-            }
-        } else {
-            MetadataRow(uiState = uiState)
-        }
-
-        if (uiState.capabilityHints.isNotEmpty()) {
+        if (showMediaInfo) {
             Text(
-                text = uiState.capabilityHints.joinToString("  "),
-                color = if (isLightTheme) Color(0xFFC04F00) else Color(0xCCEBCB62),
-                fontSize = 12.sp,
-                maxLines = 1,
+                text = uiState.info?.title.orEmpty().ifBlank { "正在加载视频..." },
+                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                lineHeight = 34.sp,
             )
+
+            if (actionBar != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MetadataRow(
+                        uiState = uiState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 32.dp),
+                    )
+                    actionBar()
+                }
+            } else {
+                MetadataRow(uiState = uiState)
+            }
+
+            if (uiState.capabilityHints.isNotEmpty()) {
+                Text(
+                    text = uiState.capabilityHints.joinToString("  "),
+                    color = if (isLightTheme) Color(0xFFC04F00) else Color(0xCCEBCB62),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         PlayerRealtimeProgress(
@@ -305,13 +303,13 @@ private fun PlaybackProgressBlock(
     }
 
     val blockBackground = if (isFocused) {
-        if (isLightTheme) Color.Black.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.10f)
+        if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.16f)
     } else {
         Color.Transparent
     }
 
     val blockBorderColor = if (isFocused) {
-        if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.42f)
+        if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.88f)
     } else {
         Color.Transparent
     }
@@ -321,7 +319,7 @@ private fun PlaybackProgressBlock(
             .clip(RoundedCornerShape(18.dp))
             .background(blockBackground)
             .border(
-                width = 1.dp,
+                width = if (isFocused) 2.dp else 1.dp,
                 color = blockBorderColor,
                 shape = RoundedCornerShape(18.dp),
             )

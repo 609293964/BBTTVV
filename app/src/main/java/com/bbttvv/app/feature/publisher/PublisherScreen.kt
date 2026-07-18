@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +30,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,12 +48,16 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.PublisherRepository
 import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
+import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
+import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.home.HomeRecommendGridFocusState
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 private const val PublisherGridColumns = 4
 private const val PublisherLoadMorePrefetchItems = 4
+private const val PublisherFocusEscapePriority = 10
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -66,9 +72,11 @@ fun PublisherScreen(
     val timeSortFocusRequester = remember { FocusRequester() }
     val hotSortFocusRequester = remember { FocusRequester() }
     val videoGridFocusState = remember { HomeRecommendGridFocusState() }
+    val hostView = LocalView.current
     val isLightTheme = LocalIsLightTheme.current
     val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF111315)
     var headerFocusToken by remember { mutableIntStateOf(0) }
+    var initialFocusPending by remember(mid) { mutableStateOf(true) }
     val initialHeader = remember(mid, initialName, initialFace) {
         if (mid > 0L && !initialName.isNullOrBlank()) {
             PublisherRepository.PublisherHeader(
@@ -88,6 +96,51 @@ fun PublisherScreen(
     val requestVisibleVideoFocus = remember(videoGridFocusState) {
         { videoGridFocusState.tryFocusVisibleItem() }
     }
+
+    fun requestSelectedSortFocus(): Boolean {
+        val requester = when (uiState.selectedSort) {
+            PublisherRepository.PublisherSortOrder.TIME -> timeSortFocusRequester
+            PublisherRepository.PublisherSortOrder.HOT -> hotSortFocusRequester
+        }
+        return runCatching { requester.requestFocus() }.getOrDefault(false)
+    }
+
+    fun drainInitialFocus(): Boolean {
+        if (!initialFocusPending) return false
+        return requestSelectedSortFocus().also { focused ->
+            if (focused) initialFocusPending = false
+        }
+    }
+
+    LaunchedEffect(mid, uiState.selectedSort) {
+        repeat(3) {
+            if (!initialFocusPending) return@LaunchedEffect
+            withFrameNanos { }
+            if (drainInitialFocus()) return@LaunchedEffect
+        }
+    }
+
+    RegisterLifecycleFocusDrain(key = "publisher_$mid") {
+        drainInitialFocus()
+    }
+    RegisterTvFocusEscapeTarget(
+        key = "publisher_$mid",
+        priority = PublisherFocusEscapePriority,
+        acceptsFocus = { focusedView ->
+            focusedView.isSameOrDescendantOf(hostView)
+        },
+        shouldRecoverEscapedFocus = { focusedView ->
+            focusedView.rootView === hostView.rootView &&
+                !focusedView.isSameOrDescendantOf(hostView)
+        },
+        recoverFocus = {
+            if (initialFocusPending) {
+                drainInitialFocus()
+            } else {
+                requestVisibleVideoFocus() || requestSelectedSortFocus()
+            }
+        },
+    )
 
     Box(
         modifier = Modifier
@@ -181,6 +234,7 @@ fun PublisherScreen(
                                     uiState.hasMore &&
                                     !uiState.isLoadingMore
                             },
+                            loadMoreInProgress = uiState.isLoadingMore,
                             onLoadMore = viewModel::loadMore,
                             onTopRowDpadUp = {
                                 headerFocusToken += 1

@@ -9,12 +9,10 @@ import com.bbttvv.app.data.model.response.FollowedLiveRoom
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.DynamicFollowUpdateItem
 import com.bbttvv.app.data.repository.DynamicRepository
-import com.bbttvv.app.data.repository.VideoDetailRepository
 import com.bbttvv.app.data.repository.clearDynamicFollowUpdatePrompt
 import com.bbttvv.app.data.repository.defaultDynamicFollowUpdateItems
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +26,7 @@ data class DynamicUiState(
     val isLoadingLive: Boolean = false,
     val isLoadingFollowUpdates: Boolean = false,
     val isLoadingVideos: Boolean = false,
+    val hasMoreVideos: Boolean = true,
     val videoErrorMsg: String? = null,
     val liveErrorMsg: String? = null,
     val followUpdatesErrorMsg: String? = null
@@ -37,15 +36,11 @@ class DynamicViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(DynamicUiState())
     val uiState: StateFlow<DynamicUiState> = _uiState.asStateFlow()
 
-    private var hasMoreVideos = true
     private val videoFeed = PagedFeedGridState<Int, DynamicItem, DynamicItem>(initialKey = 1)
     private var initialLoadStarted = false
     private var loadMoreJob: Job? = null
     private var followUpdatesJob: Job? = null
-    private var detailPrefetchJob: Job? = null
-    private var pendingPrefetchBvid: String? = null
-    private var lastPrefetchedBvid: String? = null
-    private var lastFocusRequestAtMs: Long? = null
+    private val detailPrefetcher = HomeDetailPrefetcher(viewModelScope)
     private var liveUsersRequestGeneration: Long = 0L
     private var followUpdatesRequestGeneration: Long = 0L
     private var handledRefreshRequestId: Int = 0
@@ -173,7 +168,8 @@ class DynamicViewModel : ViewModel() {
     }
 
     fun loadMoreVideos() {
-        if (!hasMoreVideos || _uiState.value.isLoadingVideos || loadMoreJob?.isActive == true) return
+        val state = _uiState.value
+        if (!state.hasMoreVideos || state.isLoadingVideos || loadMoreJob?.isActive == true) return
         loadDynamicVideos(refresh = false, showLoading = true)
     }
 
@@ -184,7 +180,7 @@ class DynamicViewModel : ViewModel() {
             existingItems.isNotEmpty() &&
             DynamicRepository.canIncrementallyRefresh()
         if (refresh) {
-            hasMoreVideos = true
+            _uiState.update { it.copy(hasMoreVideos = true) }
         } else {
             if (snapshot.isLoading || snapshot.endReached) return
         }
@@ -236,27 +232,31 @@ class DynamicViewModel : ViewModel() {
 
                 if (result.appliedOrNull() == null) {
                     if (videoFeed.snapshot().generation == expectedGeneration) {
-                        hasMoreVideos = !videoFeed.snapshot().endReached
-                        _uiState.update { it.copy(isLoadingVideos = false) }
+                        _uiState.update {
+                            it.copy(
+                                isLoadingVideos = false,
+                                hasMoreVideos = !videoFeed.snapshot().endReached,
+                            )
+                        }
                     }
                     return@launch
                 }
 
-                hasMoreVideos = !videoFeed.snapshot().endReached
                 _uiState.update {
                     it.copy(
                         dynamicVideos = videoFeed.visibleSnapshot(),
                         isLoadingVideos = false,
+                        hasMoreVideos = !videoFeed.snapshot().endReached,
                         videoErrorMsg = null
                     )
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 if (videoFeed.snapshot().generation != expectedGeneration) return@launch
-                hasMoreVideos = !videoFeed.snapshot().endReached
                 _uiState.update {
                     it.copy(
                         isLoadingVideos = false,
+                        hasMoreVideos = !videoFeed.snapshot().endReached,
                         videoErrorMsg = error.message ?: if (refresh) "Failed to load dynamics" else "Failed to load more"
                     )
                 }
@@ -271,37 +271,20 @@ class DynamicViewModel : ViewModel() {
         }
     }
     fun primeVideoDetail(video: VideoItem) {
-        if (video.bvid == pendingPrefetchBvid) {
-            detailPrefetchJob?.cancel()
-            pendingPrefetchBvid = null
-        }
-        lastFocusRequestAtMs = System.currentTimeMillis()
-        lastPrefetchedBvid = video.bvid.takeIf { it.isNotBlank() } ?: lastPrefetchedBvid
-        VideoDetailRepository.prefetchDetailSummary(video)
+        detailPrefetcher.prime(video)
     }
 
     fun prefetchVideoDetail(video: VideoItem) {
-        if (video.bvid.isBlank()) return
-        if (video.bvid == pendingPrefetchBvid || video.bvid == lastPrefetchedBvid) return
-        val now = System.currentTimeMillis()
-        val delayMs = FocusSummaryPrefetchDelayPolicy.delayMillis(lastFocusRequestAtMs, now)
-        lastFocusRequestAtMs = now
-        detailPrefetchJob?.cancel()
-        pendingPrefetchBvid = video.bvid
-        detailPrefetchJob = viewModelScope.launch {
-            if (delayMs > 0L) {
-                delay(delayMs)
-            }
-            VideoDetailRepository.prefetchDetailSummary(video)
-            lastPrefetchedBvid = video.bvid
-            if (pendingPrefetchBvid == video.bvid) {
-                pendingPrefetchBvid = null
-            }
-        }
+        detailPrefetcher.prefetch(video)
     }
 
     fun prefetchVideoDetail(video: VideoItem, videos: List<VideoItem>, index: Int) {
         prefetchVideoDetail(video)
+    }
+
+    override fun onCleared() {
+        detailPrefetcher.clear()
+        super.onCleared()
     }
 }
 

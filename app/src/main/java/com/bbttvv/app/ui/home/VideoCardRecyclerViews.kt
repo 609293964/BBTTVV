@@ -59,6 +59,7 @@ internal fun VideoCardRecyclerGrid(
     supportingText: ((VideoItem) -> String?)? = null,
     loadMorePrefetchItems: Int = 8,
     canLoadMore: () -> Boolean = { false },
+    loadMoreInProgress: Boolean? = null,
     onLoadMore: () -> Unit = {},
     onMenuRefresh: (() -> Unit)? = null,
     onVideoFocused: (VideoItem, String) -> Unit = { _, _ -> },
@@ -99,6 +100,7 @@ internal fun VideoCardRecyclerGrid(
         supportingText = supportingText,
         loadMorePrefetchItems = loadMorePrefetchItems,
         canLoadMore = canLoadMore,
+        loadMoreInProgress = loadMoreInProgress,
         onLoadMore = onLoadMore,
         onMenuRefresh = onMenuRefresh,
         onVideoFocused = onVideoFocused,
@@ -134,6 +136,7 @@ internal fun VideoCardRecyclerGridItems(
     supportingText: ((VideoItem) -> String?)? = null,
     loadMorePrefetchItems: Int = 8,
     canLoadMore: () -> Boolean = { false },
+    loadMoreInProgress: Boolean? = null,
     onLoadMore: () -> Unit = {},
     onMenuRefresh: (() -> Unit)? = null,
     onVideoFocused: (VideoItem, String) -> Unit = { _, _ -> },
@@ -697,6 +700,16 @@ internal fun VideoCardRecyclerGridItems(
                 )
                 val listChanged = adapter.currentList != items
                 if (!listChanged) {
+                    if (
+                        GridLoadMoreFocusRecoveryPolicy.shouldRestoreFocus(
+                            hasPendingLoadMoreFocus = dpadGridController.hasPendingLoadMoreFocus(),
+                            listChanged = false,
+                            loadMoreInProgress = loadMoreInProgress,
+                        )
+                    ) {
+                        dpadGridController.cancelAllPendingRequests()
+                        focusState.tryFocusVisibleItem()
+                    }
                     GridFocusDebugLog.d {
                         "VideoCardRecyclerGrid.submitList update skipped listChanged=false " +
                             "isAppend=false calledSubmitList=false itemCount=${adapter.itemCount} " +
@@ -756,6 +769,16 @@ internal fun VideoCardRecyclerGridItems(
             }
         }
     )
+}
+
+internal object GridLoadMoreFocusRecoveryPolicy {
+    fun shouldRestoreFocus(
+        hasPendingLoadMoreFocus: Boolean,
+        listChanged: Boolean,
+        loadMoreInProgress: Boolean?,
+    ): Boolean {
+        return hasPendingLoadMoreFocus && !listChanged && loadMoreInProgress == false
+    }
 }
 
 @Composable

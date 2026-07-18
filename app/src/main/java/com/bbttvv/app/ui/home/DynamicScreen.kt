@@ -39,6 +39,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -512,7 +514,8 @@ internal fun DynamicScreen(
                     allowChildDrawingOutsideBounds = false,
                     videoCardRecycledViewPool = videoCardRecycledViewPool,
                     onVerticalScrollOffsetChanged = onScrollOffset,
-                    canLoadMore = { !uiState.isLoadingVideos },
+                    canLoadMore = { uiState.hasMoreVideos && !uiState.isLoadingVideos },
+                    loadMoreInProgress = uiState.isLoadingVideos,
                     onLoadMore = viewModel::loadMoreVideos,
                     onMenuRefresh = viewModel::refresh,
                     onVideoFocused = { video, _ ->
@@ -701,6 +704,13 @@ private fun DynamicFollowUpdateCard(
     var isFocused by remember { mutableStateOf(false) }
     val isLightTheme = LocalIsLightTheme.current
     val focusRequesterModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+    val accessibilityLabel = when (item) {
+        is DynamicFollowUpdateFixedItem -> item.title
+        is DynamicFollowUpdateUpItem -> buildString {
+            append(item.name.ifBlank { "UP ${item.mid}" })
+            if (item.hasUpdate) append("，有新动态")
+        }
+    }
     Surface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(FollowUpdateCardShape),
@@ -713,6 +723,9 @@ private fun DynamicFollowUpdateCard(
         glow = ClickableSurfaceDefaults.glow(Glow.None, Glow.None, Glow.None),
         modifier = modifier
             .then(focusRequesterModifier)
+            .semantics(mergeDescendants = true) {
+                contentDescription = accessibilityLabel
+            }
             .onPreviewKeyEvent { keyEvent ->
                 val event = keyEvent.nativeKeyEvent
                 if (event.action != AndroidKeyEvent.ACTION_DOWN) {

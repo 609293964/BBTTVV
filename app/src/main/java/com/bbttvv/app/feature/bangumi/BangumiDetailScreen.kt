@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +63,17 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.BangumiEpisode
 import com.bbttvv.app.data.model.response.SeasonInfo
 import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
+import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
+import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
+
+private const val BangumiDetailFocusEscapePriority = 10
+
+private enum class BangumiPrimaryFocusTarget {
+    Play,
+    Retry,
+}
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -97,22 +109,74 @@ fun BangumiDetailScreen(
     }
 
     val playButtonFocusRequester = remember { FocusRequester() }
+    val retryFocusRequester = remember { FocusRequester() }
     val followButtonFocusRequester = remember { FocusRequester() }
     val seasonTabFocusRequester = remember { FocusRequester() }
     val episodesFocusRequester = remember { FocusRequester() }
+    val hostView = LocalView.current
 
-    var initialFocusRequested by remember { mutableStateOf(false) }
+    var lastPrimaryFocusTarget by remember(seasonId, epId) {
+        mutableStateOf<BangumiPrimaryFocusTarget?>(null)
+    }
+    val desiredPrimaryFocusTarget = when {
+        uiState.detail != null -> BangumiPrimaryFocusTarget.Play
+        uiState.error != null && !uiState.isLoading -> BangumiPrimaryFocusTarget.Retry
+        else -> null
+    }
 
     LaunchedEffect(seasonId, epId) {
         viewModel.load(seasonId, epId)
     }
 
-    LaunchedEffect(uiState.detail) {
-        if (uiState.detail != null && !initialFocusRequested) {
-            playButtonFocusRequester.requestFocus()
-            initialFocusRequested = true
+    fun requestPrimaryFocus(target: BangumiPrimaryFocusTarget?): Boolean {
+        val requester = when (target) {
+            BangumiPrimaryFocusTarget.Play -> playButtonFocusRequester
+            BangumiPrimaryFocusTarget.Retry -> retryFocusRequester
+            null -> return false
+        }
+        return runCatching { requester.requestFocus() }.getOrDefault(false)
+    }
+
+    LaunchedEffect(desiredPrimaryFocusTarget) {
+        val target = desiredPrimaryFocusTarget
+        if (target == null) {
+            lastPrimaryFocusTarget = null
+            return@LaunchedEffect
+        }
+        if (lastPrimaryFocusTarget == target) return@LaunchedEffect
+        repeat(3) {
+            withFrameNanos { }
+            if (requestPrimaryFocus(target)) {
+                lastPrimaryFocusTarget = target
+                return@LaunchedEffect
+            }
         }
     }
+
+    RegisterLifecycleFocusDrain(key = "bangumi_detail_${seasonId}_$epId") {
+        val target = desiredPrimaryFocusTarget
+        if (target == null || lastPrimaryFocusTarget == target) {
+            false
+        } else {
+            requestPrimaryFocus(target).also { focused ->
+                if (focused) lastPrimaryFocusTarget = target
+            }
+        }
+    }
+    RegisterTvFocusEscapeTarget(
+        key = "bangumi_detail_${seasonId}_$epId",
+        priority = BangumiDetailFocusEscapePriority,
+        acceptsFocus = { focusedView ->
+            focusedView.isSameOrDescendantOf(hostView)
+        },
+        shouldRecoverEscapedFocus = { focusedView ->
+            focusedView.rootView === hostView.rootView &&
+                !focusedView.isSameOrDescendantOf(hostView)
+        },
+        recoverFocus = {
+            requestPrimaryFocus(desiredPrimaryFocusTarget)
+        },
+    )
 
     Box(
         modifier = Modifier
@@ -153,7 +217,10 @@ fun BangumiDetailScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = uiState.error ?: "加载失败", color = MaterialTheme.colorScheme.error, fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Surface(onClick = { viewModel.load(seasonId, epId) }) {
+                    Surface(
+                        onClick = { viewModel.load(seasonId, epId) },
+                        modifier = Modifier.focusRequester(retryFocusRequester),
+                    ) {
                         Text(text = "重新加载", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                 }

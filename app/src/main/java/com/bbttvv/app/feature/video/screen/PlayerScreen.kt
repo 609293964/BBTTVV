@@ -251,7 +251,6 @@ fun PlayerScreen(
             },
     ) {
         PlayerSurfaceSection(
-            viewModel = viewModel,
             exoPlayer = exoPlayer,
             overlayMode = overlayUiState.overlayMode,
             handlePlayerKey = handlePlayerKey,
@@ -326,7 +325,6 @@ fun PlayerScreen(
 
 @Composable
 private fun PlayerSurfaceSection(
-    viewModel: PlayerViewModel,
     exoPlayer: ExoPlayer,
     overlayMode: PlayerOverlayMode,
     handlePlayerKey: (KeyEvent) -> Boolean,
@@ -334,11 +332,8 @@ private fun PlayerSurfaceSection(
     onViewAvailable: (PlayerView) -> Unit,
     onViewReleased: (PlayerView) -> Unit,
 ) {
-    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
-
     PlayerSurfaceHost(
         exoPlayer = exoPlayer,
-        keepScreenOn = playbackState.isPlaybackActive,
         overlayMode = overlayMode,
         onHiddenOverlayKey = handlePlayerKey,
         onViewAvailable = onViewAvailable,

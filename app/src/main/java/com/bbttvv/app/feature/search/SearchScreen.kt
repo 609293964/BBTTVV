@@ -93,7 +93,7 @@ internal fun SearchScreen(
     val historyFocusRequesters = remember(historyKeywords) {
         List(historyKeywords.size) { FocusRequester() }
     }
-    val searchResultsMode = uiState.hasSubmittedQuery || uiState.query.isNotBlank()
+    val searchResultsMode = uiState.hasSubmittedQuery
     var searchInputHasFocus by remember { mutableStateOf(false) }
     var searchCategoryHasFocus by remember { mutableStateOf(false) }
     var videoGridHasFocus by remember { mutableStateOf(false) }
@@ -413,6 +413,7 @@ internal fun SearchScreen(
                             !uiState.isSearching &&
                             !uiState.isLoadingMore
                     },
+                    loadMoreInProgress = uiState.isSearching || uiState.isLoadingMore,
                     onLoadMore = viewModel::loadMore,
                     onTopRowDpadUp = {
                         requestSearchCategoryFocus()
@@ -448,6 +449,7 @@ internal fun SearchScreen(
                                 !uiState.isSearching &&
                                 !uiState.isLoadingMore
                         },
+                        loadMoreInProgress = uiState.isSearching || uiState.isLoadingMore,
                         onLoadMore = viewModel::loadMore,
                         onTopRowDpadUp = {
                             requestSearchCategoryFocus()

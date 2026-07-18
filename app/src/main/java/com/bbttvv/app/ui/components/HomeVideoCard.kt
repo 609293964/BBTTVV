@@ -48,8 +48,10 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import coil.compose.AsyncImagePainter
 import coil.compose.AsyncImage
+import com.bbttvv.app.core.util.FormatUtils
 import com.bbttvv.app.core.util.formatShortVideoPubDate
 import com.bbttvv.app.data.model.response.VideoItem
 
@@ -95,8 +97,11 @@ fun VideoItem.toHomeVideoCardUiModel(
                 "观看记录"
             }
         }
-        isLiveCard -> "在线 ${formatCompactCount(stat.view)}"
-        else -> "播放 ${formatCompactCount(stat.view)}  弹幕 ${formatCompactCount(stat.danmaku)}"
+        isLiveCard -> "在线 ${FormatUtils.formatStat(stat.view.toLong())}"
+        else -> {
+            "播放 ${FormatUtils.formatStat(stat.view.toLong())}  " +
+                "弹幕 ${FormatUtils.formatStat(stat.danmaku.toLong())}"
+        }
     }
     return HomeVideoCardUiModel(
         coverUrl = pic,
@@ -163,7 +168,8 @@ fun HomeVideoCard(
         heightPx = 270
     )
     val latestOnCoverLoaded by rememberUpdatedState(onCoverLoaded)
-    val focusBorderColor = MaterialTheme.colorScheme.primary
+    val isLightTheme = LocalIsLightTheme.current
+    val focusBorderColor = if (isLightTheme) MaterialTheme.colorScheme.primary else Color.White
     val focusBorderWidthPx = with(LocalDensity.current) { 3.dp.toPx() }
     val focusCornerRadiusPx = with(LocalDensity.current) { 12.dp.toPx() }
 
@@ -223,7 +229,12 @@ fun HomeVideoCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics(mergeDescendants = true) {
-                    contentDescription = model.title
+                    contentDescription = listOf(
+                        model.title,
+                        model.leadingMetaText,
+                        model.ownerName.takeIf { it.isNotBlank() }?.let { "UP主 $it" }.orEmpty(),
+                        model.durationMetaText,
+                    ).filter(String::isNotBlank).joinToString("。")
                 }
         ) {
             Box(
@@ -259,7 +270,7 @@ fun HomeVideoCard(
                             .padding(start = 8.dp, end = 72.dp, bottom = 6.dp),
                         text = model.leadingMetaText,
                         color = Color.White,
-                        fontSize = if (model.compactMeta) 9.sp else 10.sp,
+                        fontSize = 13.sp,
                         maxLines = 1
                     )
                     MetaPill(
@@ -275,15 +286,15 @@ fun HomeVideoCard(
             Text(
                 text = model.title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 14.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 18.sp,
+                lineHeight = 22.sp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 8.dp, top = 7.dp, end = 8.dp)
-                    .height(38.dp)
+                    .height(46.dp)
             )
 
             Spacer(modifier = Modifier.height(5.dp))
@@ -306,7 +317,7 @@ fun HomeVideoCard(
                         filterQuality = FilterQuality.Low,
                         modifier = Modifier
                             .padding(end = 6.dp)
-                            .size(16.dp)
+                            .size(18.dp)
                             .clip(CircleShape)
                             .background(Color.DarkGray)
                     )
@@ -314,7 +325,7 @@ fun HomeVideoCard(
                 Text(
                     text = model.ownerName,
                     color = Color.Gray,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -324,7 +335,7 @@ fun HomeVideoCard(
                     Text(
                         text = model.pubDateText,
                         color = Color.Gray,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         maxLines = 1
                     )
                 }
@@ -386,20 +397,10 @@ private fun MetaPill(
         Text(
             text = text,
             color = Color.White,
-            fontSize = if (compact) 9.sp else 11.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
         )
-    }
-}
-
-private fun formatCompactCount(count: Int): String {
-    return if (count >= 10000) {
-        val w = count / 10000
-        val r = (count % 10000) / 1000
-        if (r == 0) "${w}w" else "$w.${r}w"
-    } else {
-        count.toString()
     }
 }
 

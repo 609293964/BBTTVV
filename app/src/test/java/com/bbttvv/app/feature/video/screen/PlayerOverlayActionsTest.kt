@@ -66,6 +66,12 @@ class PlayerOverlayActionsTest {
     }
 
     @Test
+    fun `comments panel forms an isolated visual layer`() {
+        assertFalse(shouldRenderPlayerChrome(isCommentsPanelVisible = true))
+        assertTrue(shouldRenderPlayerChrome(isCommentsPanelVisible = false))
+    }
+
+    @Test
     fun `android back is deferred to BackHandler instead of preview key handler`() {
         assertFalse(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_BACK))
         assertTrue(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_ESCAPE))

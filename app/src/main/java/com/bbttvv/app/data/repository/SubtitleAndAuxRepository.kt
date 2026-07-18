@@ -235,11 +235,37 @@ object SubtitleAndAuxRepository {
                 if (response.code == 0 && response.data != null) {
                     Result.success(response.data)
                 } else {
-                    Result.failure(Exception("PlayerInfo error: ${response.code}"))
+                    com.bbttvv.app.core.util.Logger.w(
+                        "SubtitleAndAuxRepo",
+                        "PlayerInfo WBI failed: code=${response.code}; trying plain fallback"
+                    )
+                    fetchPlainPlayerInfoFallback(bvid = bvid, cid = cid)
                 }
             } catch (e: Exception) {
-                Result.failure(e)
+                com.bbttvv.app.core.util.Logger.w(
+                    "SubtitleAndAuxRepo",
+                    "PlayerInfo WBI exception: ${e.message}; trying plain fallback"
+                )
+                fetchPlainPlayerInfoFallback(bvid = bvid, cid = cid, primaryError = e)
             }
+        }
+    }
+
+    private suspend fun fetchPlainPlayerInfoFallback(
+        bvid: String,
+        cid: Long,
+        primaryError: Exception? = null
+    ): Result<PlayerInfoData> {
+        return try {
+            val fallback = api.getPlayerInfoPlain(bvid = bvid, cid = cid)
+            if (fallback.code == 0 && fallback.data != null) {
+                Result.success(fallback.data)
+            } else {
+                val message = "PlayerInfo fallback error: ${fallback.code}"
+                Result.failure(primaryError ?: Exception(message))
+            }
+        } catch (fallbackError: Exception) {
+            Result.failure(primaryError ?: fallbackError)
         }
     }
 

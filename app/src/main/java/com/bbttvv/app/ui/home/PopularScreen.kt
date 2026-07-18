@@ -177,6 +177,7 @@ internal fun PopularScreen(
                 videoCardRecycledViewPool = videoCardRecycledViewPool,
                 onVerticalScrollOffsetChanged = onScrollOffset,
                 canLoadMore = { uiState.hasMore && !uiState.isLoading },
+                loadMoreInProgress = uiState.isLoading,
                 onLoadMore = viewModel::loadMore,
                 onMenuRefresh = viewModel::refresh,
                 onVideoFocused = { video, _ ->

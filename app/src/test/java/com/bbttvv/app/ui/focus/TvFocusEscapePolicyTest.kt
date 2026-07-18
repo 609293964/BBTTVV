@@ -7,6 +7,16 @@ import org.junit.Test
 
 class TvFocusEscapePolicyTest {
     @Test
+    fun `successful recovery consumes the directional key`() {
+        assertTrue(TvFocusEscapePolicy.shouldConsumeRecoveryResult(recovered = true))
+    }
+
+    @Test
+    fun `failed recovery leaves the directional key available`() {
+        assertFalse(TvFocusEscapePolicy.shouldConsumeRecoveryResult(recovered = false))
+    }
+
+    @Test
     fun `missing focus on first directional dpad press requests recovery`() {
         assertTrue(
             TvFocusEscapePolicy.shouldRecoverOnDirectionalKey(
@@ -62,4 +72,3 @@ class TvFocusEscapePolicyTest {
         )
     }
 }
-

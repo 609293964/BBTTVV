@@ -19,4 +19,16 @@ class DetailSectionIndexPolicyTest {
     fun `related videos section follows pages when pages section is visible`() {
         assertEquals(2, detailRelatedVideosSectionIndex(hasPagesSection = true))
     }
+
+    @Test
+    fun `comment item index accounts for optional pages and comment header`() {
+        assertEquals(
+            3,
+            detailCommentItemSectionIndex(hasPagesSection = false, commentIndex = 0),
+        )
+        assertEquals(
+            6,
+            detailCommentItemSectionIndex(hasPagesSection = true, commentIndex = 2),
+        )
+    }
 }

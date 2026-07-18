@@ -33,6 +33,8 @@
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:adjustViewBounds="true"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
                 android:scaleType="centerCrop"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
@@ -65,6 +67,8 @@
                     android:id="@+id/iv_stat_play"
                     android:layout_width="@dimen/video_card_stat_icon_size"
                     android:layout_height="@dimen/video_card_stat_icon_size"
+                    android:contentDescription="@null"
+                    android:importantForAccessibility="no"
                     android:src="@drawable/ic_stat_play" />
 
                 <TextView
@@ -83,6 +87,8 @@
                     android:layout_width="@dimen/video_card_stat_icon_size"
                     android:layout_height="@dimen/video_card_stat_icon_size"
                     android:layout_marginStart="8dp"
+                    android:contentDescription="@null"
+                    android:importantForAccessibility="no"
                     android:src="@drawable/ic_stat_danmaku" />
 
                 <TextView
@@ -148,7 +154,7 @@
                 android:lines="2"
                 android:maxLines="2"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="14sp"
+                android:textSize="@dimen/video_card_title_text_size"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -158,6 +164,8 @@
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:layout_marginTop="8dp"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
                 android:scaleType="centerCrop"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@id/tv_title" />
@@ -170,7 +178,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="?android:attr/textColorSecondary"
-                android:textSize="12sp"
+                android:textSize="@dimen/video_card_subtitle_text_size"
                 app:layout_constraintBottom_toBottomOf="@id/iv_avatar"
                 app:layout_constraintEnd_toStartOf="@id/tv_pubdate"
                 app:layout_constraintStart_toEndOf="@id/iv_avatar"
@@ -183,7 +191,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="?android:attr/textColorSecondary"
-                android:textSize="12sp"
+                android:textSize="@dimen/video_card_subtitle_text_size"
                 app:layout_constraintBottom_toBottomOf="@id/iv_avatar"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="@id/iv_avatar" />

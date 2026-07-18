@@ -7,7 +7,6 @@ internal object PlayerLayoutTokens {
     val overlayBottomPadding = 34.dp
     val seekPreviewBottomPadding = 110.dp
     val panelBottomPadding = 140.dp
-    val commentsPanelEdgePadding = 34.dp
     val topBadgePadding = 28.dp
     val topOnlinePadding = 30.dp
     val debugTopPadding = 22.dp
