@@ -79,9 +79,10 @@ internal fun HomeScreen(
     val tabResidencyState = remember {
         HomeTabResidencyState(
             initialSelectedTab = selectedHomeTab,
-            // CPU-bound TVs should only measure/layout the current page and the
-            // immediately previous page. ViewModel state remains retained separately.
-            maxResidentTabs = 2,
+            // CPU-bound TVs should only measure/layout the visible page. Saveable UI
+            // state and the immediately previous tab's ViewModelStore are retained
+            // separately, so returning does not require a hidden full-page composition.
+            maxResidentTabs = 1,
         )
     }
     val focusCoordinator = remember { HomeFocusCoordinator(selectedHomeTab) }

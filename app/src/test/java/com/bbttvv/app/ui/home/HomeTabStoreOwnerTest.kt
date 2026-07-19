@@ -9,6 +9,16 @@ import org.junit.Test
 
 class HomeTabStoreOwnerTest {
     @Test
+    fun `production policy keeps only selected and immediate previous tab during idle ttl`() {
+        assertEquals(
+            TabStorePolicy.KeepSelectedOnlyAfterIdle(
+                idleTtlMs = PLAYBACK_RETURN_TAB_STORE_IDLE_TTL_MS,
+            ),
+            resolveTabStorePolicy(),
+        )
+    }
+
+    @Test
     fun `creating tab store does not trim until visible tab lifecycle requests trim`() {
         val owner = HomeTabStoreOwner(
             policy = TabStorePolicy.KeepSelectedAndRecent(previousCount = 0),

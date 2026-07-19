@@ -99,6 +99,9 @@ internal fun UpSearchRecyclerGrid(
                 parkFocusForScroll = { targetPosition ->
                     focusState.parkFocusForDirectionalScroll(targetPosition)
                 },
+                clearFocusParking = {
+                    focusState.clearDirectionalScrollFocus()
+                },
             )
         )
     }
@@ -499,7 +502,6 @@ private class UpSearchAdapter(
 private class UpSearchGridFocusState {
     private var recyclerViewRef: WeakReference<RecyclerView>? = null
     private var lastFocusedKey: String? = null
-    private var pendingDirectionalPosition: Int? = null
     private var hasRecyclerFocus = false
     private var onFocusTargetAvailabilityChanged: (() -> Unit)? = null
 
@@ -512,7 +514,6 @@ private class UpSearchGridFocusState {
             clearVisualFocusAnchor()
             recyclerViewRef = null
             hasRecyclerFocus = false
-            pendingDirectionalPosition = null
         }
     }
 
@@ -523,7 +524,6 @@ private class UpSearchGridFocusState {
     fun onItemFocused(key: String, position: Int) {
         lastFocusedKey = key
         clearVisualFocusAnchor()
-        pendingDirectionalPosition = null
         hasRecyclerFocus = false
     }
 
@@ -532,9 +532,12 @@ private class UpSearchGridFocusState {
     }
 
     fun parkFocusForDirectionalScroll(targetPosition: Int): Boolean {
-        pendingDirectionalPosition = targetPosition.takeIf { it >= 0 }
         setVisualFocusAnchor(targetPosition)
         return currentRecyclerView()?.requestFocusParking() == true
+    }
+
+    fun clearDirectionalScrollFocus() {
+        clearVisualFocusAnchor()
     }
 
     fun prepareForDataSetChange(): Boolean {
@@ -543,17 +546,10 @@ private class UpSearchGridFocusState {
         val focusInsideRecycler = currentFocused === recycler ||
             currentFocused?.isSameOrDescendantOf(recycler) == true
         if (!focusInsideRecycler) return false
-        pendingDirectionalPosition = null
         return recycler.parkFocusForDataSetReset()
     }
 
     fun onItemsCommitted() {
-        pendingDirectionalPosition?.let { position ->
-            pendingDirectionalPosition = null
-            currentRecyclerView()?.let { recycler ->
-                if (requestFocusPosition(recycler, position).isAccepted) return
-            }
-        }
         onFocusTargetAvailabilityChanged?.invoke()
     }
 
@@ -573,11 +569,9 @@ private class UpSearchGridFocusState {
         ) {
             return HomeFocusRequestResult.Focused
         }
-        val position = pendingDirectionalPosition
+        val position = lastFocusedKey
+            ?.let(adapter::positionOfKey)
             ?.takeIf { it in 0 until adapter.itemCount }
-            ?: lastFocusedKey
-                ?.let(adapter::positionOfKey)
-                ?.takeIf { it in 0 until adapter.itemCount }
             ?: firstVisiblePosition(recycler)
             ?: 0
         return requestFocusPosition(recycler, position)

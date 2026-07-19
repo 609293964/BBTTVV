@@ -35,10 +35,10 @@ class HomeTabCompositionPolicyTest {
     }
 
     @Test
-    fun `cpu bound residency keeps only the selected and previous page`() {
+    fun `cpu bound residency composes only the selected page`() {
         val state = HomeTabResidencyState(
             initialSelectedTab = AppTopLevelTab.RECOMMEND,
-            maxResidentTabs = 2,
+            maxResidentTabs = 1,
         )
         state.updateVisibleTabs(visibleTabs)
 
@@ -46,7 +46,32 @@ class HomeTabCompositionPolicyTest {
         state.select(AppTopLevelTab.LIVE)
 
         assertEquals(
-            listOf(AppTopLevelTab.POPULAR, AppTopLevelTab.LIVE),
+            listOf(AppTopLevelTab.LIVE),
+            state.residentTabsInDisplayOrder(),
+        )
+    }
+
+    @Test
+    fun `selected only residency temporarily retains pinned focus restore target`() {
+        val state = HomeTabResidencyState(
+            initialSelectedTab = AppTopLevelTab.RECOMMEND,
+            maxResidentTabs = 1,
+        )
+        state.updateVisibleTabs(visibleTabs)
+
+        state.updatePinnedTab(AppTopLevelTab.DYNAMIC)
+        state.select(AppTopLevelTab.POPULAR)
+
+        assertEquals(
+            listOf(AppTopLevelTab.POPULAR, AppTopLevelTab.DYNAMIC),
+            state.residentTabsInDisplayOrder(),
+        )
+
+        state.select(AppTopLevelTab.DYNAMIC)
+        state.updatePinnedTab(null)
+
+        assertEquals(
+            listOf(AppTopLevelTab.DYNAMIC),
             state.residentTabsInDisplayOrder(),
         )
     }

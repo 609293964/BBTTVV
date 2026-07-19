@@ -46,6 +46,21 @@ class TvDpadHomeRegressionTest {
     }
 
     @Test
+    fun recommendRapidVerticalNavigationKeepsAValidInAppFocusTarget() = withHome {
+        robot.ensureHomeTopBar()
+        assumeTrue("Recommend tab should be focusable before rapid D-Pad regression", robot.focusTopTab("鎺ㄨ崘"))
+        assumeTrue("Recommend cards are required for rapid D-Pad regression", robot.focusHomeContent())
+
+        repeat(8) { robot.press(KeyEvent.KEYCODE_DPAD_DOWN) }
+        robot.settle(WaitMedium)
+        assertTrue("Rapid D-Pad down must keep one focus target inside BBTTVV", robot.hasFocusedObjectInApp())
+
+        repeat(3) { robot.press(KeyEvent.KEYCODE_DPAD_UP) }
+        robot.settle(WaitMedium)
+        assertTrue("Replacing a pending down intent with up must keep focus inside BBTTVV", robot.hasFocusedObjectInApp())
+    }
+
+    @Test
     fun topTabLeftMovesToExactNeighborAndStopsAtBoundary() = withHome {
         robot.ensureHomeTopBar()
         assumeTrue("推荐 tab should be focusable before boundary regression", robot.focusTopTab("推荐"))

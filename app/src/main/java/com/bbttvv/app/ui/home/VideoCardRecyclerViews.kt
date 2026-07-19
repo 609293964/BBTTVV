@@ -207,6 +207,9 @@ internal fun VideoCardRecyclerGridItems(
                 parkFocusForScroll = { targetPosition ->
                     focusState.parkFocusForDirectionalScroll(targetPosition)
                 },
+                clearFocusParking = {
+                    focusState.clearDirectionalScrollFocus()
+                },
                 onMenu = {
                     val refresh = latestOnMenuRefresh
                     if (latestIsHomeTabActive && refresh != null) {
@@ -442,67 +445,6 @@ internal fun VideoCardRecyclerGridItems(
                                 "direction=$direction"
                         }
                         return focused
-                    }
-                    if (direction == View.FOCUS_DOWN) {
-                        val currentPosition = focused
-                            ?.let(::findContainingViewHolder)
-                            ?.bindingAdapterPosition
-                            ?.takeIf { it != NO_POSITION }
-                        val nextPosition = next
-                            ?.let(::findContainingViewHolder)
-                            ?.bindingAdapterPosition
-                            ?.takeIf { it != NO_POSITION }
-                        val itemCount = adapter?.itemCount ?: 0
-                        val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
-                        if (currentPosition != null && spanCount != null) {
-                            val targetPosition = currentPosition + spanCount
-                            if (targetPosition < itemCount) {
-                                val hasValidNextFocus = next != null && next !== focused && next !== this &&
-                                        nextPosition != null && nextPosition > currentPosition
-                                if (!hasValidNextFocus) {
-                                    focusState.schedulePendingDownSearch(targetPosition)
-                                    GridFocusDebugLog.d {
-                                        "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
-                                            "reason=pendingDownSearch direction=$direction targetPosition=$targetPosition"
-                                    }
-                                    return focused
-                                }
-                            }
-                        }
-                        if (
-                            currentPosition != null &&
-                            ((spanCount != null && currentPosition + spanCount >= itemCount) ||
-                                (nextPosition != null && nextPosition <= currentPosition) ||
-                                (nextPosition == null && canScrollVertically(1)))
-                        ) {
-                            GridFocusDebugLog.d {
-                                "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
-                                    "reason=downBoundary direction=$direction adapterPosition=$currentPosition"
-                            }
-                            return focused
-                        }
-                    }
-                    if (direction == View.FOCUS_UP) {
-                        val currentPosition = focused
-                            ?.let(::findContainingViewHolder)
-                            ?.bindingAdapterPosition
-                            ?.takeIf { it != NO_POSITION }
-                        val spanCount = (layoutManager as? GridLayoutManager)?.spanCount?.takeIf { it > 0 }
-                        if (currentPosition != null && spanCount != null && currentPosition >= spanCount) {
-                            val targetPosition = currentPosition - spanCount
-                            findViewHolderForAdapterPosition(targetPosition)?.itemView?.let { return it }
-                            focusState.parkFocusForDirectionalScroll(targetPosition)
-                            scrollToPosition(targetPosition)
-                            requestFocusAfterScrollToPosition(
-                                position = targetPosition,
-                                expectedFocusedView = focused,
-                            )
-                            GridFocusDebugLog.d {
-                                "VideoCardRecyclerGrid.RecyclerView.focusSearch returnFocused " +
-                                    "reason=upScroll targetPosition=$targetPosition"
-                            }
-                            return focused
-                        }
                     }
                     if (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT || direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
                         if (next == null) return focused
@@ -1066,45 +1008,6 @@ private fun RecyclerView.applyInitialScrollPosition(position: Int): Boolean {
     return true
 }
 
-private fun RecyclerView.requestFocusAfterScrollToPosition(
-    position: Int,
-    expectedFocusedView: View?,
-    attemptsLeft: Int = FocusSearchScrollFocusMaxAttempts,
-) {
-    if (position == RecyclerView.NO_POSITION) return
-    postOnAnimation {
-        val itemCount = adapter?.itemCount ?: return@postOnAnimation
-        if (position !in 0 until itemCount) return@postOnAnimation
-
-        val currentFocused = rootView?.findFocus()
-        val focusStillAtScrollOrigin = currentFocused === this ||
-            (
-                expectedFocusedView != null &&
-                    currentFocused?.isSameOrDescendantOf(expectedFocusedView) == true
-                )
-        if (!focusStillAtScrollOrigin) return@postOnAnimation
-
-        val targetItem = findViewHolderForAdapterPosition(position)?.itemView
-        if (targetItem != null && targetItem.isValidFocusTarget()) {
-            val focused = targetItem.requestFocus()
-            GridFocusDebugLog.d {
-                "VideoCardRecyclerGrid.requestFocusAfterScrollToPosition calledRequestFocus=true " +
-                    "requestFocusSuccess=$focused adapterPosition=$position attemptsLeft=$attemptsLeft " +
-                    GridFocusDebugLog.recycler(this)
-            }
-            return@postOnAnimation
-        }
-
-        if (attemptsLeft > 0) {
-            requestFocusAfterScrollToPosition(
-                position = position,
-                expectedFocusedView = expectedFocusedView,
-                attemptsLeft = attemptsLeft - 1,
-            )
-        }
-    }
-}
-
 internal object InitialGridRestoreScrollPolicy {
     fun targetPosition(position: Int, itemCount: Int): Int {
         if (position == RecyclerView.NO_POSITION || itemCount <= 0) {
@@ -1131,7 +1034,6 @@ private data class RecyclerPaddingPx(
 private const val FocusSettledPreloadRows = 2
 private const val RecyclerGridPreloadDebounceMs = 120L
 private const val DuplicateFocusDispatchWindowMs = 500L
-private const val FocusSearchScrollFocusMaxAttempts = 12
 
 private class RecyclerViewRef {
     var value: RecyclerView? = null

@@ -154,4 +154,52 @@ class DpadGridDirectionalFocusPolicyTest {
             )
         )
     }
+
+    @Test
+    fun `terminal fallback keeps the requested column and chooses the nearest visible row`() {
+        assertEquals(
+            8,
+            DpadGridDirectionalIntentPolicy.fallbackPosition(
+                targetPosition = 12,
+                lastKnownFocusedPosition = 4,
+                lastKnownFocusedColumn = 0,
+                firstVisiblePosition = 4,
+                lastVisiblePosition = 11,
+                itemCount = 20,
+                spanCount = 4,
+            ),
+        )
+    }
+
+    @Test
+    fun `terminal fallback uses remembered focus when layout exposes no visible range`() {
+        assertEquals(
+            6,
+            DpadGridDirectionalIntentPolicy.fallbackPosition(
+                targetPosition = 10,
+                lastKnownFocusedPosition = 6,
+                lastKnownFocusedColumn = 2,
+                firstVisiblePosition = RecyclerView.NO_POSITION,
+                lastVisiblePosition = RecyclerView.NO_POSITION,
+                itemCount = 20,
+                spanCount = 4,
+            ),
+        )
+    }
+
+    @Test
+    fun `terminal fallback never leaves the visible adapter range`() {
+        assertEquals(
+            8,
+            DpadGridDirectionalIntentPolicy.fallbackPosition(
+                targetPosition = 3,
+                lastKnownFocusedPosition = 4,
+                lastKnownFocusedColumn = 3,
+                firstVisiblePosition = 8,
+                lastVisiblePosition = 9,
+                itemCount = 10,
+                spanCount = 4,
+            ),
+        )
+    }
 }

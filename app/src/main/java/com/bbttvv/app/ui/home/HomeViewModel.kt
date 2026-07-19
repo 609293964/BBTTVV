@@ -35,7 +35,8 @@ data class TodayWatchUiState(
     val errorMessage: String? = null
 )
 
-private fun resolveTabStorePolicy(): TabStorePolicy = TabStorePolicy.KeepAll
+internal fun resolveTabStorePolicy(): TabStorePolicy =
+    TabStorePolicy.KeepSelectedOnlyAfterIdle()
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
