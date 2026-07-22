@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.components
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,13 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
 @Composable
@@ -56,12 +55,7 @@ fun TvStatusPane(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .onPreviewKeyEvent { keyEvent ->
-                val event = keyEvent.nativeKeyEvent
-                event.action == AndroidKeyEvent.ACTION_DOWN &&
-                    event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP &&
-                    onDpadUp()
-            }
+            .onTvDpadKeyDown(onUp = onDpadUp)
             .padding(horizontal = 48.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),

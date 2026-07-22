@@ -27,6 +27,7 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.databinding.ItemVideoCardBinding
 import com.bbttvv.app.ui.components.toHomeVideoCardUiModel
 import com.bbttvv.app.ui.focus.GridFocusDebugLog
+import com.bbttvv.app.ui.input.isTvBackKey
 
 private val avatarCircleCropTransformation = CircleCropTransformation()
 
@@ -325,7 +326,7 @@ internal class HomeVideoCardAdapter(
             }
 
             binding.root.setOnKeyListener { _, keyCode, event ->
-                if (isVideoCardBackKey(keyCode)) {
+                if (isTvBackKey(keyCode)) {
                     when (event.action) {
                         KeyEvent.ACTION_DOWN -> {
                             consumeBackKeyUp = boundOnBackKeyUp != null
@@ -812,10 +813,4 @@ private fun ImageView.loadIfUrlChanged(
             }
         )
     }
-}
-
-private fun isVideoCardBackKey(keyCode: Int): Boolean {
-    return keyCode == KeyEvent.KEYCODE_BACK ||
-        keyCode == KeyEvent.KEYCODE_ESCAPE ||
-        keyCode == KeyEvent.KEYCODE_BUTTON_B
 }

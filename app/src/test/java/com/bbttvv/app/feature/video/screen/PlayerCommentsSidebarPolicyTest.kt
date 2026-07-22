@@ -20,10 +20,16 @@ class PlayerCommentsSidebarPolicyTest {
 
     @Test
     fun `avatar requests are staggered in bounded batches`() {
+        assertEquals(2, PLAYER_COMMENT_AVATAR_MAX_CONCURRENT_LOADS)
         assertEquals(140L, resolvePlayerCommentAvatarLoadDelayMs(0))
         assertEquals(190L, resolvePlayerCommentAvatarLoadDelayMs(1))
         assertEquals(540L, resolvePlayerCommentAvatarLoadDelayMs(8))
         assertEquals(140L, resolvePlayerCommentAvatarLoadDelayMs(9))
+    }
+
+    @Test
+    fun `comment content mounts after the sidebar shell`() {
+        assertEquals(90L, PLAYER_COMMENTS_CONTENT_MOUNT_DELAY_MS)
     }
 
     @Test

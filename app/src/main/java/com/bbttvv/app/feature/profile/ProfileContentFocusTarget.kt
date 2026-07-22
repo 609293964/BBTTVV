@@ -1,6 +1,5 @@
 package com.bbttvv.app.feature.profile
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -13,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
@@ -22,6 +20,7 @@ import com.bbttvv.app.ui.home.HomeFocusRegion
 import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusTarget
 import com.bbttvv.app.ui.home.LocalHomeTabActive
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 
 internal class ProfileContentFocusTargetState {
     val focusRequester = FocusRequester()
@@ -168,12 +167,7 @@ internal fun Modifier.profileContentFocusTarget(
     val directionalModifier = if (onDpadLeft == null) {
         focusModifier
     } else {
-        focusModifier.onPreviewKeyEvent { keyEvent ->
-            val event = keyEvent.nativeKeyEvent
-            event.action == AndroidKeyEvent.ACTION_DOWN &&
-                event.keyCode == AndroidKeyEvent.KEYCODE_DPAD_LEFT &&
-                onDpadLeft()
-        }
+        focusModifier.onTvDpadKeyDown(onLeft = onDpadLeft)
     }
 
     return directionalModifier

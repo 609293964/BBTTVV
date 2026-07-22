@@ -20,6 +20,12 @@ object FormatUtils {
         }
     }
 
+    fun formatCompactStat(count: Long): String {
+        return formatStat(count)
+            .replace(".0亿", "亿")
+            .replace(".0万", "万")
+    }
+
     /**
      * 将秒数格式化为 HH:MM:SS
      */
@@ -34,13 +40,26 @@ object FormatUtils {
         return formatDurationFromSeconds(milliseconds / 1000L)
     }
 
-    private fun formatDurationFromSeconds(rawSeconds: Long): String {
+    fun formatPlaybackDuration(milliseconds: Long): String {
+        return formatDurationFromSeconds(milliseconds / 1000L, padHours = false)
+    }
+
+    private fun formatDurationFromSeconds(
+        rawSeconds: Long,
+        padHours: Boolean = true,
+    ): String {
         val seconds = rawSeconds.coerceAtLeast(0L)
         val hours = seconds / 3600
         val minutes = (seconds % 3600) / 60
         val secs = seconds % 60
         return if (hours > 0) {
-            String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, secs)
+            String.format(
+                Locale.US,
+                if (padHours) "%02d:%02d:%02d" else "%d:%02d:%02d",
+                hours,
+                minutes,
+                secs,
+            )
         } else {
             String.format(Locale.US, "%02d:%02d", minutes, secs)
         }
@@ -135,4 +154,3 @@ object FormatUtils {
         }.format(Date(timestampSeconds * 1000L))
     }
 }
-

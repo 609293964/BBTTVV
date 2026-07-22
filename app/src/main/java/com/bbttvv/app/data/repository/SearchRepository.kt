@@ -1,7 +1,7 @@
 package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
-import com.bbttvv.app.core.network.WbiUtils
+import com.bbttvv.app.core.network.WbiRequestSigner
 import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.HotItem
 import com.bbttvv.app.data.model.response.SearchArticleItem
@@ -15,7 +15,6 @@ import kotlinx.serialization.json.decodeFromJsonElement
 
 object SearchRepository {
     private val api = NetworkModule.searchApi
-    private val navApi = NetworkModule.api
     private val fallbackJson = Json { ignoreUnknownKeys = true }
     private val defaultSearchUpdateSuffixPattern = Regex("""\s*[·・]\s*\d+\s*(?:分钟|小时|天)前更新\s*$""")
 
@@ -483,28 +482,7 @@ object SearchRepository {
     }
 
     private suspend fun signWithWbi(params: Map<String, String>): Map<String, String> {
-        return try {
-            val navResp = navApi.getNavInfo()
-            val wbiImg = navResp.data?.wbi_img
-            val imgKey = wbiImg?.img_url?.substringAfterLast("/")?.substringBefore(".") ?: ""
-            val subKey = wbiImg?.sub_url?.substringAfterLast("/")?.substringBefore(".") ?: ""
-            if (imgKey.isNotEmpty() && subKey.isNotEmpty()) {
-                WbiUtils.sign(params, imgKey, subKey)
-            } else {
-                com.bbttvv.app.core.util.Logger.w(
-                    "SearchRepo",
-                    "signWithWbi: missing img/sub key, use unsigned params"
-                )
-                params
-            }
-        } catch (e: Exception) {
-            com.bbttvv.app.core.util.Logger.e(
-                "SearchRepo",
-                "signWithWbi: failed to load nav/wbi keys, use unsigned params",
-                e
-            )
-            params
-        }
+        return WbiRequestSigner.signOrUnsigned(params, logTag = "SearchRepo")
     }
 
     private suspend fun searchVideoFallback(
@@ -602,4 +580,3 @@ enum class SearchLiveOrder(val value: String, val displayName: String) {
     ONLINE("online", "人气直播"),
     LIVE_TIME("live_time", "最新开播")
 }
-

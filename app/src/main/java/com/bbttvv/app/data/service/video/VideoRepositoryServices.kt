@@ -161,12 +161,6 @@ internal object VideoSessionService {
     var applicationContext: Context? = null
 
     @Volatile
-    var wbiKeysCache: Pair<String, String>? = null
-
-    @Volatile
-    var wbiKeysTimestamp: Long = 0L
-
-    @Volatile
     var last412Time: Long = 0L
 }
 

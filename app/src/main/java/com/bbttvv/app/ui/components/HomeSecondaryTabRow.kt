@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.components
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +22,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +31,7 @@ import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -107,19 +106,12 @@ private fun HomeSecondaryTab(
         onClick = onClick,
         modifier = Modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onPreviewKeyEvent { keyEvent ->
-                val event = keyEvent.nativeKeyEvent
-                if (event.action != AndroidKeyEvent.ACTION_DOWN) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.keyCode) {
-                    AndroidKeyEvent.KEYCODE_DPAD_UP -> onDpadUp?.invoke() == true
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown?.invoke(index) == true
-                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> first
-                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> last
-                    else -> false
-                }
-            }
+            .onTvDpadKeyDown(
+                onUp = { onDpadUp?.invoke() == true },
+                onDown = { onDpadDown?.invoke(index) == true },
+                onLeft = { first },
+                onRight = { last },
+            )
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
                 if (focusState.isFocused) {

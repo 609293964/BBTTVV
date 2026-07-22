@@ -5,6 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
+import com.bbttvv.app.ui.input.isTvBackKey
+import com.bbttvv.app.ui.input.isTvConfirmKey
+import com.bbttvv.app.ui.input.resolveTvSinglePress
 
 internal enum class PlayerOverlayMode {
     Hidden,
@@ -209,13 +212,36 @@ internal class PlayerOverlayStateMachine {
         val shouldHandleAsSeek = uiState.overlayMode != PlayerOverlayMode.FullControls ||
             canSeekFromFullControls ||
             (!isDpadLeft && !isDpadRight)
+        val isBackKey = isTvBackKey(event.keyCode)
+        val isConfirmKey = isTvConfirmKey(event.keyCode)
+        val isTogglePlaybackKey = event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+        val singlePress = resolveTvSinglePress(
+            action = event.action,
+            repeatCount = event.repeatCount,
+            isHandledKey = isBackKey || isConfirmKey || isTogglePlaybackKey,
+        )
+
+        if (singlePress.isConsumed) {
+            if (singlePress.shouldTrigger) {
+                when {
+                    isBackKey -> {
+                        clearPendingSeek()
+                        handleBack(onEffect)
+                    }
+
+                    isConfirmKey -> activateConfirmKey(actions, panelOptions, onEffect)
+                    isTogglePlaybackKey -> {
+                        clearPendingSeek()
+                        showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
+                        onEffect(PlayerOverlayEffect.TogglePlayback)
+                    }
+                }
+            }
+            return true
+        }
 
         if (event.action == KeyEvent.ACTION_UP) {
             return when {
-                event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE -> {
-                    true
-                }
-
                 isSeekKey && shouldHandleAsSeek -> {
                     if (uiState.isScrubbing) {
                         finishSeekScrub(onEffect)
@@ -237,45 +263,6 @@ internal class PlayerOverlayStateMachine {
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
         return when (event.keyCode) {
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_ESCAPE -> {
-                clearPendingSeek()
-                handleBack(onEffect)
-                true
-            }
-
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                if (event.repeatCount > 0) return true
-                when {
-                    uiState.activePanel != null -> activatePanelOption(panelOptions, onEffect)
-                    uiState.overlayMode == PlayerOverlayMode.FullControls -> {
-                        when (uiState.fullControlsFocus) {
-                            PlayerFullControlsFocus.Progress -> {
-                                showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
-                                onEffect(PlayerOverlayEffect.TogglePlayback)
-                            }
-
-                            PlayerFullControlsFocus.Actions -> activateSelectedAction(actions, onEffect)
-                        }
-                    }
-
-                    else -> {
-                        showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
-                        onEffect(PlayerOverlayEffect.TogglePlayback)
-                    }
-                }
-                true
-            }
-
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                clearPendingSeek()
-                showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
-                onEffect(PlayerOverlayEffect.TogglePlayback)
-                true
-            }
-
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 when {
                     uiState.activePanel != null -> {
@@ -389,6 +376,31 @@ internal class PlayerOverlayStateMachine {
             }
 
             else -> false
+        }
+    }
+
+    private fun activateConfirmKey(
+        actions: List<PlayerAction>,
+        panelOptions: List<PanelOption>,
+        onEffect: (PlayerOverlayEffect) -> Unit,
+    ) {
+        when {
+            uiState.activePanel != null -> activatePanelOption(panelOptions, onEffect)
+            uiState.overlayMode == PlayerOverlayMode.FullControls -> {
+                when (uiState.fullControlsFocus) {
+                    PlayerFullControlsFocus.Progress -> {
+                        showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
+                        onEffect(PlayerOverlayEffect.TogglePlayback)
+                    }
+
+                    PlayerFullControlsFocus.Actions -> activateSelectedAction(actions, onEffect)
+                }
+            }
+
+            else -> {
+                showFullOverlay(PlayerFullControlsFocus.Progress, onEffect = onEffect)
+                onEffect(PlayerOverlayEffect.TogglePlayback)
+            }
         }
     }
 

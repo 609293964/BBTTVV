@@ -50,11 +50,31 @@ class LivePlayerKeyPolicyTest {
     }
 
     @Test
-    fun `key up and unknown keys are not consumed`() {
+    fun `single shot key up is consumed to prevent one press reaching a parent`() {
+        listOf(
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_ESCAPE,
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MENU,
+        ).forEach { keyCode ->
+            val decision = resolveLivePlayerKeyDecision(
+                action = KeyEvent.ACTION_UP,
+                keyCode = keyCode,
+                repeatCount = 0,
+            )
+            assertTrue(decision.isConsumed)
+            assertNull(decision.command)
+        }
+    }
+
+    @Test
+    fun `directional key up and unknown keys are not consumed`() {
         assertFalse(
             resolveLivePlayerKeyDecision(
                 action = KeyEvent.ACTION_UP,
-                keyCode = KeyEvent.KEYCODE_DPAD_CENTER,
+                keyCode = KeyEvent.KEYCODE_DPAD_RIGHT,
                 repeatCount = 0,
             ).isConsumed
         )

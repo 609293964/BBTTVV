@@ -31,6 +31,9 @@ import java.util.Locale
 internal data class PlayerDebugSnapshot(
     val videoId: String = "--",
     val viewport: String = "--",
+    val sourceFrameRate: String = "--",
+    val renderFrameRate: String = "--",
+    val displayRefreshRate: String = "--",
     val frames: String = "--",
     val currentOptimal: String = "--",
     val bufferHealth: String = "--",
@@ -57,8 +60,11 @@ internal fun PlayerDebugOverlay(
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         DebugInfoLine("Video ID / CID", snapshot.videoId)
-        DebugInfoLine("Viewport / Frames", "${snapshot.viewport} / ${snapshot.frames}")
-        DebugInfoLine("Current / Optimal Res", snapshot.currentOptimal)
+        DebugInfoLine("Viewport", snapshot.viewport)
+        DebugInfoLine("Source / Render FPS", "${snapshot.sourceFrameRate} / ${snapshot.renderFrameRate}")
+        DebugInfoLine("Display Refresh", snapshot.displayRefreshRate)
+        DebugInfoLine("Frames", snapshot.frames)
+        DebugInfoLine("Position / Selected", snapshot.currentOptimal)
         DebugInfoLine("Buffer Health", snapshot.bufferHealth)
         DebugInfoLine("Codecs", snapshot.codecs)
         DebugInfoLine("Quality", snapshot.quality)
@@ -103,20 +109,19 @@ internal fun buildPlayerDebugSnapshot(
     player: ExoPlayer,
     uiState: PlayerUiState,
     playbackState: PlayerPlaybackState,
+    frameSample: PlayerDebugFrameSample? = null,
+    displayRefreshRateHz: Float = 0f,
 ): PlayerDebugSnapshot {
     val videoSize = player.videoSize
     val width = uiState.selectedVideoWidth.takeIf { it > 0 } ?: videoSize.width
     val height = uiState.selectedVideoHeight.takeIf { it > 0 } ?: videoSize.height
     val resolution = if (width > 0 && height > 0) "${width}x${height}" else "--"
-    val frameRate = uiState.selectedVideoFrameRate.takeIf { it.isNotBlank() }
-    val optimal = buildList {
-        add(resolution)
-        frameRate?.let { add(it) }
-    }.joinToString(" ")
+    val sourceFrameRate = formatSourceFrameRate(uiState.selectedVideoFrameRate)
+    val optimal = resolution
     val counters = player.videoDecoderCounters
     counters?.ensureUpdated()
-    val droppedFrames = counters?.droppedBufferCount ?: 0
-    val renderedFrames = counters?.renderedOutputBufferCount ?: 0
+    val droppedFrames = frameSample?.totalDroppedFrames ?: counters?.droppedBufferCount ?: 0
+    val renderedFrames = frameSample?.totalRenderedFrames ?: counters?.renderedOutputBufferCount ?: 0
     val bufferMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L)
     val totalBitrate = uiState.selectedVideoBandwidth.coerceAtLeast(0) +
         uiState.selectedAudioBandwidth.coerceAtLeast(0)
@@ -129,16 +134,64 @@ internal fun buildPlayerDebugSnapshot(
             uiState.info?.cid?.takeIf { it > 0L }?.let { "cid=$it" }
         ).joinToString(" / ").ifBlank { "--" },
         viewport = resolution,
-        frames = "rendered $renderedFrames / dropped $droppedFrames",
+        sourceFrameRate = sourceFrameRate,
+        renderFrameRate = formatRenderFrameRate(frameSample?.renderFps),
+        displayRefreshRate = formatDisplayRefreshRate(displayRefreshRateHz),
+        frames = buildFrameDiagnostics(
+            renderedFrames = renderedFrames,
+            droppedFrames = droppedFrames,
+            frameSample = frameSample,
+        ),
         currentOptimal = "${formatDuration(playbackState.positionMs)} / $optimal",
         bufferHealth = formatDebugSeconds(bufferMs),
         codecs = buildDebugCodecs(uiState),
         quality = uiState.selectedQualityLabel.ifBlank { uiState.selectedQuality.toString() },
         trackBitrate = if (totalBitrate > 0) "${totalBitrate / 1000} Kbps" else "--",
         cdn = buildDebugCdn(uiState),
-        playback = playbackLabel,
+        playback = "$playbackLabel / rebuffer=${frameSample?.rebufferCount ?: 0}",
         date = SimpleDateFormat("MMM d yyyy HH:mm:ss", Locale.US).format(Date()),
     )
+}
+
+internal fun formatSourceFrameRate(frameRate: String): String {
+    val trimmed = frameRate.trim()
+    if (trimmed.isBlank()) return "--"
+    val parts = trimmed.split('/', limit = 2)
+    val value = if (parts.size == 2) {
+        val numerator = parts[0].toFloatOrNull()
+        val denominator = parts[1].toFloatOrNull()
+        if (numerator != null && denominator != null && denominator > 0f) {
+            numerator / denominator
+        } else {
+            null
+        }
+    } else {
+        trimmed.toFloatOrNull()
+    }
+    return value?.let { String.format(Locale.US, "%.2f fps", it) }
+        ?: "$trimmed fps"
+}
+
+private fun formatRenderFrameRate(frameRate: Float?): String {
+    if (frameRate == null || frameRate < 0f) return "sampling"
+    return String.format(Locale.US, "%.1f fps", frameRate)
+}
+
+private fun formatDisplayRefreshRate(refreshRateHz: Float): String {
+    if (refreshRateHz <= 0f) return "--"
+    return String.format(Locale.US, "%.2f Hz", refreshRateHz)
+}
+
+private fun buildFrameDiagnostics(
+    renderedFrames: Int,
+    droppedFrames: Int,
+    frameSample: PlayerDebugFrameSample?,
+): String {
+    val window = frameSample?.dropRatePercent?.let { dropRate ->
+        "window +${frameSample.renderedFramesDelta}/-${frameSample.droppedFramesDelta} " +
+            String.format(Locale.US, "(%.2f%%)", dropRate)
+    } ?: "window sampling"
+    return "$window / total +$renderedFrames/-$droppedFrames"
 }
 
 private fun buildDebugCodecs(uiState: PlayerUiState): String {

@@ -15,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +43,7 @@ import com.bbttvv.app.ui.home.HomeRecyclerPools
 import com.bbttvv.app.ui.home.HomeScreen
 import com.bbttvv.app.ui.home.HomeViewModel
 import com.bbttvv.app.ui.focus.LocalTvFocusReturn
+import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 
 @Composable
 fun AppNavigation() {
@@ -78,6 +78,10 @@ fun AppNavigation() {
     }
     val safeHomeTab = navigationState.safeHomeTab(visibleTopLevelTabs)
 
+    RegisterLifecycleFocusDrain(key = currentRoute) {
+        tvFocusReturn?.restorePending() == true
+    }
+
     DisposableEffect(homeRecyclerPools) {
         onDispose {
             homeRecyclerPools.clear()
@@ -93,11 +97,8 @@ fun AppNavigation() {
             val sourceKey = settingsReturnKey
             settingsReturnKey = null
             if (sourceKey != null && tvFocusReturn != null) {
-                repeat(3) {
-                    withFrameNanos { }
-                    tvFocusReturn.capture(sourceKey, ProfileSettingsFocusKeys.All)
-                    if (tvFocusReturn.restore()) return@LaunchedEffect
-                }
+                tvFocusReturn.capture(sourceKey, ProfileSettingsFocusKeys.All)
+                tvFocusReturn.restorePending()
             }
         }
     }

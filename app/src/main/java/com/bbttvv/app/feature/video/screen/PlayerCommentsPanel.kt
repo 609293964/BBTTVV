@@ -60,11 +60,28 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.sync.Semaphore
 
 internal const val PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION = 0.30f
+internal const val PLAYER_COMMENT_AVATAR_MAX_CONCURRENT_LOADS = 2
+internal const val PLAYER_COMMENTS_CONTENT_MOUNT_DELAY_MS = 90L
 private const val PLAYER_COMMENT_AVATAR_INITIAL_DELAY_MS = 140L
 private const val PLAYER_COMMENT_AVATAR_STAGGER_MS = 50L
 private const val PLAYER_COMMENT_AVATAR_STAGGER_SLOTS = 9
+
+internal class PlayerCommentAvatarLoadGate(
+    maxConcurrentLoads: Int = PLAYER_COMMENT_AVATAR_MAX_CONCURRENT_LOADS,
+) {
+    private val semaphore = Semaphore(maxConcurrentLoads.coerceAtLeast(1))
+
+    suspend fun acquire() {
+        semaphore.acquire()
+    }
+
+    fun release() {
+        semaphore.release()
+    }
+}
 
 internal fun resolvePlayerDanmakuVisibleWidthFraction(isCommentsPanelVisible: Boolean): Float =
     if (isCommentsPanelVisible) 1f - PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION else 1f
@@ -109,6 +126,10 @@ internal fun PlayerCommentsPanel(
     val totalCount = if (isViewingThread) uiState.threadTotalCount else totalCommentCount
     val hasMore = if (isViewingThread) uiState.threadHasMore else uiState.hasMore
     val listState = rememberLazyListState()
+    val avatarLoadGate = remember(isViewingThread, uiState.sortMode) {
+        PlayerCommentAvatarLoadGate()
+    }
+    var isContentMounted by remember(isViewingThread, uiState.sortMode) { mutableStateOf(false) }
     val commentFocusCoordinator = remember(isViewingThread, uiState.sortMode) {
         PlayerCommentFocusCoordinator()
     }
@@ -116,14 +137,22 @@ internal fun PlayerCommentsPanel(
     var pendingAppendFocusKey by remember(isViewingThread, uiState.sortMode) { mutableStateOf<String?>(null) }
     var hasUserScrolled by remember(isViewingThread, uiState.sortMode) { mutableStateOf(false) }
     var lastAutoLoadItemCount by remember(isViewingThread, uiState.sortMode) { mutableIntStateOf(-1) }
-    val currentItemKeys = remember(isViewingThread, listItems) {
-        listItems.mapIndexed { index, reply ->
-            playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
-        }.toSet()
+    val currentItemKeys = remember(isContentMounted, isViewingThread, listItems) {
+        if (!isContentMounted) {
+            emptySet()
+        } else {
+            listItems.mapIndexed { index, reply ->
+                playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
+            }.toSet()
+        }
     }
 
     LaunchedEffect(isViewingThread, uiState.sortMode) {
+        isContentMounted = false
         runCatching { listState.scrollToItem(0) }
+        withFrameNanos { }
+        delay(PLAYER_COMMENTS_CONTENT_MOUNT_DELAY_MS)
+        isContentMounted = true
     }
 
     LaunchedEffect(isAppending, currentItemKeys, isViewingThread, uiState.sortMode) {
@@ -241,7 +270,7 @@ internal fun PlayerCommentsPanel(
                     .background(dividerColor),
             )
 
-            uiState.activeThreadRoot?.takeIf { isViewingThread }?.let { rootReply ->
+            uiState.activeThreadRoot?.takeIf { isViewingThread && isContentMounted }?.let { rootReply ->
                 Text(
                     text = "主评论",
                     color = subTextColor,
@@ -253,6 +282,7 @@ internal fun PlayerCommentsPanel(
                     reply = rootReply,
                     onOpenThread = {},
                     showReplyAction = false,
+                    avatarLoadGate = avatarLoadGate,
                 )
             }
 
@@ -264,6 +294,12 @@ internal fun PlayerCommentsPanel(
                 contentPadding = PaddingValues(bottom = 12.dp),
             ) {
                 when {
+                    !isContentMounted -> {
+                        item(key = "mounting") {
+                            PlayerCommentMessage(text = "正在准备评论...")
+                        }
+                    }
+
                     isLoading && listItems.isEmpty() -> {
                         item(key = "loading") {
                             PlayerCommentMessage(
@@ -330,6 +366,7 @@ internal fun PlayerCommentsPanel(
                                 onOpenThread = onOpenThread,
                                 showReplyAction = !isViewingThread,
                                 avatarLoadIndex = index,
+                                avatarLoadGate = avatarLoadGate,
                                 focusRequester = commentFocusRequester,
                                 onFocused = { lastFocusedCommentKey = commentKey },
                             )
@@ -461,6 +498,7 @@ private fun PlayerCommentListItem(
     onOpenThread: (ReplyItem) -> Unit,
     showReplyAction: Boolean,
     avatarLoadIndex: Int = 0,
+    avatarLoadGate: PlayerCommentAvatarLoadGate,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
@@ -528,6 +566,7 @@ private fun PlayerCommentListItem(
                     avatarUrl = reply.member.avatar,
                     username = reply.member.uname,
                     loadIndex = avatarLoadIndex,
+                    loadGate = avatarLoadGate,
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -639,16 +678,30 @@ private fun PlayerCommentAvatar(
     avatarUrl: String,
     username: String,
     loadIndex: Int,
+    loadGate: PlayerCommentAvatarLoadGate,
 ) {
     val isLightTheme = LocalIsLightTheme.current
     var isImageLoadAllowed by remember(avatarUrl, loadIndex) {
         mutableStateOf(avatarUrl.isBlank())
     }
-    LaunchedEffect(avatarUrl, loadIndex) {
+    var isLoadPermitHeld by remember(avatarUrl, loadIndex, loadGate) { mutableStateOf(false) }
+    fun releaseLoadPermit() {
+        if (!isLoadPermitHeld) return
+        isLoadPermitHeld = false
+        loadGate.release()
+    }
+    LaunchedEffect(avatarUrl, loadIndex, loadGate) {
         if (avatarUrl.isBlank()) return@LaunchedEffect
         withFrameNanos { }
         delay(resolvePlayerCommentAvatarLoadDelayMs(loadIndex))
+        loadGate.acquire()
+        isLoadPermitHeld = true
         isImageLoadAllowed = true
+    }
+    DisposableEffect(avatarUrl, loadIndex, loadGate) {
+        onDispose {
+            releaseLoadPermit()
+        }
     }
     Box(
         modifier = Modifier
@@ -667,6 +720,8 @@ private fun PlayerCommentAvatar(
                 contentDescription = username.ifBlank { "评论用户头像" },
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                onSuccess = { releaseLoadPermit() },
+                onError = { releaseLoadPermit() },
             )
         } else {
             Text(

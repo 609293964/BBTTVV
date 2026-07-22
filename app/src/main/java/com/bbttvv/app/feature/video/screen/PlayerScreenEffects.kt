@@ -1,6 +1,8 @@
 package com.bbttvv.app.feature.video.screen
 
 import android.content.Context
+import android.os.SystemClock
+import android.view.WindowManager
 import android.view.ViewConfiguration
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -35,6 +37,17 @@ import kotlinx.coroutines.flow.map
 private const val CONTROLS_AUTO_HIDE_MS = 3500L
 private const val SIMPLE_SEEK_HIDE_MS = 1200L
 private const val AUTO_NEXT_PROMPT_DELAY_MS = 2_000L
+
+@Suppress("DEPRECATION")
+private fun resolvePlayerDisplayRefreshRate(
+    context: Context,
+    playerView: PlayerView?,
+): Float {
+    val viewRefreshRate = playerView?.display?.refreshRate?.takeIf { it > 0f }
+    if (viewRefreshRate != null) return viewRefreshRate
+    val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+    return windowManager?.defaultDisplay?.refreshRate?.takeIf { it > 0f } ?: 0f
+}
 
 internal data class PlayerScreenSession(
     val bvid: String,
@@ -85,6 +98,7 @@ internal fun PlayerScreenEffectHost(
     val latestPlayerView = rememberUpdatedState(args.playerView)
     val latestOnExitPlayer = rememberUpdatedState(onExitPlayer)
     val playerReleaseGuard = remember(args.exoPlayer) { ExoPlayerReleaseGuard(args.exoPlayer) }
+    val debugFrameSampler = remember(args.exoPlayer) { PlayerDebugFrameSampler() }
 
     PausePlaybackOnAppBackgroundEffect(
         onEnterBackground = viewModel::onAppBackgrounded,
@@ -210,6 +224,7 @@ internal fun PlayerScreenEffectHost(
         args.bufferingSpeedMeter.reset()
         overlayStateMachine.resetForNewVideo(handleOverlayEffect)
         latestDebugSnapshotChange.value(PlayerDebugSnapshot())
+        debugFrameSampler.reset()
         presentationState.resetForNewVideo()
         viewModel.loadVideo(
             bvid = args.session.bvid,
@@ -223,6 +238,7 @@ internal fun PlayerScreenEffectHost(
         if (args.uiState.info == null) return@LaunchedEffect
         overlayStateMachine.resetForNewVideo(handleOverlayEffect)
         latestDebugSnapshotChange.value(PlayerDebugSnapshot())
+        debugFrameSampler.reset()
         presentationState.resetForNewVideo()
     }
 
@@ -237,13 +253,24 @@ internal fun PlayerScreenEffectHost(
     }
 
     LaunchedEffect(args.isDebugOverlayVisible, args.exoPlayer) {
+        debugFrameSampler.reset()
         if (!args.isDebugOverlayVisible) return@LaunchedEffect
         while (overlayStateMachine.uiState.showDebugOverlay) {
+            val frameSample = samplePlayerDebugFrames(
+                player = args.exoPlayer,
+                sampler = debugFrameSampler,
+                nowMs = SystemClock.elapsedRealtime(),
+            )
             latestDebugSnapshotChange.value(
                 buildPlayerDebugSnapshot(
                     player = args.exoPlayer,
                     uiState = args.latestUiState.value,
                     playbackState = args.playbackSnapshotProvider(),
+                    frameSample = frameSample,
+                    displayRefreshRateHz = resolvePlayerDisplayRefreshRate(
+                        context = context,
+                        playerView = latestPlayerView.value,
+                    ),
                 )
             )
             delay(500L)
@@ -274,37 +301,22 @@ internal fun PlayerScreenEffectHost(
         overlayStateMachine.syncPanelOptions(args.panelOptions)
     }
 
-    LaunchedEffect(
-        args.overlayUiState.overlayMode,
-        args.overlayUiState.fullControlsFocus,
-        args.overlayUiState.selectedActionIndex,
-        args.overlayUiState.activePanel,
-        args.overlayUiState.selectedPanelIndex,
-        args.panelOptions.size,
-        args.isCommentsPanelVisible,
-        isViewingCommentThread,
-    ) {
-        val focusIntent = when {
-            args.overlayUiState.overlayMode != PlayerOverlayMode.FullControls -> {
-                PlayerFocusIntent.FocusPlayerSurface
-            }
-
-            args.isCommentsPanelVisible -> {
-                PlayerFocusIntent.FocusCommentsPanel
-            }
-
-            args.overlayUiState.activePanel != null -> {
-                PlayerFocusIntent.FocusPanelOption(args.overlayUiState.selectedPanelIndex)
-            }
-
-            args.overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Progress -> {
-                PlayerFocusIntent.FocusProgress
-            }
-
-            else -> {
-                PlayerFocusIntent.FocusAction(args.overlayUiState.selectedActionIndex)
-            }
+    val focusIntent = resolvePlayerFocusIntent(
+        overlayUiState = args.overlayUiState,
+        isCommentsPanelVisible = args.isCommentsPanelVisible,
+    )
+    val focusTargetIdentity = when (focusIntent) {
+        PlayerFocusIntent.FocusPlayerSurface -> args.playerView
+        PlayerFocusIntent.FocusProgress -> focusBindings.progressFocusRequester
+        PlayerFocusIntent.FocusCommentsPanel -> focusBindings.commentsPanelPrimaryFocusRequester
+        is PlayerFocusIntent.FocusAction -> {
+            focusBindings.actionFocusRequesters.getOrNull(focusIntent.index)
         }
+        is PlayerFocusIntent.FocusPanelOption -> {
+            focusBindings.panelFocusRequesters.getOrNull(focusIntent.index)
+        }
+    }
+    LaunchedEffect(focusIntent, focusTargetIdentity) {
         playerFocusCoordinator.requestFocus(focusIntent)
         withFrameNanos { }
         playerFocusCoordinator.drainPendingFocus()
@@ -400,6 +412,33 @@ internal fun PlayerScreenEffectHost(
                 pauseForSeekScrub = viewModel::pauseForSeekScrub,
                 onEffect = handleOverlayEffect,
             )
+        }
+    }
+}
+
+internal fun resolvePlayerFocusIntent(
+    overlayUiState: PlayerOverlayUiState,
+    isCommentsPanelVisible: Boolean,
+): PlayerFocusIntent {
+    return when {
+        overlayUiState.overlayMode != PlayerOverlayMode.FullControls -> {
+            PlayerFocusIntent.FocusPlayerSurface
+        }
+
+        isCommentsPanelVisible -> {
+            PlayerFocusIntent.FocusCommentsPanel
+        }
+
+        overlayUiState.activePanel != null -> {
+            PlayerFocusIntent.FocusPanelOption(overlayUiState.selectedPanelIndex)
+        }
+
+        overlayUiState.fullControlsFocus == PlayerFullControlsFocus.Progress -> {
+            PlayerFocusIntent.FocusProgress
+        }
+
+        else -> {
+            PlayerFocusIntent.FocusAction(overlayUiState.selectedActionIndex)
         }
     }
 }

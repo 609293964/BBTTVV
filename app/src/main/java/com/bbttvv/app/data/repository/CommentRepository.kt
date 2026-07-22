@@ -3,6 +3,7 @@ package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.BilibiliApi
 import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.network.WbiKeyManager
 import com.bbttvv.app.core.network.WbiUtils
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.preferHttpsUrl
@@ -41,11 +42,6 @@ object CommentRepository {
     private var emoteMapCache: EmoteMapCache? = null
     private val emoteMapLock = Mutex()
 
-    // WBI Key 缓存
-    private var wbiKeysCache: Pair<String, String>? = null
-    private var wbiKeysTimestamp: Long = 0
-    private const val WBI_CACHE_DURATION = 1000 * 60 * 30 // 30分钟缓存
-
     @Serializable
     private data class CommentPicturePayload(
         @SerialName("img_src") val imgSrc: String,
@@ -57,40 +53,10 @@ object CommentRepository {
     /**
      * 获取 WBI Keys（用于 WBI 签名）
      */
-    private suspend fun getWbiKeys(navApi: BilibiliApi = api): Pair<String, String> {
-        val currentCheck = System.currentTimeMillis()
-        val cached = wbiKeysCache
-        if (cached != null && (currentCheck - wbiKeysTimestamp < WBI_CACHE_DURATION)) {
-            return cached
+    private suspend fun getWbiKeys(): Pair<String, String> {
+        return WbiKeyManager.getWbiKeys().getOrElse { error ->
+            throw Exception("Wbi Keys Error: ${error.message}", error)
         }
-
-        val maxRetries = 3
-        var lastError: Exception? = null
-        
-        for (attempt in 1..maxRetries) {
-            try {
-                val navResp = navApi.getNavInfo()
-                val wbiImg = navResp.data?.wbi_img
-                
-                if (wbiImg != null) {
-                    val imgKey = wbiImg.img_url.substringAfterLast("/").substringBefore(".")
-                    val subKey = wbiImg.sub_url.substringAfterLast("/").substringBefore(".")
-                    
-                    wbiKeysCache = Pair(imgKey, subKey)
-                    wbiKeysTimestamp = System.currentTimeMillis()
-                    com.bbttvv.app.core.util.Logger.d("CommentRepo", " WBI Keys obtained successfully (attempt $attempt)")
-                    return wbiKeysCache!!
-                }
-            } catch (e: Exception) {
-                lastError = e
-                android.util.Log.w("CommentRepo", "getWbiKeys attempt $attempt failed: ${e.message}")
-                if (attempt < maxRetries) {
-                    kotlinx.coroutines.delay(200L * attempt) // 递增延迟
-                }
-            }
-        }
-        
-        throw Exception("Wbi Keys Error after $maxRetries attempts: ${lastError?.message}")
     }
 
     private fun resolveReadApi(mode: CommentReadApiMode): BilibiliApi {
@@ -140,7 +106,7 @@ object CommentRepository {
                 )
             }
             else -> {
-                val (imgKey, subKey) = getWbiKeys(apiClient)
+                val (imgKey, subKey) = getWbiKeys()
                 Logger.d("CommentRepo", " getComments (WBI): oid=$oid, type=$type, page=$page, mode=3 (热度)")
                 val params = TreeMap<String, String>()
                 params["oid"] = oid.toString()
@@ -1013,4 +979,3 @@ object CommentRepository {
     }
 
 }
-

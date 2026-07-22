@@ -2,6 +2,8 @@
 package com.bbttvv.app.core.network
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -23,6 +25,7 @@ object WbiKeyManager {
     private const val CACHE_DURATION_MS = 24 * 60 * 60 * 1000L
     // 预刷新阈值：剩余时间少于 1 小时时预刷新
     private const val PREFRESH_THRESHOLD_MS = 60 * 60 * 1000L
+    private const val REFRESH_MAX_ATTEMPTS = 3
     
     // 内存缓存
     @Volatile
@@ -76,19 +79,20 @@ object WbiKeyManager {
      */
     private suspend fun refreshKeysInternal(): Result<Pair<String, String>> {
         com.bbttvv.app.core.util.Logger.d(TAG, " Refreshing WBI keys from network...")
-        
-        return try {
-            val api = NetworkModule.api
-            val navResp = api.getNavInfo()
-            val wbiImg = navResp.data?.wbi_img
-            
-            if (wbiImg != null) {
+        var lastError: Exception? = null
+        for (attempt in 1..REFRESH_MAX_ATTEMPTS) {
+            try {
+                val navResp = NetworkModule.api.getNavInfo()
+                val wbiImg = navResp.data?.wbi_img
+                    ?: error("WBI keys not found in nav response")
                 val imgKey = wbiImg.img_url.substringAfterLast("/").substringBefore(".")
                 val subKey = wbiImg.sub_url.substringAfterLast("/").substringBefore(".")
-                
+                require(imgKey.isNotBlank() && subKey.isNotBlank()) {
+                    "WBI img/sub key is missing"
+                }
                 cachedKeys = Pair(imgKey, subKey)
                 cacheTimestamp = System.currentTimeMillis()
-                
+
                 //  自动持久化到 storage，下次启动时无需再请求网络
                 try {
                     val context = NetworkModule.appContext
@@ -99,16 +103,21 @@ object WbiKeyManager {
                     android.util.Log.w(TAG, " Failed to persist WBI keys: ${e.message}")
                 }
                 
-                com.bbttvv.app.core.util.Logger.d(TAG, " WBI keys refreshed successfully")
-                Result.success(Pair(imgKey, subKey))
-            } else {
-                android.util.Log.e(TAG, " WBI keys not found in response")
-                Result.failure(Exception("WBI keys not found in nav response"))
+                com.bbttvv.app.core.util.Logger.d(TAG, " WBI keys refreshed successfully on attempt $attempt")
+                return Result.success(Pair(imgKey, subKey))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                lastError = error
+                android.util.Log.w(TAG, "WBI refresh attempt $attempt failed: ${error.message}")
+                if (attempt < REFRESH_MAX_ATTEMPTS) {
+                    delay(200L * attempt)
+                }
             }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, " Failed to refresh WBI keys: ${e.message}")
-            Result.failure(e)
         }
+        val error = lastError ?: IllegalStateException("WBI refresh failed")
+        android.util.Log.e(TAG, " Failed to refresh WBI keys: ${error.message}")
+        return Result.failure(error)
     }
     
     /**
@@ -189,4 +198,3 @@ object WbiKeyManager {
         return "WbiKeyManager: hasKeys=$hasKeys, ageMinutes=$age, valid=${isCacheValid()}"
     }
 }
-

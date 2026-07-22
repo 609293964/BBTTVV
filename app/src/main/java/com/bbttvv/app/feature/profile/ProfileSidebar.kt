@@ -1,6 +1,5 @@
 package com.bbttvv.app.feature.profile
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +30,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +44,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 
 private data class ProfileMetric(val label: String, val value: String)
 
@@ -255,18 +254,10 @@ private fun ProfileMenuItemRow(
         modifier = Modifier
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .onGloballyPositioned { onLaidOut() }
-            .onPreviewKeyEvent { keyEvent ->
-                val event = keyEvent.nativeKeyEvent
-                if (event.action != AndroidKeyEvent.ACTION_DOWN) {
-                    false
-                } else {
-                    when (event.keyCode) {
-                        AndroidKeyEvent.KEYCODE_DPAD_UP -> onDpadUp()
-                        AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> onDpadRight()
-                        else -> false
-                    }
-                }
-            }
+            .onTvDpadKeyDown(
+                onUp = onDpadUp,
+                onRight = onDpadRight,
+            )
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
                 onFocusChanged(focusState.isFocused)

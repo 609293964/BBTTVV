@@ -62,7 +62,7 @@ class PlayerSponsorPromptKeysTest {
     }
 
     @Test
-    fun `key up is not consumed by sponsor notice`() {
+    fun `key up is consumed without triggering sponsor notice again`() {
         var skipCount = 0
         var dismissCount = 0
 
@@ -74,7 +74,7 @@ class PlayerSponsorPromptKeysTest {
             onDismissSponsorNotice = { dismissCount++ },
         )
 
-        assertFalse(handled)
+        assertTrue(handled)
         assertEquals(0, skipCount)
         assertEquals(0, dismissCount)
     }
@@ -94,5 +94,21 @@ class PlayerSponsorPromptKeysTest {
 
         assertTrue(handled)
         assertEquals(0, skipCount)
+    }
+
+    @Test
+    fun `gamepad back dismisses sponsor notice`() {
+        var dismissCount = 0
+
+        val handled = handleSponsorSkipNoticeKeyEvent(
+            action = KeyEvent.ACTION_DOWN,
+            keyCode = KeyEvent.KEYCODE_BUTTON_B,
+            showSponsorSkipNotice = true,
+            onSkipSponsor = {},
+            onDismissSponsorNotice = { dismissCount++ },
+        )
+
+        assertTrue(handled)
+        assertEquals(1, dismissCount)
     }
 }

@@ -80,6 +80,28 @@ class PlayerOverlayActionsTest {
     }
 
     @Test
+    fun `focus intent changes only when the resolved target changes`() {
+        val actionState = PlayerOverlayUiState(
+            overlayMode = PlayerOverlayMode.FullControls,
+            fullControlsFocus = PlayerFullControlsFocus.Actions,
+            selectedActionIndex = 2,
+        )
+
+        val initial = resolvePlayerFocusIntent(actionState, isCommentsPanelVisible = false)
+        val interactionOnly = resolvePlayerFocusIntent(
+            actionState.copy(interactionToken = actionState.interactionToken + 1),
+            isCommentsPanelVisible = false,
+        )
+
+        assertEquals(PlayerFocusIntent.FocusAction(2), initial)
+        assertEquals(initial, interactionOnly)
+        assertEquals(
+            PlayerFocusIntent.FocusCommentsPanel,
+            resolvePlayerFocusIntent(actionState, isCommentsPanelVisible = true),
+        )
+    }
+
+    @Test
     fun `android back is deferred to BackHandler instead of preview key handler`() {
         assertFalse(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_BACK))
         assertTrue(shouldRoutePlayerKeyCodeToPreviewHandler(KeyEvent.KEYCODE_ESCAPE))

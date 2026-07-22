@@ -20,7 +20,11 @@ import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
 import com.bbttvv.app.data.model.response.SponsorSegment
-import java.util.Locale
+import com.bbttvv.app.ui.player.formatDanmakuAreaRatio
+import com.bbttvv.app.ui.player.formatDanmakuFontWeight
+import com.bbttvv.app.ui.player.formatDanmakuLaneDensity
+import com.bbttvv.app.ui.player.formatDanmakuOpacity
+import com.bbttvv.app.ui.player.nextTvOption
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -375,11 +379,11 @@ private fun handleDanmakuPanelAction(
 
     val updatedSettings = when (key) {
         DANMAKU_PANEL_OPACITY -> currentSettings.copy(
-            opacity = nextOption(DANMAKU_OPACITY_VALUES, currentSettings.opacity)
+            opacity = nextTvOption(DANMAKU_OPACITY_VALUES, currentSettings.opacity)
         )
 
         DANMAKU_PANEL_TEXT_SIZE -> currentSettings.copy(
-            textSizeSp = nextOption(DANMAKU_TEXT_SIZE_VALUES, currentSettings.textSizeSp)
+            textSizeSp = nextTvOption(DANMAKU_TEXT_SIZE_VALUES, currentSettings.textSizeSp)
         )
 
         DANMAKU_PANEL_SPEED -> currentSettings.copy(
@@ -387,19 +391,19 @@ private fun handleDanmakuPanelAction(
         )
 
         DANMAKU_PANEL_AREA -> currentSettings.copy(
-            areaRatio = nextOption(DANMAKU_AREA_RATIO_VALUES, currentSettings.areaRatio)
+            areaRatio = nextTvOption(DANMAKU_AREA_RATIO_VALUES, currentSettings.areaRatio)
         )
 
         DANMAKU_PANEL_STROKE_WIDTH -> currentSettings.copy(
-            strokeWidthPx = nextOption(DANMAKU_STROKE_WIDTH_VALUES, currentSettings.strokeWidthPx)
+            strokeWidthPx = nextTvOption(DANMAKU_STROKE_WIDTH_VALUES, currentSettings.strokeWidthPx)
         )
 
         DANMAKU_PANEL_FONT_WEIGHT -> currentSettings.copy(
-            fontWeight = nextOption(DanmakuFontWeightPreset.entries, currentSettings.fontWeight)
+            fontWeight = nextTvOption(DanmakuFontWeightPreset.entries, currentSettings.fontWeight)
         )
 
         DANMAKU_PANEL_LANE_DENSITY -> currentSettings.copy(
-            laneDensity = nextOption(DanmakuLaneDensityPreset.entries, currentSettings.laneDensity)
+            laneDensity = nextTvOption(DanmakuLaneDensityPreset.entries, currentSettings.laneDensity)
         )
 
         DANMAKU_PANEL_FOLLOW_BILI_SHIELD -> currentSettings.copy(
@@ -445,53 +449,10 @@ private fun handleDanmakuPanelAction(
 
 private fun onOff(value: Boolean): String = if (value) "开" else "关"
 
-private fun formatDanmakuOpacity(value: Float): String = String.format(Locale.US, "%.0f%%", value * 100)
-
-private fun formatDanmakuFontWeight(value: DanmakuFontWeightPreset): String {
-    return when (value) {
-        DanmakuFontWeightPreset.Normal -> "常规"
-        DanmakuFontWeightPreset.Bold -> "加粗"
-    }
-}
-
-private fun formatDanmakuLaneDensity(value: DanmakuLaneDensityPreset): String {
-    return when (value) {
-        DanmakuLaneDensityPreset.Sparse -> "稀疏"
-        DanmakuLaneDensityPreset.Standard -> "标准"
-        DanmakuLaneDensityPreset.Dense -> "密集"
-    }
-}
-
-private fun formatDanmakuAreaRatio(value: Float): String {
-    return when {
-        abs(value - 1f) < 0.001f -> "不限"
-        abs(value - (1f / 6f)) < 0.001f -> "1/6"
-        abs(value - (1f / 5f)) < 0.001f -> "1/5"
-        abs(value - (1f / 4f)) < 0.001f -> "1/4"
-        abs(value - (1f / 3f)) < 0.001f -> "1/3"
-        abs(value - (2f / 5f)) < 0.001f -> "2/5"
-        abs(value - (1f / 2f)) < 0.001f -> "1/2"
-        abs(value - (3f / 5f)) < 0.001f -> "3/5"
-        abs(value - (2f / 3f)) < 0.001f -> "2/3"
-        abs(value - (3f / 4f)) < 0.001f -> "3/4"
-        abs(value - (4f / 5f)) < 0.001f -> "4/5"
-        else -> formatDanmakuOpacity(value)
-    }
-}
-
 private fun formatSpeed(speed: Float): String {
     return if (speed % 1f == 0f) {
         "${speed.toInt()}倍"
     } else {
         "${speed}倍"
-    }
-}
-
-private fun <T> nextOption(options: List<T>, current: T): T {
-    val currentIndex = options.indexOf(current)
-    return if (currentIndex == -1 || currentIndex == options.lastIndex) {
-        options.first()
-    } else {
-        options[currentIndex + 1]
     }
 }

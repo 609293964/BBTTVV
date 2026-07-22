@@ -2,6 +2,7 @@ package com.bbttvv.app.core.network
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class SignerTest {
@@ -52,5 +53,12 @@ class SignerTest {
 
         assertFalse(signed["w_rid"].isNullOrBlank())
         assertEquals("bar", signed["foo"])
+    }
+
+    @Test
+    fun wbiRequestSignerRejectsBlankKeys() {
+        assertThrows(IllegalArgumentException::class.java) {
+            WbiRequestSigner.signWithKeys(mapOf("keyword" to "tv"), "" to "sub")
+        }
     }
 }

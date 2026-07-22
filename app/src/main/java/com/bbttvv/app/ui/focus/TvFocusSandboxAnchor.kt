@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.focus
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -15,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 
 internal class TvFocusAnchorState internal constructor() {
     val focusRequester: FocusRequester = FocusRequester()
@@ -60,19 +59,12 @@ internal fun TvFocusSandboxAnchor(
             .focusRequester(state.focusRequester)
             .onFocusChanged { state.updateFocus(it.hasFocus) }
             .focusable()
-            .onPreviewKeyEvent { keyEvent ->
-                val event = keyEvent.nativeKeyEvent
-                if (event.action != AndroidKeyEvent.ACTION_DOWN) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.keyCode) {
-                    AndroidKeyEvent.KEYCODE_DPAD_UP -> onDpadUp()
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> onDpadDown()
-                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> onDpadLeft()
-                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> onDpadRight()
-                    else -> false
-                }
-            },
+            .onTvDpadKeyDown(
+                onUp = onDpadUp,
+                onDown = onDpadDown,
+                onLeft = onDpadLeft,
+                onRight = onDpadRight,
+            ),
         content = content,
     )
 }

@@ -11,6 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.focus.GridFocusDebugLog
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import com.bbttvv.app.ui.input.isTvConfirmKey
+import com.bbttvv.app.ui.input.isTvDirectionalKey
 
 internal class DpadGridController(
     private val config: Config = Config(),
@@ -220,7 +222,7 @@ internal class DpadGridController(
             itemCount = itemCount,
             spanCount = spanCount,
         ) ?: return false
-        if (keyCode in DirectionalKeyCodes) {
+        if (isTvDirectionalKey(keyCode)) {
             cancelPendingDirectionalFocusForNavigation(recycler)
         }
         GridFocusDebugLog.d {
@@ -668,7 +670,7 @@ internal class DpadGridController(
         event: KeyEvent,
     ): Boolean {
         if (!config.enableCenterLongPressToLongClick) return false
-        if (keyCode !in CenterKeyCodes) return false
+        if (!isTvConfirmKey(keyCode)) return false
 
         return when (event.action) {
             KeyEvent.ACTION_DOWN -> {
@@ -1465,17 +1467,6 @@ internal class DpadGridController(
         private const val FocusProtectWindowMs = 500L
         private const val FocusRetryMaxAttempts = 3
         private const val DirectionalScrollParkedWindowMs = 1000L
-        private val DirectionalKeyCodes = setOf(
-            KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_DPAD_RIGHT,
-        )
-        val CenterKeyCodes = setOf(
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_NUMPAD_ENTER,
-        )
     }
 }
 

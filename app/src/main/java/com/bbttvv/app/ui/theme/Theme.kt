@@ -1,7 +1,9 @@
 package com.bbttvv.app.ui.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import androidx.tv.material3.lightColorScheme
@@ -10,6 +12,36 @@ import com.bbttvv.app.core.theme.enforceDynamicLightTextContrast
 import com.bbttvv.app.core.store.SettingsManager
 
 val LocalIsLightTheme = compositionLocalOf { false }
+
+@Immutable
+data class TvOverlayPalette(
+    val scrim: Color,
+    val dialogContainer: Color,
+    val contextMenuContainer: Color,
+    val dialogBorder: Color,
+    val contextMenuBorder: Color,
+    val title: Color,
+)
+
+private val DarkTvOverlayPalette = TvOverlayPalette(
+    scrim = Color(0x99000000),
+    dialogContainer = Color(0xF21A2028),
+    contextMenuContainer = Color(0xF51A2028),
+    dialogBorder = Color.White.copy(alpha = 0.14f),
+    contextMenuBorder = Color.White.copy(alpha = 0.16f),
+    title = Color.White,
+)
+
+private val LightTvOverlayPalette = TvOverlayPalette(
+    scrim = Color(0x99000000),
+    dialogContainer = Color(0xFFF7F8FA),
+    contextMenuContainer = Color(0xF7F7F8FA),
+    dialogBorder = Color.Black.copy(alpha = 0.08f),
+    contextMenuBorder = Color.Black.copy(alpha = 0.08f),
+    title = Color(0xFF18191C),
+)
+
+val LocalTvOverlayPalette = compositionLocalOf { DarkTvOverlayPalette }
 
 private val DarkColorScheme = darkColorScheme(
     primary = androidx.compose.ui.graphics.Color(0xFFFB7299),
@@ -46,7 +78,8 @@ fun AppTheme(
     }
 
     androidx.compose.runtime.CompositionLocalProvider(
-        LocalIsLightTheme provides isLightTheme
+        LocalIsLightTheme provides isLightTheme,
+        LocalTvOverlayPalette provides if (isLightTheme) LightTvOverlayPalette else DarkTvOverlayPalette,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

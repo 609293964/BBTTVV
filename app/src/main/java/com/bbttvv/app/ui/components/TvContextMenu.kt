@@ -59,7 +59,10 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.input.isTvConfirmKey
+import com.bbttvv.app.ui.input.isTvModalDismissKey
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
+import com.bbttvv.app.ui.theme.LocalTvOverlayPalette
 
 @Immutable
 internal data class TvContextMenuAction(
@@ -86,8 +89,7 @@ internal fun TvContextMenu(
     val firstFocusRequester = remember { FocusRequester() }
     val dialogFocusRequester = rememberTvDialogFocusTrap()
     val isLightTheme = LocalIsLightTheme.current
-    val panelBackgroundColor = if (isLightTheme) Color(0xF7F7F8FA) else Color(0xF51A2028)
-    val panelBorderColor = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.16f)
+    val overlayPalette = LocalTvOverlayPalette.current
 
     BackHandler {
         onDismissRequest()
@@ -107,7 +109,7 @@ internal fun TvContextMenu(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x99000000))
+                .background(overlayPalette.scrim)
                 .onPreviewKeyEvent { keyEvent ->
                     val event = keyEvent.nativeKeyEvent
                     if (isTvConfirmKey(event.keyCode) && suppressConfirmKey) {
@@ -117,22 +119,13 @@ internal fun TvContextMenu(
                         return@onPreviewKeyEvent true
                     }
 
-                    if (event.action != AndroidKeyEvent.ACTION_DOWN) {
-                        return@onPreviewKeyEvent false
-                    }
-
-                    when (event.keyCode) {
-                        AndroidKeyEvent.KEYCODE_BACK,
-                        AndroidKeyEvent.KEYCODE_ESCAPE,
-                        AndroidKeyEvent.KEYCODE_MENU,
-                        AndroidKeyEvent.KEYCODE_BUTTON_B,
-                        -> {
+                    if (isTvModalDismissKey(event.keyCode)) {
+                        if (event.action == AndroidKeyEvent.ACTION_UP) {
                             onDismissRequest()
-                            true
                         }
-
-                        else -> false
+                        return@onPreviewKeyEvent true
                     }
+                    false
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -146,10 +139,10 @@ internal fun TvContextMenu(
                         onExit = { cancelFocusChange() }
                     }
                     .clip(RoundedCornerShape(24.dp))
-                    .background(panelBackgroundColor)
+                    .background(overlayPalette.contextMenuContainer)
                     .border(
                         width = 1.dp,
-                        color = panelBorderColor,
+                        color = overlayPalette.contextMenuBorder,
                         shape = RoundedCornerShape(24.dp),
                     )
                     .padding(horizontal = 20.dp, vertical = 20.dp),
@@ -206,12 +199,6 @@ internal fun TvContextMenu(
             }
         }
     }
-}
-
-private fun isTvConfirmKey(keyCode: Int): Boolean {
-    return keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-        keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
-        keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
 }
 
 private fun TvContextMenuAction.resolvedIcon(): ImageVector {

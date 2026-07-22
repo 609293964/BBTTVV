@@ -35,8 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import coil.request.ImageRequest
-import coil.size.Precision
 import com.bbttvv.app.core.util.FormatUtils
+import com.bbttvv.app.ui.components.buildSizedImageModel
 
 internal val DetailBackdropGradientColors = listOf(
     Color(0xEB0A0A0C),
@@ -225,23 +225,9 @@ internal fun buildSizedImageRequest(
     widthPx: Int,
     heightPx: Int
 ): ImageRequest {
-    return ImageRequest.Builder(context)
-        .data(FormatUtils.buildSizedImageUrl(url, widthPx, heightPx))
-        .crossfade(false)
-        .allowHardware(true)
-        .precision(Precision.INEXACT)
-        .size(widthPx, heightPx)
-        .build()
+    return buildSizedImageModel(context, url, widthPx, heightPx)
 }
 
 internal fun formatNumber(number: Int): String {
     return FormatUtils.formatStat(number.toLong())
-}
-
-internal fun normalizeImageUrl(url: String): String {
-    return when {
-        url.startsWith("//") -> "https:$url"
-        url.startsWith("http://") -> url.replaceFirst("http://", "https://")
-        else -> url
-    }
 }

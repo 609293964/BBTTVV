@@ -42,6 +42,10 @@ internal class TvFocusReturn {
     ): TvFocusReturnRegistration {
         val entry = TvFocusReturnTargetEntry(target = target)
         targets[key] = entry
+        val pendingCapture = captured
+        if (pendingCapture?.key == key && target.tryRequestFocus()) {
+            captured = null
+        }
         return TvFocusReturnRegistration {
             if (targets[key] === entry) {
                 targets.remove(key)
@@ -63,6 +67,18 @@ internal class TvFocusReturn {
         val capture = captured ?: return false
         captured = null
         return restoreKeys(listOf(capture.key) + capture.fallbackKeys)
+    }
+
+    /**
+     * Tries the current capture without discarding it when the destination has not registered yet.
+     */
+    fun restorePending(): Boolean {
+        val capture = captured ?: return false
+        val restored = restoreKeys(listOf(capture.key) + capture.fallbackKeys)
+        if (restored && captured === capture) {
+            captured = null
+        }
+        return restored
     }
 
     fun clear() {

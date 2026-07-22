@@ -1,33 +1,18 @@
 package com.bbttvv.app.ui.home
 
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.recyclerview.widget.RecyclerView
-import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.LiveRoom
 import com.bbttvv.app.data.model.response.Owner
 import com.bbttvv.app.data.model.response.Stat
 import com.bbttvv.app.data.model.response.VideoItem
-import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
-import com.bbttvv.app.ui.components.HomeSecondaryTabRow
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun LiveScreen(
     onLiveClick: (Long, String) -> Unit,
@@ -43,162 +28,39 @@ internal fun LiveScreen(
     val viewModel: LiveViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isHomeTabActive = LocalHomeTabActive.current
-    val categoryFocusRequesters = remember(uiState.categories.size) {
-        List(uiState.categories.size) { FocusRequester() }
-    }
-    val requestCategoryTabFocus = remember(
-        uiState.selectedCategoryIndex,
-        categoryFocusRequesters,
-        onContentRowFocused,
-        isHomeTabActive,
-    ) {
-        {
-            if (!isHomeTabActive) return@remember false
-            val requester = categoryFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
-                ?: return@remember false
-            runCatching {
-                val focused = requester.requestFocus()
-                if (focused) {
-                    onContentRowFocused(0)
-                }
-                focused
-            }.getOrDefault(false)
-        }
-    }
 
     LaunchedEffect(isHomeTabActive) {
         if (isHomeTabActive) {
             viewModel.onEnter()
         }
     }
-
-    DisposableEffect(focusCoordinator, requestCategoryTabFocus, isHomeTabActive) {
-        val registration = if (isHomeTabActive) {
-            focusCoordinator.registerContentTarget(
-                tab = AppTopLevelTab.LIVE,
-                region = HomeFocusRegion.ContentTabs,
-                target = object : HomeFocusTarget {
-                    override fun tryRequestFocus(): Boolean {
-                        return requestCategoryTabFocus()
-                    }
-                }
-            )
-        } else {
-            null
-        }
-        onDispose {
-            registration?.unregister()
-        }
+    val displayVideos = remember(uiState.liveRooms) {
+        uiState.liveRooms.map { it.toVideoItem() }
     }
 
-    HomeCollapsingHeaderGrid(
+    HomeCategoryVideoGrid(
+        tab = AppTopLevelTab.LIVE,
+        categories = uiState.categories.map { it.label },
+        selectedCategoryIndex = uiState.selectedCategoryIndex,
+        onCategorySelected = viewModel::selectCategory,
+        videos = displayVideos,
+        isLoading = uiState.isLoading,
+        isError = uiState.isError,
+        errorMessage = uiState.errorMsg,
+        loadingMessage = "正在加载直播列表...",
+        hasMore = uiState.hasMore,
+        onLoadMore = viewModel::loadMore,
+        onRefresh = viewModel::refresh,
+        onVideoClick = { videoItem, focusKey -> onLiveClick(videoItem.id, focusKey) },
+        onContentRowFocused = onContentRowFocused,
+        focusCoordinator = focusCoordinator,
+        focusState = focusState,
         topBarHeightPx = topBarHeightPx,
-        state = collapsingHeaderState,
-        modifier = Modifier.fillMaxSize(),
-        collapseEnabled = collapseHeaderEnabled,
-        localHeader = {
-            HomeSecondaryTabRow(
-                tabs = uiState.categories.map { it.label },
-                selectedIndex = uiState.selectedCategoryIndex,
-                onTabSelected = viewModel::selectCategory,
-                onSelectedTabConfirmed = viewModel::selectCategory,
-                onTabFocused = {
-                    if (isHomeTabActive) {
-                        collapsingHeaderState.reset()
-                        onContentRowFocused(0)
-                    }
-                },
-                itemFocusRequesters = categoryFocusRequesters,
-                onDpadUp = {
-                    if (isHomeTabActive) {
-                        collapsingHeaderState.reset()
-                        focusCoordinator.handleContentTabsDpadUp(AppTopLevelTab.LIVE)
-                    } else {
-                        false
-                    }
-                },
-                onDpadDown = { index ->
-                    isHomeTabActive && focusCoordinator.handleContentTabsDpadDown(
-                        tab = AppTopLevelTab.LIVE,
-                        preferredIndex = index,
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 14.dp)
-            )
-        }
-    ) { topPadding, onScrollOffset ->
-        if (uiState.liveRooms.isEmpty() && uiState.isLoading) {
-            HomeEmptyFocusTarget(
-                tab = AppTopLevelTab.LIVE,
-                focusCoordinator = focusCoordinator,
-                isActive = isHomeTabActive,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = topPadding),
-            ) {
-                Text(
-                    text = "正在加载直播列表...",
-                    modifier = Modifier.align(Alignment.Center),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-        } else if (uiState.isError && uiState.liveRooms.isEmpty()) {
-            HomeEmptyFocusTarget(
-                tab = AppTopLevelTab.LIVE,
-                focusCoordinator = focusCoordinator,
-                isActive = isHomeTabActive,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = topPadding),
-            ) {
-                Text(
-                    text = "加载失败：${uiState.errorMsg ?: "未知错误"}",
-                    modifier = Modifier.align(Alignment.Center),
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-        } else {
-            val displayVideos = remember(uiState.liveRooms) {
-                uiState.liveRooms.map { it.toVideoItem() }
-            }
-            VideoCardRecyclerGrid(
-                videos = displayVideos,
-                contentPadding = PaddingValues(
-                    start = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    end = AppTopBarDefaults.HeaderContentHorizontalPadding,
-                    top = topPadding + 8.dp,
-                    bottom = AppTopBarDefaults.HomeVideoGridBottomPadding
-                ),
-                modifier = Modifier.fillMaxSize(),
-                gridColumnCount = gridColumnCount,
-                focusState = focusState,
-                focusCoordinator = focusCoordinator,
-                focusTab = AppTopLevelTab.LIVE,
-                scrollResetKey = uiState.selectedCategoryIndex,
-                allowChildDrawingOutsideBounds = false,
-                videoCardRecycledViewPool = videoCardRecycledViewPool,
-                onVerticalScrollOffsetChanged = onScrollOffset,
-                canLoadMore = { uiState.hasMore && !uiState.isLoading },
-                loadMoreInProgress = uiState.isLoading,
-                onLoadMore = viewModel::loadMore,
-                onMenuRefresh = viewModel::refresh,
-                onFocusedRowChanged = onContentRowFocused,
-                onTopRowDpadUp = {
-                    collapsingHeaderState.reset()
-                    focusState.resetRememberedFocusToTopForTopBarReturn()
-                    focusCoordinator.handleGridTopEdge(AppTopLevelTab.LIVE)
-                },
-                onBackToTopBar = {
-                    collapsingHeaderState.reset()
-                    focusState.resetRememberedFocusToTopForTopBarReturn()
-                    focusCoordinator.handleContentWantsTopBar()
-                },
-                onVideoClick = { videoItem, focusKey -> onLiveClick(videoItem.id, focusKey) }
-            )
-        }
-    }
+        collapseHeaderEnabled = collapseHeaderEnabled,
+        collapsingHeaderState = collapsingHeaderState,
+        gridColumnCount = gridColumnCount,
+        videoCardRecycledViewPool = videoCardRecycledViewPool,
+    )
 }
 
 private fun LiveRoom.toVideoItem(): VideoItem {

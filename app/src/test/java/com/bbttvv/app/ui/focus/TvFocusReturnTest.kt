@@ -66,6 +66,36 @@ class TvFocusReturnTest {
         assertEquals(0, target.focusRequests)
     }
 
+    @Test
+    fun `pending restore survives until primary target registers`() {
+        val focusReturn = TvFocusReturn()
+
+        focusReturn.capture("settings:user_agent")
+
+        assertFalse(focusReturn.restorePending())
+        val target = FakeFocusReturnTarget(canFocus = true)
+        focusReturn.registerTarget("settings:user_agent", target)
+
+        assertEquals(1, target.focusRequests)
+        assertFalse(focusReturn.restorePending())
+    }
+
+    @Test
+    fun `failed pending restore remains available for a later target`() {
+        val focusReturn = TvFocusReturn()
+        val unavailable = FakeFocusReturnTarget(canFocus = false)
+        focusReturn.registerTarget("settings:user_agent", unavailable)
+        focusReturn.capture("settings:user_agent")
+
+        assertFalse(focusReturn.restorePending())
+        val available = FakeFocusReturnTarget(canFocus = true)
+        focusReturn.registerTarget("settings:user_agent", available)
+
+        assertEquals(1, unavailable.focusRequests)
+        assertEquals(1, available.focusRequests)
+        assertFalse(focusReturn.restorePending())
+    }
+
     private class FakeFocusReturnTarget(
         private val canFocus: Boolean,
     ) : TvFocusReturnTarget {

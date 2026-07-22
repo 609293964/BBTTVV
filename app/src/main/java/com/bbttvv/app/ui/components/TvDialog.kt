@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Text
+import com.bbttvv.app.ui.input.isTvConfirmKey
+import com.bbttvv.app.ui.theme.LocalTvOverlayPalette
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -59,10 +61,7 @@ fun TvDialog(
         runCatching { dialogFocusRequester.requestFocus() }
     }
 
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    val dialogBg = if (isLightTheme) Color(0xFFF7F8FA) else Color(0xF21A2028)
-    val dialogBorder = if (isLightTheme) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f)
-    val dialogTitleColor = if (isLightTheme) Color(0xFF18191C) else Color.White
+    val overlayPalette = LocalTvOverlayPalette.current
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -73,7 +72,7 @@ fun TvDialog(
                 .fillMaxSize()
                 .onPreviewKeyEvent { keyEvent ->
                     val event = keyEvent.nativeKeyEvent
-                    if (isTvDialogConfirmKey(event.keyCode) && suppressConfirmKey) {
+                    if (isTvConfirmKey(event.keyCode) && suppressConfirmKey) {
                         if (event.action == AndroidKeyEvent.ACTION_UP) {
                             onSuppressConfirmKeyConsumed()
                         }
@@ -81,7 +80,7 @@ fun TvDialog(
                     }
                     false
                 }
-                .background(Color(0x99000000)),
+                .background(overlayPalette.scrim),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -94,14 +93,14 @@ fun TvDialog(
                         onExit = { cancelFocusChange() }
                     }
                     .clip(RoundedCornerShape(24.dp))
-                    .background(dialogBg)
-                    .border(1.dp, dialogBorder, RoundedCornerShape(24.dp))
+                    .background(overlayPalette.dialogContainer)
+                    .border(1.dp, overlayPalette.dialogBorder, RoundedCornerShape(24.dp))
                     .padding(horizontal = 26.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Text(
                     text = title,
-                    color = dialogTitleColor,
+                    color = overlayPalette.title,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -146,10 +145,4 @@ fun TvConfirmDialog(
         },
         actions = actions
     )
-}
-
-private fun isTvDialogConfirmKey(keyCode: Int): Boolean {
-    return keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-        keyCode == AndroidKeyEvent.KEYCODE_ENTER ||
-        keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
 }

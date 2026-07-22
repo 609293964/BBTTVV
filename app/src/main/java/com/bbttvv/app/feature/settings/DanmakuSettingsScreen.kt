@@ -30,7 +30,10 @@ import com.bbttvv.app.core.store.player.DanmakuLaneDensityPreset
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
-import java.util.Locale
+import com.bbttvv.app.ui.player.formatDanmakuAreaRatio
+import com.bbttvv.app.ui.player.formatDanmakuFontWeight
+import com.bbttvv.app.ui.player.formatDanmakuLaneDensity
+import com.bbttvv.app.ui.player.formatDanmakuOpacity
 import kotlinx.coroutines.launch
 
 private enum class DanmakuChoice(val rowKey: String) {
@@ -136,7 +139,7 @@ fun TvDanmakuSettingsList(
             SettingsRow(
                 title = "弹幕透明度",
                 subtitle = "选择 20% 到 100%，直接映射到当前渲染透明度。",
-                value = formatOpacity(settings.opacity),
+                value = formatDanmakuOpacity(settings.opacity),
                 kind = SettingsRowKind.Choice,
                 compact = compact,
                 modifier = getRowModifier(
@@ -168,7 +171,7 @@ fun TvDanmakuSettingsList(
             SettingsRow(
                 title = "字体粗细",
                 subtitle = "在常规和加粗之间切换。",
-                value = formatFontWeight(settings.fontWeight),
+                value = formatDanmakuFontWeight(settings.fontWeight),
                 kind = SettingsRowKind.Choice,
                 compact = compact,
                 modifier = getRowModifier(
@@ -200,7 +203,7 @@ fun TvDanmakuSettingsList(
             SettingsRow(
                 title = "弹幕占屏比",
                 subtitle = "控制滚动和悬停弹幕可用的垂直区域。",
-                value = formatAreaRatio(settings.areaRatio),
+                value = formatDanmakuAreaRatio(settings.areaRatio),
                 kind = SettingsRowKind.Choice,
                 compact = compact,
                 modifier = getRowModifier(
@@ -216,7 +219,7 @@ fun TvDanmakuSettingsList(
             SettingsRow(
                 title = "轨道密度",
                 subtitle = "影响每行间距，稀疏更松，密集更紧。",
-                value = formatLaneDensity(settings.laneDensity),
+                value = formatDanmakuLaneDensity(settings.laneDensity),
                 kind = SettingsRowKind.Choice,
                 compact = compact,
                 modifier = getRowModifier(
@@ -382,7 +385,7 @@ fun TvDanmakuSettingsList(
         DanmakuChoice.OPACITY -> TvSettingsChoicePopup(
             title = "选择弹幕透明度",
             options = DANMAKU_OPACITY_VALUES.map { value ->
-                TvSettingsChoiceOption(value, formatOpacity(value))
+                TvSettingsChoiceOption(value, formatDanmakuOpacity(value))
             },
             selectedValue = settings.opacity,
             anchorBounds = choiceAnchorBounds[DanmakuChoice.OPACITY],
@@ -416,7 +419,7 @@ fun TvDanmakuSettingsList(
         DanmakuChoice.FONT_WEIGHT -> TvSettingsChoicePopup(
             title = "选择弹幕字体粗细",
             options = DanmakuFontWeightPreset.entries.map { value ->
-                TvSettingsChoiceOption(value, formatFontWeight(value))
+                TvSettingsChoiceOption(value, formatDanmakuFontWeight(value))
             },
             selectedValue = settings.fontWeight,
             anchorBounds = choiceAnchorBounds[DanmakuChoice.FONT_WEIGHT],
@@ -450,7 +453,7 @@ fun TvDanmakuSettingsList(
         DanmakuChoice.AREA_RATIO -> TvSettingsChoicePopup(
             title = "选择弹幕占屏比",
             options = DANMAKU_AREA_RATIO_VALUES.map { value ->
-                TvSettingsChoiceOption(value, formatAreaRatio(value))
+                TvSettingsChoiceOption(value, formatDanmakuAreaRatio(value))
             },
             selectedValue = settings.areaRatio,
             anchorBounds = choiceAnchorBounds[DanmakuChoice.AREA_RATIO],
@@ -467,7 +470,7 @@ fun TvDanmakuSettingsList(
         DanmakuChoice.LANE_DENSITY -> TvSettingsChoicePopup(
             title = "选择弹幕轨道密度",
             options = DanmakuLaneDensityPreset.entries.map { value ->
-                TvSettingsChoiceOption(value, formatLaneDensity(value))
+                TvSettingsChoiceOption(value, formatDanmakuLaneDensity(value))
             },
             selectedValue = settings.laneDensity,
             anchorBounds = choiceAnchorBounds[DanmakuChoice.LANE_DENSITY],
@@ -512,39 +515,5 @@ fun TvDanmakuSettingsList(
         )
 
         null -> Unit
-    }
-}
-
-private fun formatOpacity(value: Float): String = String.format(Locale.US, "%.0f%%", value * 100)
-
-private fun formatFontWeight(value: DanmakuFontWeightPreset): String {
-    return when (value) {
-        DanmakuFontWeightPreset.Normal -> "常规"
-        DanmakuFontWeightPreset.Bold -> "加粗"
-    }
-}
-
-private fun formatLaneDensity(value: DanmakuLaneDensityPreset): String {
-    return when (value) {
-        DanmakuLaneDensityPreset.Sparse -> "稀疏"
-        DanmakuLaneDensityPreset.Standard -> "标准"
-        DanmakuLaneDensityPreset.Dense -> "密集"
-    }
-}
-
-private fun formatAreaRatio(value: Float): String {
-    return when {
-        kotlin.math.abs(value - 1f) < 0.001f -> "不限"
-        kotlin.math.abs(value - (1f / 6f)) < 0.001f -> "1/6"
-        kotlin.math.abs(value - (1f / 5f)) < 0.001f -> "1/5"
-        kotlin.math.abs(value - (1f / 4f)) < 0.001f -> "1/4"
-        kotlin.math.abs(value - (1f / 3f)) < 0.001f -> "1/3"
-        kotlin.math.abs(value - (2f / 5f)) < 0.001f -> "2/5"
-        kotlin.math.abs(value - (1f / 2f)) < 0.001f -> "1/2"
-        kotlin.math.abs(value - (3f / 5f)) < 0.001f -> "3/5"
-        kotlin.math.abs(value - (2f / 3f)) < 0.001f -> "2/3"
-        kotlin.math.abs(value - (3f / 4f)) < 0.001f -> "3/4"
-        kotlin.math.abs(value - (4f / 5f)) < 0.001f -> "4/5"
-        else -> formatOpacity(value)
     }
 }

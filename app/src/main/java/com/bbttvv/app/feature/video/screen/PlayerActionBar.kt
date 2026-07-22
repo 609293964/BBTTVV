@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,14 +57,14 @@ internal fun PlayerActionBar(
             modifier = Modifier.width(72.dp),
         )
         actions.forEachIndexed { index, action ->
-            PlayerActionButton(
-                action = action,
-                selected = hasFocus && index == selectedIndex,
-                active = action != PlayerAction.Danmaku || isDanmakuEnabled,
-                modifier = Modifier
-                    .focusRequester(actionFocusRequesters[index])
-                    .focusable(),
-            )
+            key(action) {
+                PlayerActionButton(
+                    action = action,
+                    selected = hasFocus && index == selectedIndex,
+                    active = action != PlayerAction.Danmaku || isDanmakuEnabled,
+                    focusRequester = actionFocusRequesters[index],
+                )
+            }
         }
     }
 }
@@ -73,7 +74,7 @@ private fun PlayerActionButton(
     action: PlayerAction,
     selected: Boolean,
     active: Boolean,
-    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
 ) {
     val buttonBgColor = if (selected) {
         Color.White.copy(alpha = 0.96f)
@@ -87,7 +88,9 @@ private fun PlayerActionButton(
     }
 
     Row(
-        modifier = modifier
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusable()
             .clip(RoundedCornerShape(999.dp))
             .background(buttonBgColor)
             .size(48.dp),

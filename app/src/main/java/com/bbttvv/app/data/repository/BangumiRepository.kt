@@ -3,7 +3,7 @@ package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiKeyManager
-import com.bbttvv.app.core.network.WbiUtils
+import com.bbttvv.app.core.network.WbiSigner
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.safeApiCall
@@ -63,7 +63,7 @@ internal fun signBangumiPlayUrlParams(
 ): Map<String, String> {
     val (imgKey, subKey) = wbiKeys ?: return params
     if (imgKey.isBlank() || subKey.isBlank()) return params
-    return WbiUtils.sign(params, imgKey, subKey)
+    return WbiSigner.sign(params, imgKey, subKey)
 }
 
 internal fun decodeBangumiPlayUrlPayload(
@@ -458,7 +458,7 @@ object BangumiRepository {
             )
             
             // WBI 签名
-            val signedParams = if (imgKey.isNotEmpty()) WbiUtils.sign(params, imgKey, subKey) else params
+            val signedParams = if (imgKey.isNotEmpty()) WbiSigner.sign(params, imgKey, subKey) else params
             val response = searchApi.searchBangumi(signedParams)
             
             if (response.code == 0 && response.data != null) {
