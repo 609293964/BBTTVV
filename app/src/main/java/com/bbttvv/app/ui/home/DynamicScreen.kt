@@ -70,6 +70,7 @@ import com.bbttvv.app.data.model.response.Stat
 import com.bbttvv.app.data.repository.DynamicFollowUpdateFixedItem
 import com.bbttvv.app.data.repository.DynamicFollowUpdateItem
 import com.bbttvv.app.data.repository.DynamicFollowUpdateUpItem
+import com.bbttvv.app.data.repository.resolveRenderableVideoSource
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.components.AppTopBarDefaults
@@ -1000,9 +1001,10 @@ fun LiveAvatarCard(
 
 // Mapper from Dynamic to Recommend structure for the Card
 private fun DynamicItem.toVideoItem(): VideoItem {
-    val major = this.modules.module_dynamic?.major
+    val source = resolveRenderableVideoSource() ?: this
+    val major = source.modules.module_dynamic?.major
     val archive = major?.archive ?: major?.ugc_season?.archive
-    val author = this.modules.module_author
+    val author = source.modules.module_author
     val title = archive?.title
         ?: major?.ugc_season?.title
         ?: major?.opus?.title
@@ -1011,7 +1013,8 @@ private fun DynamicItem.toVideoItem(): VideoItem {
     return VideoItem(
         id = archive?.aid?.toLongOrNull() ?: 0L,
         aid = archive?.aid?.toLongOrNull() ?: 0L,
-        bvid = archive?.bvid ?: this.id_str,
+        bvid = archive?.bvid ?: "",
+        dynamicId = this.id_str,
         pic = archive?.cover ?: "",
         title = title,
         owner = Owner(

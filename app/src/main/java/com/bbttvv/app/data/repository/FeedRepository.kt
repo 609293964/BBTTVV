@@ -166,6 +166,34 @@ open class DefaultFeedRepository(
         }
     }
 
+    private suspend fun getSignedRankingResponse(
+        rid: Int,
+        type: String,
+        forceRefreshKeys: Boolean = false,
+    ): RankingResponse {
+        val keysResult = if (forceRefreshKeys) {
+            WbiKeyManager.refreshKeys()
+        } else {
+            WbiKeyManager.getWbiKeys()
+        }
+        val keys = keysResult.getOrElse {
+            throw Exception("WBI 密钥获取失败", it)
+        }
+        val response = api.getRankingVideosWbi(
+            buildRankingWbiParams(
+                rid = rid,
+                type = type,
+                imgKey = keys.first,
+                subKey = keys.second,
+            )
+        )
+        return if (response.code == -352 && !forceRefreshKeys) {
+            getSignedRankingResponse(rid = rid, type = type, forceRefreshKeys = true)
+        } else {
+            response
+        }
+    }
+
     private suspend fun fetchMobileFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
         return safeApiCall(
             tag = "FeedRepo",
@@ -223,7 +251,7 @@ open class DefaultFeedRepository(
             tag = "FeedRepo",
             errorMessage = { "getRankingVideos failed: rid=$rid, type=$type" }
         ) {
-            val resp = api.getRankingVideos(rid = rid, type = type)
+            val resp = getSignedRankingResponse(rid = rid, type = type)
             if (resp.code != 0) {
                 throw Exception(resp.message.ifBlank { "排行榜加载失败(${resp.code})" })
             }
@@ -270,13 +298,33 @@ open class DefaultFeedRepository(
     suspend fun getRegionVideos(tid: Int, page: Int = 1): Result<List<VideoItem>> = withContext(ioDispatcher) {
         safeApiCall(
             tag = "FeedRepo",
-            errorMessage = { "getRegionVideos failed: tid=$tid, page=$page" }
+            errorMessage = { "getRegionVideos failed: rid=$tid, page=$page" }
         ) {
-            val resp = api.getRegionVideos(rid = tid, pn = page, ps = 30)
-            val list = resp.data?.archives?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
-            list
+            // ranking/v2 returns one ranking page; do not keep requesting it as feed pagination.
+            if (page > 1) return@safeApiCall emptyList()
+            val resp = getSignedRankingResponse(rid = tid, type = "all")
+            if (resp.code != 0) {
+                throw Exception(resp.message.ifBlank { "分区排行榜加载失败(${resp.code})" })
+            }
+            resp.data?.list?.map { it.toVideoItem() }?.filter { it.bvid.isNotEmpty() } ?: emptyList()
         }
     }
+}
+
+internal fun buildRankingWbiParams(
+    rid: Int,
+    type: String,
+    imgKey: String,
+    subKey: String,
+): Map<String, String> {
+    return WbiUtils.sign(
+        params = linkedMapOf(
+            "rid" to rid.toString(),
+            "type" to type,
+        ),
+        imgKey = imgKey,
+        subKey = subKey,
+    )
 }
 
 object FeedRepository : DefaultFeedRepository()

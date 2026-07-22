@@ -40,6 +40,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
+import com.bbttvv.app.core.player.PausePlaybackOnAppBackgroundEffect
 import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.store.player.DanmakuSettings
@@ -111,6 +112,11 @@ fun LivePlayerScreen(
     val latestPlaybackState = rememberUpdatedState(playbackState)
     val latestPlayerView = rememberUpdatedState(playerViewRef)
 
+    PausePlaybackOnAppBackgroundEffect(
+        onEnterBackground = viewModel::onAppBackgrounded,
+        onEnterForeground = viewModel::onAppForegrounded,
+    )
+
     RegisterTvFocusEscapeTarget(
         key = "live_player",
         priority = LIVE_PLAYER_FOCUS_ESCAPE_PRIORITY,
@@ -132,10 +138,12 @@ fun LivePlayerScreen(
         viewModel.finishSession(reason = "back_pressed")
         onBack()
     }
-    val handlePlayerKeyDown: (Int) -> Boolean = { keyCode ->
-        when (keyCode) {
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_ESCAPE -> {
+    val handlePlayerKeyEvent: (KeyEvent) -> Boolean = handleKey@ { event ->
+        val decision = resolveLivePlayerKeyDecision(event)
+        when (decision.command) {
+            null -> return@handleKey decision.isConsumed
+
+            LivePlayerKeyCommand.Back -> {
                 when {
                     activePanel != null -> activePanelKey = null
                     showDebugOverlay -> showDebugOverlay = false
@@ -144,7 +152,7 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
+            LivePlayerKeyCommand.MoveLeft -> {
                 showOverlay = true
                 if (activePanel != null) {
                     activePanelKey = null
@@ -154,7 +162,7 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+            LivePlayerKeyCommand.MoveRight -> {
                 showOverlay = true
                 if (activePanel == null) {
                     selectedActionIndex = (selectedActionIndex + 1).floorMod(actions.size)
@@ -162,7 +170,7 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_DPAD_UP -> {
+            LivePlayerKeyCommand.MoveUp -> {
                 if (activePanel != null && panelOptions.isNotEmpty()) {
                     selectedPanelIndex = (selectedPanelIndex - 1).floorMod(panelOptions.size)
                 } else {
@@ -171,7 +179,7 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
+            LivePlayerKeyCommand.MoveDown -> {
                 if (activePanel != null && panelOptions.isNotEmpty()) {
                     selectedPanelIndex = (selectedPanelIndex + 1).floorMod(panelOptions.size)
                 } else {
@@ -180,9 +188,7 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+            LivePlayerKeyCommand.Confirm -> {
                 val wasOverlayVisible = showOverlay
                 showOverlay = true
                 when {
@@ -216,20 +222,28 @@ fun LivePlayerScreen(
                 true
             }
 
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY,
-            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+            LivePlayerKeyCommand.TogglePlayback -> {
                 showOverlay = true
                 viewModel.togglePlayback()
                 true
             }
 
-            KeyEvent.KEYCODE_MENU -> {
+            LivePlayerKeyCommand.Play -> {
                 showOverlay = true
+                viewModel.playPlayback()
                 true
             }
 
-            else -> false
+            LivePlayerKeyCommand.Pause -> {
+                showOverlay = true
+                viewModel.pausePlayback()
+                true
+            }
+
+            LivePlayerKeyCommand.ShowMenu -> {
+                showOverlay = true
+                true
+            }
         }
     }
 
@@ -261,14 +275,11 @@ fun LivePlayerScreen(
         }
     }
 
-    DisposableEffect(hostView, handlePlayerKeyDown) {
+    DisposableEffect(hostView, handlePlayerKeyEvent) {
         hostView.isFocusable = true
         hostView.isFocusableInTouchMode = true
-        hostView.setOnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) {
-                return@setOnKeyListener false
-            }
-            handlePlayerKeyDown(keyCode)
+        hostView.setOnKeyListener { _, _, event ->
+            handlePlayerKeyEvent(event)
         }
         hostView.requestFocus()
         onDispose {
@@ -348,11 +359,7 @@ fun LivePlayerScreen(
             .focusRequester(keyCaptureRequester)
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                    handlePlayerKeyDown(keyEvent.nativeKeyEvent.keyCode)
-                } else {
-                    false
-                }
+                handlePlayerKeyEvent(keyEvent.nativeKeyEvent)
             }
     ) {
         AndroidView(
@@ -387,6 +394,7 @@ fun LivePlayerScreen(
             isEnabled = isDanmakuEnabled,
             isPlaying = playbackState.isPlaying,
             playbackPositionMs = playbackState.positionMs,
+            playbackSpeed = 1f,
             config = danmakuConfig,
             modifier = Modifier.fillMaxSize()
         )

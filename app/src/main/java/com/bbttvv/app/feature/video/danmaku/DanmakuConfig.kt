@@ -17,10 +17,17 @@ class DanmakuConfig {
     var strokeWidth = 1.5f
     var staticDurationSeconds = 4.0f
 
-    fun applyTo(engineConfig: EngineConfig, viewWidth: Int = 0, viewHeight: Int = 0) {
+    fun applyTo(
+        engineConfig: EngineConfig,
+        viewWidth: Int = 0,
+        viewHeight: Int = 0,
+        playbackSpeed: Float = 1f,
+    ) {
         engineConfig.apply {
             val layoutTextSize = 42f
+            val normalizedPlaybackSpeed = normalizeDanmakuPlaybackSpeed(playbackSpeed)
             common.alpha = (opacity * 255).toInt()
+            common.playSpeed = mapDanmakuPlaybackSpeedToEnginePercent(normalizedPlaybackSpeed)
             text.size = layoutTextSize
             text.typeface = resolveDanmakuTypeface(fontWeight)
             text.strokeWidth = if (strokeEnabled) strokeWidth else 0f
@@ -34,13 +41,16 @@ class DanmakuConfig {
 
             scroll.moveTime = resolveScrollDurationMillis(
                 scrollDurationSeconds = scrollDurationSeconds,
-                speedFactor = speedFactor
+                speedFactor = speedFactor,
+                playbackSpeed = normalizedPlaybackSpeed,
             )
             scroll.lineHeight = layoutTextSize * lineHeight.coerceIn(1.0f, 2.2f)
             scroll.marginTop = 0f
             scroll.lineCount = resolveVisibleLineCount(activeHeight, layoutTextSize, lineHeight)
 
-            val pinnedDuration = (staticDurationSeconds.coerceIn(2f, 12f) * 1000f).toLong()
+            val pinnedDuration = (
+                staticDurationSeconds.coerceIn(2f, 12f) * 1000f / normalizedPlaybackSpeed
+                ).toLong()
             top.lineHeight = scroll.lineHeight
             top.lineCount = (scroll.lineCount / 2).coerceAtLeast(1)
             top.showTimeMin = pinnedDuration
@@ -65,12 +75,21 @@ class DanmakuConfig {
 
     private fun resolveScrollDurationMillis(
         scrollDurationSeconds: Float,
-        speedFactor: Float
+        speedFactor: Float,
+        playbackSpeed: Float,
     ): Long {
-        return (scrollDurationSeconds.coerceIn(3f, 12f) * 1000f * speedFactor.coerceIn(0.6f, 1.6f))
+        return (
+            scrollDurationSeconds.coerceIn(3f, 12f) * 1000f *
+                speedFactor.coerceIn(0.6f, 1.6f) /
+                normalizeDanmakuPlaybackSpeed(playbackSpeed)
+            )
             .toLong()
-            .coerceIn(2400L, 18000L)
+            .coerceIn(1200L, 18000L)
     }
+}
+
+internal fun mapDanmakuPlaybackSpeedToEnginePercent(playbackSpeed: Float): Int {
+    return (normalizeDanmakuPlaybackSpeed(playbackSpeed) * 100f).toInt().coerceIn(10, 400)
 }
 
 private fun resolveDanmakuTypeface(fontWeight: Int): Typeface {

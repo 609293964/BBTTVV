@@ -11,6 +11,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.player.BasePlayerViewModel
+import com.bbttvv.app.core.player.resolvePlayWhenReadyForAppVisibility
 import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
@@ -143,6 +144,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         requestExitPlayer = { reason -> requestExitPlayer(reason) },
     )
     private var playerPollingJob: Job? = null
+    private var isAppInBackground: Boolean = false
+    private var isPlaybackSuspendedForBackground: Boolean = false
     private var settingsObservationJob: Job? = null
     private var sponsorPluginUiObservationJob: Job? = null
     private var playbackCdnFallbackJob: Job? = null
@@ -227,6 +230,13 @@ class PlayerViewModel : BasePlayerViewModel() {
     }
 
     private val playerListener = object : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            ensureMainThread("Player.Listener.onPlayWhenReadyChanged")
+            if (playWhenReady && (isAppInBackground || isPlaybackSuspendedForBackground)) {
+                playerEngine?.pause()
+            }
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             ensureMainThread("Player.Listener.onIsPlayingChanged")
             playbackHistoryReporter.syncPlaybackTracking(isActivelyPlaying = isPlaying)
@@ -268,7 +278,40 @@ class PlayerViewModel : BasePlayerViewModel() {
         player.addListener(playerListener)
         player.playbackParameters = PlaybackParameters(_uiState.value.playbackSpeed)
         startPlaybackSettingsObservation()
-        startPlayerPolling()
+        if (isAppInBackground) {
+            player.pause()
+            playerPollingJob?.cancel()
+            playerPollingJob = null
+        } else {
+            startPlayerPolling()
+        }
+        refreshPlayerSnapshot()
+    }
+
+    @MainThread
+    fun onAppBackgrounded() {
+        ensureMainThread("PlayerViewModel.onAppBackgrounded")
+        if (isAppInBackground) return
+        isAppInBackground = true
+        isPlaybackSuspendedForBackground = true
+        playerEngine?.pause()
+        playerPollingJob?.cancel()
+        playerPollingJob = null
+        playbackCdnFallbackJob?.cancel()
+        playbackCdnFallbackJob = null
+        playbackCdnFallbackState = PlaybackCdnFallbackState.Inactive
+        bufferingStallTracker.reset()
+        refreshPlayerSnapshot()
+    }
+
+    @MainThread
+    fun onAppForegrounded() {
+        ensureMainThread("PlayerViewModel.onAppForegrounded")
+        if (!isAppInBackground) return
+        isAppInBackground = false
+        if (exoPlayer != null) {
+            startPlayerPolling()
+        }
         refreshPlayerSnapshot()
     }
 
@@ -316,10 +359,16 @@ class PlayerViewModel : BasePlayerViewModel() {
         ensureMainThread("togglePlayback")
         val engine = playerEngine ?: return
         if (exoPlayer?.playbackState == Player.STATE_ENDED) {
+            isPlaybackSuspendedForBackground = false
             restartCurrentVideoFromBeginning()
             return
         }
-        if (engine.isPlaying) engine.pause() else engine.play()
+        if (engine.isPlaying) {
+            engine.pause()
+        } else {
+            isPlaybackSuspendedForBackground = false
+            engine.play()
+        }
         refreshPlayerSnapshot()
     }
 
@@ -352,7 +401,13 @@ class PlayerViewModel : BasePlayerViewModel() {
             targetPositionMs.coerceAtLeast(0L)
         }
         engine.seekTo(target)
-        engine.playWhenReady = resumePlayback
+        if (resumePlayback && !isAppInBackground) {
+            isPlaybackSuspendedForBackground = false
+        }
+        engine.playWhenReady = resolvePlayWhenReadyForAppVisibility(
+            requestedPlayWhenReady = resumePlayback,
+            isPlaybackSuppressed = isAppInBackground || isPlaybackSuspendedForBackground,
+        )
         refreshPlayerSnapshot()
     }
 
@@ -461,6 +516,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     fun confirmResumePlayback() {
         ensureMainThread("confirmResumePlayback")
         val prompt = _uiState.value.resumePrompt ?: return
+        isPlaybackSuspendedForBackground = false
         _uiState.update { it.copy(resumePrompt = null) }
         if (prompt.targetCid == playbackRuntime.cid) {
             val engine = playerEngine ?: return
@@ -489,6 +545,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     fun dismissResumePlaybackPrompt() {
         ensureMainThread("dismissResumePlaybackPrompt")
         if (_uiState.value.resumePrompt == null) return
+        isPlaybackSuspendedForBackground = false
         _uiState.update { it.copy(resumePrompt = null) }
         val engine = playerEngine ?: return
         engine.seekTo(0L)
@@ -621,9 +678,13 @@ class PlayerViewModel : BasePlayerViewModel() {
         playWhenReady: Boolean = true
     ) {
         ensureMainThread("applyPlaybackSource")
+        val effectivePlayWhenReady = resolvePlayWhenReadyForAppVisibility(
+            requestedPlayWhenReady = playWhenReady,
+            isPlaybackSuppressed = isAppInBackground || isPlaybackSuspendedForBackground,
+        )
         bufferingStallTracker.reset()
         playbackRuntime = playbackRuntime.copy(source = source)
-        armPlaybackCdnFallback(source = source, playWhenReady = playWhenReady)
+        armPlaybackCdnFallback(source = source, playWhenReady = effectivePlayWhenReady)
         if (source.segmentUrls.isNotEmpty()) {
             playSegmentedVideo(
                 segmentUrls = source.segmentUrls,
@@ -631,7 +692,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
                 referer = source.referer,
-                playWhenReady = playWhenReady
+                playWhenReady = effectivePlayWhenReady
             )
         } else if (PlayerSettingsCache.getAudioPassthrough() && source.selectedDashVideo != null) {
             val manifestContent = com.bbttvv.app.core.util.DashManifestBuilder.buildFromTracks(
@@ -644,7 +705,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
                 referer = source.referer,
-                playWhenReady = playWhenReady
+                playWhenReady = effectivePlayWhenReady
             )
             if (!played) {
                 playDashVideo(
@@ -655,7 +716,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                     seekToMs = seekToMs,
                     resetPlayer = resetPlayer,
                     referer = source.referer,
-                    playWhenReady = playWhenReady
+                    playWhenReady = effectivePlayWhenReady
                 )
             }
         } else {
@@ -667,7 +728,7 @@ class PlayerViewModel : BasePlayerViewModel() {
                 seekToMs = seekToMs,
                 resetPlayer = resetPlayer,
                 referer = source.referer,
-                playWhenReady = playWhenReady
+                playWhenReady = effectivePlayWhenReady
             )
         }
     }

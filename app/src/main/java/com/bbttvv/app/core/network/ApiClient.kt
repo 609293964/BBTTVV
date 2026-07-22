@@ -125,10 +125,7 @@ interface BilibiliApi {
     ): PopularResponse  //  使用专用响应类型
 
     @GET("x/web-interface/ranking/v2")
-    suspend fun getRankingVideos(
-        @Query("rid") rid: Int = 0,
-        @Query("type") type: String = "all"
-    ): RankingResponse
+    suspend fun getRankingVideosWbi(@QueryMap params: Map<String, String>): RankingResponse
 
     @GET("x/web-interface/popular/precious")
     suspend fun getPopularPreciousVideos(): PopularPreciousResponse

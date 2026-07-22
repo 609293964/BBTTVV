@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,6 +62,32 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 internal const val PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION = 0.30f
+private const val PLAYER_COMMENT_AVATAR_INITIAL_DELAY_MS = 140L
+private const val PLAYER_COMMENT_AVATAR_STAGGER_MS = 50L
+private const val PLAYER_COMMENT_AVATAR_STAGGER_SLOTS = 9
+
+internal fun resolvePlayerDanmakuVisibleWidthFraction(isCommentsPanelVisible: Boolean): Float =
+    if (isCommentsPanelVisible) 1f - PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION else 1f
+
+internal fun resolvePlayerCommentAvatarLoadDelayMs(itemIndex: Int): Long {
+    val staggerSlot = itemIndex.coerceAtLeast(0) % PLAYER_COMMENT_AVATAR_STAGGER_SLOTS
+    return PLAYER_COMMENT_AVATAR_INITIAL_DELAY_MS + staggerSlot * PLAYER_COMMENT_AVATAR_STAGGER_MS
+}
+
+internal fun shouldAutoLoadPlayerComments(
+    hasMore: Boolean,
+    isAppending: Boolean,
+    hasUserScrolled: Boolean,
+    lastVisibleIndex: Int,
+    totalItems: Int,
+    lastRequestedItemCount: Int,
+): Boolean =
+    hasMore &&
+        !isAppending &&
+        hasUserScrolled &&
+        totalItems > 0 &&
+        totalItems != lastRequestedItemCount &&
+        lastVisibleIndex >= totalItems - 2
 
 @Composable
 internal fun PlayerCommentsPanel(
@@ -87,6 +114,8 @@ internal fun PlayerCommentsPanel(
     }
     var lastFocusedCommentKey by remember(isViewingThread, uiState.sortMode) { mutableStateOf<String?>(null) }
     var pendingAppendFocusKey by remember(isViewingThread, uiState.sortMode) { mutableStateOf<String?>(null) }
+    var hasUserScrolled by remember(isViewingThread, uiState.sortMode) { mutableStateOf(false) }
+    var lastAutoLoadItemCount by remember(isViewingThread, uiState.sortMode) { mutableIntStateOf(-1) }
     val currentItemKeys = remember(isViewingThread, listItems) {
         listItems.mapIndexed { index, reply ->
             playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
@@ -121,19 +150,33 @@ internal fun PlayerCommentsPanel(
         snapshotFlow {
             val layoutInfo = listState.layoutInfo
             val totalItems = layoutInfo.totalItemsCount
+            val firstVisibleIndex = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
             val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisibleIndex to totalItems
+            Triple(firstVisibleIndex, lastVisibleIndex, totalItems)
         }
             .distinctUntilChanged()
-            .collect { (lastVisibleIndex, totalItems) ->
-                if (!hasMore || isAppending || totalItems <= 0) return@collect
-                if (lastVisibleIndex < totalItems - 2) return@collect
+            .collect { (firstVisibleIndex, lastVisibleIndex, totalItems) ->
+                if (firstVisibleIndex > 0) {
+                    hasUserScrolled = true
+                }
+                if (!shouldAutoLoadPlayerComments(
+                        hasMore = hasMore,
+                        isAppending = isAppending,
+                        hasUserScrolled = hasUserScrolled,
+                        lastVisibleIndex = lastVisibleIndex,
+                        totalItems = totalItems,
+                        lastRequestedItemCount = lastAutoLoadItemCount,
+                    )
+                ) {
+                    return@collect
+                }
+                lastAutoLoadItemCount = totalItems
                 onLoadMore()
             }
     }
 
     val isLightTheme = LocalIsLightTheme.current
-    val panelBgColor = if (isLightTheme) Color(0xFFF8F9FB) else Color(0xF5141518)
+    val panelBgColor = if (isLightTheme) Color(0xFFF8F9FB) else Color(0xFF141518)
     val dividerColor = if (isLightTheme) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.16f)
     val mainTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
     val subTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f)
@@ -286,6 +329,7 @@ internal fun PlayerCommentsPanel(
                                 reply = reply,
                                 onOpenThread = onOpenThread,
                                 showReplyAction = !isViewingThread,
+                                avatarLoadIndex = index,
                                 focusRequester = commentFocusRequester,
                                 onFocused = { lastFocusedCommentKey = commentKey },
                             )
@@ -416,6 +460,7 @@ private fun PlayerCommentListItem(
     reply: ReplyItem,
     onOpenThread: (ReplyItem) -> Unit,
     showReplyAction: Boolean,
+    avatarLoadIndex: Int = 0,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
@@ -482,6 +527,7 @@ private fun PlayerCommentListItem(
                 PlayerCommentAvatar(
                     avatarUrl = reply.member.avatar,
                     username = reply.member.uname,
+                    loadIndex = avatarLoadIndex,
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -592,8 +638,18 @@ private fun PlayerCommentListItem(
 private fun PlayerCommentAvatar(
     avatarUrl: String,
     username: String,
+    loadIndex: Int,
 ) {
     val isLightTheme = LocalIsLightTheme.current
+    var isImageLoadAllowed by remember(avatarUrl, loadIndex) {
+        mutableStateOf(avatarUrl.isBlank())
+    }
+    LaunchedEffect(avatarUrl, loadIndex) {
+        if (avatarUrl.isBlank()) return@LaunchedEffect
+        withFrameNanos { }
+        delay(resolvePlayerCommentAvatarLoadDelayMs(loadIndex))
+        isImageLoadAllowed = true
+    }
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -601,7 +657,7 @@ private fun PlayerCommentAvatar(
             .background(if (isLightTheme) Color(0xFFE7E9EE) else Color.White.copy(alpha = 0.14f)),
         contentAlignment = Alignment.Center,
     ) {
-        if (avatarUrl.isNotBlank()) {
+        if (avatarUrl.isNotBlank() && isImageLoadAllowed) {
             AsyncImage(
                 model = rememberSizedImageModel(
                     url = avatarUrl,

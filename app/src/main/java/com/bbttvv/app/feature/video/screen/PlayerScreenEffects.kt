@@ -20,6 +20,7 @@ import androidx.media3.ui.PlayerView
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
+import com.bbttvv.app.core.player.PausePlaybackOnAppBackgroundEffect
 import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.util.ScreenUtils
 import com.bbttvv.app.feature.video.viewmodel.PlayerEvent
@@ -84,6 +85,11 @@ internal fun PlayerScreenEffectHost(
     val latestPlayerView = rememberUpdatedState(args.playerView)
     val latestOnExitPlayer = rememberUpdatedState(onExitPlayer)
     val playerReleaseGuard = remember(args.exoPlayer) { ExoPlayerReleaseGuard(args.exoPlayer) }
+
+    PausePlaybackOnAppBackgroundEffect(
+        onEnterBackground = viewModel::onAppBackgrounded,
+        onEnterForeground = viewModel::onAppForegrounded,
+    )
 
     BackHandler {
         when {

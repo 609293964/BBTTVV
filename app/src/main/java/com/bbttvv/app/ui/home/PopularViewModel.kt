@@ -21,23 +21,23 @@ import kotlinx.coroutines.withContext
 
 data class PopularCategory(
     val label: String,
-    val tid: Int? = null
+    val rid: Int? = null
 )
 
 val defaultPopularCategories = listOf(
     PopularCategory(label = "热门"),
-    PopularCategory(label = "动画", tid = 1),
-    PopularCategory(label = "音乐", tid = 3),
-    PopularCategory(label = "舞蹈", tid = 129),
-    PopularCategory(label = "游戏", tid = 4),
-    PopularCategory(label = "知识", tid = 36),
-    PopularCategory(label = "科技", tid = 188),
-    PopularCategory(label = "运动", tid = 234),
-    PopularCategory(label = "汽车", tid = 223),
-    PopularCategory(label = "生活", tid = 160),
-    PopularCategory(label = "美食", tid = 211),
-    PopularCategory(label = "动物圈", tid = 217),
-    PopularCategory(label = "影视", tid = 181)
+    PopularCategory(label = "动画", rid = 1005),
+    PopularCategory(label = "音乐", rid = 1003),
+    PopularCategory(label = "舞蹈", rid = 1004),
+    PopularCategory(label = "游戏", rid = 1008),
+    PopularCategory(label = "知识", rid = 1010),
+    PopularCategory(label = "科技", rid = 1012),
+    PopularCategory(label = "运动", rid = 1018),
+    PopularCategory(label = "汽车", rid = 1013),
+    PopularCategory(label = "娱乐", rid = 1002),
+    PopularCategory(label = "美食", rid = 1020),
+    PopularCategory(label = "动物圈", rid = 1024),
+    PopularCategory(label = "影视", rid = 1001)
 )
 
 data class PopularUiState(
@@ -141,12 +141,12 @@ class PopularViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                Logger.d("PopularViewModel", "Loading category=${category.label}, tid=${category.tid}, page=$page")
+                Logger.d("PopularViewModel", "Loading category=${category.label}, rid=${category.rid}, page=$page")
                 val fetchPage: suspend (Int) -> PagedFeedGridState.Page<Int, VideoItem, VideoItem> = { pageKey ->
-                        val incomingVideos = if (category.tid == null) {
+                        val incomingVideos = if (category.rid == null) {
                             FeedRepository.getPopularVideos(page = pageKey)
                         } else {
-                            FeedRepository.getRegionVideos(tid = category.tid, page = pageKey)
+                            FeedRepository.getRegionVideos(tid = category.rid, page = pageKey)
                         }.getOrElse { error -> throw error }
 
                         PagedFeedGridState.Page(

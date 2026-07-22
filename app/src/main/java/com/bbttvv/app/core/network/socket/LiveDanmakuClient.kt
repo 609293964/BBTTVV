@@ -28,6 +28,11 @@ import kotlin.math.min
 import kotlin.math.pow
 
 internal val LIVE_DANMAKU_AUTH_PROTOCOL_VERSION = DanmakuProtocol.PROTO_VER_BROTLI
+internal const val LIVE_DANMAKU_MAX_TRANSPORT_RETRIES = 6
+
+internal fun shouldRetryLiveDanmakuTransport(retryCount: Int): Boolean {
+    return retryCount.coerceAtLeast(0) < LIVE_DANMAKU_MAX_TRANSPORT_RETRIES
+}
 
 data class LiveDanmakuEndpoint(
     val url: String,
@@ -320,6 +325,10 @@ class LiveDanmakuClient(
             refreshBeforeNextReconnect = true
         }
         if (reconnectJob?.isActive == true) return
+        if (!shouldRetryLiveDanmakuTransport(retryCount)) {
+            failConnection("Live danmaku reconnect attempts exhausted")
+            return
+        }
 
         reconnectJob = scope.launch {
             val delayMs = min(

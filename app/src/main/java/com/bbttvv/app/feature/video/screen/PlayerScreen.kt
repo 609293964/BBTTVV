@@ -272,6 +272,8 @@ fun PlayerScreen(
             viewModel = viewModel,
             exoPlayer = exoPlayer,
             isEnabled = isDanmakuEnabled,
+            playbackSpeed = uiState.playbackSpeed,
+            visibleWidthFraction = resolvePlayerDanmakuVisibleWidthFraction(isCommentsPanelVisible),
             config = danmakuConfig,
         )
 
@@ -354,6 +356,8 @@ private fun PlayerDanmakuSection(
     viewModel: PlayerViewModel,
     exoPlayer: ExoPlayer,
     isEnabled: Boolean,
+    playbackSpeed: Float,
+    visibleWidthFraction: Float,
     config: DanmakuConfig,
 ) {
     val payload by viewModel.danmakuPayload.collectAsStateWithLifecycle()
@@ -370,6 +374,8 @@ private fun PlayerDanmakuSection(
         payload = payload,
         isEnabled = isEnabled,
         playbackState = livePlaybackState,
+        playbackSpeed = playbackSpeed,
+        visibleWidthFraction = visibleWidthFraction,
         config = config,
     )
 }

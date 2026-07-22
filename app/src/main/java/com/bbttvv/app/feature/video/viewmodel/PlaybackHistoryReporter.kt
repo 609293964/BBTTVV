@@ -30,7 +30,7 @@ internal data class PlaybackHistoryPlaybackSnapshot(
     val isPlaying: Boolean,
 )
 
-private data class PlaybackHeartbeatSnapshot(
+internal data class PlaybackHeartbeatSnapshot(
     val playedTimeSec: Long,
     val realPlayedTimeSec: Long,
     val durationMs: Long,
@@ -210,18 +210,13 @@ internal class PlaybackHistoryReporter(
         )
         session = heartbeatRuntime
         val snapshot = buildHeartbeatSnapshot(nowElapsedMs = nowElapsedMs)
-        val shouldSend = if (forceFlush) {
-            snapshot.playedTimeSec > 0L ||
-                snapshot.realPlayedTimeSec > 0L ||
-                session.lastReportedSnapshot == null
-        } else {
-            playback.isPlaying &&
-                (
-                    session.lastReportedSnapshot == null ||
-                        snapshot.playedTimeSec > session.lastReportedSnapshot.playedTimeSec ||
-                        snapshot.realPlayedTimeSec > session.lastReportedSnapshot.realPlayedTimeSec
-                    )
-        }
+        val shouldSend = shouldSendHeartbeatReport(
+            forceFlush = forceFlush,
+            isPlaying = playback.isPlaying,
+            playedTimeSec = snapshot.playedTimeSec,
+            realPlayedTimeSec = snapshot.realPlayedTimeSec,
+            lastReportedSnapshot = session.lastReportedSnapshot
+        )
         if (!shouldSend) return null
 
         if (session.startTsSec <= 0L) {
@@ -331,4 +326,21 @@ internal class PlaybackHistoryReporter(
     private companion object {
         const val TAG = "PlayerVM"
     }
+}
+
+internal fun shouldSendHeartbeatReport(
+    forceFlush: Boolean,
+    isPlaying: Boolean,
+    playedTimeSec: Long,
+    realPlayedTimeSec: Long,
+    lastReportedSnapshot: PlaybackHeartbeatSnapshot?
+): Boolean {
+    if (forceFlush) {
+        return playedTimeSec > 0L || realPlayedTimeSec > 0L
+    }
+    return isPlaying && (
+        lastReportedSnapshot == null ||
+            playedTimeSec > lastReportedSnapshot.playedTimeSec ||
+            realPlayedTimeSec > lastReportedSnapshot.realPlayedTimeSec
+        )
 }

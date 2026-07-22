@@ -560,9 +560,23 @@ object DynamicRepository {
 }
 
 private fun DynamicItem.hasRenderableVideoCard(): Boolean {
-    val major = modules.module_dynamic?.major ?: return false
-    return major.archive?.bvid?.isNotBlank() == true ||
-        major.ugc_season?.archive?.bvid?.isNotBlank() == true
+    return resolveRenderableVideoSource() != null
+}
+
+internal fun DynamicItem.resolveRenderableVideoSource(): DynamicItem? {
+    var candidate: DynamicItem? = this
+    repeat(4) {
+        val current = candidate ?: return null
+        val major = current.modules.module_dynamic?.major
+        if (
+            major?.archive?.bvid?.isNotBlank() == true ||
+            major?.ugc_season?.archive?.bvid?.isNotBlank() == true
+        ) {
+            return current
+        }
+        candidate = current.orig
+    }
+    return null
 }
 
 enum class DynamicFeedScope {

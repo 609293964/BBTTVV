@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.danmaku
 
+import android.graphics.Rect
 import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,9 +17,19 @@ import com.bytedance.danmaku.render.engine.DanmakuView
 import com.bytedance.danmaku.render.engine.control.DanmakuController
 import com.bytedance.danmaku.render.engine.data.DanmakuData
 import com.bytedance.danmaku.render.engine.render.draw.text.TextData
+import kotlin.math.roundToInt
 
 private const val DANMAKU_OVERLAY_TAG = "DanmakuOverlay"
 private const val DEFAULT_DANMAKU_TEXT_SIZE = 25f
+
+internal fun resolveDanmakuClipWidthPx(
+    viewportWidth: Int,
+    visibleWidthFraction: Float,
+): Int {
+    val width = viewportWidth.coerceAtLeast(0)
+    val fraction = visibleWidthFraction.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 1f
+    return (width * fraction).roundToInt().coerceIn(0, width)
+}
 
 private fun DanmakuRenderPayload.renderToken(): Long {
     var result = sourceLabel.hashCode()
@@ -99,6 +110,8 @@ fun DanmakuOverlay(
     isEnabled: Boolean,
     isPlaying: Boolean,
     playbackPositionMs: Long,
+    playbackSpeed: Float = 1f,
+    visibleWidthFraction: Float = 1f,
     config: DanmakuConfig,
     modifier: Modifier = Modifier
 ) {
@@ -125,7 +138,9 @@ fun DanmakuOverlay(
         viewportWidth: Int,
         viewportHeight: Int,
         config: DanmakuConfig,
-        configToken: Long
+        configToken: Long,
+        playbackSpeed: Float,
+        elapsedRealtimeMs: Long,
     ) {
         Logger.w(
             DANMAKU_OVERLAY_TAG,
@@ -135,7 +150,12 @@ fun DanmakuOverlay(
             "hardSync reason=$reason size=${viewportWidth}x$viewportHeight position=$positionMs play=$play total=${targetPayload.totalCount}"
         }
         targetController.pause()
-        config.applyTo(targetController.config, viewportWidth, viewportHeight)
+        config.applyTo(
+            engineConfig = targetController.config,
+            viewWidth = viewportWidth,
+            viewHeight = viewportHeight,
+            playbackSpeed = playbackSpeed,
+        )
         targetController.setData(targetRenderList, 0L)
         targetController.start(positionMs.coerceAtLeast(0L))
         targetController.invalidateView()
@@ -150,6 +170,8 @@ fun DanmakuOverlay(
             viewportHeight = viewportHeight,
             positionMs = positionMs,
             isPlaying = play,
+            playbackSpeed = playbackSpeed,
+            elapsedRealtimeMs = elapsedRealtimeMs,
         )
     }
 
@@ -179,6 +201,22 @@ fun DanmakuOverlay(
             val viewAttached = view.isAttachedToWindow
             val viewportWidth = view.width.coerceAtLeast(0)
             val viewportHeight = view.height.coerceAtLeast(0)
+            val targetClipWidth = resolveDanmakuClipWidthPx(viewportWidth, visibleWidthFraction)
+            val currentClipBounds = view.clipBounds
+            if (targetClipWidth >= viewportWidth) {
+                if (currentClipBounds != null) {
+                    view.clipBounds = null
+                }
+            } else if (
+                currentClipBounds == null ||
+                currentClipBounds.left != 0 ||
+                currentClipBounds.top != 0 ||
+                currentClipBounds.right != targetClipWidth ||
+                currentClipBounds.bottom != viewportHeight
+            ) {
+                view.clipBounds = Rect(0, 0, targetClipWidth, viewportHeight)
+            }
+            val elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
             val targetAlpha = if (isEnabled) config.opacity else 0f
             if (view.alpha != targetAlpha) {
                 view.alpha = targetAlpha
@@ -214,6 +252,8 @@ fun DanmakuOverlay(
                     configToken = configToken,
                     isPlaying = isPlaying,
                     playbackPositionMs = playbackPositionMs,
+                    playbackSpeed = playbackSpeed,
+                    elapsedRealtimeMs = elapsedRealtimeMs,
                 )
             ) {
                 is DanmakuOverlaySyncDecision.WaitForAttach -> {
@@ -247,7 +287,9 @@ fun DanmakuOverlay(
                         viewportWidth = viewportWidth,
                         viewportHeight = viewportHeight,
                         config = config,
-                        configToken = configToken
+                        configToken = configToken,
+                        playbackSpeed = playbackSpeed,
+                        elapsedRealtimeMs = elapsedRealtimeMs,
                     )
                     return@AndroidView
                 }
@@ -263,6 +305,25 @@ fun DanmakuOverlay(
                     }
                     syncState.notifySoftPlayStateObserved(isPlaying)
                     syncState.notifyPositionObserved(playbackPositionMs)
+                }
+
+                is DanmakuOverlaySyncDecision.SoftSyncTimeline -> {
+                    Logger.d(DANMAKU_OVERLAY_TAG) {
+                        "softSync reason=${syncDecision.reason} position=$playbackPositionMs speed=$playbackSpeed"
+                    }
+                    targetController.config.common.playSpeed =
+                        mapDanmakuPlaybackSpeedToEnginePercent(playbackSpeed)
+                    targetController.start(playbackPositionMs.coerceAtLeast(0L))
+                    if (!isPlaying) {
+                        targetController.pause()
+                    }
+                    targetController.invalidateView()
+                    syncState.notifySoftTimelineSynced(
+                        positionMs = playbackPositionMs,
+                        isPlaying = isPlaying,
+                        playbackSpeed = playbackSpeed,
+                        elapsedRealtimeMs = elapsedRealtimeMs,
+                    )
                 }
 
                 DanmakuOverlaySyncDecision.Noop -> {

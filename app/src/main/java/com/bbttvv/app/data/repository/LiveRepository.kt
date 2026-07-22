@@ -6,6 +6,7 @@ import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,6 +31,8 @@ object LiveRepository {
         return try {
             val resp = api.getLiveRoomInit(roomId)
             resp.data?.roomId?.takeIf { it > 0L } ?: roomId
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             roomId
         }
@@ -196,6 +199,8 @@ object LiveRepository {
             // 使用旧版 API 补充可读画质描述，但不再把 legacy durl 当作主播放来源
             val legacyResp = try {
                 api.getLivePlayUrlLegacy(cid = realRoomId, qn = qn)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("LiveRepo", "Legacy API failed: ${e.message}")
                 null
@@ -210,6 +215,8 @@ object LiveRepository {
             com.bbttvv.app.core.util.Logger.d("LiveRepo", "🔴 Using xlive API as primary stream source...")
             val resp = try {
                 api.getLivePlayUrl(roomId = realRoomId, quality = qn)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("LiveRepo", "xlive API failed: ${e.message}")
                 null
@@ -229,6 +236,8 @@ object LiveRepository {
             } else {
                 Result.failure(Exception("获取直播流失败: xlive API 和 旧版 API 均不可用"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             com.bbttvv.app.core.util.Logger.e(
                 "LiveRepo",
@@ -321,4 +330,3 @@ object LiveRepository {
         }
     }
 }
-

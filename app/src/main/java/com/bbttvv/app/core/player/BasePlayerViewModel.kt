@@ -510,21 +510,26 @@ abstract class BasePlayerViewModel : ViewModel() {
     }
 
     @MainThread
-    protected fun publishDanmakuPayload(
+    protected suspend fun publishDanmakuPayload(
         parsed: ParsedDanmaku?,
         sourceLabel: String,
     ) {
         ensureMainThread("publishDanmakuPayload")
-        danmakuSource = parsed
-        danmakuFilterContext = PlayerDanmakuFilterContext()
-        danmakuSourceVersion += 1
-        _danmakuPayload.value = parsed?.let {
-            PlayerDanmakuPipeline.buildRenderPayload(
-                parsed = it,
-                sourceLabel = sourceLabel,
-                filterContext = danmakuFilterContext,
-            )
+        val filterContext = PlayerDanmakuFilterContext()
+        val payload = withContext(Dispatchers.Default) {
+            parsed?.let {
+                PlayerDanmakuPipeline.buildRenderPayload(
+                    parsed = it,
+                    sourceLabel = sourceLabel,
+                    filterContext = filterContext,
+                )
+            }
         }
+        currentCoroutineContext().ensureActive()
+        danmakuSource = parsed
+        danmakuFilterContext = filterContext
+        danmakuSourceVersion += 1
+        _danmakuPayload.value = payload
     }
 
     /**

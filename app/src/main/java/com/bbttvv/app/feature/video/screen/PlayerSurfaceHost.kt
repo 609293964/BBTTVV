@@ -38,6 +38,8 @@ internal fun PlayerDanmakuOverlayHost(
     payload: DanmakuRenderPayload?,
     isEnabled: Boolean,
     playbackState: State<PlayerPlaybackState>,
+    playbackSpeed: Float,
+    visibleWidthFraction: Float,
     config: DanmakuConfig,
     modifier: Modifier = Modifier,
 ) {
@@ -49,6 +51,8 @@ internal fun PlayerDanmakuOverlayHost(
         isEnabled = isEnabled,
         isPlaying = currentPlaybackState.isPlaying,
         playbackPositionMs = currentPlaybackState.positionMs,
+        playbackSpeed = playbackSpeed,
+        visibleWidthFraction = visibleWidthFraction,
         config = config,
         modifier = modifier.fillMaxSize(),
     )

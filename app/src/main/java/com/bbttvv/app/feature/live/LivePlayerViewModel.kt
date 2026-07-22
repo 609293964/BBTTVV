@@ -1,15 +1,16 @@
 package com.bbttvv.app.feature.live
 
+import android.os.SystemClock
 import androidx.annotation.MainThread
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.bbttvv.app.core.network.NetworkModule
-import com.bbttvv.app.core.network.socket.DanmakuProtocol
 import com.bbttvv.app.core.network.socket.LiveDanmakuClient
 import com.bbttvv.app.core.network.socket.LiveDanmakuConnectionState
 import com.bbttvv.app.core.player.BasePlayerViewModel
+import com.bbttvv.app.core.player.resolvePlayWhenReadyForAppVisibility
 import com.bbttvv.app.core.player.PlayerAudioBalanceController
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.CrashReporter
@@ -22,7 +23,10 @@ import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.data.repository.LiveRepository
 import com.bbttvv.app.feature.video.danmaku.ParsedDanmaku
 import com.bbttvv.app.feature.video.danmaku.WeightedTextData
+import com.bbttvv.app.feature.video.viewmodel.PlaybackBufferingStallSample
+import com.bbttvv.app.feature.video.viewmodel.PlaybackBufferingStallTracker
 import com.bytedance.danmaku.render.engine.utils.LAYER_TYPE_SCROLL
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -36,9 +40,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import kotlin.math.max
 
 private const val LIVE_DANMAKU_SOURCE_LABEL = "LIVE"
 private const val LIVE_DANMAKU_MAX_COUNT = 180
@@ -174,23 +175,6 @@ data class LivePlayerUiState(
     val streamUrl: String = "",
 )
 
-private data class LiveStreamCandidate(
-    val key: String,
-    val lineKey: String,
-    val lineBaseLabel: String,
-    val lineSubtitle: String?,
-    val protocolName: String,
-    val protocolLabel: String,
-    val formatName: String,
-    val formatLabel: String,
-    val codecName: String,
-    val codecLabel: String,
-    val currentQn: Int,
-    val host: String,
-    val hostLabel: String,
-    val url: String,
-)
-
 private data class LiveStreamLoadResult(
     val streamUrl: String,
     val qualityOptions: List<LiveQualityOption>,
@@ -208,6 +192,9 @@ private data class LivePlaybackRuntimeState(
     val realRoomId: Long = 0L,
     val sessionStarted: Boolean = false,
     val streamCandidates: List<LiveStreamCandidate> = emptyList(),
+    val selectedCandidateKey: String = "",
+    val failedCandidateKeys: Set<String> = emptySet(),
+    val recoveryRefreshAttempted: Boolean = false,
 )
 
 class LivePlayerViewModel : BasePlayerViewModel() {
@@ -220,6 +207,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private var runtimeState = LivePlaybackRuntimeState()
     private var liveLoadJob: Job? = null
     private var playerPollingJob: Job? = null
+    private var isAppInBackground: Boolean = false
+    private var isPlaybackSuspendedForBackground: Boolean = false
+    private var isPlaybackPausedByUser: Boolean = false
     private var statusClearJob: Job? = null
     private var danmakuCollectJob: Job? = null
     private var danmakuPublishJob: Job? = null
@@ -229,8 +219,16 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private val liveDanmakuBuffer = ArrayDeque<WeightedTextData>()
     private var lastLiveDanmakuShowAtMs: Long = 0L
     private var liveDanmakuSequenceId: Long = 1L
+    private val liveBufferingStallTracker = PlaybackBufferingStallTracker()
 
     private val playerListener = object : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            ensureMainThread("LivePlayer.Listener.onPlayWhenReadyChanged")
+            if (playWhenReady && isPlaybackSuppressed()) {
+                playerEngine?.pause()
+            }
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             ensureMainThread("LivePlayer.Listener.onIsPlayingChanged")
             refreshPlaybackState()
@@ -253,6 +251,15 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             ensureMainThread("LivePlayer.Listener.onPlayerError")
             val roomId = _uiState.value.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId
             CrashReporter.markLivePlaybackStage("player_error")
+            if (
+                !isAppInBackground &&
+                recoverLivePlayback(
+                    triggerLabel = "播放错误",
+                    preferCompatibleCodec = shouldPreferCompatibleCodec(error),
+                )
+            ) {
+                return
+            }
             CrashReporter.reportLiveError(
                 roomId = roomId,
                 errorType = "player_error",
@@ -276,7 +283,41 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         super.attachPlayer(player)
         player.addListener(playerListener)
         applyAudioBalance(LiveAudioBalanceMode.fromKey(_uiState.value.audioBalanceKey))
-        startPlayerPolling()
+        if (isAppInBackground) {
+            player.pause()
+            playerPollingJob?.cancel()
+            playerPollingJob = null
+        } else {
+            startPlayerPolling()
+        }
+        refreshPlaybackState()
+    }
+
+    @MainThread
+    fun onAppBackgrounded() {
+        ensureMainThread("LivePlayerViewModel.onAppBackgrounded")
+        if (isAppInBackground) return
+        isAppInBackground = true
+        isPlaybackSuspendedForBackground = true
+        playerEngine?.pause()
+        liveBufferingStallTracker.reset()
+        playerPollingJob?.cancel()
+        playerPollingJob = null
+        stopLiveDanmaku(clearPayload = false)
+        refreshPlaybackState()
+    }
+
+    @MainThread
+    fun onAppForegrounded() {
+        ensureMainThread("LivePlayerViewModel.onAppForegrounded")
+        if (!isAppInBackground) return
+        isAppInBackground = false
+        if (exoPlayer != null) {
+            startPlayerPolling()
+        }
+        if (isDanmakuEnabled.value) {
+            connectLiveDanmakuIfNeeded(runtimeState.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId)
+        }
         refreshPlaybackState()
     }
 
@@ -310,6 +351,11 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         }
 
         val isNewRoom = runtimeState.roomId != roomId
+        if (isNewRoom) {
+            isPlaybackPausedByUser = false
+            isPlaybackSuspendedForBackground = isAppInBackground
+            liveBufferingStallTracker.reset()
+        }
         val bitrateMode = if (isNewRoom) {
             DEFAULT_LIVE_BITRATE_MODE
         } else {
@@ -362,6 +408,8 @@ class LivePlayerViewModel : BasePlayerViewModel() {
 
             val detailResult = detailTask.await()
             val streamResult = streamTask.await()
+            ensureActive()
+            if (runtimeState.roomId != roomId) return@launch
 
             if (streamResult.isFailure) {
                 val error = streamResult.exceptionOrNull()
@@ -416,11 +464,15 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                             }
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.e("LivePlayerVM", "Failed to load live room detail fallback: roomId=$roomId", e)
                 }
             }
 
+            ensureActive()
+            if (runtimeState.roomId != roomId) return@launch
             val stream = streamResult.getOrThrow()
             val resolvedRoomId = roomInfo?.roomId?.takeIf { it > 0L } ?: roomId
             val title = resolveDisplayText(roomInfo?.title) ?: "直播间 $resolvedRoomId"
@@ -428,7 +480,10 @@ class LivePlayerViewModel : BasePlayerViewModel() {
 
             runtimeState = runtimeState.copy(
                 realRoomId = resolvedRoomId,
-                streamCandidates = stream.candidates
+                streamCandidates = stream.candidates,
+                selectedCandidateKey = stream.selectedCandidate.key,
+                failedCandidateKeys = emptySet(),
+                recoveryRefreshAttempted = false,
             )
             _uiState.update {
                 LivePlayerUiState(
@@ -479,10 +534,13 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                 url = stream.streamUrl,
                 referer = "https://live.bilibili.com/$resolvedRoomId",
                 resetPlayer = true,
-                playWhenReady = true
+                playWhenReady = resolvePlayWhenReadyForAppVisibility(
+                    requestedPlayWhenReady = true,
+                    isPlaybackSuppressed = isPlaybackSuppressed(),
+                )
             )
             refreshPlaybackState()
-            if (isDanmakuEnabled.value) {
+            if (isDanmakuEnabled.value && !isAppInBackground) {
                 connectLiveDanmakuIfNeeded(resolvedRoomId)
             }
         }
@@ -604,10 +662,30 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         ensureMainThread("togglePlayback")
         val engine = playerEngine ?: return
         if (engine.isPlaying) {
-            engine.pause()
+            pausePlayback()
         } else {
-            engine.play()
+            playPlayback()
         }
+    }
+
+    @MainThread
+    fun playPlayback() {
+        ensureMainThread("playPlayback")
+        if (isAppInBackground) return
+        isPlaybackPausedByUser = false
+        isPlaybackSuspendedForBackground = false
+        lastLiveDanmakuShowAtMs = getPlayerCurrentPosition().coerceAtLeast(0L)
+        playerEngine?.play()
+        refreshPlaybackState()
+    }
+
+    @MainThread
+    fun pausePlayback() {
+        ensureMainThread("pausePlayback")
+        isPlaybackPausedByUser = true
+        playerEngine?.pause()
+        liveBufferingStallTracker.reset()
+        resetLiveDanmakuBuffer(clearPayload = true)
         refreshPlaybackState()
     }
 
@@ -621,7 +699,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             postStatus("弹幕已关闭")
         } else {
             postStatus("弹幕已开启")
-            connectLiveDanmakuIfNeeded(runtimeState.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId)
+            if (!isAppInBackground) {
+                connectLiveDanmakuIfNeeded(runtimeState.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId)
+            }
         }
     }
 
@@ -647,6 +727,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun finishSession(reason: String) {
         ensureMainThread("finishSession")
+        liveLoadJob?.cancel()
+        liveLoadJob = null
+        liveBufferingStallTracker.reset()
         stopLiveDanmaku(clearPayload = true)
         if (!runtimeState.sessionStarted) return
         runtimeState = runtimeState.copy(sessionStarted = false)
@@ -679,7 +762,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private fun refreshPlaybackState() {
         ensureMainThread("refreshPlaybackState")
         val player = exoPlayer
-        _playbackState.value = if (player == null) {
+        val nextState = if (player == null) {
             LivePlayerPlaybackState()
         } else {
             LivePlayerPlaybackState(
@@ -687,6 +770,29 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,
                 playerState = player.playbackState,
                 positionMs = player.currentPosition.coerceAtLeast(0L)
+            )
+        }
+        _playbackState.value = nextState
+        if (player == null || isPlaybackSuppressed()) {
+            liveBufferingStallTracker.reset()
+            return
+        }
+        val shouldRecover = liveBufferingStallTracker.observe(
+            PlaybackBufferingStallSample(
+                sessionKey = listOf(runtimeState.roomId, runtimeState.selectedCandidateKey).joinToString("|"),
+                nowMs = SystemClock.elapsedRealtime(),
+                isBuffering = nextState.isBuffering,
+                isLoadingPlaybackInfo = _uiState.value.isLoading,
+                hasPlaybackError = !_uiState.value.errorMessage.isNullOrBlank(),
+                playWhenReady = player.playWhenReady,
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
+                hasPlaybackSource = runtimeState.selectedCandidateKey.isNotBlank(),
+            )
+        )
+        if (shouldRecover) {
+            recoverLivePlayback(
+                triggerLabel = "缓冲停滞",
+                preferCompatibleCodec = false,
             )
         }
     }
@@ -730,6 +836,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         preferredLineKey: String?,
         preferHighBitrate: Boolean,
         statusMessage: String,
+        isRecoveryRefresh: Boolean = false,
     ) {
         ensureMainThread("reloadCurrentQuality")
         val roomId = runtimeState.roomId.takeIf { it > 0L } ?: return
@@ -759,7 +866,8 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             }
             applyResolvedStream(
                 stream = streamResult.getOrThrow(),
-                statusMessage = statusMessage
+                statusMessage = statusMessage,
+                resetRecoveryState = !isRecoveryRefresh,
             )
         }
     }
@@ -767,16 +875,26 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private fun applyResolvedStream(
         stream: LiveStreamLoadResult,
         statusMessage: String? = null,
+        resetRecoveryState: Boolean = true,
     ) {
         ensureMainThread("applyResolvedStream")
-        runtimeState = runtimeState.copy(streamCandidates = stream.candidates)
+        runtimeState = runtimeState.copy(
+            streamCandidates = stream.candidates,
+            selectedCandidateKey = stream.selectedCandidate.key,
+            failedCandidateKeys = if (resetRecoveryState) emptySet() else runtimeState.failedCandidateKeys,
+            recoveryRefreshAttempted = if (resetRecoveryState) false else runtimeState.recoveryRefreshAttempted,
+        )
+        liveBufferingStallTracker.reset()
         val refererRoomId = runtimeState.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId
         resetLiveDanmakuBuffer(clearPayload = true)
         playStreamingUrl(
             url = stream.streamUrl,
             referer = "https://live.bilibili.com/$refererRoomId",
             resetPlayer = true,
-            playWhenReady = true
+            playWhenReady = resolvePlayWhenReadyForAppVisibility(
+                requestedPlayWhenReady = true,
+                isPlaybackSuppressed = isPlaybackSuppressed(),
+            )
         )
         _uiState.update {
             it.copy(
@@ -800,6 +918,97 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         if (!statusMessage.isNullOrBlank()) {
             scheduleStatusAutoClear()
         }
+    }
+
+    private fun recoverLivePlayback(
+        triggerLabel: String,
+        preferCompatibleCodec: Boolean,
+    ): Boolean {
+        ensureMainThread("recoverLivePlayback")
+        if (isPlaybackSuppressed() || runtimeState.streamCandidates.isEmpty()) return false
+
+        val failedKeys = runtimeState.failedCandidateKeys + runtimeState.selectedCandidateKey
+        runtimeState = runtimeState.copy(failedCandidateKeys = failedKeys)
+        val currentLineKey = runtimeState.streamCandidates
+            .firstOrNull { it.key == runtimeState.selectedCandidateKey }
+            ?.lineKey
+            ?: _uiState.value.selectedLineKey
+        val nextCandidate = selectLiveRecoveryCandidate(
+            candidates = runtimeState.streamCandidates,
+            failedCandidateKeys = failedKeys,
+            currentLineKey = currentLineKey,
+            preferHighBitrate = LiveBitrateBoostMode.fromKey(_uiState.value.bitrateModeKey).isEnabled,
+            cdnPreference = resolvePlayerCdnPreference(),
+            preferCompatibleCodec = preferCompatibleCodec,
+        )
+        if (nextCandidate != null) {
+            val stream = buildStreamLoadResultForCandidate(nextCandidate)
+            applyResolvedStream(
+                stream = stream,
+                statusMessage = "$triggerLabel，已切换到 ${stream.selectedLineLabel}",
+                resetRecoveryState = false,
+            )
+            return true
+        }
+
+        if (!runtimeState.recoveryRefreshAttempted) {
+            runtimeState = runtimeState.copy(recoveryRefreshAttempted = true)
+            reloadCurrentQuality(
+                preferredLineKey = null,
+                preferHighBitrate = LiveBitrateBoostMode.fromKey(_uiState.value.bitrateModeKey).isEnabled,
+                statusMessage = "$triggerLabel，已刷新直播地址",
+                isRecoveryRefresh = true,
+            )
+            return true
+        }
+
+        if (triggerLabel == "缓冲停滞") {
+            playerEngine?.pause()
+            liveBufferingStallTracker.reset()
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = "直播持续缓冲，所有候选线路均已尝试",
+                )
+            }
+            return true
+        }
+        return false
+    }
+
+    private fun buildStreamLoadResultForCandidate(candidate: LiveStreamCandidate): LiveStreamLoadResult {
+        val currentState = _uiState.value
+        val effectiveQuality = resolveEffectiveLiveQuality(
+            candidate = candidate,
+            responseQuality = currentState.selectedQuality,
+        )
+        val effectiveQualityLabel = currentState.qualityOptions
+            .firstOrNull { it.qn == effectiveQuality }
+            ?.label
+            ?: effectiveQuality.takeIf { it > 0 }?.toString()
+            ?: currentState.selectedQualityLabel.ifBlank { "自动" }
+        val lineOptions = resolveLineOptions(runtimeState.streamCandidates)
+        val lineLabel = lineOptions.firstOrNull { it.key == candidate.lineKey }?.label
+            ?: candidate.lineBaseLabel
+        return LiveStreamLoadResult(
+            streamUrl = candidate.url,
+            qualityOptions = currentState.qualityOptions,
+            selectedQuality = effectiveQuality,
+            selectedQualityLabel = effectiveQualityLabel,
+            lineOptions = lineOptions,
+            selectedLineKey = candidate.lineKey,
+            selectedLineLabel = lineLabel,
+            selectedCandidate = candidate,
+            candidates = runtimeState.streamCandidates,
+        )
+    }
+
+    private fun shouldPreferCompatibleCodec(error: PlaybackException): Boolean {
+        return error.errorCode in 4_000..4_999
+    }
+
+    private fun isPlaybackSuppressed(): Boolean {
+        return isAppInBackground || isPlaybackSuspendedForBackground || isPlaybackPausedByUser
     }
 
     private suspend fun loadStreamForQuality(
@@ -854,13 +1063,22 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             preferredLineKey = preferredLineKey,
             preferHighBitrate = preferHighBitrate
         ) ?: return null
+        val effectiveQuality = resolveEffectiveLiveQuality(
+            candidate = selectedCandidate,
+            responseQuality = selectedQuality,
+        )
+        val effectiveQualityLabel = qualityOptions
+            .firstOrNull { it.qn == effectiveQuality }
+            ?.label
+            ?: effectiveQuality.takeIf { it > 0 }?.toString()
+            ?: selectedQualityLabel
         val selectedLineLabel = lineOptions.firstOrNull { it.key == selectedCandidate.lineKey }?.label
             ?: selectedCandidate.lineBaseLabel
         return LiveStreamLoadResult(
             streamUrl = selectedCandidate.url,
             qualityOptions = qualityOptions,
-            selectedQuality = selectedQuality,
-            selectedQualityLabel = selectedQualityLabel,
+            selectedQuality = effectiveQuality,
+            selectedQualityLabel = effectiveQualityLabel,
             lineOptions = lineOptions,
             selectedLineKey = selectedCandidate.lineKey,
             selectedLineLabel = selectedLineLabel,
@@ -965,57 +1183,12 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         preferredLineKey: String?,
         preferHighBitrate: Boolean,
     ): LiveStreamCandidate? {
-        val scopedCandidates = preferredLineKey
-            ?.takeIf { key -> candidates.any { it.lineKey == key } }
-            ?.let { key -> candidates.filter { it.lineKey == key } }
-            ?: candidates
-        val cdnPreference = resolvePlayerCdnPreference()
-        return scopedCandidates.maxWithOrNull(
-            compareByDescending<LiveStreamCandidate> {
-                candidateScore(
-                    candidate = it,
-                    preferHighBitrate = preferHighBitrate,
-                    cdnPreference = cdnPreference
-                )
-            }
-                .thenByDescending { it.currentQn }
-                .thenBy { it.hostLabel }
+        return selectLiveStreamCandidate(
+            candidates = candidates,
+            preferredLineKey = preferredLineKey,
+            preferHighBitrate = preferHighBitrate,
+            cdnPreference = resolvePlayerCdnPreference(),
         )
-    }
-
-    private fun candidateScore(
-        candidate: LiveStreamCandidate,
-        preferHighBitrate: Boolean,
-        cdnPreference: SettingsManager.PlayerCdnPreference,
-    ): Int {
-        val host = candidate.hostLabel.lowercase()
-        val matchesPreferredCdn = when (cdnPreference) {
-            SettingsManager.PlayerCdnPreference.BILIVIDEO -> {
-                host.contains("bilivideo") || host.contains("upos") || host.contains("cn-")
-            }
-            SettingsManager.PlayerCdnPreference.MCDN -> host.contains("mcdn")
-        }
-        val protocolScore = when (candidate.protocolName) {
-            "http_hls" -> if (preferHighBitrate) 120 else 220
-            "http_stream" -> if (preferHighBitrate) 220 else 140
-            else -> 80
-        }
-        val formatScore = when (candidate.formatName) {
-            "ts" -> if (preferHighBitrate) 240 else 200
-            "flv" -> if (preferHighBitrate) 220 else 160
-            "fmp4" -> if (preferHighBitrate) 160 else 190
-            else -> 100
-        }
-        val codecScore = when (candidate.codecName.lowercase()) {
-            "hevc" -> if (preferHighBitrate) 200 else 120
-            "avc" -> if (preferHighBitrate) 150 else 190
-            else -> 110
-        }
-        return candidate.currentQn * 1000 +
-            protocolScore +
-            formatScore +
-            codecScore +
-            if (matchesPreferredCdn) 300 else 0
     }
 
     private fun resolveQualityOptions(data: LivePlayUrlData): List<LiveQualityOption> {
@@ -1110,8 +1283,15 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                         }
                     }
                     client.messageFlow.collect { packet ->
+                        if (!isLiveDanmakuSessionActive(sessionId, roomId) || !canAcceptLiveDanmaku()) {
+                            return@collect
+                        }
+                        val message = withContext(Dispatchers.Default) {
+                            parseLiveDanmakuMessage(packet.body)
+                        } ?: return@collect
+                        ensureActive()
                         if (isLiveDanmakuSessionActive(sessionId, roomId)) {
-                            handleLiveDanmakuPacket(packet)
+                            handleLiveDanmakuMessage(message)
                         }
                     }
                 } else if (isLiveDanmakuSessionActive(sessionId, roomId)) {
@@ -1188,14 +1368,25 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         }
     }
 
-    private fun handleLiveDanmakuPacket(packet: DanmakuProtocol.Packet) {
-        ensureMainThread("handleLiveDanmakuPacket")
-        if (!isDanmakuEnabled.value) return
-        val item = parseLiveDanmaku(packet.body) ?: return
-        val currentPosition = max(_playbackState.value.positionMs, getPlayerCurrentPosition())
-        val showAtTime = max(
-            currentPosition + LIVE_DANMAKU_SHOW_LEAD_MS,
-            lastLiveDanmakuShowAtMs + LIVE_DANMAKU_MIN_GAP_MS
+    private fun handleLiveDanmakuMessage(message: ParsedLiveDanmakuMessage) {
+        ensureMainThread("handleLiveDanmakuMessage")
+        if (!canAcceptLiveDanmaku()) return
+        val item = WeightedTextData().apply {
+            text = message.text
+            textColor = 0xFF000000.toInt() or (message.color and 0x00FFFFFF)
+            textSize = 25f
+            layerType = LAYER_TYPE_SCROLL
+            danmakuId = message.danmakuId ?: nextLiveDanmakuId()
+            userHash = message.userId.ifBlank { "live-$danmakuId" }
+            weight = 10
+            pool = 0
+        }
+        val currentPosition = maxOf(_playbackState.value.positionMs, getPlayerCurrentPosition())
+        val showAtTime = resolveLiveDanmakuShowAtMs(
+            currentPositionMs = currentPosition,
+            lastShowAtMs = lastLiveDanmakuShowAtMs,
+            showLeadMs = LIVE_DANMAKU_SHOW_LEAD_MS,
+            minGapMs = LIVE_DANMAKU_MIN_GAP_MS,
         )
         item.showAtTime = showAtTime
         lastLiveDanmakuShowAtMs = showAtTime
@@ -1203,6 +1394,15 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         liveDanmakuBuffer.addLast(item)
         trimLiveDanmakuBuffer(nowPositionMs = currentPosition)
         scheduleDanmakuPublish()
+    }
+
+    private fun canAcceptLiveDanmaku(): Boolean {
+        return shouldAcceptLiveDanmaku(
+            isEnabled = isDanmakuEnabled.value,
+            isPlaying = playerEngine?.isPlaying == true,
+            isAppInBackground = isAppInBackground,
+            isPlaybackSuppressed = isPlaybackSuppressed(),
+        )
     }
 
     private fun trimLiveDanmakuBuffer(nowPositionMs: Long) {
@@ -1232,70 +1432,11 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         }
     }
 
-    private fun parseLiveDanmaku(body: ByteArray): WeightedTextData? {
-        val bodyText = body.toString(Charsets.UTF_8)
-            .replace("\u0000", "")
-            .trim()
-        if (bodyText.isBlank()) return null
-
-        val root = when {
-            bodyText.startsWith("{") -> JSONObject(bodyText)
-            bodyText.startsWith("[") -> {
-                val array = JSONArray(bodyText)
-                array.optJSONObject(0) ?: return null
-            }
-            else -> return null
-        }
-
-        return runCatching {
-            val cmd = root.optString("cmd").substringBefore(':')
-            if (cmd != "DANMU_MSG") return null
-
-            val info = root.optJSONArray("info") ?: return null
-            val text = info.opt(1)?.toString()?.trim().orEmpty()
-            if (text.isBlank()) return null
-
-            val meta = info.optJSONArray(0)
-            val user = info.optJSONArray(2)
-            val color = resolveLiveDanmakuColor(meta)
-            val userId = user?.opt(0)?.toString().orEmpty()
-            val danmakuId = (
-                meta.optLongCompat(5)
-                    ?: meta.optLongCompat(6)
-                    ?: meta.optLongCompat(7)
-                    ?: nextLiveDanmakuId()
-                ).takeIf { it > 0L } ?: nextLiveDanmakuId()
-
-            WeightedTextData().apply {
-                this.text = text
-                this.textColor = 0xFF000000.toInt() or (color and 0x00FFFFFF)
-                this.textSize = 25f
-                this.layerType = LAYER_TYPE_SCROLL
-                this.danmakuId = danmakuId
-                this.userHash = userId.ifBlank { "live-$danmakuId" }
-                this.weight = 10
-                this.pool = 0
-            }
-        }.getOrNull()
-    }
-
     private fun nextLiveDanmakuId(): Long {
         ensureMainThread("nextLiveDanmakuId")
         val next = liveDanmakuSequenceId
         liveDanmakuSequenceId += 1L
         return next
-    }
-
-    private fun resolveLiveDanmakuColor(meta: JSONArray?): Int {
-        if (meta == null) return 0x00FFFFFF
-        val candidates = listOf(3, 2, 4)
-        candidates.forEach { index ->
-            val value = meta.optIntCompat(index)
-            if (value != null && value in 1..0x00FFFFFF) {
-                return value
-            }
-        }
-        return 0x00FFFFFF
     }
 
     private fun formatOnlineText(detail: LiveRoomDetailData?): String {
@@ -1365,23 +1506,5 @@ private fun resolveCodecLabel(codecName: String): String {
         "hevc" -> "HEVC"
         "legacy" -> "Legacy"
         else -> codecName.ifBlank { "--" }.uppercase()
-    }
-}
-
-private fun JSONArray?.optIntCompat(index: Int): Int? {
-    val value = this?.opt(index) ?: return null
-    return when (value) {
-        is Number -> value.toInt()
-        is String -> value.toIntOrNull()
-        else -> null
-    }
-}
-
-private fun JSONArray?.optLongCompat(index: Int): Long? {
-    val value = this?.opt(index) ?: return null
-    return when (value) {
-        is Number -> value.toLong()
-        is String -> value.toLongOrNull()
-        else -> null
     }
 }

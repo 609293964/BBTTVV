@@ -122,4 +122,73 @@ class DanmakuOverlaySyncStateTest {
 
         assertEquals(DanmakuOverlaySyncDecision.SoftSyncPlayState, pauseDecision)
     }
+
+    @Test
+    fun `playback speed change triggers one hard timeline sync`() {
+        val state = DanmakuOverlaySyncState()
+        state.notifyHardSynced(
+            dataToken = 10L,
+            configToken = 20L,
+            attachToken = 1,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            positionMs = 1_000L,
+            isPlaying = true,
+            playbackSpeed = 1f,
+            elapsedRealtimeMs = 1_000L,
+        )
+
+        val decision = state.decide(
+            viewAttached = true,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            attachToken = 1,
+            dataToken = 10L,
+            configToken = 20L,
+            isPlaying = true,
+            playbackPositionMs = 1_250L,
+            playbackSpeed = 2f,
+            elapsedRealtimeMs = 1_250L,
+        )
+
+        assertEquals(
+            DanmakuOverlaySyncDecision.HardSync(DanmakuSyncReason.PlaybackSpeedChanged),
+            decision,
+        )
+    }
+
+    @Test
+    fun `high speed playback uses low frequency soft correction`() {
+        val state = DanmakuOverlaySyncState()
+        state.notifyHardSynced(
+            dataToken = 10L,
+            configToken = 20L,
+            attachToken = 1,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            positionMs = 0L,
+            isPlaying = true,
+            playbackSpeed = 2f,
+            elapsedRealtimeMs = 1_000L,
+        )
+        state.notifyPositionObserved(59_750L)
+
+        val decision = state.decide(
+            viewAttached = true,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            attachToken = 1,
+            dataToken = 10L,
+            configToken = 20L,
+            isPlaying = true,
+            playbackPositionMs = 60_000L,
+            playbackSpeed = 2f,
+            elapsedRealtimeMs = 31_000L,
+        )
+
+        assertEquals(
+            DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.HighSpeedDriftCorrection),
+            decision,
+        )
+    }
 }
