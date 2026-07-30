@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.bbttvv.app.core.player.AudioBalanceLevel
 import com.bbttvv.app.core.store.PlayerSettingsCache
@@ -22,6 +23,8 @@ object PlayerSettingsStore {
     private val keyVolumeCalibrationScale = floatPreferencesKey("volume_calibration_scale")
     private val keyAudioBalanceLevel = stringPreferencesKey("audio_balance_level")
     private val keyAudioPassthrough = booleanPreferencesKey("audio_passthrough")
+    private val keyInteractiveVideoEnabled = booleanPreferencesKey("interactive_video_enabled")
+    private val keyPgcPreferredQuality = intPreferencesKey("pgc_preferred_quality")
 
     private const val playbackSpeedCachePrefs = "playback_speed_cache"
     private const val cacheKeyDefaultPlaybackSpeed = "default_speed"
@@ -30,6 +33,8 @@ object PlayerSettingsStore {
     private const val cacheKeyVolumeCalibrationScale = "volume_calibration_scale"
     private const val cacheKeyAudioBalanceLevel = "audio_balance_level"
     private const val cacheKeyAudioPassthrough = "audio_passthrough"
+    private const val cacheKeyPgcPreferredQuality = "pgc_preferred_quality"
+    private const val unsetPgcPreferredQuality = -1
 
     fun getDefaultPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
         .map { preferences -> normalizePlaybackSpeed(preferences[keyDefaultPlaybackSpeed] ?: 1.0f) }
@@ -155,5 +160,40 @@ object PlayerSettingsStore {
     fun getAudioPassthroughSync(context: Context): Boolean {
         val prefs = context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
         return prefs.getBoolean(cacheKeyAudioPassthrough, false)
+    }
+
+    fun getInteractiveVideoEnabled(context: Context): Flow<Boolean> = context.settingsDataStore.data
+        .map { preferences -> preferences[keyInteractiveVideoEnabled] ?: true }
+
+    suspend fun setInteractiveVideoEnabled(context: Context, enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyInteractiveVideoEnabled] = enabled
+        }
+    }
+
+    fun getPgcPreferredQuality(context: Context): Flow<Int?> = context.settingsDataStore.data
+        .map { preferences ->
+            preferences[keyPgcPreferredQuality]?.takeIf { it > 0 }
+        }
+
+    suspend fun setPgcPreferredQuality(context: Context, qualityId: Int?) {
+        val normalized = qualityId?.takeIf { it > 0 }
+        context.settingsDataStore.edit { preferences ->
+            if (normalized == null) {
+                preferences.remove(keyPgcPreferredQuality)
+            } else {
+                preferences[keyPgcPreferredQuality] = normalized
+            }
+        }
+        context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(cacheKeyPgcPreferredQuality, normalized ?: unsetPgcPreferredQuality)
+            .apply()
+    }
+
+    fun getPgcPreferredQualitySync(context: Context): Int? {
+        return context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+            .getInt(cacheKeyPgcPreferredQuality, unsetPgcPreferredQuality)
+            .takeIf { it > 0 }
     }
 }

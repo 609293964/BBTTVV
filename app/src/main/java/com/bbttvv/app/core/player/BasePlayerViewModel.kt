@@ -9,6 +9,7 @@ import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
+import com.bbttvv.app.feature.video.danmaku.DanmakuProto
 import com.bbttvv.app.feature.video.danmaku.DanmakuRenderPayload
 import com.bbttvv.app.feature.video.danmaku.ParsedDanmaku
 import kotlinx.coroutines.CancellationException
@@ -364,6 +365,9 @@ abstract class BasePlayerViewModel : ViewModel() {
                 danmakuSource = loadResult.parsed
                 danmakuFilterContext = loadResult.filterContext
                 danmakuSourceVersion += 1
+                loadResult.metadata?.let { metadata ->
+                    onDanmakuCommandsLoaded(commands = metadata.commandDms, cid = cid, aid = aid)
+                }
                 val payload = loadResult.parsed?.let {
                     PlayerDanmakuPipeline.buildRenderPayload(
                         parsed = it,
@@ -409,6 +413,7 @@ abstract class BasePlayerViewModel : ViewModel() {
                     cid = cid,
                     aid = aid,
                     segmentIndex = initialSegmentIndex,
+                    loadMetadata = true,
                 )
             }
             currentCoroutineContext().ensureActive()
@@ -447,6 +452,13 @@ abstract class BasePlayerViewModel : ViewModel() {
             if (loadSequence != danmakuLoadSequence) return null
         }
     }
+
+    @MainThread
+    protected open fun onDanmakuCommandsLoaded(
+        commands: List<DanmakuProto.CommandDm>,
+        cid: Long,
+        aid: Long,
+    ) = Unit
 
     /**
      * 根据当前播放进度，预取下一个弹幕分段或目标分段

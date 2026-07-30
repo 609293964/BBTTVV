@@ -18,6 +18,7 @@ internal fun BoxScope.PlayerCommentsPanelHost(
     onLoadMore: () -> Unit,
     onOpenThread: (ReplyItem) -> Unit,
     onBackFromThread: () -> Unit,
+    onImageViewerVisibilityChanged: (Boolean) -> Unit,
 ) {
     PlayerCommentsPanel(
         uiState = uiState,
@@ -28,6 +29,7 @@ internal fun BoxScope.PlayerCommentsPanelHost(
         onLoadMore = onLoadMore,
         onOpenThread = onOpenThread,
         onBackFromThread = onBackFromThread,
+        onImageViewerVisibilityChanged = onImageViewerVisibilityChanged,
         modifier = Modifier
             .align(Alignment.CenterEnd),
     )

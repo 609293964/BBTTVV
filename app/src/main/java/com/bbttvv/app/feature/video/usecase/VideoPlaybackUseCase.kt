@@ -1,5 +1,6 @@
 package com.bbttvv.app.feature.video.usecase
 
+import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.util.Logger
@@ -22,8 +23,12 @@ import com.bbttvv.app.data.repository.PlaybackRepository
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
 import com.bbttvv.app.data.repository.resolveAutoResumePositionMs
 import com.bbttvv.app.feature.plugin.PlaybackCdnPlugin
+import com.bbttvv.app.feature.plugin.isAllowedCustomCdnHost
+import com.bbttvv.app.feature.plugin.rewriteStrictCustomCdnCandidates
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+
+internal class StrictCustomCdnException(message: String) : IllegalStateException(message)
 
 data class PlaybackQualityInfo(
     val id: Int,
@@ -112,7 +117,8 @@ class VideoPlaybackUseCase {
     private data class AppliedPlaybackCdnCandidates(
         val videoUrls: List<String>,
         val audioUrls: List<String>,
-        val regionLabel: String? = null
+        val regionLabel: String? = null,
+        val strictCustom: Boolean = false,
     )
 
     suspend fun loadOnlineCountText(
@@ -131,8 +137,10 @@ class VideoPlaybackUseCase {
         isHevcSupported: Boolean = true,
         isAv1Supported: Boolean = false,
         isHdrSupported: Boolean = true,
-        isDolbyVisionSupported: Boolean = true
-    ): PlaybackLoadResult = coroutineScope {
+        isDolbyVisionSupported: Boolean = true,
+        allowInteractiveCid: Boolean = false,
+    ): PlaybackLoadResult = try {
+        coroutineScope {
         if (bvid.startsWith("ep") || bvid.startsWith("ss")) {
             val epId = if (bvid.startsWith("ep")) bvid.substring(2).toLongOrNull() ?: 0L else 0L
             val seasonId = if (bvid.startsWith("ss")) bvid.substring(2).toLongOrNull() ?: 0L else 0L
@@ -244,7 +252,8 @@ class VideoPlaybackUseCase {
                     bvid = bvid,
                     aid = aid,
                     requestedCid = cid,
-                    targetQuality = preferredQuality
+                    targetQuality = preferredQuality,
+                    allowInteractiveCid = allowInteractiveCid,
                 )
             }
 
@@ -287,6 +296,9 @@ class VideoPlaybackUseCase {
                 }
             )
         }
+        }
+    } catch (error: StrictCustomCdnException) {
+        PlaybackLoadResult.Error(error.message ?: "严格自定义 CDN 失败。")
     }
 
     suspend fun changeQuality(
@@ -457,11 +469,16 @@ class VideoPlaybackUseCase {
                 segmentUrls = emptyList(),
                 videoUrlCandidates = dashVideoUrlCandidates,
                 audioUrlCandidates = dashAudioUrlCandidates,
-                fallbackVideoUrl = rawDashVideoUrlCandidates.firstOrNull(),
-                fallbackAudioUrl = resolveFallbackAudioUrl(
-                    selectedAudioUrl = dashAudioUrlCandidates.firstOrNull(),
-                    rawAudioUrls = rawDashAudioUrlCandidates
-                ),
+                fallbackVideoUrl = rawDashVideoUrlCandidates.firstOrNull()
+                    .takeUnless { appliedDashCandidates.strictCustom },
+                fallbackAudioUrl = if (appliedDashCandidates.strictCustom) {
+                    null
+                } else {
+                    resolveFallbackAudioUrl(
+                        selectedAudioUrl = dashAudioUrlCandidates.firstOrNull(),
+                        rawAudioUrls = rawDashAudioUrlCandidates
+                    )
+                },
                 playbackCdnRegionLabel = appliedDashCandidates.regionLabel,
                 actualQuality = dashVideo?.id ?: playUrlData.quality,
                 qualityOptions = qualityOptions,
@@ -575,11 +592,16 @@ class VideoPlaybackUseCase {
             audioUrl = selectedAudioCandidates.firstOrNull(),
             videoUrlCandidates = selectedVideoCandidates,
             audioUrlCandidates = selectedAudioCandidates,
-            fallbackVideoUrl = rawSelectedVideoCandidates.firstOrNull(),
-            fallbackAudioUrl = resolveFallbackAudioUrl(
-                selectedAudioUrl = selectedAudioCandidates.firstOrNull(),
-                rawAudioUrls = rawSelectedAudioCandidates
-            ),
+            fallbackVideoUrl = rawSelectedVideoCandidates.firstOrNull()
+                .takeUnless { appliedCandidates.strictCustom },
+            fallbackAudioUrl = if (appliedCandidates.strictCustom) {
+                null
+            } else {
+                resolveFallbackAudioUrl(
+                    selectedAudioUrl = selectedAudioCandidates.firstOrNull(),
+                    rawAudioUrls = rawSelectedAudioCandidates
+                )
+            },
             playbackCdnRegionLabel = appliedCandidates.regionLabel,
             actualQuality = selectedVideo.id,
             selectedVideoCodec = resolveCodecLabel(selectedVideo.codecs, selectedVideo.codecid),
@@ -667,6 +689,35 @@ class VideoPlaybackUseCase {
             .filter { it.isNotBlank() }
             .distinct()
         var regionLabel: String? = null
+
+        val appContext = NetworkModule.appContext
+        val strictCustomCdn = appContext?.let(SettingsManager::getStrictCustomCdnEnabledSync) == true
+        if (strictCustomCdn) {
+            val customHost = appContext?.let(SettingsManager::getCustomCdnHostSync).orEmpty()
+            if (!isAllowedCustomCdnHost(customHost)) {
+                throw StrictCustomCdnException(
+                    "严格 CDN 失败：规则=自定义主机，URL 类型=配置，原因=请先填写有效的 bilivideo.com CDN 主机。",
+                )
+            }
+            val strictVideoUrls = rewriteStrictCustomCdnCandidates(rewrittenVideoUrls, customHost)
+            if (strictVideoUrls.isEmpty()) {
+                throw StrictCustomCdnException(
+                    "严格 CDN 失败：规则=$customHost，URL 类型=视频，原因=没有可重写的 bilivideo URL。",
+                )
+            }
+            val strictAudioUrls = rewriteStrictCustomCdnCandidates(rewrittenAudioUrls, customHost)
+            if (rewrittenAudioUrls.isNotEmpty() && strictAudioUrls.isEmpty()) {
+                throw StrictCustomCdnException(
+                    "严格 CDN 失败：规则=$customHost，URL 类型=音频，原因=没有可重写的 bilivideo URL。",
+                )
+            }
+            return AppliedPlaybackCdnCandidates(
+                videoUrls = strictVideoUrls,
+                audioUrls = strictAudioUrls,
+                regionLabel = "严格:$customHost",
+                strictCustom = true,
+            )
+        }
 
         val plugins = PluginManager.getEnabledPlugins(PlaybackCdnPlugin::class)
         if (plugins.isEmpty()) {

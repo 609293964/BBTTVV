@@ -315,6 +315,8 @@ internal fun PlayerScreenEffectHost(
         is PlayerFocusIntent.FocusPanelOption -> {
             focusBindings.panelFocusRequesters.getOrNull(focusIntent.index)
         }
+        is PlayerFocusIntent.FocusInteractiveOption -> null
+        PlayerFocusIntent.FocusDanmakuVoteOverlay -> null
     }
     LaunchedEffect(focusIntent, focusTargetIdentity) {
         playerFocusCoordinator.requestFocus(focusIntent)

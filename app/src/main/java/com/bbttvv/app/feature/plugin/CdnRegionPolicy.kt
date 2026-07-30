@@ -96,6 +96,26 @@ internal fun rewriteCdnUrlCandidates(
     )
 }
 
+internal fun isAllowedCustomCdnHost(host: String): Boolean {
+    val normalized = host.trim()
+        .lowercase()
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .substringBefore('/')
+        .substringBefore(':')
+    return normalized == "bilivideo.com" || normalized.endsWith(".bilivideo.com")
+}
+
+internal fun rewriteStrictCustomCdnCandidates(
+    originalUrls: List<String>,
+    customHost: String,
+): List<String> {
+    if (!isAllowedCustomCdnHost(customHost)) return emptyList()
+    return originalUrls
+        .mapNotNull { original -> rewriteBilivideoHost(original, customHost.trim().lowercase()) }
+        .distinct()
+}
+
 internal fun shouldRefreshCdnIpLocation(
     enabled: Boolean,
     nowMs: Long,

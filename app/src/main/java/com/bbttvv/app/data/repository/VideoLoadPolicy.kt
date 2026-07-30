@@ -45,15 +45,17 @@ internal fun resolveVideoInfoLookupInput(rawBvid: String, aid: Long): VideoInfoL
 internal fun resolveRequestedVideoCid(
     requestCid: Long,
     infoCid: Long,
-    pages: List<Page>
+    pages: List<Page>,
+    allowInteractiveCid: Boolean = false,
 ): Long {
     val normalizedRequestCid = requestCid.takeIf { it > 0L }
     val normalizedInfoCid = infoCid.takeIf { it > 0L }
 
     if (normalizedRequestCid != null) {
-        if (pages.isEmpty() || pages.any { it.cid == normalizedRequestCid }) {
+        if (allowInteractiveCid || pages.isEmpty() || pages.any { it.cid == normalizedRequestCid }) {
             return normalizedRequestCid
         }
+        return 0L
     }
 
     return normalizedInfoCid ?: normalizedRequestCid ?: 0L
@@ -306,4 +308,3 @@ internal fun shouldRefreshVipStatusOnVideoLoad(): Boolean {
 internal fun shouldFetchInteractionStatusOnVideoLoad(): Boolean {
     return false
 }
-

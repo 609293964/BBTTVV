@@ -75,6 +75,7 @@ internal data class DanmakuViewMetadata(
     val segmentPageSizeMs: Long,
     val count: Long,
     val setting: DanmakuWebSetting?,
+    val commandDms: List<com.bbttvv.app.feature.video.danmaku.DanmakuProto.CommandDm>,
 )
 
 internal data class DanmakuUserFilter(
@@ -394,14 +395,52 @@ object DanmakuRepository {
                      segmentTotal = reply.dmSge?.total?.coerceAtLeast(0)?.toInt() ?: 0,
                      segmentPageSizeMs = reply.dmSge?.pageSize?.coerceAtLeast(0L) ?: 0L,
                      count = reply.count,
-                     setting = serverSetting
-                 )
+                     setting = serverSetting,
+                     commandDms = reply.commandDms,
+                 ).also { metadata ->
+                     com.bbttvv.app.core.util.Logger.d(
+                         "DanmakuRepo",
+                         "Danmaku metadata ready cid=$cid aid=$aid commands=${metadata.commandDms.size}"
+                     )
+                 }
              } else {
                  null
              }
         } catch (e: Exception) {
              android.util.Log.e("DanmakuRepo", " getDanmakuView failed: ${e.message}")
              null
+        }
+    }
+
+    internal suspend fun submitDanmakuVote(
+        aid: Long,
+        cid: Long,
+        progressMs: Long,
+        voteId: Long,
+        voteType: Int,
+        commandId: String,
+        optionId: Int,
+        hasSelfDefined: Boolean,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val csrf = TokenManager.csrfCache.orEmpty()
+        if (csrf.isBlank() || TokenManager.sessDataCache.isNullOrBlank()) {
+            return@withContext Result.failure(IllegalStateException("请先登录后投票"))
+        }
+        runCatching {
+            val response = api.submitDanmakuVote(
+                aid = aid,
+                cid = cid,
+                progress = progressMs.coerceAtLeast(0L),
+                voteId = voteId,
+                voteType = voteType,
+                commandId = commandId,
+                optionId = optionId,
+                hasSelfDefined = hasSelfDefined,
+                csrf = csrf,
+            )
+            if (response.code != 0) {
+                throw IllegalStateException(response.message.ifBlank { "投票失败(${response.code})" })
+            }
         }
     }
 

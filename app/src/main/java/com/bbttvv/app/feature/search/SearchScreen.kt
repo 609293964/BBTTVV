@@ -98,6 +98,7 @@ internal fun SearchScreen(
     var searchCategoryHasFocus by remember { mutableStateOf(false) }
     var videoGridHasFocus by remember { mutableStateOf(false) }
     var pendingSearchHomeFocus by remember { mutableStateOf(false) }
+    var pendingSubmittedResultFocus by remember { mutableStateOf(false) }
     val latestSearchInputHasFocus by rememberUpdatedState(searchInputHasFocus)
     val latestSearchCategoryHasFocus by rememberUpdatedState(searchCategoryHasFocus)
     val searchResultHeaderState = rememberHomeCollapsingHeaderState()
@@ -153,6 +154,11 @@ internal fun SearchScreen(
         }.getOrDefault(false)
     }
 
+    fun submitSearch() {
+        pendingSubmittedResultFocus = true
+        viewModel.search()
+    }
+
     LaunchedEffect(pendingSearchHomeFocus, searchResultsMode, isHomeTabActive) {
         if (pendingSearchHomeFocus && isHomeTabActive && !searchResultsMode) {
             withFrameNanos { }
@@ -170,6 +176,37 @@ internal fun SearchScreen(
 
     LaunchedEffect(uiState.query, uiState.searchType) {
         searchResultHeaderState.reset()
+    }
+
+    LaunchedEffect(
+        pendingSubmittedResultFocus,
+        uiState.isSearching,
+        searchResultsMode,
+        uiState.searchType,
+        uiState.videoResults,
+        uiState.upResults,
+    ) {
+        if (!pendingSubmittedResultFocus || uiState.isSearching || !searchResultsMode) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        val hasResults = when (uiState.searchType) {
+            SearchType.VIDEO -> uiState.videoResults.isNotEmpty()
+            SearchType.UP -> uiState.upResults.isNotEmpty()
+            else -> false
+        }
+        val tab = focusTab
+        val coordinator = focusCoordinator
+        if (hasResults && isHomeTabActive && tab != null && coordinator != null) {
+            coordinator.requestRegionFocus(
+                tab = tab,
+                region = HomeFocusRegion.Grid,
+                entryHint = HomeFocusEntryHint(preferredIndex = 0),
+            )
+        } else {
+            requestSearchCategoryFocus()
+        }
+        pendingSubmittedResultFocus = false
     }
 
     BackHandler(enabled = isHomeTabActive && searchResultsMode && videoGridHasFocus) {
@@ -243,7 +280,7 @@ internal fun SearchScreen(
                 value = uiState.query,
                 placeholder = uiState.defaultSearchHint,
                 onValueChange = viewModel::onQueryChange,
-                onSubmit = viewModel::search,
+                onSubmit = ::submitSearch,
                 onRequestTopBarFocus = onRequestTopBarFocus,
                 onMoveFocusDown = {
                     if (historyFocusRequesters.isNotEmpty()) {
@@ -334,7 +371,7 @@ internal fun SearchScreen(
                         value = uiState.query,
                         placeholder = uiState.defaultSearchHint,
                         onValueChange = viewModel::onQueryChange,
-                        onSubmit = viewModel::search,
+                        onSubmit = ::submitSearch,
                         onRequestTopBarFocus = onRequestTopBarFocus,
                         onMoveFocusDown = ::requestSearchCategoryFocus,
                         modifier = searchBarModifier

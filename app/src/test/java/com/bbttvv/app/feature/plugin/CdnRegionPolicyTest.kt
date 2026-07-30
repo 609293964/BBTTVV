@@ -233,4 +233,34 @@ class CdnRegionPolicyTest {
             )
         )
     }
+
+    @Test
+    fun `strict custom rewrite keeps only rewritten bilivideo candidates`() {
+        val original = listOf(
+            "https://original.bilivideo.com/video.m4s?token=redacted",
+            "https://example.com/video.m4s",
+        )
+
+        val rewritten = rewriteStrictCustomCdnCandidates(
+            originalUrls = original,
+            customHost = "custom.bilivideo.com",
+        )
+
+        assertEquals(1, rewritten.size)
+        assertTrue(rewritten.single().startsWith("https://custom.bilivideo.com/"))
+        assertFalse(rewritten.any { it.contains("original.bilivideo.com") })
+        assertFalse(rewritten.any { it.contains("example.com") })
+    }
+
+    @Test
+    fun `strict custom rewrite rejects hosts outside bilivideo domain`() {
+        assertFalse(isAllowedCustomCdnHost("evil.example.com"))
+        assertTrue(isAllowedCustomCdnHost("https://custom.bilivideo.com/path"))
+        assertTrue(
+            rewriteStrictCustomCdnCandidates(
+                originalUrls = listOf("https://origin.bilivideo.com/video.m4s"),
+                customHost = "evil.example.com",
+            ).isEmpty(),
+        )
+    }
 }

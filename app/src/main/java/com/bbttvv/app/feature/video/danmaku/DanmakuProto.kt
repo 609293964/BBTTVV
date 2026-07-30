@@ -88,6 +88,20 @@ object DanmakuProto {
                     )
                 },
                 count = reply.count,
+                commandDms = reply.commandDmsList.map { command ->
+                    CommandDm(
+                        id = command.id,
+                        oid = command.oid,
+                        mid = command.mid,
+                        command = command.command,
+                        content = command.content,
+                        progress = command.progress,
+                        ctime = command.ctime,
+                        mtime = command.mtime,
+                        extra = command.extra,
+                        idStr = command.idStr,
+                    )
+                },
                 dmSetting = setting?.let {
                     DmSetting(
                         dmSwitch = it.dmSwitch,

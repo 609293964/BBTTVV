@@ -9,6 +9,7 @@ internal data class PlaybackLoadRequest(
     val startPositionMs: Long = 0L,
     val force: Boolean = false,
     val resumeFromPrompt: Boolean = false,
+    val interactiveBranch: InteractiveBranchContext? = null,
 )
 
 internal data class PlaybackRuntimeState(

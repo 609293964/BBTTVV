@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -53,7 +54,16 @@ import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentSortMode
 import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
+import com.bbttvv.app.ui.components.CommentImageViewer
+import com.bbttvv.app.ui.components.CommentImageViewerState
+import com.bbttvv.app.ui.components.CommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.CommentPictureCompactPreview
+import com.bbttvv.app.ui.components.CommentPictureUiModel
+import com.bbttvv.app.ui.components.commentPictureConfirmModifier
+import com.bbttvv.app.ui.components.createCommentImageViewerState
 import com.bbttvv.app.ui.components.rememberSizedImageModel
+import com.bbttvv.app.ui.components.resolveCommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.toCommentPictureUiModels
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -116,6 +126,7 @@ internal fun PlayerCommentsPanel(
     onLoadMore: () -> Unit,
     onOpenThread: (ReplyItem) -> Unit,
     onBackFromThread: () -> Unit,
+    onImageViewerVisibilityChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isViewingThread = uiState.isViewingThread
@@ -137,6 +148,25 @@ internal fun PlayerCommentsPanel(
     var pendingAppendFocusKey by remember(isViewingThread, uiState.sortMode) { mutableStateOf<String?>(null) }
     var hasUserScrolled by remember(isViewingThread, uiState.sortMode) { mutableStateOf(false) }
     var lastAutoLoadItemCount by remember(isViewingThread, uiState.sortMode) { mutableIntStateOf(-1) }
+    var commentImageViewerState by remember(isViewingThread, uiState.sortMode) {
+        mutableStateOf<CommentImageViewerState?>(null)
+    }
+    var pendingPictureReturnKey by remember(isViewingThread, uiState.sortMode) {
+        mutableStateOf<String?>(null)
+    }
+    val latestImageViewerVisibilityChanged = rememberUpdatedState(onImageViewerVisibilityChanged)
+
+    fun openPictures(
+        sourceKey: String,
+        pictures: List<CommentPictureUiModel>,
+        suppressInitialConfirmKeyUp: Boolean,
+    ) {
+        commentImageViewerState = createCommentImageViewerState(
+            pictures = pictures,
+            sourceKey = sourceKey,
+            suppressInitialConfirmKeyUp = suppressInitialConfirmKeyUp,
+        )
+    }
     val currentItemKeys = remember(isContentMounted, isViewingThread, listItems) {
         if (!isContentMounted) {
             emptySet()
@@ -145,6 +175,40 @@ internal fun PlayerCommentsPanel(
                 playerCommentItemKey(isViewingThread = isViewingThread, reply = reply, index = index)
             }.toSet()
         }
+    }
+
+    LaunchedEffect(commentImageViewerState != null) {
+        latestImageViewerVisibilityChanged.value(commentImageViewerState != null)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            latestImageViewerVisibilityChanged.value(false)
+        }
+    }
+    LaunchedEffect(
+        isViewingThread,
+        uiState.sortMode,
+        listItems,
+        uiState.activeThreadRoot?.rpid,
+    ) {
+        commentImageViewerState = null
+        pendingPictureReturnKey = null
+    }
+    LaunchedEffect(commentImageViewerState, pendingPictureReturnKey) {
+        if (commentImageViewerState != null) return@LaunchedEffect
+        val returnKey = pendingPictureReturnKey ?: return@LaunchedEffect
+        commentFocusCoordinator.requestFocusKey(returnKey)
+        repeat(5) { attempt ->
+            withFrameNanos { }
+            if (commentFocusCoordinator.drainPendingFocus()) {
+                pendingPictureReturnKey = null
+                return@LaunchedEffect
+            }
+            if (attempt < 4) {
+                delay(40L)
+            }
+        }
+        pendingPictureReturnKey = null
     }
 
     LaunchedEffect(isViewingThread, uiState.sortMode) {
@@ -271,6 +335,23 @@ internal fun PlayerCommentsPanel(
             )
 
             uiState.activeThreadRoot?.takeIf { isViewingThread && isContentMounted }?.let { rootReply ->
+                val rootCommentKey = "thread-root:${rootReply.rpid}"
+                val rootFocusRequester = remember(rootCommentKey) { FocusRequester() }
+                DisposableEffect(rootCommentKey, rootFocusRequester, commentFocusCoordinator) {
+                    val registration = commentFocusCoordinator.registerCommentTarget(
+                        key = rootCommentKey,
+                        target = object : PlayerFocusTarget {
+                            override fun tryRequestFocus(): Boolean {
+                                return runCatching {
+                                    rootFocusRequester.requestFocus()
+                                }.getOrDefault(false)
+                            }
+                        },
+                    )
+                    onDispose {
+                        registration.unregister()
+                    }
+                }
                 Text(
                     text = "主评论",
                     color = subTextColor,
@@ -283,6 +364,11 @@ internal fun PlayerCommentsPanel(
                     onOpenThread = {},
                     showReplyAction = false,
                     avatarLoadGate = avatarLoadGate,
+                    focusRequester = rootFocusRequester,
+                    onFocused = { lastFocusedCommentKey = rootCommentKey },
+                    onOpenPictures = { pictures, suppressInitialKeyUp ->
+                        openPictures(rootCommentKey, pictures, suppressInitialKeyUp)
+                    },
                 )
             }
 
@@ -369,6 +455,9 @@ internal fun PlayerCommentsPanel(
                                 avatarLoadGate = avatarLoadGate,
                                 focusRequester = commentFocusRequester,
                                 onFocused = { lastFocusedCommentKey = commentKey },
+                                onOpenPictures = { pictures, suppressInitialKeyUp ->
+                                    openPictures(commentKey, pictures, suppressInitialKeyUp)
+                                },
                             )
                         }
                     }
@@ -400,6 +489,16 @@ internal fun PlayerCommentsPanel(
                     }
                 }
             }
+        }
+        commentImageViewerState?.let { viewerState ->
+            CommentImageViewer(
+                state = viewerState,
+                onStateChanged = { commentImageViewerState = it },
+                onDismissRequest = {
+                    pendingPictureReturnKey = viewerState.sourceKey
+                    commentImageViewerState = null
+                },
+            )
         }
     }
 }
@@ -502,9 +601,13 @@ private fun PlayerCommentListItem(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
+    onOpenPictures: (List<CommentPictureUiModel>, Boolean) -> Unit = { _, _ -> },
 ) {
     val isLightTheme = LocalIsLightTheme.current
     val hasReplies = reply.rcount > 0 || reply.replies.orEmpty().isNotEmpty()
+    val pictures = remember(reply.content.pictures) {
+        reply.content.pictures.toCommentPictureUiModels()
+    }
     val dateText = remember(reply.ctime) { formatCommentDate(reply.ctime) }
     val locationText = reply.replyControl?.location.orEmpty()
     val contextText = remember(dateText, locationText) {
@@ -528,8 +631,14 @@ private fun PlayerCommentListItem(
     ) {
         Surface(
             onClick = {
-                if (showReplyAction && hasReplies) {
-                    onOpenThread(reply)
+                when (resolveCommentCardShortConfirmAction(
+                    hasReplies = hasReplies,
+                    hasPictures = pictures.isNotEmpty(),
+                    replyNavigationEnabled = showReplyAction,
+                )) {
+                    CommentCardShortConfirmAction.OpenReplies -> onOpenThread(reply)
+                    CommentCardShortConfirmAction.OpenPictures -> onOpenPictures(pictures, false)
+                    CommentCardShortConfirmAction.None -> Unit
                 }
             },
             shape = ClickableSurfaceDefaults.shape(RectangleShape),
@@ -548,6 +657,14 @@ private fun PlayerCommentListItem(
             ),
             modifier = focusModifier
                 .fillMaxWidth()
+                .then(
+                    commentPictureConfirmModifier(
+                        hasPictures = pictures.isNotEmpty(),
+                        onOpenPicturesFromLongPress = {
+                            onOpenPictures(pictures, true)
+                        },
+                    )
+                )
                 .onFocusChanged { focusState ->
                     isFocused = focusState.hasFocus
                     if (focusState.hasFocus) {
@@ -614,6 +731,7 @@ private fun PlayerCommentListItem(
                         maxLines = if (showReplyAction) 6 else 8,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    CommentPictureCompactPreview(pictures = pictures)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

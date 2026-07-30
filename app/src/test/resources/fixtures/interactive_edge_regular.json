@@ -1,0 +1,40 @@
+{
+  "code": 0,
+  "message": "0",
+  "data": {
+    "title": "Interactive fixture",
+    "edge_id": 1001,
+    "story_list": [],
+    "is_leaf": 0,
+    "edges": {
+      "questions": [
+        {
+          "id": 2001,
+          "type": 1,
+          "start_time_r": 500,
+          "duration": -1,
+          "pause_video": 1,
+          "title": "Choose a route",
+          "choices": [
+            {
+              "id": 3001,
+              "cid": 4001,
+              "option": "Route A",
+              "condition": "",
+              "is_default": 1,
+              "is_hidden": 0
+            },
+            {
+              "id": 3002,
+              "cid": 4002,
+              "option": "Unsupported conditional route",
+              "condition": "score > 1",
+              "is_default": 0,
+              "is_hidden": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

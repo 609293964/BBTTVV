@@ -1,6 +1,5 @@
 package com.bbttvv.app.feature.settings
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -63,8 +62,12 @@ import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.data.repository.BlockedUpRepository
+import com.bbttvv.app.data.model.VideoQuality
+import com.bbttvv.app.feature.plugin.isAllowedCustomCdnHost
+import com.bbttvv.app.ui.components.LocalTvNoticeHostState
 import com.bbttvv.app.ui.components.TvDialog
 import com.bbttvv.app.ui.components.TvDialogActionButton
+import com.bbttvv.app.ui.components.TvNoticeKind
 import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
@@ -74,9 +77,11 @@ import kotlinx.coroutines.launch
 private object SettingsFocusReturnKeys {
     const val Back = "settings:back"
     const val UserAgent = "settings:user_agent"
+    const val CustomCdnHost = "settings:custom_cdn_host"
 }
 
 private enum class SettingsChoice(val rowKey: String) {
+    PGC_QUALITY("settings_pgc_preferred_quality"),
     DEFAULT_SPEED("settings_default_speed"),
     PLAYBACK_END("settings_playback_end"),
     VOLUME_CALIBRATION("settings_volume_calibration"),
@@ -328,6 +333,7 @@ fun TvSettingsList(
     initialFocusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
+    val tvNoticeHostState = LocalTvNoticeHostState.current
     val scope = rememberCoroutineScope()
     val blockedUpRepository = remember(context) { BlockedUpRepository(context.applicationContext) }
 
@@ -345,6 +351,10 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(initialValue = DEFAULT_APP_USER_AGENT)
     val ipv4OnlyEnabled by SettingsManager.getIpv4OnlyEnabled(context)
         .collectAsStateWithLifecycle(initialValue = false)
+    val strictCustomCdnEnabled by SettingsManager.getStrictCustomCdnEnabled(context)
+        .collectAsStateWithLifecycle(initialValue = false)
+    val customCdnHost by SettingsManager.getCustomCdnHost(context)
+        .collectAsStateWithLifecycle(initialValue = "")
     val playerAutoResumeEnabled by SettingsManager.getPlayerAutoResumeEnabled(context)
         .collectAsStateWithLifecycle(initialValue = true)
     val playerPlaybackEndAction by SettingsManager.getPlayerPlaybackEndAction(context)
@@ -382,6 +392,10 @@ fun TvSettingsList(
         .collectAsStateWithLifecycle(initialValue = false)
     val defaultPlaybackSpeed by PlayerSettingsStore.getDefaultPlaybackSpeed(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
+    val interactiveVideoEnabled by PlayerSettingsStore.getInteractiveVideoEnabled(context)
+        .collectAsStateWithLifecycle(initialValue = true)
+    val pgcPreferredQuality by PlayerSettingsStore.getPgcPreferredQuality(context)
+        .collectAsStateWithLifecycle(initialValue = null)
     val volumeCalibrationScale by PlayerSettingsStore.getVolumeCalibrationScale(context)
         .collectAsStateWithLifecycle(initialValue = 1.0f)
     val audioBalanceLevel by PlayerSettingsStore.getAudioBalanceLevel(context)
@@ -395,9 +409,13 @@ fun TvSettingsList(
     var cacheRefreshTick by remember { mutableIntStateOf(0) }
     var isClearingCache by remember { mutableStateOf(false) }
     var showUserAgentDialog by remember { mutableStateOf(false) }
+    var showCustomCdnDialog by remember { mutableStateOf(false) }
+    var customCdnValidationMessage by remember { mutableStateOf<String?>(null) }
     var activeChoice by remember { mutableStateOf<SettingsChoice?>(null) }
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
+    var customCdnHostDraft by remember { mutableStateOf("") }
     val userAgentFocusRequester = remember { FocusRequester() }
+    val customCdnHostFocusRequester = remember { FocusRequester() }
     val choiceFocusRequesters = remember {
         SettingsChoice.entries.associateWith { FocusRequester() }
     }
@@ -427,6 +445,10 @@ fun TvSettingsList(
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
         focusRequester = userAgentFocusRequester,
+    )
+    RegisterTvFocusReturnTarget(
+        key = SettingsFocusReturnKeys.CustomCdnHost,
+        focusRequester = customCdnHostFocusRequester,
     )
     SettingsChoice.entries.forEach { choice ->
         RegisterTvFocusReturnTarget(
@@ -525,6 +547,24 @@ fun TvSettingsList(
                     }
                 )
             }
+            item(key = "settings_pgc_preferred_quality") {
+                SettingsRow(
+                    title = "PGC 默认画质",
+                    subtitle = "仅用于番剧、影视等 PGC 内容；选择“跟随普通视频”可保持旧用户行为。",
+                    value = pgcPreferredQuality
+                        ?.let { VideoQuality.fromCode(it)?.description ?: it.toString() }
+                        ?: "跟随普通视频",
+                    kind = SettingsRowKind.Choice,
+                    compact = compact,
+                    modifier = getRowModifier(
+                        "settings_pgc_preferred_quality",
+                        leftModifier.focusRequester(
+                            choiceFocusRequesters.getValue(SettingsChoice.PGC_QUALITY)
+                        ).captureChoiceAnchor(SettingsChoice.PGC_QUALITY),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.PGC_QUALITY },
+                )
+            }
             item(key = "settings_remember_last_speed") {
                 SettingsRow(
                     title = "记住上次播放倍速",
@@ -590,6 +630,20 @@ fun TvSettingsList(
                         ).captureChoiceAnchor(SettingsChoice.PLAYBACK_END),
                     ),
                     onClick = { activeChoice = SettingsChoice.PLAYBACK_END }
+                )
+            }
+            item(key = "settings_interactive_video") {
+                SettingsRow(
+                    title = "弹幕投票与互动",
+                    subtitle = "显示视频中的投票、分支等互动选项；关闭后不弹出互动框。",
+                    value = onOff(interactiveVideoEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_interactive_video", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            PlayerSettingsStore.setInteractiveVideoEnabled(context, !interactiveVideoEnabled)
+                        }
+                    }
                 )
             }
         }
@@ -833,6 +887,48 @@ fun TvSettingsList(
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.NETWORK) {
             item(key = "settings_network_title") { SettingsSectionTitle("网络与连接", compact = compact) }
+            item(key = "settings_custom_cdn_host") {
+                SettingsRow(
+                    title = "自定义 CDN 主机",
+                    subtitle = "只接受 bilivideo.com 域名；不保存播放 URL、Cookie 或 token。",
+                    value = customCdnHost.ifBlank { "未配置" },
+                    kind = SettingsRowKind.Navigation,
+                    compact = compact,
+                    modifier = getRowModifier(
+                        "settings_custom_cdn_host",
+                        leftModifier.focusRequester(customCdnHostFocusRequester),
+                    ),
+                    onClick = {
+                        customCdnHostDraft = customCdnHost
+                        customCdnValidationMessage = null
+                        showCustomCdnDialog = true
+                    },
+                )
+            }
+            item(key = "settings_strict_custom_cdn") {
+                SettingsRow(
+                    title = "严格使用自定义 CDN",
+                    subtitle = "开启后仅使用上方主机重写出的地址，不回退属地或原始线路；失败会显示规则与 URL 类型。",
+                    value = onOff(strictCustomCdnEnabled),
+                    compact = compact,
+                    modifier = getRowModifier("settings_strict_custom_cdn", leftModifier),
+                    onClick = {
+                        if (!strictCustomCdnEnabled && !isAllowedCustomCdnHost(customCdnHost)) {
+                            tvNoticeHostState.show(
+                                message = "请先配置有效的 bilivideo.com CDN 主机",
+                                kind = TvNoticeKind.Error,
+                            )
+                        } else {
+                            scope.launch {
+                                SettingsManager.setStrictCustomCdnEnabled(
+                                    context,
+                                    !strictCustomCdnEnabled,
+                                )
+                            }
+                        }
+                    },
+                )
+            }
             item(key = "settings_user_agent") {
                 SettingsRow(
                     title = "User-Agent",
@@ -1004,7 +1100,87 @@ fun TvSettingsList(
         )
     }
 
+    if (showCustomCdnDialog) {
+        TvDialog(
+            title = "编辑自定义 CDN 主机",
+            onDismissRequest = {
+                showCustomCdnDialog = false
+                customCdnValidationMessage = null
+            },
+            returnFocusKey = SettingsFocusReturnKeys.CustomCdnHost,
+            returnFocusFallbackKeys = listOf(SettingsFocusReturnKeys.Back),
+            content = {
+                TvTextInput(
+                    value = customCdnHostDraft,
+                    onValueChange = {
+                        customCdnHostDraft = it
+                        customCdnValidationMessage = null
+                    },
+                    label = "CDN 主机",
+                    supportingText = "示例：upos-sz-mirroralib.bilivideo.com；留空会清除配置并关闭严格模式。",
+                    singleLine = true,
+                    keyboardType = KeyboardType.Uri,
+                )
+                customCdnValidationMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 14.sp,
+                    )
+                }
+            },
+            actions = {
+                TvDialogActionButton(
+                    text = "取消",
+                    onClick = {
+                        showCustomCdnDialog = false
+                        customCdnValidationMessage = null
+                    },
+                )
+                TvDialogActionButton(
+                    text = "保存",
+                    onClick = {
+                        val normalized = customCdnHostDraft.trim()
+                        if (normalized.isNotBlank() && !isAllowedCustomCdnHost(normalized)) {
+                            customCdnValidationMessage = "仅允许 bilivideo.com CDN 主机"
+                        } else {
+                            scope.launch {
+                                SettingsManager.setCustomCdnHost(context, normalized)
+                                if (normalized.isBlank()) {
+                                    SettingsManager.setStrictCustomCdnEnabled(context, false)
+                                }
+                                customCdnValidationMessage = null
+                                showCustomCdnDialog = false
+                            }
+                        }
+                    },
+                )
+            },
+        )
+    }
+
     when (activeChoice) {
+        SettingsChoice.PGC_QUALITY -> TvSettingsChoicePopup(
+            title = "选择 PGC 默认画质",
+            options = listOf(TvSettingsChoiceOption(-1, "跟随普通视频")) +
+                VideoQuality.entries
+                    .sortedByDescending { quality -> quality.code }
+                    .map { quality -> TvSettingsChoiceOption(quality.code, quality.description) },
+            selectedValue = pgcPreferredQuality ?: -1,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.PGC_QUALITY],
+            returnFocusKey = SettingsChoice.PGC_QUALITY.rowKey,
+            onSelect = { qualityId ->
+                scope.launch {
+                    PlayerSettingsStore.setPgcPreferredQuality(
+                        context = context,
+                        qualityId = qualityId.takeIf { it > 0 },
+                    )
+                    activeChoice = null
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
         SettingsChoice.DEFAULT_SPEED -> TvSettingsChoicePopup(
             title = "选择默认倍速",
             options = (PLAYER_PLAYBACK_SPEED_PRESETS + defaultPlaybackSpeed)
@@ -1091,11 +1267,10 @@ fun TvSettingsList(
                     type == SettingsManager.FeedApiType.MOBILE &&
                     TokenManager.accessTokenCache.isNullOrBlank()
                 ) {
-                    Toast.makeText(
-                        context,
-                        MOBILE_FEED_TOKEN_MISSING_MESSAGE,
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    tvNoticeHostState.show(
+                        message = MOBILE_FEED_TOKEN_MISSING_MESSAGE,
+                        kind = TvNoticeKind.Error,
+                    )
                 } else {
                     scope.launch {
                         SettingsManager.setFeedApiType(context, type)

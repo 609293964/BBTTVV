@@ -132,7 +132,8 @@ object PlaybackRepository {
         aid: Long = 0L,
         requestedCid: Long = 0L,
         targetQuality: Int = 80,
-        audioLang: String? = null
+        audioLang: String? = null,
+        allowInteractiveCid: Boolean = false,
     ): Result<Pair<ViewInfo, PlayUrlData>> = withContext(Dispatchers.IO) {
         try {
             TokenManager.awaitWarmup()
@@ -150,7 +151,8 @@ object PlaybackRepository {
             val cid = resolveRequestedVideoCid(
                 requestCid = requestedCid,
                 infoCid = rawInfo.cid,
-                pages = rawInfo.pages
+                pages = rawInfo.pages,
+                allowInteractiveCid = allowInteractiveCid,
             )
             val info = if (cid > 0L && cid != rawInfo.cid) {
                 rawInfo.copy(cid = cid)

@@ -19,6 +19,14 @@ class DpadGridEdgePolicyTest {
     }
 
     @Test
+    fun onlyFirstColumnExitsLeftToSidebar() {
+        assertTrue(DpadGridEdgePolicy.resolve(position = 0, itemCount = 12, spanCount = 4)!!.isLeft)
+        assertFalse(DpadGridEdgePolicy.resolve(position = 1, itemCount = 12, spanCount = 4)!!.isLeft)
+        assertFalse(DpadGridEdgePolicy.resolve(position = 3, itemCount = 12, spanCount = 4)!!.isLeft)
+        assertTrue(DpadGridEdgePolicy.resolve(position = 4, itemCount = 12, spanCount = 4)!!.isLeft)
+    }
+
+    @Test
     fun rightEdgeIncludesLastColumnAndLastItemInShortRow() {
         val lastFullRowColumn = DpadGridEdgePolicy.resolve(position = 3, itemCount = 10, spanCount = 4)
         val lastItemInShortRow = DpadGridEdgePolicy.resolve(position = 9, itemCount = 10, spanCount = 4)

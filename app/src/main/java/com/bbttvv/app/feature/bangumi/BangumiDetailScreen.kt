@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -183,20 +182,23 @@ fun BangumiDetailScreen(
             .fillMaxSize()
             .background(pageBackgroundColor)
     ) {
-        // 1. 背景层：高斯模糊的大封面海报，配合暗色渐变压底
+        // 1. 背景层：使用尺寸受控的静态封面，避免低端 TV 的全屏实时模糊开销
         uiState.detail?.cover?.let { coverUrl ->
             AsyncImage(
-                model = coverUrl,
+                model = rememberSizedImageModel(
+                    url = coverUrl,
+                    widthPx = 960,
+                    heightPx = 540,
+                ),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(32.dp)
                     .background(coverPlaceholderColor)
             )
         }
 
-        // 压底渐变罩，产生高级的毛玻璃叠加暗黑色感
+        // 压底渐变罩，保证背景不干扰远距离阅读
         Box(
             modifier = Modifier
                 .fillMaxSize()

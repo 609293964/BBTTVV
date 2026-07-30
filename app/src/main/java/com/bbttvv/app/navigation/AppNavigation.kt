@@ -1,7 +1,6 @@
 package com.bbttvv.app.navigation
 
 import android.app.Activity
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +36,8 @@ import com.bbttvv.app.feature.bangumi.BangumiDetailScreen
 import com.bbttvv.app.feature.video.screen.PlayerScreen
 
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.components.LocalTvNoticeHostState
+import com.bbttvv.app.ui.components.TV_NOTICE_EXIT_DURATION_MS
 import com.bbttvv.app.ui.detail.DetailOpenMode
 import com.bbttvv.app.ui.detail.videoDetailRoutes
 import com.bbttvv.app.ui.home.HomeRecyclerPools
@@ -48,6 +49,7 @@ import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 @Composable
 fun AppNavigation() {
     val context = LocalContext.current
+    val tvNoticeHostState = LocalTvNoticeHostState.current
     val navController = rememberNavController()
     val navigationState = rememberAppNavigationState()
     val homeRecyclerPools = remember { HomeRecyclerPools() }
@@ -120,7 +122,10 @@ fun AppNavigation() {
         when (navigationState.handleHomeBackPressed(System.currentTimeMillis(), visibleTopLevelTabs)) {
             HomeBackPressResult.Consumed -> Unit
             HomeBackPressResult.ShowExitHint -> {
-                Toast.makeText(context, "再按一次返回键退出应用", Toast.LENGTH_SHORT).show()
+                tvNoticeHostState.show(
+                    message = "再按一次返回键退出应用",
+                    durationMs = TV_NOTICE_EXIT_DURATION_MS,
+                )
             }
 
             HomeBackPressResult.Exit -> {

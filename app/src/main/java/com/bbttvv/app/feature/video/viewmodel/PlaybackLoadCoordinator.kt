@@ -7,9 +7,11 @@ import com.bbttvv.app.core.store.PlaybackResumeStore
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.resolveStoredResumeCandidate
+import com.bbttvv.app.core.store.player.PlaybackQualityStore
+import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.core.util.MediaUtils
-import com.bbttvv.app.core.util.NetworkUtils
 import com.bbttvv.app.core.util.resolvePlaybackDefaultQualityId
+import com.bbttvv.app.core.util.resolveStoredQualityForContent
 import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.repository.PlaybackRepository
 import com.bbttvv.app.feature.video.usecase.PlaybackLoadResult
@@ -57,6 +59,9 @@ internal class PlaybackLoadCoordinator(
     private val updatePlaybackDuration: (Long) -> Unit,
     private val refreshPlayerSnapshot: () -> Unit,
     private val loadOnlineCount: (bvid: String, cid: Long) -> Unit,
+    private val validateInteractiveBranch: (InteractiveBranchContext) -> Boolean,
+    private val onPlaybackLoaded: (PlaybackLoadRequest, PlaybackLoadResult.Success) -> Unit,
+    private val onPlaybackLoadFailed: (PlaybackLoadRequest, String) -> Unit,
 ) {
     private var loadJob: Job? = null
     private var generation: Long = 0L
@@ -67,6 +72,8 @@ internal class PlaybackLoadCoordinator(
         val requestBvid = request.bvid.trim()
         val requestedCid = request.cid
         if (requestBvid.isBlank()) return
+        val interactiveBranch = request.interactiveBranch
+        if (interactiveBranch != null && !validateInteractiveBranch(interactiveBranch)) return
         if (
             !request.force &&
             getRuntime().bvid == requestBvid &&
@@ -106,7 +113,9 @@ internal class PlaybackLoadCoordinator(
             val dolbyVisionSupported = MediaUtils.isDolbyVisionSupported(appContext)
             val hevcSupported = MediaUtils.isHevcSupported()
             val av1Supported = MediaUtils.isAv1Supported()
-            val preferredQuality = resolveInitialPreferredQuality()
+            val preferredQuality = resolveInitialPreferredQuality(
+                isPgc = requestBvid.startsWith("ep") || requestBvid.startsWith("ss"),
+            )
             val cdnPreference = resolvePlayerCdnPreference()
 
             if (!isCurrentPlaybackLoad(loadGeneration, requestBvid, requestedCid)) {
@@ -134,6 +143,7 @@ internal class PlaybackLoadCoordinator(
                     isAv1Supported = av1Supported,
                     isHdrSupported = hdrSupported,
                     isDolbyVisionSupported = dolbyVisionSupported,
+                    allowInteractiveCid = interactiveBranch != null,
                 )
             ) {
                 is PlaybackLoadResult.Error -> {
@@ -146,6 +156,7 @@ internal class PlaybackLoadCoordinator(
                             errorMessage = result.message,
                         )
                     }
+                    onPlaybackLoadFailed(request, result.message)
                 }
 
                 is PlaybackLoadResult.Success -> {
@@ -224,7 +235,7 @@ internal class PlaybackLoadCoordinator(
             result.source,
             initialSeekPositionMs,
             true,
-            resumePrompt == null,
+            request.interactiveBranch?.playWhenReadyAfterLoad ?: (resumePrompt == null),
         )
         if (!isCurrentPlaybackSession(loadGeneration, result.info.bvid, result.info.cid)) {
             return
@@ -273,6 +284,7 @@ internal class PlaybackLoadCoordinator(
         )
         loadOnlineCount(result.info.bvid, result.info.cid)
         playbackEndController.prefetchRelatedVideosForAutoNextIfNeeded(result.info.bvid)
+        onPlaybackLoaded(request, result)
     }
 
     private fun isCurrentPlaybackLoad(
@@ -297,10 +309,16 @@ internal class PlaybackLoadCoordinator(
             runtime.cid == cid
     }
 
-    private suspend fun resolveInitialPreferredQuality(): Int {
+    private suspend fun resolveInitialPreferredQuality(isPgc: Boolean): Int {
         val appContext = NetworkModule.appContext ?: return 64
-        val storedQuality = NetworkUtils.getDefaultQualityId(appContext)
-        val autoHighestEnabled = SettingsManager.getAutoHighestQualitySync(appContext)
+        val pgcStoredQuality = PlayerSettingsStore.getPgcPreferredQualitySync(appContext)
+        val storedQuality = resolveStoredQualityForContent(
+            normalStoredQuality = PlaybackQualityStore.getNormalPreferredQualitySync(appContext),
+            pgcStoredQuality = pgcStoredQuality,
+            isPgc = isPgc,
+        )
+        val autoHighestEnabled = SettingsManager.getAutoHighestQualitySync(appContext) &&
+            (!isPgc || pgcStoredQuality == null)
         val isLoggedIn = !TokenManager.sessDataCache.isNullOrBlank() ||
             !TokenManager.accessTokenCache.isNullOrBlank()
         val effectiveVip = PlaybackRepository.refreshVipStatusForPreferredQualityIfNeeded(

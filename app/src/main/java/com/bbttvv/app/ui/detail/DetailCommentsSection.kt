@@ -37,6 +37,12 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.components.CommentPictureThumbnailRow
+import com.bbttvv.app.ui.components.CommentPictureUiModel
+import com.bbttvv.app.ui.components.CommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.commentPictureConfirmModifier
+import com.bbttvv.app.ui.components.resolveCommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.toCommentPictureUiModels
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,6 +79,7 @@ internal fun LazyListScope.detailCommentsSection(
     onSortSelected: (DetailCommentSortMode) -> Unit,
     onRetry: () -> Unit,
     onOpenReplies: (ReplyItem) -> Unit,
+    onOpenPictures: (ReplyItem, List<CommentPictureUiModel>, Boolean) -> Unit,
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit
 ) {
@@ -137,7 +144,8 @@ internal fun LazyListScope.detailCommentsSection(
                         onFocusGained = {
                             focusCoordinator?.rememberCommentFocus(comment.rpid)
                         },
-                        onOpenReplies = onOpenReplies
+                        onOpenReplies = onOpenReplies,
+                        onOpenPictures = onOpenPictures,
                     )
                     if (comment.rcount > 0 || comment.replies.orEmpty().isNotEmpty()) {
                         Text(
@@ -321,9 +329,13 @@ private fun DetailCommentCard(
     focusRequester: FocusRequester? = null,
     onPlaced: () -> Unit = {},
     onFocusGained: () -> Unit = {},
-    onOpenReplies: (ReplyItem) -> Unit = {}
+    onOpenReplies: (ReplyItem) -> Unit = {},
+    onOpenPictures: (ReplyItem, List<CommentPictureUiModel>, Boolean) -> Unit = { _, _, _ -> },
 ) {
     val hasReplies = comment.rcount > 0 || comment.replies.orEmpty().isNotEmpty()
+    val pictures = remember(comment.content.pictures) {
+        comment.content.pictures.toCommentPictureUiModels()
+    }
     val dateText = remember(comment.ctime) {
         if (comment.ctime <= 0L) "" else {
             SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.CHINA).format(Date(comment.ctime * 1000L))
@@ -349,8 +361,16 @@ private fun DetailCommentCard(
 
     Surface(
         onClick = {
-            if (hasReplies) {
-                onOpenReplies(comment)
+            when (resolveCommentCardShortConfirmAction(
+                hasReplies = hasReplies,
+                hasPictures = pictures.isNotEmpty(),
+                replyNavigationEnabled = true,
+            )) {
+                CommentCardShortConfirmAction.OpenReplies -> onOpenReplies(comment)
+                CommentCardShortConfirmAction.OpenPictures -> {
+                    onOpenPictures(comment, pictures, false)
+                }
+                CommentCardShortConfirmAction.None -> Unit
             }
         },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
@@ -365,7 +385,14 @@ private fun DetailCommentCard(
                 shape = RoundedCornerShape(18.dp)
             )
         ),
-        modifier = cardModifier
+        modifier = cardModifier.then(
+            commentPictureConfirmModifier(
+                hasPictures = pictures.isNotEmpty(),
+                onOpenPicturesFromLongPress = {
+                    onOpenPictures(comment, pictures, true)
+                },
+            )
+        )
     ) {
         Column(
             modifier = Modifier
@@ -399,6 +426,8 @@ private fun DetailCommentCard(
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis
             )
+
+            CommentPictureThumbnailRow(pictures = pictures)
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),

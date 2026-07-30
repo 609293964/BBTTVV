@@ -8,6 +8,21 @@ import org.junit.Test
 class VideoLoadPolicyTest {
 
     @Test
+    fun `unknown cid is rejected unless explicitly validated as interactive`() {
+        val pages = listOf(com.bbttvv.app.data.model.response.Page(cid = 10L))
+        assertEquals(0L, resolveRequestedVideoCid(20L, 10L, pages))
+        assertEquals(
+            20L,
+            resolveRequestedVideoCid(
+                requestCid = 20L,
+                infoCid = 10L,
+                pages = pages,
+                allowInteractiveCid = true,
+            ),
+        )
+    }
+
+    @Test
     fun `resolveInitialStartQuality prefers stable quality bands for auto highest`() {
         assertEquals(
             127,

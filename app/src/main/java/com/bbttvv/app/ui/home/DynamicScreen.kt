@@ -518,7 +518,9 @@ internal fun DynamicScreen(
                     canLoadMore = { uiState.hasMoreVideos && !uiState.isLoadingVideos },
                     loadMoreInProgress = uiState.isLoadingVideos,
                     onLoadMore = viewModel::loadMoreVideos,
-                    onMenuRefresh = viewModel::refresh,
+                    onMenuRefresh = {
+                        collapsingHeaderState.runMenuRefresh(viewModel::refresh)
+                    },
                     onVideoFocused = { video, _ ->
                         viewModel.prefetchVideoDetail(video)
                     },

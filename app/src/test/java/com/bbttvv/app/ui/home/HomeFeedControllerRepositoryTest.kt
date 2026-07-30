@@ -107,6 +107,26 @@ class HomeFeedControllerRepositoryTest {
         assertEquals(failure, (result as HomeFeedLoadResult.Failure).error)
     }
 
+    @Test
+    fun `append failure preserves the existing visible feed`() = runBlocking {
+        val failure = IllegalStateException("offline")
+        val controller = HomeFeedController(
+            dismissStore = RecommendDismissStore(),
+            feedRepository = FakeHomeFeedRepository(
+                pages = mapOf(
+                    0 to Result.success(listOf(video("BV1"), video("BV2"))),
+                    1 to Result.failure(failure),
+                )
+            )
+        )
+
+        controller.loadMore()
+        val result = controller.loadMore()
+
+        assertTrue(result is HomeFeedLoadResult.Failure)
+        assertEquals(listOf("BV1", "BV2"), controller.visibleSnapshot().map { it.bvid })
+    }
+
     private class FakeHomeFeedRepository(
         private val pages: Map<Int, Result<List<VideoItem>>>
     ) : HomeFeedRepository {

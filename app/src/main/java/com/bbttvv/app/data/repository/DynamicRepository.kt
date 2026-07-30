@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private const val DYNAMIC_ABSOLUTE_PAGE_FETCH_LIMIT = 10
 private const val DYNAMIC_FEED_REQUEST_TYPE = "all"
 private const val DYNAMIC_USER_PAGINATION_STATE_LIMIT = 64
 private const val DYNAMIC_FOLLOW_UPDATES_PAGE_SIZE = 15
@@ -159,6 +158,9 @@ object DynamicRepository {
 
             val visibleItems = mutableListOf<DynamicItem>()
             var pagesFetched = 0
+            var fetchedItemCount = 0
+            var reportedUpdateNum = 0
+            var resolvedUpdateBaseline = paginationForPageUpdate.updateBaseline
             var requestOffset = if (refresh) "" else feedPagination.offset(scope)
             while (pagesFetched < DYNAMIC_ABSOLUTE_PAGE_FETCH_LIMIT) {
                 val previousOffset = requestOffset
@@ -195,17 +197,26 @@ object DynamicRepository {
                     break
                 }
 
+                if (pagesFetched == 0) {
+                    reportedUpdateNum = data.update_num.coerceAtLeast(0)
+                }
+                resolvedUpdateBaseline = resolveDynamicFeedUpdateBaseline(
+                    currentBaseline = resolvedUpdateBaseline,
+                    responseBaseline = data.update_baseline,
+                    pagesFetched = pagesFetched
+                )
+
                 // 更新分页状态
                 requestOffset = data.offset
                 val updated = feedPagination.updateState(
-                    scope = scope,
-                    state = resolveDynamicPaginationStateAfterPage(
-                        paginationBeforeRefresh = paginationForPageUpdate,
-                        responseOffset = data.offset,
-                        responseUpdateBaseline = data.update_baseline,
-                        responseHasMore = data.has_more,
-                        preserveExistingPagination = useIncrementalRefresh
-                    ),
+                        scope = scope,
+                        state = resolveDynamicPaginationStateAfterPage(
+                            paginationBeforeRefresh = paginationForPageUpdate,
+                            responseOffset = data.offset,
+                            responseUpdateBaseline = resolvedUpdateBaseline,
+                            responseHasMore = data.has_more,
+                            preserveExistingPagination = useIncrementalRefresh
+                        ),
                     generation = requestGeneration
                 )
                 if (!updated) {
@@ -214,16 +225,28 @@ object DynamicRepository {
 
                 // 动态接口的 video 类型过滤可能返回空，改为请求 all 后仅保留 TV 视频网格可渲染的卡片。
                 visibleItems += data.items.filter { it.visible && it.hasRenderableVideoCard() }
+                fetchedItemCount += data.items.size
                 pagesFetched += 1
 
-                if (!shouldContinueDynamicFetchAfterFilter(
+                val shouldContinue = if (useIncrementalRefresh) {
+                    shouldContinueDynamicIncrementalFetch(
+                        accumulatedItemCount = fetchedItemCount,
+                        updateNum = reportedUpdateNum,
+                        hasMore = data.has_more,
+                        previousOffset = previousOffset,
+                        nextOffset = data.offset,
+                        pagesFetched = pagesFetched,
+                    )
+                } else {
+                    shouldContinueDynamicFetchAfterFilter(
                         accumulatedVisibleCount = visibleItems.size,
                         hasMore = data.has_more,
                         previousOffset = previousOffset,
                         nextOffset = data.offset,
                         pagesFetched = pagesFetched
                     )
-                ) {
+                }
+                if (!shouldContinue) {
                     break
                 }
             }

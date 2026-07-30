@@ -18,6 +18,7 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
 import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.feature.video.danmaku.DanmakuProto
 import com.bbttvv.app.feature.plugin.SponsorBlockConfig
 import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
@@ -177,6 +178,28 @@ class PlayerViewModel : BasePlayerViewModel() {
     private var lastDanmakuCid: Long = 0L
     private var lastDanmakuDurationMs: Long = 0L
     private var lastDanmakuRequestAtMs: Long = 0L
+    private var interactiveVideoEnabled = true
+    private val interactiveVideoController = InteractiveVideoController(
+        scope = viewModelScope,
+        pausePlayback = {
+            val shouldResume = playerEngine?.playWhenReady == true
+            playerEngine?.pause()
+            refreshPlayerSnapshot()
+            shouldResume
+        },
+        resumePlayback = {
+            if (!isAppInBackground) {
+                playerEngine?.play()
+                refreshPlayerSnapshot()
+            }
+        },
+        currentPlayWhenReady = { playerEngine?.playWhenReady == true },
+        loadBranch = ::loadInteractiveBranch,
+        showStatus = { message -> _uiState.update { it.copy(statusMessage = message) } },
+    )
+    val interactiveUiState = interactiveVideoController.uiState
+    private val danmakuVoteController = DanmakuVoteController(scope = viewModelScope)
+    val danmakuVoteUiState = danmakuVoteController.uiState
     private val playbackLoadCoordinator = PlaybackLoadCoordinator(
         scope = viewModelScope,
         playbackUseCase = playbackUseCase,
@@ -220,6 +243,52 @@ class PlayerViewModel : BasePlayerViewModel() {
         updatePlaybackDuration = ::updatePlaybackDuration,
         refreshPlayerSnapshot = ::refreshPlayerSnapshot,
         loadOnlineCount = ::loadOnlineCount,
+        validateInteractiveBranch = interactiveVideoController::validate,
+        onPlaybackLoaded = { request, result ->
+            val branch = request.interactiveBranch
+            if (branch != null) {
+                interactiveVideoController.onBranchLoaded(branch, result.source.durationMs)
+            } else if (interactiveVideoEnabled && !request.bvid.startsWith("ep") && !request.bvid.startsWith("ss")) {
+                viewModelScope.launch {
+                    val playerInfo = com.bbttvv.app.data.repository.VideoRepository
+                        .getPlayerInfo(result.info.bvid, result.info.cid)
+                        .getOrNull()
+                    if (
+                        playerInfo != null &&
+                        playbackRuntime.bvid == result.info.bvid &&
+                        playbackRuntime.cid == result.info.cid &&
+                        playerInfo.interaction?.graphVersion ?: 0L > 0L
+                    ) {
+                        interactiveVideoController.initialize(
+                            bvid = result.info.bvid,
+                            graphVersion = playerInfo.interaction!!.graphVersion,
+                            cid = result.info.cid,
+                            mediaDurationMs = result.source.durationMs,
+                        )
+                    }
+                }
+            }
+            if (interactiveVideoEnabled && !isDanmakuEnabled.value && result.info.aid > 0L) {
+                viewModelScope.launch {
+                    val metadata = com.bbttvv.app.data.repository.DanmakuRepository
+                        .getDanmakuView(cid = result.info.cid, aid = result.info.aid)
+                    if (
+                        metadata != null &&
+                        playbackRuntime.aid == result.info.aid &&
+                        playbackRuntime.cid == result.info.cid
+                    ) {
+                        onDanmakuCommandsLoaded(
+                            commands = metadata.commandDms,
+                            cid = result.info.cid,
+                            aid = result.info.aid,
+                        )
+                    }
+                }
+            }
+        },
+        onPlaybackLoadFailed = { request, message ->
+            request.interactiveBranch?.let { interactiveVideoController.onBranchLoadFailed(it, message) }
+        },
     )
 
     val commentsUiState = commentController.uiState
@@ -227,6 +296,7 @@ class PlayerViewModel : BasePlayerViewModel() {
 
     init {
         startSponsorPluginUiObservation()
+        startInteractiveVideoSettingsObservation()
     }
 
     private val playerListener = object : Player.Listener {
@@ -341,6 +411,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         resumeFromPrompt: Boolean = false,
     ) {
         ensureMainThread("loadVideo")
+        interactiveVideoController.cancel()
+        danmakuVoteController.cancel()
         bufferingStallTracker.reset()
         playbackLoadCoordinator.load(
             PlaybackLoadRequest(
@@ -370,6 +442,36 @@ class PlayerViewModel : BasePlayerViewModel() {
             engine.play()
         }
         refreshPlayerSnapshot()
+    }
+
+    @MainThread
+    fun selectInteractiveOption(index: Int) = interactiveVideoController.selectOption(index)
+
+    @MainThread
+    fun hideInteractiveOptions() = interactiveVideoController.hide()
+
+    @MainThread
+    fun retryInteractiveBranch() = interactiveVideoController.retry()
+
+    @MainThread
+    fun selectDanmakuVoteOption(index: Int) = danmakuVoteController.selectOption(index)
+
+    @MainThread
+    fun hideDanmakuVote() = danmakuVoteController.hide()
+
+    @MainThread
+    fun retryDanmakuVote() = danmakuVoteController.retry()
+
+    private fun loadInteractiveBranch(context: InteractiveBranchContext) {
+        playbackLoadCoordinator.load(
+            PlaybackLoadRequest(
+                bvid = playbackRuntime.bvid,
+                aid = playbackRuntime.aid,
+                cid = context.targetCid,
+                force = true,
+                interactiveBranch = context,
+            )
+        )
     }
 
     @MainThread
@@ -815,7 +917,7 @@ class PlayerViewModel : BasePlayerViewModel() {
         playbackCdnFallbackJob?.cancel()
         playbackCdnFallbackJob = null
 
-        com.bbttvv.app.core.util.Logger.w(
+        com.bbttvv.app.core.util.Logger.d(
             "PlayerViewModel",
             "CDN fallback: reason=$reason, region=${state.regionLabel ?: "unknown"}, " +
                 "selected=${hostForPlaybackLog(state.selectedVideoUrl)}, fallback=${hostForPlaybackLog(fallbackVideoUrl)}, " +
@@ -888,6 +990,9 @@ class PlayerViewModel : BasePlayerViewModel() {
                     checkAndSkipSponsor()
                 }
                 recoverFromBufferingStallIfNeeded()
+                val playbackPositionMs = getPlayerCurrentPosition()
+                interactiveVideoController.syncPlaybackPosition(playbackPositionMs)
+                danmakuVoteController.syncPlaybackPosition(playbackPositionMs)
                 delay(if (isDanmakuEnabled.value) 500L else 1000L)
             }
         }
@@ -983,6 +1088,46 @@ class PlayerViewModel : BasePlayerViewModel() {
                 }
             }
         }
+    }
+
+    private fun startInteractiveVideoSettingsObservation() {
+        val context = NetworkModule.appContext ?: return
+        viewModelScope.launch {
+            PlayerSettingsStore.getInteractiveVideoEnabled(context).collectLatest { enabled ->
+                interactiveVideoEnabled = enabled
+                if (!enabled) {
+                    interactiveVideoController.cancel()
+                    danmakuVoteController.cancel()
+                }
+            }
+        }
+    }
+
+    @MainThread
+    override fun onDanmakuCommandsLoaded(
+        commands: List<DanmakuProto.CommandDm>,
+        cid: Long,
+        aid: Long,
+    ) {
+        ensureMainThread("onDanmakuCommandsLoaded")
+        com.bbttvv.app.core.util.Logger.w(
+            "DanmakuVote",
+            "Commands received cid=$cid aid=$aid count=${commands.size} " +
+                "runtimeCid=${playbackRuntime.cid} runtimeAid=${playbackRuntime.aid} enabled=$interactiveVideoEnabled"
+        )
+        if (
+            !interactiveVideoEnabled ||
+            playbackRuntime.cid != cid ||
+            playbackRuntime.aid != aid
+        ) {
+            com.bbttvv.app.core.util.Logger.d("DanmakuVote", "Commands ignored for inactive playback session")
+            return
+        }
+        danmakuVoteController.initialize(
+            aid = aid,
+            cid = cid,
+            commands = commands,
+        )
     }
 
     private fun startSponsorPluginUiObservation() {
@@ -1098,6 +1243,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         finishPlaybackSession(reason = "viewmodel_cleared")
         detachPlayer()
         playbackLoadCoordinator.cancel()
+        interactiveVideoController.cancel()
+        danmakuVoteController.cancel()
         playbackQualityController.cancelPending()
         playerPollingJob?.cancel()
         settingsObservationJob?.cancel()

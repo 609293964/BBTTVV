@@ -6,6 +6,7 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.MediaUtils
 import com.bbttvv.app.feature.video.usecase.PlaybackSource
 import com.bbttvv.app.feature.video.usecase.VideoPlaybackUseCase
+import com.bbttvv.app.feature.video.usecase.StrictCustomCdnException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -63,16 +64,28 @@ internal class PlaybackQualityController(
                 )
             }
 
-            val loadedSource = playbackUseCase.changeQuality(
-                bvid = qualityBvid,
-                cid = qualityCid,
-                qualityId = qualityId,
-                cdnPreference = cdnPreference,
-                isHevcSupported = hevcSupported,
-                isAv1Supported = av1Supported,
-                isHdrSupported = hdrSupported,
-                isDolbyVisionSupported = dolbyVisionSupported,
-            )
+            val loadedSource = try {
+                playbackUseCase.changeQuality(
+                    bvid = qualityBvid,
+                    cid = qualityCid,
+                    qualityId = qualityId,
+                    cdnPreference = cdnPreference,
+                    isHevcSupported = hevcSupported,
+                    isAv1Supported = av1Supported,
+                    isHdrSupported = hdrSupported,
+                    isDolbyVisionSupported = dolbyVisionSupported,
+                )
+            } catch (error: StrictCustomCdnException) {
+                if (isCurrentQualityChange(qualityGeneration, qualityBvid, qualityCid)) {
+                    updateUiState {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.message ?: "严格自定义 CDN 失败。",
+                        )
+                    }
+                }
+                return@launch
+            }
             if (!isCurrentQualityChange(qualityGeneration, qualityBvid, qualityCid)) {
                 return@launch
             }
@@ -86,17 +99,27 @@ internal class PlaybackQualityController(
                 return@launch
             }
 
-            val nextSource = playbackUseCase.selectDashTracks(
-                source = loadedSource,
-                qualityId = loadedSource.actualQuality,
-                videoCodecId = previousSource?.selectedVideoCodecId ?: loadedSource.selectedVideoCodecId,
-                audioQualityId = previousSource?.selectedAudioQualityId ?: loadedSource.selectedAudioQualityId,
-                cdnPreference = cdnPreference,
-                isHevcSupported = hevcSupported,
-                isAv1Supported = av1Supported,
-                isHdrSupported = hdrSupported,
-                isDolbyVisionSupported = dolbyVisionSupported,
-            ) ?: loadedSource
+            val nextSource = try {
+                playbackUseCase.selectDashTracks(
+                    source = loadedSource,
+                    qualityId = loadedSource.actualQuality,
+                    videoCodecId = previousSource?.selectedVideoCodecId ?: loadedSource.selectedVideoCodecId,
+                    audioQualityId = previousSource?.selectedAudioQualityId ?: loadedSource.selectedAudioQualityId,
+                    cdnPreference = cdnPreference,
+                    isHevcSupported = hevcSupported,
+                    isAv1Supported = av1Supported,
+                    isHdrSupported = hdrSupported,
+                    isDolbyVisionSupported = dolbyVisionSupported,
+                ) ?: loadedSource
+            } catch (error: StrictCustomCdnException) {
+                updateUiState {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "严格自定义 CDN 失败。",
+                    )
+                }
+                return@launch
+            }
 
             if (!isCurrentQualityChange(qualityGeneration, qualityBvid, qualityCid)) {
                 return@launch

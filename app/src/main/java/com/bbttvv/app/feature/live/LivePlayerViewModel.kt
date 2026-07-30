@@ -140,10 +140,14 @@ private val DEFAULT_LIVE_PLAYER_CORE = LIVE_PLAYER_CORE_OPTIONS.first()
 
 data class LivePlayerPlaybackState(
     val isPlaying: Boolean = false,
+    val playWhenReady: Boolean = false,
     val isBuffering: Boolean = false,
     val playerState: Int = Player.STATE_IDLE,
     val positionMs: Long = 0L,
-)
+) {
+    val isPlaybackActive: Boolean
+        get() = playWhenReady && playerState != Player.STATE_IDLE && playerState != Player.STATE_ENDED
+}
 
 data class LivePlayerUiState(
     val roomId: Long = 0L,
@@ -204,6 +208,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private val _playbackState = MutableStateFlow(LivePlayerPlaybackState())
     val playbackState: StateFlow<LivePlayerPlaybackState> = _playbackState.asStateFlow()
 
+    private val _superChat = MutableStateFlow<LiveSuperChat?>(null)
+    internal val superChat: StateFlow<LiveSuperChat?> = _superChat.asStateFlow()
+
     private var runtimeState = LivePlaybackRuntimeState()
     private var liveLoadJob: Job? = null
     private var playerPollingJob: Job? = null
@@ -213,12 +220,16 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private var statusClearJob: Job? = null
     private var danmakuCollectJob: Job? = null
     private var danmakuPublishJob: Job? = null
+    private var superChatDisplayJob: Job? = null
     private var liveDanmakuClient: LiveDanmakuClient? = null
     private var liveDanmakuSessionId: Long = 0L
     private var liveDanmakuRoomId: Long = 0L
     private val liveDanmakuBuffer = ArrayDeque<WeightedTextData>()
     private var lastLiveDanmakuShowAtMs: Long = 0L
     private var liveDanmakuSequenceId: Long = 1L
+    private val superChatQueue = LiveSuperChatQueue {
+        System.currentTimeMillis() / 1_000L
+    }
     private val liveBufferingStallTracker = PlaybackBufferingStallTracker()
 
     private val playerListener = object : Player.Listener {
@@ -767,6 +778,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         } else {
             LivePlayerPlaybackState(
                 isPlaying = player.isPlaying,
+                playWhenReady = player.playWhenReady,
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,
                 playerState = player.playbackState,
                 positionMs = player.currentPosition.coerceAtLeast(0L)
@@ -1286,6 +1298,16 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                         if (!isLiveDanmakuSessionActive(sessionId, roomId) || !canAcceptLiveDanmaku()) {
                             return@collect
                         }
+                        val superChatEvent = withContext(Dispatchers.Default) {
+                            parseLiveSuperChatEvent(packet.body)
+                        }
+                        if (superChatEvent != null) {
+                            ensureActive()
+                            if (isLiveDanmakuSessionActive(sessionId, roomId)) {
+                                handleLiveSuperChatEvent(superChatEvent)
+                            }
+                            return@collect
+                        }
                         val message = withContext(Dispatchers.Default) {
                             parseLiveDanmakuMessage(packet.body)
                         } ?: return@collect
@@ -1353,6 +1375,10 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         danmakuCollectJob = null
         danmakuPublishJob?.cancel()
         danmakuPublishJob = null
+        superChatDisplayJob?.cancel()
+        superChatDisplayJob = null
+        superChatQueue.clear()
+        _superChat.value = null
         liveDanmakuClient?.release()
         liveDanmakuClient = null
         resetLiveDanmakuBuffer(clearPayload = clearPayload)
@@ -1394,6 +1420,50 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         liveDanmakuBuffer.addLast(item)
         trimLiveDanmakuBuffer(nowPositionMs = currentPosition)
         scheduleDanmakuPublish()
+    }
+
+    private fun handleLiveSuperChatEvent(event: ParsedLiveSuperChatEvent) {
+        ensureMainThread("handleLiveSuperChatEvent")
+        when (event) {
+            is ParsedLiveSuperChatEvent.Message -> {
+                if (superChatQueue.offer(event.item)) {
+                    scheduleNextSuperChat()
+                }
+            }
+
+            is ParsedLiveSuperChatEvent.Delete -> {
+                if (superChatQueue.delete(event.ids)) {
+                    superChatDisplayJob?.cancel()
+                    _superChat.value = null
+                }
+            }
+        }
+    }
+
+    private fun scheduleNextSuperChat() {
+        ensureMainThread("scheduleNextSuperChat")
+        if (superChatDisplayJob?.isActive == true) return
+        val item = superChatQueue.startNext() ?: return
+        val durationMs = item.displayDurationMs(System.currentTimeMillis() / 1_000L)
+        if (durationMs == null) {
+            superChatQueue.finishCurrent(item)
+            scheduleNextSuperChat()
+            return
+        }
+        _superChat.value = item
+        superChatDisplayJob = viewModelScope.launch {
+            try {
+                delay(durationMs)
+                if (superChatQueue.finishCurrent(item)) {
+                    _superChat.value = null
+                }
+            } finally {
+                superChatDisplayJob = null
+                if (superChatQueue.current == null) {
+                    scheduleNextSuperChat()
+                }
+            }
+        }
     }
 
     private fun canAcceptLiveDanmaku(): Boolean {

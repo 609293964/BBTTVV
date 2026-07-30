@@ -19,12 +19,19 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
@@ -42,6 +49,15 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.components.CommentImageViewer
+import com.bbttvv.app.ui.components.CommentImageViewerState
+import com.bbttvv.app.ui.components.CommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.CommentPictureThumbnailRow
+import com.bbttvv.app.ui.components.CommentPictureUiModel
+import com.bbttvv.app.ui.components.commentPictureConfirmModifier
+import com.bbttvv.app.ui.components.createCommentImageViewerState
+import com.bbttvv.app.ui.components.resolveCommentCardShortConfirmAction
+import com.bbttvv.app.ui.components.toCommentPictureUiModels
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -62,6 +78,27 @@ fun CommentRepliesScreen(
     val listState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
         androidx.compose.foundation.lazy.LazyListState()
     }
+    val commentFocusRequesters = remember(bvid, rootRpid) {
+        LinkedHashMap<String, FocusRequester>()
+    }
+    var commentImageViewerState by remember(bvid, rootRpid) {
+        mutableStateOf<CommentImageViewerState?>(null)
+    }
+    var pendingPictureReturnKey by remember(bvid, rootRpid) {
+        mutableStateOf<String?>(null)
+    }
+
+    fun openPictures(
+        sourceKey: String,
+        pictures: List<CommentPictureUiModel>,
+        suppressInitialConfirmKeyUp: Boolean,
+    ) {
+        commentImageViewerState = createCommentImageViewerState(
+            pictures = pictures,
+            sourceKey = sourceKey,
+            suppressInitialConfirmKeyUp = suppressInitialConfirmKeyUp,
+        )
+    }
 
     LaunchedEffect(bvid, aid, rootRpid, rootReply?.rpid) {
         viewModel.loadThread(
@@ -69,6 +106,17 @@ fun CommentRepliesScreen(
             rootRpid = rootRpid,
             rootReply = rootReply
         )
+    }
+    LaunchedEffect(rootRpid, uiState.currentPage, uiState.items) {
+        commentImageViewerState = null
+        pendingPictureReturnKey = null
+    }
+    LaunchedEffect(commentImageViewerState, pendingPictureReturnKey) {
+        if (commentImageViewerState != null) return@LaunchedEffect
+        val returnKey = pendingPictureReturnKey ?: return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { commentFocusRequesters[returnKey]?.requestFocus() }
+        pendingPictureReturnKey = null
     }
     BackHandler { onBack() }
 
@@ -96,8 +144,23 @@ fun CommentRepliesScreen(
             }
 
             item(key = "root_comment") {
+                val comment = uiState.rootComment ?: ReplyItem(rpid = rootRpid, oid = aid)
+                val sourceKey = "root:${comment.rpid}"
+                val focusRequester = remember(sourceKey) { FocusRequester() }
+                DisposableEffect(sourceKey, focusRequester) {
+                    commentFocusRequesters[sourceKey] = focusRequester
+                    onDispose {
+                        if (commentFocusRequesters[sourceKey] === focusRequester) {
+                            commentFocusRequesters.remove(sourceKey)
+                        }
+                    }
+                }
                 CommentThreadRootCard(
-                    comment = uiState.rootComment ?: ReplyItem(rpid = rootRpid, oid = aid)
+                    comment = comment,
+                    focusRequester = focusRequester,
+                    onOpenPictures = { pictures, suppressInitialKeyUp ->
+                        openPictures(sourceKey, pictures, suppressInitialKeyUp)
+                    },
                 )
             }
 
@@ -135,7 +198,23 @@ fun CommentRepliesScreen(
                         items = uiState.items,
                         key = { reply -> reply.rpid }
                     ) { reply ->
-                        CommentReplyCard(reply = reply)
+                        val sourceKey = "reply:${reply.rpid}"
+                        val focusRequester = remember(sourceKey) { FocusRequester() }
+                        DisposableEffect(sourceKey, focusRequester) {
+                            commentFocusRequesters[sourceKey] = focusRequester
+                            onDispose {
+                                if (commentFocusRequesters[sourceKey] === focusRequester) {
+                                    commentFocusRequesters.remove(sourceKey)
+                                }
+                            }
+                        }
+                        CommentReplyCard(
+                            reply = reply,
+                            focusRequester = focusRequester,
+                            onOpenPictures = { pictures, suppressInitialKeyUp ->
+                                openPictures(sourceKey, pictures, suppressInitialKeyUp)
+                            },
+                        )
                     }
                 }
             }
@@ -148,6 +227,16 @@ fun CommentRepliesScreen(
                     onNext = { viewModel.goToPage(uiState.currentPage + 1) }
                 )
             }
+        }
+        commentImageViewerState?.let { viewerState ->
+            CommentImageViewer(
+                state = viewerState,
+                onStateChanged = { commentImageViewerState = it },
+                onDismissRequest = {
+                    pendingPictureReturnKey = viewerState.sourceKey
+                    commentImageViewerState = null
+                },
+            )
         }
     }
 }
@@ -183,19 +272,47 @@ private fun CommentRepliesHeader(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun CommentThreadRootCard(comment: ReplyItem) {
+private fun CommentThreadRootCard(
+    comment: ReplyItem,
+    focusRequester: FocusRequester,
+    onOpenPictures: (List<CommentPictureUiModel>, Boolean) -> Unit,
+) {
     val cardColor = commentRepliesCardColor()
     val primaryTextColor = commentRepliesPrimaryTextColor()
     val mutedTextColor = commentRepliesMutedTextColor()
+    val pictures = remember(comment.content.pictures) {
+        comment.content.pictures.toCommentPictureUiModels()
+    }
 
     Surface(
-        onClick = {},
+        onClick = {
+            when (resolveCommentCardShortConfirmAction(
+                hasReplies = false,
+                hasPictures = pictures.isNotEmpty(),
+                replyNavigationEnabled = false,
+            )) {
+                CommentCardShortConfirmAction.OpenPictures -> onOpenPictures(pictures, false)
+                CommentCardShortConfirmAction.OpenReplies,
+                CommentCardShortConfirmAction.None,
+                -> Unit
+            }
+        },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = cardColor,
             focusedContainerColor = cardColor
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .then(
+                commentPictureConfirmModifier(
+                    hasPictures = pictures.isNotEmpty(),
+                    onOpenPicturesFromLongPress = {
+                        onOpenPictures(pictures, true)
+                    },
+                )
+            )
     ) {
         Column(
             modifier = Modifier
@@ -210,6 +327,7 @@ private fun CommentThreadRootCard(comment: ReplyItem) {
                 fontSize = 15.sp,
                 lineHeight = 24.sp
             )
+            CommentPictureThumbnailRow(pictures = pictures)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -231,15 +349,33 @@ private fun CommentThreadRootCard(comment: ReplyItem) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun CommentReplyCard(reply: ReplyItem) {
+private fun CommentReplyCard(
+    reply: ReplyItem,
+    focusRequester: FocusRequester,
+    onOpenPictures: (List<CommentPictureUiModel>, Boolean) -> Unit,
+) {
     val cardColor = commentRepliesCardColor()
     val focusedCardColor = commentRepliesFocusedCardColor()
     val primaryTextColor = commentRepliesPrimaryTextColor()
     val mutedTextColor = commentRepliesMutedTextColor()
     val focusedBorderColor = commentRepliesFocusedBorderColor()
+    val pictures = remember(reply.content.pictures) {
+        reply.content.pictures.toCommentPictureUiModels()
+    }
 
     Surface(
-        onClick = {},
+        onClick = {
+            when (resolveCommentCardShortConfirmAction(
+                hasReplies = false,
+                hasPictures = pictures.isNotEmpty(),
+                replyNavigationEnabled = false,
+            )) {
+                CommentCardShortConfirmAction.OpenPictures -> onOpenPictures(pictures, false)
+                CommentCardShortConfirmAction.OpenReplies,
+                CommentCardShortConfirmAction.None,
+                -> Unit
+            }
+        },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
         colors = ClickableSurfaceDefaults.colors(
@@ -252,7 +388,17 @@ private fun CommentReplyCard(reply: ReplyItem) {
                 shape = RoundedCornerShape(18.dp)
             )
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .then(
+                commentPictureConfirmModifier(
+                    hasPictures = pictures.isNotEmpty(),
+                    onOpenPicturesFromLongPress = {
+                        onOpenPictures(pictures, true)
+                    },
+                )
+            )
     ) {
         Column(
             modifier = Modifier
@@ -269,6 +415,7 @@ private fun CommentReplyCard(reply: ReplyItem) {
                 maxLines = 8,
                 overflow = TextOverflow.Ellipsis
             )
+            CommentPictureThumbnailRow(pictures = pictures)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically

@@ -19,6 +19,9 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import com.bbttvv.app.app.BbtvApplication
 import com.bbttvv.app.navigation.AppNavigation
+import com.bbttvv.app.ui.components.LocalTvNoticeHostState
+import com.bbttvv.app.ui.components.TvNoticeHost
+import com.bbttvv.app.ui.components.rememberTvNoticeHostState
 import com.bbttvv.app.ui.focus.LocalTvFocusEscapeGuard
 import com.bbttvv.app.ui.focus.LocalTvFocusReturn
 import com.bbttvv.app.ui.focus.GridFocusDebugLog
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         isDebugInspectorInfoEnabled = false
         setContent {
+            val tvNoticeHostState = rememberTvNoticeHostState()
             val themeMode by com.bbttvv.app.core.store.SettingsManager.getThemeMode(this)
                 .collectAsStateWithLifecycle(initialValue = com.bbttvv.app.core.store.SettingsManager.ThemeMode.DARK)
 
@@ -58,9 +62,11 @@ class MainActivity : ComponentActivity() {
                     CompositionLocalProvider(
                         LocalTvFocusEscapeGuard provides tvFocusEscapeGuard,
                         LocalTvFocusReturn provides tvFocusReturn,
+                        LocalTvNoticeHostState provides tvNoticeHostState,
                     ) {
                         AppNavigation()
                     }
+                    TvNoticeHost(state = tvNoticeHostState)
                 }
             }
         }

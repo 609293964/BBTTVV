@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.core.store.player.toEngineConfig
+import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.util.ScreenUtils
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.feature.video.danmaku.DanmakuOverlay
@@ -83,6 +85,11 @@ fun LivePlayerScreen(
     val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
     val danmakuPayload by viewModel.danmakuPayload.collectAsStateWithLifecycle()
     val isDanmakuEnabled by viewModel.isDanmakuEnabled.collectAsStateWithLifecycle()
+    val superChat by viewModel.superChat.collectAsStateWithLifecycle()
+    val privacyMode by SettingsManager.getPrivacyModeEnabled(context)
+        .collectAsStateWithLifecycle(
+            initialValue = SettingsManager.isPrivacyModeEnabledSync(context),
+        )
     val storedDanmakuSettings by DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
     val danmakuConfig = remember(storedDanmakuSettings) { storedDanmakuSettings.toEngineConfig() }
@@ -296,6 +303,13 @@ fun LivePlayerScreen(
         viewModel.loadLive(roomId = roomId, force = true)
     }
 
+    LaunchedEffect(playbackState.isPlaybackActive) {
+        ScreenUtils.setPlaybackKeepScreenOn(
+            context = context,
+            keepScreenOn = playbackState.isPlaybackActive,
+        )
+    }
+
     LaunchedEffect(actions.size) {
         selectedActionIndex = selectedActionIndex.coerceIn(0, actions.lastIndex.coerceAtLeast(0))
         if (!BuildConfig.DEBUG && showDebugOverlay) {
@@ -399,6 +413,16 @@ fun LivePlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
+        superChat?.let { item ->
+            LiveSuperChatOverlay(
+                item = item,
+                privacyMode = privacyMode,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 32.dp, end = 32.dp),
+            )
+        }
+
         if (uiState.isLoading) {
             Text(
                 text = "正在加载直播...",
@@ -469,6 +493,37 @@ fun LivePlayerScreen(
                     .padding(top = 28.dp, end = 28.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun LiveSuperChatOverlay(
+    item: LiveSuperChat,
+    privacyMode: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .widthIn(min = 280.dp, max = 420.dp)
+            .background(Color(0xE62A60B2), RoundedCornerShape(12.dp))
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = buildString {
+                append(if (privacyMode) "用户" else item.userName.ifBlank { "用户" })
+                if (item.price > 0L) append("  ¥${item.price}")
+            },
+            color = Color(0xFFFFE7A3),
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+        )
+        Text(
+            text = item.message,
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 4,
+        )
     }
 }
 

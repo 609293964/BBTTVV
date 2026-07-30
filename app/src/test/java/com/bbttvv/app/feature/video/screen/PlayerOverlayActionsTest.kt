@@ -80,6 +80,41 @@ class PlayerOverlayActionsTest {
     }
 
     @Test
+    fun `interactive overlay owns the modal focus domain when prompts conflict`() {
+        assertEquals(
+            PlayerExclusiveOverlayOwner.CommentImageViewer,
+            resolvePlayerExclusiveOverlayOwner(
+                commentImageViewerOpen = true,
+                interactiveVideoOpen = true,
+                danmakuVoteOpen = true,
+            ),
+        )
+        assertEquals(
+            PlayerExclusiveOverlayOwner.InteractiveVideo,
+            resolvePlayerExclusiveOverlayOwner(
+                commentImageViewerOpen = false,
+                interactiveVideoOpen = true,
+                danmakuVoteOpen = true,
+            ),
+        )
+        assertEquals(
+            PlayerExclusiveOverlayOwner.DanmakuVote,
+            resolvePlayerExclusiveOverlayOwner(
+                commentImageViewerOpen = false,
+                interactiveVideoOpen = false,
+                danmakuVoteOpen = true,
+            ),
+        )
+        assertNull(
+            resolvePlayerExclusiveOverlayOwner(
+                commentImageViewerOpen = false,
+                interactiveVideoOpen = false,
+                danmakuVoteOpen = false,
+            ),
+        )
+    }
+
+    @Test
     fun `focus intent changes only when the resolved target changes`() {
         val actionState = PlayerOverlayUiState(
             overlayMode = PlayerOverlayMode.FullControls,

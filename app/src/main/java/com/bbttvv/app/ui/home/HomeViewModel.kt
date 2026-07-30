@@ -58,6 +58,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         feedRepository = AppContainer.feedRepository
     )
     private val todayWatchCoordinator = TodayWatchCoordinator(appContext, viewModelScope)
+    private val recommendFeedRequestOwner = HomeFeedRequestOwner(viewModelScope)
     private var todayWatchPluginConfigJob: Job? = null
     private var todayWatchRebuildJob: Job? = null
 
@@ -75,6 +76,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         detailPrefetcher.clear()
+        recommendFeedRequestOwner.cancel()
         tabStoreIdleTrimJob?.cancel()
         tabStoreOwner.clearAll()
     }
@@ -120,22 +122,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun loadMore() {
         if (feedController.isLoadingOrEndReached()) return
 
-        _recommendLoadState.update {
-            it.copy(
-                isLoading = true,
-                isError = false,
-                errorMsg = null,
-            )
-        }
-        _refreshErrorMessage.value = null
-
-        viewModelScope.launch {
+        recommendFeedRequestOwner.launchAppend {
+            if (!isCurrent()) return@launchAppend
+            _recommendLoadState.update {
+                it.copy(
+                    isLoading = true,
+                    isError = false,
+                    errorMsg = null,
+                )
+            }
+            _refreshErrorMessage.value = null
             when (val result = feedController.loadMore()) {
                 is HomeFeedLoadResult.Success -> {
+                    if (!isCurrent()) return@launchAppend
                     applyRecommendLoadSuccess(result)
                     requestTodayWatchRebuild(forceReloadHistory = false)
                 }
                 is HomeFeedLoadResult.Failure -> {
+                    if (!isCurrent()) return@launchAppend
                     _recommendLoadState.update { currentState ->
                         currentState.copy(
                             isLoading = false,
@@ -145,6 +149,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 HomeFeedLoadResult.Ignored -> {
+                    if (!isCurrent()) return@launchAppend
                     _recommendLoadState.update { it.copy(isLoading = false) }
                 }
             }
@@ -152,22 +157,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() {
-        _recommendLoadState.update {
-            it.copy(
-                isLoading = true,
-                isError = false,
-                hasMore = true,
-                errorMsg = null,
-            )
-        }
-        _refreshErrorMessage.value = null
-        viewModelScope.launch {
+        recommendFeedRequestOwner.launchRefresh {
+            if (!isCurrent()) return@launchRefresh
+            _recommendLoadState.update {
+                it.copy(
+                    isLoading = true,
+                    isError = false,
+                    hasMore = true,
+                    errorMsg = null,
+                )
+            }
+            _refreshErrorMessage.value = null
             when (val result = feedController.refresh()) {
                 is HomeFeedLoadResult.Success -> {
+                    if (!isCurrent()) return@launchRefresh
                     applyRecommendLoadSuccess(result)
                     requestTodayWatchRebuild(forceReloadHistory = false)
                 }
                 is HomeFeedLoadResult.Failure -> {
+                    if (!isCurrent()) return@launchRefresh
                     val errorMessage = result.error.message ?: "未知错误"
                     val refreshErrorMessage = if (_recommendVideoItems.value.isNotEmpty()) {
                         result.error.message ?: "刷新失败"
@@ -184,6 +192,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     _refreshErrorMessage.value = refreshErrorMessage
                 }
                 HomeFeedLoadResult.Ignored -> {
+                    if (!isCurrent()) return@launchRefresh
                     _recommendLoadState.update { it.copy(isLoading = false) }
                 }
             }

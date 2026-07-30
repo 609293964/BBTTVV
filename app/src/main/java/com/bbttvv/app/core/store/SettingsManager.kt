@@ -102,6 +102,8 @@ object SettingsManager {
     private const val CACHE_SPONSOR_BLOCK_AUTO_SKIP = "sponsor_block_auto_skip"
     private const val CACHE_AUTO_1080P = "exp_auto_1080p"
     private const val CACHE_PLAYER_CDN_PREFERENCE = "player_cdn_preference"
+    private const val CACHE_STRICT_CUSTOM_CDN_ENABLED = "strict_custom_cdn_enabled"
+    private const val CACHE_CUSTOM_CDN_HOST = "custom_cdn_host"
     private const val CACHE_HOME_REFRESH_COUNT = "home_refresh_count"
     private const val CACHE_FEED_API_TYPE = "feed_api_type"
     private const val CACHE_STOP_PLAYBACK_ON_EXIT = "stop_playback_on_exit"
@@ -131,6 +133,8 @@ object SettingsManager {
     private val keySponsorBlockAutoSkip = booleanPreferencesKey(CACHE_SPONSOR_BLOCK_AUTO_SKIP)
     private val keyAuto1080p = booleanPreferencesKey(CACHE_AUTO_1080P)
     private val keyPlayerCdnPreference = stringPreferencesKey(CACHE_PLAYER_CDN_PREFERENCE)
+    private val keyStrictCustomCdnEnabled = booleanPreferencesKey(CACHE_STRICT_CUSTOM_CDN_ENABLED)
+    private val keyCustomCdnHost = stringPreferencesKey(CACHE_CUSTOM_CDN_HOST)
     private val keyHomeRefreshCount = androidx.datastore.preferences.core.intPreferencesKey(CACHE_HOME_REFRESH_COUNT)
     private val keyFeedApiType = stringPreferencesKey(CACHE_FEED_API_TYPE)
     private val keyStopPlaybackOnExit = booleanPreferencesKey(CACHE_STOP_PLAYBACK_ON_EXIT)
@@ -243,6 +247,33 @@ object SettingsManager {
             preferences[keyPlayerCdnPreference] = preference.value
         }
         updateSyncCache(context) { putString(CACHE_PLAYER_CDN_PREFERENCE, preference.value) }
+    }
+
+    fun getStrictCustomCdnEnabled(context: Context): Flow<Boolean> {
+        return context.settingsDataStore.data.map { preferences ->
+            preferences[keyStrictCustomCdnEnabled] ?: false
+        }
+    }
+
+    suspend fun setStrictCustomCdnEnabled(context: Context, enabled: Boolean) {
+        updatePreference(context) { preferences ->
+            preferences[keyStrictCustomCdnEnabled] = enabled
+        }
+        updateSyncCache(context) { putBoolean(CACHE_STRICT_CUSTOM_CDN_ENABLED, enabled) }
+    }
+
+    fun getCustomCdnHost(context: Context): Flow<String> {
+        return context.settingsDataStore.data.map { preferences ->
+            normalizeCustomCdnHost(preferences[keyCustomCdnHost])
+        }
+    }
+
+    suspend fun setCustomCdnHost(context: Context, host: String) {
+        val normalized = normalizeCustomCdnHost(host)
+        updatePreference(context) { preferences ->
+            preferences[keyCustomCdnHost] = normalized
+        }
+        updateSyncCache(context) { putString(CACHE_CUSTOM_CDN_HOST, normalized) }
     }
 
     suspend fun consumeLegacySponsorBlockEnabled(context: Context, defaultValue: Boolean = true): Boolean {
@@ -558,6 +589,16 @@ object SettingsManager {
         )
     }
 
+    fun getStrictCustomCdnEnabledSync(context: Context): Boolean {
+        return context.syncPrefs().getBoolean(CACHE_STRICT_CUSTOM_CDN_ENABLED, false)
+    }
+
+    fun getCustomCdnHostSync(context: Context): String {
+        return normalizeCustomCdnHost(
+            context.syncPrefs().getString(CACHE_CUSTOM_CDN_HOST, "")
+        )
+    }
+
     fun getFeedApiTypeSync(context: Context): FeedApiType {
         return FeedApiType.fromValue(
             context.syncPrefs().getString(CACHE_FEED_API_TYPE, FeedApiType.WEB.value)
@@ -699,4 +740,16 @@ internal fun normalizeUserAgent(value: String?): String {
         ?.trim()
         ?.takeIf { it.isNotBlank() }
         ?: DEFAULT_APP_USER_AGENT
+}
+
+internal fun normalizeCustomCdnHost(value: String?): String {
+    return value
+        ?.trim()
+        ?.lowercase()
+        ?.removePrefix("https://")
+        ?.removePrefix("http://")
+        ?.substringBefore('/')
+        ?.substringBefore(':')
+        ?.trim()
+        .orEmpty()
 }

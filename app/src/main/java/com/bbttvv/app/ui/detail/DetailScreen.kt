@@ -43,7 +43,10 @@ import androidx.tv.material3.Text
 import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.data.model.response.ReplyItem
+import com.bbttvv.app.ui.components.CommentImageViewer
+import com.bbttvv.app.ui.components.CommentImageViewerState
 import com.bbttvv.app.ui.components.TvStatusPane
+import com.bbttvv.app.ui.components.createCommentImageViewerState
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.TvFocusSandboxAnchor
@@ -166,6 +169,16 @@ fun DetailScreen(
                 }
                 val detailFocusCoordinator = remember(viewInfo.bvid) {
                     DetailFocusCoordinator()
+                }
+                var commentImageViewerState by remember(viewInfo.bvid) {
+                    mutableStateOf<CommentImageViewerState?>(null)
+                }
+                LaunchedEffect(
+                    viewInfo.bvid,
+                    uiState.comments.currentPage,
+                    uiState.comments.items,
+                ) {
+                    commentImageViewerState = null
                 }
                 RegisterLifecycleFocusDrain(key = detailFocusCoordinator) {
                     detailFocusCoordinator.drainPendingFocus()
@@ -529,6 +542,13 @@ fun DetailScreen(
                                     viewModel.goToCommentPage(uiState.comments.currentPage)
                                 },
                                 onOpenReplies = onOpenCommentReplies,
+                                onOpenPictures = { comment, pictures, suppressInitialKeyUp ->
+                                    commentImageViewerState = createCommentImageViewerState(
+                                        pictures = pictures,
+                                        sourceKey = "detail:${comment.rpid}",
+                                        suppressInitialConfirmKeyUp = suppressInitialKeyUp,
+                                    )
+                                },
                                 onPreviousPage = {
                                     viewModel.goToCommentPage(uiState.comments.currentPage - 1)
                                 },
@@ -538,6 +558,27 @@ fun DetailScreen(
                             )
                         }
                     }
+                }
+                commentImageViewerState?.let { viewerState ->
+                    CommentImageViewer(
+                        state = viewerState,
+                        onStateChanged = { commentImageViewerState = it },
+                        onDismissRequest = {
+                            val sourceRpid = viewerState.sourceKey
+                                .substringAfter("detail:", missingDelimiterValue = "")
+                                .toLongOrNull()
+                            commentImageViewerState = null
+                            if (sourceRpid != null) {
+                                coroutineScope.launch {
+                                    withFrameNanos { }
+                                    detailFocusCoordinator.requestRestoreComment(
+                                        rpid = sourceRpid,
+                                        onRestored = {},
+                                    )
+                                }
+                            }
+                        },
+                    )
                 }
             }
         }

@@ -241,16 +241,17 @@ fun Dash.getBestVideo(
     // - 其次降级：AV1 -> HEVC -> AVC
     // - 不支持的格式降权
     
+    val preferredFormat = VideoDecodeFormat.fromCodecs(preferCodec)
+    val secondPreferredFormat = VideoDecodeFormat.fromCodecs(secondPreferCodec)
     val selected = targetVideos.maxByOrNull { video ->
         var score = 0
-        val codecs = video.codecs.lowercase()
+        val codecFormat = VideoDecodeFormat.fromCodecs(video.codecs)
         
-        val isAvc = codecs.startsWith("avc")
-        val isHevc = codecs.startsWith("hev")
-        val isAv1 = codecs.startsWith("av01")
+        val isAvc = codecFormat == VideoDecodeFormat.AVC
+        val isHevc = codecFormat == VideoDecodeFormat.HEVC
+        val isAv1 = codecFormat == VideoDecodeFormat.AV1
         val isDolbyVision = video.id == VideoQuality.DOLBY_VISION.code ||
-            codecs.startsWith("dvh1") ||
-            codecs.startsWith("dvhe")
+            codecFormat == VideoDecodeFormat.DVH1
         
         // 基础可用性检查
         val supported = when {
@@ -267,9 +268,9 @@ fun Dash.getBestVideo(
         } else {
             // 设备支持，计算偏好得分
             // 精确匹配用户偏好
-            if (codecs.contains(preferCodec, ignoreCase = true)) {
+            if (preferredFormat != null && codecFormat == preferredFormat) {
                 score += 10
-            } else if (secondPreferCodec.isNotBlank() && codecs.contains(secondPreferCodec, ignoreCase = true)) {
+            } else if (secondPreferredFormat != null && codecFormat == secondPreferredFormat) {
                 score += 6
             }
             

@@ -3,6 +3,10 @@ package com.bbttvv.app.feature.profile
 import com.bbttvv.app.data.model.response.FavFolder
 import com.bbttvv.app.data.model.response.FavFolderSource
 
+internal object ProfileHorizontalListEdgePolicy {
+    fun isLeftEdge(index: Int): Boolean = index == 0
+}
+
 internal fun mergeProfileFavoriteFoldersForDisplay(
     ownedFolders: List<FavFolder>,
     subscribedFolders: List<FavFolder>

@@ -4,7 +4,6 @@ import android.content.ComponentCallbacks2
 import android.content.res.Configuration
 import android.os.SystemClock
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -46,8 +45,10 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.ui.components.AppTopBarDefaults
 import com.bbttvv.app.ui.components.AppTopLevelTab
+import com.bbttvv.app.ui.components.LocalTvNoticeHostState
 import com.bbttvv.app.ui.components.TvContextMenu
 import com.bbttvv.app.ui.components.TvContextMenuAction
+import com.bbttvv.app.ui.components.TvNoticeKind
 
 @Composable
 fun TabViewModelScope(
@@ -605,7 +606,9 @@ private fun RecommendTabContent(
                     canLoadMore = viewModel::canLoadMoreRecommend,
                     loadMoreInProgress = loadState.isLoading,
                     onLoadMore = viewModel::loadMore,
-                    onMenuRefresh = viewModel::refresh,
+                    onMenuRefresh = {
+                        collapsingHeaderState.runMenuRefresh(viewModel::refresh)
+                    },
                     onVideoFocused = { video, _ ->
                         viewModel.prefetchVideoDetail(video)
                     },
@@ -765,7 +768,7 @@ private fun RecommendContextMenuHost(
     onSuppressConfirmKeyConsumed: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
-    val context = LocalContext.current
+    val tvNoticeHostState = LocalTvNoticeHostState.current
 
     val video = request?.video ?: return
 
@@ -778,12 +781,14 @@ private fun RecommendContextMenuHost(
             ) {
                 onDismissRequest()
                 viewModel.markWatchLater(video) { result ->
-                    val message = if (result.isSuccess) {
-                        "已添加到稍后再看"
-                    } else {
-                        result.exceptionOrNull()?.message ?: "添加稍后再看失败"
-                    }
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    tvNoticeHostState.show(
+                        message = if (result.isSuccess) {
+                            "已添加到稍后再看"
+                        } else {
+                            result.exceptionOrNull()?.message ?: "添加稍后再看失败"
+                        },
+                        kind = if (result.isSuccess) TvNoticeKind.Info else TvNoticeKind.Error,
+                    )
                 }
             },
             TvContextMenuAction(
@@ -793,7 +798,7 @@ private fun RecommendContextMenuHost(
             ) {
                 onDismissRequest()
                 viewModel.markRecommendNotInterested(video)
-                Toast.makeText(context, "已移除该推荐", Toast.LENGTH_SHORT).show()
+                tvNoticeHostState.show("已移除该推荐")
             },
         ),
         modifier = modifier,

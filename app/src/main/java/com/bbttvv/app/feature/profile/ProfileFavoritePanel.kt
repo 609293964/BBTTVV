@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +33,7 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRegion
+import com.bbttvv.app.ui.input.onTvDpadKeyDown
 
 @Composable
 internal fun ProfileFavoritePanel(
@@ -64,7 +65,6 @@ internal fun ProfileFavoritePanel(
                 state = contentFocusTarget,
                 focusCoordinator = focusCoordinator,
                 focusTab = focusTab,
-                onDpadLeft = onRequestSidebarFocus,
             )
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -75,15 +75,18 @@ internal fun ProfileFavoritePanel(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(end = 8.dp)
             ) {
-                items(
+                itemsIndexed(
                     items = folders,
-                    key = { folder -> resolveProfileFavoriteFolderKey(folder) }
-                ) { folder ->
+                    key = { _, folder -> resolveProfileFavoriteFolderKey(folder) }
+                ) { index, folder ->
                     val folderKey = resolveProfileFavoriteFolderKey(folder)
                     FavoriteFolderChip(
                         title = resolveProfileFavoriteFolderLabel(folder),
                         count = folder.media_count,
                         selected = folderKey == selectedFolderKey,
+                        onDpadLeft = onRequestSidebarFocus.takeIf {
+                            ProfileHorizontalListEdgePolicy.isLeftEdge(index)
+                        },
                         onClick = { onSelectFolder(folderKey) }
                     )
                 }
@@ -116,13 +119,16 @@ private fun FavoriteFolderChip(
     title: String,
     count: Int,
     selected: Boolean,
+    onDpadLeft: (() -> Boolean)?,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
     Surface(
         onClick = onClick,
-        modifier = Modifier.onFocusChanged { focused = it.isFocused },
+        modifier = Modifier
+            .onTvDpadKeyDown(onLeft = onDpadLeft)
+            .onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(22.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) {

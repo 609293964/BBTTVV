@@ -2,10 +2,7 @@
 package com.bbttvv.app.core.util
 
 import android.content.Context
-import android.content.Intent
 import android.util.Log
-import android.widget.Toast
-import androidx.core.content.FileProvider
 import com.bbttvv.app.BuildConfig
 import java.io.File
 import java.text.SimpleDateFormat
@@ -224,11 +221,6 @@ object Logger {
         LogCollector.clearPendingCrashSnapshot()
     }
 
-    fun sharePendingCrashSnapshot(context: Context): Boolean {
-        init(context)
-        return LogCollector.sharePendingCrashSnapshot(context)
-    }
-
     fun getPrivateLogArtifactsSize(context: Context): Long {
         init(context)
         val persistedLogDir = resolveLogPersistenceDir(context.filesDir)
@@ -268,6 +260,11 @@ object Logger {
             content = content,
             replaceExisting = false
         )
+    }
+
+    fun exportLogs(context: Context): Result<String> {
+        init(context)
+        return LogCollector.exportLogs(context)
     }
 }
 
@@ -570,35 +567,14 @@ object LogCollector {
         }
     }
 
-    fun sharePendingCrashSnapshot(context: Context): Boolean {
-        val snapshotFile = getPendingCrashSnapshotFile() ?: return false
-        return runCatching {
-            val cacheDir = File(context.cacheDir, LOG_DIRECTORY_NAME)
-            cacheDir.mkdirs()
-            val shareFile = File(cacheDir, CRASH_SNAPSHOT_FILE_NAME)
-            shareFile.writeText(snapshotFile.readText())
-            shareLogFileFromCache(context, shareFile)
-            true
-        }.getOrElse {
-            Log.e("LogCollector", "分享崩溃快照失败", it)
-            false
-        }
-    }
-    
     /**
-     * 导出日志到文件并通过系统分享
-     * 
-     * 日志会保存到 Download/BBTTVV/logs/ 目录，方便 MT 管理器等工具直接访问
+     * 将当前日志导出到 Download/BBTTVV/logs，并将路径交给调用方展示。
      */
-    fun exportAndShare(context: Context) {
-        try {
+    fun exportLogs(context: Context): Result<String> {
+        return runCatching {
             val entries = getEntries()
-            if (entries.isEmpty()) {
-                Toast.makeText(context, "暂无日志记录", Toast.LENGTH_SHORT).show()
-                return
-            }
-            
-            // 生成日志内容
+            check(entries.isNotEmpty()) { "暂无日志记录" }
+
             val header = buildString {
                 appendLine("========================================")
                 appendLine("BBTTVV 应用日志导出")
@@ -616,35 +592,10 @@ object LogCollector {
                 entry.copy(message = sanitizeMessage(entry.message)).format()
             }
             val fileName = "bbttvv_log_${logFileDateFormat().format(Date())}.txt"
-            
-            //  [优化] 保存到外部 Download 目录，MT 管理器可直接访问
-            val savedPath = saveToExternalDownload(context, fileName, content)
-            
-            if (savedPath != null) {
-                // 保存成功，显示路径并提供分享选项
-                val displayPath = savedPath.substringAfter("Download/")
-                Toast.makeText(
-                    context, 
-                    "📁 已保存到: Download/$displayPath\n\n点击分享按钮可发送给开发者", 
-                    Toast.LENGTH_LONG
-                ).show()
-                
-                // 通过 FileProvider 分享（兼容所有 Android 版本）
-                shareLogFile(context, savedPath, fileName)
-            } else {
-                // 外部存储不可用，回退到内部缓存
-                val cacheDir = File(context.cacheDir, "logs")
-                cacheDir.mkdirs()
-                val logFile = File(cacheDir, fileName)
-                logFile.writeText(content)
-                
-                Toast.makeText(context, "日志已保存，点击分享发送", Toast.LENGTH_SHORT).show()
-                shareLogFileFromCache(context, logFile)
-            }
-            
-        } catch (e: Exception) {
-            Log.e("LogCollector", "导出日志失败", e)
-            Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            saveToExternalDownload(context, fileName, content)
+                ?: error("日志导出目录不可用")
+        }.onFailure { error ->
+            Log.e("LogCollector", "导出日志失败", error)
         }
     }
 
@@ -751,73 +702,6 @@ object LogCollector {
     private fun logFileDateFormat(): SimpleDateFormat =
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
     
-    /**
-     * 分享日志文件（从外部存储）
-     */
-    private fun shareLogFile(context: Context, filePath: String, fileName: String) {
-        try {
-            // 构建文件 URI
-            val file = if (filePath.startsWith("Download/")) {
-                // MediaStore 路径，需要重新查询
-                @Suppress("DEPRECATION")
-                val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS
-                )
-                File(downloadDir, filePath.substringAfter("Download/"))
-            } else {
-                File(filePath)
-            }
-            
-            if (!file.exists()) {
-                // 文件可能是通过 MediaStore 创建的，使用缓存备份分享
-                return
-            }
-            
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-            
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "BBTTVV 日志反馈")
-                putExtra(Intent.EXTRA_TEXT, "请查看附件中的日志文件\n\n文件位置: $filePath")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            
-            context.startActivity(Intent.createChooser(shareIntent, "分享日志"))
-        } catch (e: Exception) {
-            Log.e("LogCollector", "分享失败", e)
-        }
-    }
-    
-    /**
-     * 分享日志文件（从缓存目录）
-     */
-    private fun shareLogFileFromCache(context: Context, logFile: File) {
-        try {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                logFile
-            )
-            
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "BBTTVV 日志反馈")
-                putExtra(Intent.EXTRA_TEXT, "请查看附件中的日志文件")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            
-            context.startActivity(Intent.createChooser(shareIntent, "分享日志"))
-        } catch (e: Exception) {
-            Log.e("LogCollector", "分享失败", e)
-        }
-    }
-
     private fun appendEntryToRuntimeFile(entry: LogEntry) {
         val context = appContext ?: return
         val sanitizedEntry = entry.copy(message = sanitizeMessage(entry.message)).format() + "\n"
@@ -850,4 +734,3 @@ object LogCollector {
         file.writeText(retained + text)
     }
 }
-

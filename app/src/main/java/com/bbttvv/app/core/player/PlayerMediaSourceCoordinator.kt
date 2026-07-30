@@ -75,11 +75,11 @@ internal class PlayerMediaSourceCoordinator(
             videoSource
         }
 
-        player.setMediaSource(finalSource, resetPlayer)
+        player.setMediaSource(
+            mediaSource = finalSource,
+            start = resolvePlayerMediaStart(seekToMs, resetPlayer),
+        )
         player.prepare()
-        if (seekToMs > 0L) {
-            player.seekTo(seekToMs)
-        }
         player.playWhenReady = playWhenReady
         Logger.d(tag, "✅ playDashVideo: Player prepared and started, playWhenReady=$playWhenReady")
     }
@@ -100,11 +100,11 @@ internal class PlayerMediaSourceCoordinator(
             player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
             val mediaSource = DashMediaSource.Factory(dataSourceFactory)
                 .createMediaSource(MediaItem.fromUri(manifestUri))
-            player.setMediaSource(mediaSource, resetPlayer)
+            player.setMediaSource(
+                mediaSource = mediaSource,
+                start = resolvePlayerMediaStart(seekToMs, resetPlayer),
+            )
             player.prepare()
-            if (seekToMs > 0L) {
-                player.seekTo(seekToMs)
-            }
             player.playWhenReady = playWhenReady
             Logger.d(tag, "✅ playDashManifestVideo: uri=$manifestUri, seekTo=${seekToMs}ms")
             true
@@ -150,11 +150,11 @@ internal class PlayerMediaSourceCoordinator(
             )
         }
 
-        player.setMediaSources(mediaSources, resetPlayer)
+        player.setMediaSources(
+            mediaSources = mediaSources,
+            start = resolvePlayerMediaStart(seekToMs, resetPlayer),
+        )
         player.prepare()
-        if (seekToMs > 0L) {
-            player.seekTo(seekToMs)
-        }
         player.playWhenReady = playWhenReady
         Logger.d(tag, "✅ playSegmentedVideo: segmentCount=${cleanUrls.size}, seekTo=${seekToMs}ms")
     }
@@ -167,11 +167,11 @@ internal class PlayerMediaSourceCoordinator(
         Logger.d(tag, " playVideo: seekTo=${seekToMs}ms, url=${url.take(50)}...")
 
         player.volume = PlayerSettingsCache.getVolumeCalibrationScale()
-        player.setMediaItem(MediaItem.fromUri(url))
+        player.setMediaItem(
+            mediaItem = MediaItem.fromUri(url),
+            start = resolvePlayerMediaStart(seekToMs, resetPosition = true),
+        )
         player.prepare()
-        if (seekToMs > 0L) {
-            player.seekTo(seekToMs)
-        }
         player.playWhenReady = true
     }
 
@@ -198,15 +198,18 @@ internal class PlayerMediaSourceCoordinator(
         if (dataSourceFactory != null) {
             val mediaSource = DefaultMediaSourceFactory(dataSourceFactory)
                 .createMediaSource(mediaItem)
-            player.setMediaSource(mediaSource, resetPlayer)
+            player.setMediaSource(
+                mediaSource = mediaSource,
+                start = resolvePlayerMediaStart(seekToMs, resetPlayer),
+            )
         } else {
-            player.setMediaItem(mediaItem, resetPlayer)
+            player.setMediaItem(
+                mediaItem = mediaItem,
+                start = resolvePlayerMediaStart(seekToMs, resetPlayer),
+            )
         }
 
         player.prepare()
-        if (seekToMs > 0L) {
-            player.seekTo(seekToMs)
-        }
         player.playWhenReady = playWhenReady
     }
 
@@ -222,6 +225,44 @@ internal class PlayerMediaSourceCoordinator(
             Logger.e(tag, "$operation: player engine is unavailable or is not backed by ExoPlayer")
         }
         return player
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun ExoPlayer.setMediaSource(
+        mediaSource: MediaSource,
+        start: PlayerMediaStart,
+    ) {
+        val initialPositionMs = start.initialPositionMs
+        if (initialPositionMs != null) {
+            setMediaSource(mediaSource, initialPositionMs)
+        } else {
+            setMediaSource(mediaSource, start.resetPosition)
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun ExoPlayer.setMediaSources(
+        mediaSources: List<MediaSource>,
+        start: PlayerMediaStart,
+    ) {
+        val initialPositionMs = start.initialPositionMs
+        if (initialPositionMs != null) {
+            setMediaSources(mediaSources, 0, initialPositionMs)
+        } else {
+            setMediaSources(mediaSources, start.resetPosition)
+        }
+    }
+
+    private fun ExoPlayer.setMediaItem(
+        mediaItem: MediaItem,
+        start: PlayerMediaStart,
+    ) {
+        val initialPositionMs = start.initialPositionMs
+        if (initialPositionMs != null) {
+            setMediaItem(mediaItem, initialPositionMs)
+        } else {
+            setMediaItem(mediaItem, start.resetPosition)
+        }
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

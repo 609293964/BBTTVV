@@ -78,7 +78,6 @@ internal fun ProfileWatchLaterPanel(
                 state = contentFocusTarget,
                 focusCoordinator = focusCoordinator,
                 focusTab = focusTab,
-                onDpadLeft = onRequestSidebarFocus,
             )
             .padding(top = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)

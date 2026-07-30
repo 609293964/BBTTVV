@@ -15,6 +15,8 @@ internal sealed class PlayerFocusIntent {
     data object FocusCommentsPanel : PlayerFocusIntent()
     data class FocusAction(val index: Int) : PlayerFocusIntent()
     data class FocusPanelOption(val index: Int) : PlayerFocusIntent()
+    data class FocusInteractiveOption(val index: Int) : PlayerFocusIntent()
+    data object FocusDanmakuVoteOverlay : PlayerFocusIntent()
 }
 
 internal interface PlayerFocusTarget {
@@ -39,6 +41,8 @@ internal class PlayerFocusCoordinator {
     private var commentsPanelTarget: PlayerFocusTarget? = null
     private val actionTargets = LinkedHashMap<Int, PlayerFocusTarget>()
     private val panelOptionTargets = LinkedHashMap<Int, PlayerFocusTarget>()
+    private val interactiveOptionTargets = LinkedHashMap<Int, PlayerFocusTarget>()
+    private var danmakuVoteOverlayTarget: PlayerFocusTarget? = null
 
     fun registerPlayerSurfaceTarget(target: PlayerFocusTarget): PlayerFocusTargetRegistration {
         playerSurfaceTarget = target
@@ -96,6 +100,29 @@ internal class PlayerFocusCoordinator {
         }
     }
 
+    fun registerInteractiveOptionTarget(
+        index: Int,
+        target: PlayerFocusTarget,
+    ): PlayerFocusTargetRegistration {
+        interactiveOptionTargets[index] = target
+        drainPendingFocus()
+        return PlayerFocusTargetRegistration {
+            if (interactiveOptionTargets[index] === target) interactiveOptionTargets.remove(index)
+        }
+    }
+
+    fun registerDanmakuVoteOverlayTarget(
+        target: PlayerFocusTarget,
+    ): PlayerFocusTargetRegistration {
+        danmakuVoteOverlayTarget = target
+        drainPendingFocus()
+        return PlayerFocusTargetRegistration {
+            if (danmakuVoteOverlayTarget === target) {
+                danmakuVoteOverlayTarget = null
+            }
+        }
+    }
+
     fun requestFocus(intent: PlayerFocusIntent): Boolean {
         pendingIntent = intent
         return drainPendingFocus()
@@ -109,6 +136,8 @@ internal class PlayerFocusCoordinator {
             PlayerFocusIntent.FocusCommentsPanel -> commentsPanelTarget
             is PlayerFocusIntent.FocusAction -> actionTargets[intent.index]
             is PlayerFocusIntent.FocusPanelOption -> panelOptionTargets[intent.index]
+            is PlayerFocusIntent.FocusInteractiveOption -> interactiveOptionTargets[intent.index]
+            PlayerFocusIntent.FocusDanmakuVoteOverlay -> danmakuVoteOverlayTarget
         } ?: return false
         if (!target.tryRequestFocus()) return false
         pendingIntent = null

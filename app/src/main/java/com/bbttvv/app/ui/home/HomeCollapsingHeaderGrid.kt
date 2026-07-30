@@ -91,6 +91,11 @@ internal class HomeCollapsingHeaderState {
     }
 }
 
+internal fun HomeCollapsingHeaderState.runMenuRefresh(refresh: () -> Unit) {
+    reset()
+    refresh()
+}
+
 private inline fun logHomeFocus(message: () -> String) {
     if (BuildConfig.DEBUG) {
         Log.d("HomeFocus", message())

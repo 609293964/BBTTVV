@@ -51,6 +51,8 @@ import com.bbttvv.app.ui.components.rememberSizedImageModel
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import com.bbttvv.app.ui.home.HomeCollapsingHeaderGrid
+import com.bbttvv.app.ui.home.HomeCollapsingHeaderState
 import com.bbttvv.app.ui.home.HomeRecommendGridFocusState
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
@@ -72,6 +74,7 @@ fun PublisherScreen(
     val timeSortFocusRequester = remember { FocusRequester() }
     val hotSortFocusRequester = remember { FocusRequester() }
     val videoGridFocusState = remember { HomeRecommendGridFocusState() }
+    val headerScrollState = remember(mid) { HomeCollapsingHeaderState() }
     val hostView = LocalView.current
     val isLightTheme = LocalIsLightTheme.current
     val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else Color(0xFF111315)
@@ -91,6 +94,11 @@ fun PublisherScreen(
 
     LaunchedEffect(mid, initialHeader) {
         viewModel.load(mid, initialHeader)
+    }
+    LaunchedEffect(mid, uiState.items.isEmpty()) {
+        if (uiState.items.isEmpty()) {
+            headerScrollState.reset()
+        }
     }
 
     val requestVisibleVideoFocus = remember(videoGridFocusState) {
@@ -147,27 +155,37 @@ fun PublisherScreen(
             .fillMaxSize()
             .background(pageBackgroundColor)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PublisherHeaderSection(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 32.dp, start = 32.dp, end = 32.dp, bottom = 12.dp),
-                header = uiState.header,
-                errorMessage = uiState.headerError,
-                selectedSort = uiState.selectedSort,
-                timeSortFocusRequester = timeSortFocusRequester,
-                hotSortFocusRequester = hotSortFocusRequester,
-                requestFocusToken = headerFocusToken,
-                onNavigateDown = requestVisibleVideoFocus,
-                onSortSelected = viewModel::changeSort
-            )
+        HomeCollapsingHeaderGrid(
+            topBarHeightPx = 0,
+            state = headerScrollState,
+            modifier = Modifier.fillMaxSize(),
+            collapseEnabled = uiState.items.isNotEmpty(),
+            localHeader = {
+                PublisherHeaderSection(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 32.dp, start = 32.dp, end = 32.dp, bottom = 12.dp),
+                    header = uiState.header,
+                    errorMessage = uiState.headerError,
+                    selectedSort = uiState.selectedSort,
+                    timeSortFocusRequester = timeSortFocusRequester,
+                    hotSortFocusRequester = hotSortFocusRequester,
+                    requestFocusToken = headerFocusToken,
+                    onNavigateDown = requestVisibleVideoFocus,
+                    onSortSelected = { sortOrder ->
+                        headerScrollState.reset()
+                        viewModel.changeSort(sortOrder)
+                    }
+                )
+            }
+        ) { topPadding, onScrollOffset ->
 
             when {
                 uiState.isLoading && uiState.items.isEmpty() -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                            .fillMaxSize()
+                            .padding(top = topPadding),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -180,8 +198,8 @@ fun PublisherScreen(
                 uiState.videoError != null && uiState.items.isEmpty() -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                            .fillMaxSize()
+                            .padding(top = topPadding),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -196,8 +214,8 @@ fun PublisherScreen(
                 uiState.items.isEmpty() -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                            .fillMaxSize()
+                            .padding(top = topPadding),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -208,17 +226,13 @@ fun PublisherScreen(
                 }
 
                 else -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
                         VideoCardRecyclerGrid(
                             videos = uiState.items,
                             contentPadding = PaddingValues(
                                 start = 32.dp,
                                 end = 32.dp,
-                                top = 16.dp,
+                                top = topPadding + 16.dp,
                                 bottom = 48.dp
                             ),
                             modifier = Modifier
@@ -228,6 +242,7 @@ fun PublisherScreen(
                             focusState = videoGridFocusState,
                             scrollResetKey = uiState.selectedSort,
                             allowChildDrawingOutsideBounds = false,
+                            onVerticalScrollOffsetChanged = onScrollOffset,
                             loadMorePrefetchItems = PublisherLoadMorePrefetchItems,
                             canLoadMore = {
                                 uiState.mid > 0L &&
@@ -237,6 +252,7 @@ fun PublisherScreen(
                             loadMoreInProgress = uiState.isLoadingMore,
                             onLoadMore = viewModel::loadMore,
                             onTopRowDpadUp = {
+                                headerScrollState.reset()
                                 headerFocusToken += 1
                                 true
                             },

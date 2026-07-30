@@ -170,7 +170,9 @@ internal fun HomeCategoryVideoGrid(
                 canLoadMore = { hasMore && !isLoading },
                 loadMoreInProgress = isLoading,
                 onLoadMore = onLoadMore,
-                onMenuRefresh = onRefresh,
+                onMenuRefresh = {
+                    collapsingHeaderState.runMenuRefresh(onRefresh)
+                },
                 onVideoFocused = onVideoFocused,
                 onFocusedRowChanged = onContentRowFocused,
                 onTopRowDpadUp = {

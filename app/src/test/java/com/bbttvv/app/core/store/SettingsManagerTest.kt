@@ -29,6 +29,15 @@ class SettingsManagerTest {
     }
 
     @Test
+    fun `custom CDN host normalization never stores URL paths`() {
+        assertEquals(
+            "custom.bilivideo.com",
+            normalizeCustomCdnHost(" HTTPS://Custom.Bilivideo.com:443/path?token=redacted "),
+        )
+        assertEquals("", normalizeCustomCdnHost(null))
+    }
+
+    @Test
     fun `dynamic page display mode falls back to all enabled`() {
         assertEquals(
             SettingsManager.DynamicPageDisplayMode.ALL,

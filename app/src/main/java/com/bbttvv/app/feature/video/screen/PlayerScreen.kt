@@ -1,6 +1,7 @@
 package com.bbttvv.app.feature.video.screen
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -39,6 +40,8 @@ import com.bbttvv.app.feature.video.viewmodel.PlayerCommentsUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerSponsorUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.PlayerViewModel
+import com.bbttvv.app.feature.video.viewmodel.InteractiveVideoUiState
+import com.bbttvv.app.feature.video.viewmodel.DanmakuVoteUiState
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
@@ -63,6 +66,8 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sponsorUiState by viewModel.sponsorUiState.collectAsStateWithLifecycle()
+    val interactiveUiState by viewModel.interactiveUiState.collectAsStateWithLifecycle()
+    val danmakuVoteUiState by viewModel.danmakuVoteUiState.collectAsStateWithLifecycle()
     val isDanmakuEnabled by viewModel.isDanmakuEnabled.collectAsStateWithLifecycle()
     val storedDanmakuSettings by DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
@@ -139,6 +144,56 @@ fun PlayerScreen(
     )
     val latestHandleOverlayEffect = rememberUpdatedState(handleOverlayEffect)
     val latestUiState = rememberUpdatedState(uiState)
+    val isInteractiveOverlayOpen = interactiveUiState is InteractiveVideoUiState.Showing ||
+        interactiveUiState is InteractiveVideoUiState.LoadingBranch ||
+        interactiveUiState is InteractiveVideoUiState.RetryableError
+    val isDanmakuVoteOverlayOpen = danmakuVoteUiState is DanmakuVoteUiState.Showing ||
+        danmakuVoteUiState is DanmakuVoteUiState.Submitting ||
+        danmakuVoteUiState is DanmakuVoteUiState.RetryableError ||
+        danmakuVoteUiState is DanmakuVoteUiState.Submitted
+    var isCommentImageViewerOpen by remember(session) { mutableStateOf(false) }
+    val exclusiveOverlayOwner = resolvePlayerExclusiveOverlayOwner(
+        commentImageViewerOpen = isCommentImageViewerOpen,
+        interactiveVideoOpen = isInteractiveOverlayOpen,
+        danmakuVoteOpen = isDanmakuVoteOverlayOpen,
+    )
+    val isInteractiveFocusDomain =
+        exclusiveOverlayOwner == PlayerExclusiveOverlayOwner.InteractiveVideo
+    val isDanmakuVoteFocusDomain =
+        exclusiveOverlayOwner == PlayerExclusiveOverlayOwner.DanmakuVote
+    var danmakuVoteKeyHandler by remember {
+        mutableStateOf<DanmakuVoteKeyHandler?>(null)
+    }
+    BackHandler(enabled = isDanmakuVoteFocusDomain) {
+        viewModel.hideDanmakuVote()
+    }
+    BackHandler(enabled = !isDanmakuVoteFocusDomain && isInteractiveFocusDomain) {
+        viewModel.hideInteractiveOptions()
+    }
+    var previousExclusiveOverlayOwner by remember {
+        mutableStateOf<PlayerExclusiveOverlayOwner?>(null)
+    }
+    LaunchedEffect(exclusiveOverlayOwner) {
+        when {
+            exclusiveOverlayOwner == PlayerExclusiveOverlayOwner.CommentImageViewer -> {
+                previousExclusiveOverlayOwner = exclusiveOverlayOwner
+            }
+
+            exclusiveOverlayOwner != null -> {
+                previousExclusiveOverlayOwner = exclusiveOverlayOwner
+                presentationState.hideCommentsPanel()
+                overlayStateMachine.hideOverlay(latestHandleOverlayEffect.value)
+            }
+
+            previousExclusiveOverlayOwner != null -> {
+                val closedOwner = previousExclusiveOverlayOwner
+                previousExclusiveOverlayOwner = null
+                if (closedOwner != PlayerExclusiveOverlayOwner.CommentImageViewer) {
+                    playerFocusCoordinator.requestFocus(PlayerFocusIntent.FocusPlayerSurface)
+                }
+            }
+        }
+    }
 
     val bufferingSpeedMeter = remember { BufferingSpeedMeter() }
     val exoPlayer = remember(context, bufferingSpeedMeter) {
@@ -166,9 +221,18 @@ fun PlayerScreen(
             )
         }
     }
-    val handlePlayerKey = remember(handleOverlayKey, handleSponsorSkipNoticeKey) {
+    val handlePlayerKey = remember(
+        handleOverlayKey,
+        handleSponsorSkipNoticeKey,
+        isDanmakuVoteFocusDomain,
+        danmakuVoteKeyHandler,
+    ) {
         { event: KeyEvent ->
-            handleSponsorSkipNoticeKey(event) || handleOverlayKey(event)
+            if (isDanmakuVoteFocusDomain) {
+                danmakuVoteKeyHandler?.invoke(event) ?: true
+            } else {
+                handleSponsorSkipNoticeKey(event) || handleOverlayKey(event)
+            }
         }
     }
     val handlePlayerPreviewKey = remember(handlePlayerKey) {
@@ -248,7 +312,9 @@ fun PlayerScreen(
             .playerBackdropSource(visualEffectsState)
             .onPreviewKeyEvent { keyEvent ->
                 val nativeEvent = keyEvent.nativeKeyEvent
-                if (shouldRoutePlayerKeyToPreviewHandler(nativeEvent)) {
+                if (isDanmakuVoteFocusDomain) {
+                    danmakuVoteKeyHandler?.invoke(nativeEvent) ?: true
+                } else if (shouldRoutePlayerKeyToPreviewHandler(nativeEvent)) {
                     handleSponsorSkipNoticeKey(nativeEvent)
                 } else {
                     false
@@ -298,6 +364,9 @@ fun PlayerScreen(
             onLoadMoreComments = viewModel::loadMoreComments,
             onOpenCommentThread = viewModel::openCommentThread,
             onBackFromCommentThread = viewModel::closeCommentThread,
+            onCommentImageViewerVisibilityChanged = { isVisible ->
+                isCommentImageViewerOpen = isVisible
+            },
         )
 
         if (isDebugOverlayVisible) {
@@ -319,6 +388,29 @@ fun PlayerScreen(
             showDebugOverlay = isDebugOverlayVisible,
             showSponsorSkipNotice = showSponsorSkipNotice,
         )
+
+        if (isInteractiveFocusDomain) {
+            InteractiveVideoOverlay(
+                state = interactiveUiState,
+                focusCoordinator = playerFocusCoordinator,
+                onSelect = viewModel::selectInteractiveOption,
+                onRetry = viewModel::retryInteractiveBranch,
+                onBack = viewModel::hideInteractiveOptions,
+            )
+        }
+
+        if (isDanmakuVoteFocusDomain) {
+            DanmakuVoteOverlay(
+                state = danmakuVoteUiState,
+                focusCoordinator = playerFocusCoordinator,
+                onSelect = viewModel::selectDanmakuVoteOption,
+                onRetry = viewModel::retryDanmakuVote,
+                onBack = viewModel::hideDanmakuVote,
+                onKeyHandlerChanged = { handler ->
+                    danmakuVoteKeyHandler = handler
+                },
+            )
+        }
     }
 
     uiState.resumePrompt?.let { prompt ->
@@ -402,6 +494,7 @@ private fun BoxScope.PlayerOverlaySection(
     onLoadMoreComments: () -> Unit,
     onOpenCommentThread: (ReplyItem) -> Unit,
     onBackFromCommentThread: () -> Unit,
+    onCommentImageViewerVisibilityChanged: (Boolean) -> Unit,
 ) {
     if (overlayUiState.overlayMode != PlayerOverlayMode.FullControls) return
 
@@ -457,6 +550,7 @@ private fun BoxScope.PlayerOverlaySection(
         onLoadMoreComments = onLoadMoreComments,
         onOpenCommentThread = onOpenCommentThread,
         onBackFromCommentThread = onBackFromCommentThread,
+        onCommentImageViewerVisibilityChanged = onCommentImageViewerVisibilityChanged,
     )
 }
 

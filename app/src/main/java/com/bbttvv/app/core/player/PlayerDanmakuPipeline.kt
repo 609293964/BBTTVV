@@ -17,6 +17,7 @@ import com.bbttvv.app.core.store.player.shouldRenderDanmakuItem
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.data.repository.DanmakuUserFilter
+import com.bbttvv.app.data.repository.DanmakuViewMetadata
 import com.bbttvv.app.data.repository.DanmakuWebSetting
 import com.bbttvv.app.feature.video.danmaku.AdvancedDanmakuData
 import com.bbttvv.app.feature.video.danmaku.DanmakuParser
@@ -38,6 +39,7 @@ internal data class PlayerDanmakuLoadResult(
     val rawData: ByteArray?,
     val sourceLabel: String,
     val filterContext: PlayerDanmakuFilterContext,
+    val metadata: DanmakuViewMetadata?,
 )
 
 /**
@@ -56,13 +58,16 @@ internal object PlayerDanmakuPipeline {
         aid: Long = 0L,
         segmentIndex: Int = 1,
         allowXmlFallback: Boolean = true,
+        loadMetadata: Boolean = false,
     ): PlayerDanmakuLoadResult {
         val localSettings = resolveDanmakuSettings()
         val shouldFollowBiliShield =
             localSettings.followBiliShield &&
                 !TokenManager.sessDataCache.isNullOrBlank() &&
                 aid > 0L
-        val danmakuViewMetadata = if (shouldFollowBiliShield && segmentIndex == 1) {
+        val danmakuViewMetadata = if (
+            aid > 0L && (loadMetadata || (shouldFollowBiliShield && segmentIndex == 1))
+        ) {
             DanmakuRepository.getDanmakuView(cid = cid, aid = aid)
         } else {
             null
@@ -93,6 +98,7 @@ internal object PlayerDanmakuPipeline {
                 rawData = null,
                 sourceLabel = "SEG_$segmentIndex",
                 filterContext = filterContext,
+                metadata = danmakuViewMetadata,
             )
         }
 
@@ -102,6 +108,7 @@ internal object PlayerDanmakuPipeline {
                 rawData = null,
                 sourceLabel = "SEG_EMPTY_$segmentIndex",
                 filterContext = filterContext,
+                metadata = danmakuViewMetadata,
             )
         }
 
@@ -112,6 +119,7 @@ internal object PlayerDanmakuPipeline {
             rawData = xmlData,
             sourceLabel = if (segmentIndex == 1) "XML" else "XML_FALLBACK_SEG_$segmentIndex",
             filterContext = filterContext,
+            metadata = danmakuViewMetadata,
         )
     }
 

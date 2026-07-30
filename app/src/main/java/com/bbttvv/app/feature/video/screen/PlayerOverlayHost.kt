@@ -64,6 +64,7 @@ internal fun BoxScope.PlayerOverlayHost(
     onLoadMoreComments: () -> Unit,
     onOpenCommentThread: (ReplyItem) -> Unit,
     onBackFromCommentThread: () -> Unit,
+    onCommentImageViewerVisibilityChanged: (Boolean) -> Unit,
 ) {
     if (overlayUiState.overlayMode == PlayerOverlayMode.FullControls) {
         if (shouldRenderPlayerChrome(isCommentsPanelVisible)) {
@@ -97,6 +98,7 @@ internal fun BoxScope.PlayerOverlayHost(
             onLoadMoreComments = onLoadMoreComments,
             onOpenCommentThread = onOpenCommentThread,
             onBackFromCommentThread = onBackFromCommentThread,
+            onCommentImageViewerVisibilityChanged = onCommentImageViewerVisibilityChanged,
         )
     }
 }
@@ -214,6 +216,7 @@ private fun BoxScope.PlayerControlsLayer(
     onLoadMoreComments: () -> Unit,
     onOpenCommentThread: (ReplyItem) -> Unit,
     onBackFromCommentThread: () -> Unit,
+    onCommentImageViewerVisibilityChanged: (Boolean) -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -308,6 +311,7 @@ private fun BoxScope.PlayerControlsLayer(
                 onLoadMore = onLoadMoreComments,
                 onOpenThread = onOpenCommentThread,
                 onBackFromThread = onBackFromCommentThread,
+                onImageViewerVisibilityChanged = onCommentImageViewerVisibilityChanged,
             )
         }
     }

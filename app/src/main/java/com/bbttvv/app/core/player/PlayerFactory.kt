@@ -18,37 +18,25 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
 import com.bbttvv.app.core.store.PlayerSettingsCache
-import com.bbttvv.app.core.util.NetworkUtils
 
-private data class PlayerBufferPolicy(
+internal data class PlayerBufferPolicy(
     val minBufferMs: Int,
     val maxBufferMs: Int,
     val bufferForPlaybackMs: Int,
     val bufferForPlaybackAfterRebufferMs: Int
 )
 
-private fun resolvePlayerBufferPolicy(isOnWifi: Boolean): PlayerBufferPolicy {
-    return if (isOnWifi) {
-        PlayerBufferPolicy(
-            minBufferMs = 10_000,
-            maxBufferMs = 40_000,
-            bufferForPlaybackMs = 900,
-            bufferForPlaybackAfterRebufferMs = 1_800
-        )
-    } else {
-        PlayerBufferPolicy(
-            minBufferMs = 15_000,
-            maxBufferMs = 50_000,
-            bufferForPlaybackMs = 1_600,
-            bufferForPlaybackAfterRebufferMs = 3_000
-        )
-    }
-}
+internal fun resolvePlayerBufferPolicy(): PlayerBufferPolicy = PlayerBufferPolicy(
+    minBufferMs = 15_000,
+    maxBufferMs = 50_000,
+    bufferForPlaybackMs = 1_600,
+    bufferForPlaybackAfterRebufferMs = 3_000
+)
 
 /**
  * 创建配置好的 ExoPlayer 实例
  *
- * 配置包括：OkHttp DataSource、WiFi/移动网络不同缓冲策略、
+ * 配置包括：OkHttp DataSource、统一 TV 缓冲策略、
  * AppRenderersFactory 解码器 fallback、SeekParameters.CLOSEST_SYNC、
  * VolumeBalanceAudioProcessor 音量均衡。
  *
@@ -83,9 +71,7 @@ fun createConfiguredPlayer(
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
 
-    val bufferPolicy = resolvePlayerBufferPolicy(
-        isOnWifi = NetworkUtils.isWifi(appContext)
-    )
+    val bufferPolicy = resolvePlayerBufferPolicy()
 
     val volumeBalanceProcessor = VolumeBalanceAudioProcessor(level = audioBalanceLevel)
     VolumeBalanceController.registerProcessor(volumeBalanceProcessor)

@@ -15,9 +15,11 @@ internal object SettingsCatalog {
         SettingsCategory.PLAYBACK to listOf(
             "settings_playback_title",
             "settings_auto_highest_quality",
+            "settings_pgc_preferred_quality",
             "settings_remember_last_speed",
             "settings_default_speed",
             "settings_auto_resume",
+            "settings_interactive_video",
             "settings_playback_end",
         ),
         SettingsCategory.DANMAKU to DanmakuSettingsCatalog.keys,
@@ -45,6 +47,8 @@ internal object SettingsCatalog {
         ),
         SettingsCategory.NETWORK to listOf(
             "settings_network_title",
+            "settings_custom_cdn_host",
+            "settings_strict_custom_cdn",
             "settings_user_agent",
             "settings_ipv4_only",
         ),

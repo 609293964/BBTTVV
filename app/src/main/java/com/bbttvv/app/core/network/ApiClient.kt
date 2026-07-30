@@ -395,6 +395,20 @@ interface BilibiliApi {
         @Query("pid") pid: Long
     ): ResponseBody
 
+    @retrofit2.http.FormUrlEncoded
+    @POST("https://api.bilibili.com/x/v2/dm/command/vote/post")
+    suspend fun submitDanmakuVote(
+        @retrofit2.http.Field("aid") aid: Long,
+        @retrofit2.http.Field("cid") cid: Long,
+        @retrofit2.http.Field("progress") progress: Long,
+        @retrofit2.http.Field("vote_id") voteId: Long,
+        @retrofit2.http.Field("vote_type") voteType: Int,
+        @retrofit2.http.Field("cmd_id_str") commandId: String,
+        @retrofit2.http.Field("option_id") optionId: Int,
+        @retrofit2.http.Field("has_self_def") hasSelfDefined: Boolean,
+        @retrofit2.http.Field("csrf") csrf: String,
+    ): SimpleApiResponse
+
     @GET("https://api.bilibili.com/x/dm/filter/user")
     suspend fun getDanmakuFilterUser(): ResponseBody
 
