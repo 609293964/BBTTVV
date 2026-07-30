@@ -217,6 +217,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     private var isAppInBackground: Boolean = false
     private var isPlaybackSuspendedForBackground: Boolean = false
     private var isPlaybackPausedByUser: Boolean = false
+    private var resumePlaybackAfterForeground: Boolean = false
     private var statusClearJob: Job? = null
     private var danmakuCollectJob: Job? = null
     private var danmakuPublishJob: Job? = null
@@ -237,7 +238,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             ensureMainThread("LivePlayer.Listener.onPlayWhenReadyChanged")
             if (playWhenReady && isPlaybackSuppressed()) {
                 playerEngine?.pause()
+                return
             }
+            refreshPlaybackState()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -308,6 +311,15 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     fun onAppBackgrounded() {
         ensureMainThread("LivePlayerViewModel.onAppBackgrounded")
         if (isAppInBackground) return
+        val currentUiState = _uiState.value
+        val currentPlaybackState = _playbackState.value
+        resumePlaybackAfterForeground = shouldRequestLivePlaybackResumeAfterBackground(
+            isPausedByUser = isPlaybackPausedByUser,
+            playWhenReady = playerEngine?.playWhenReady ?: currentPlaybackState.playWhenReady,
+            isLoading = currentUiState.isLoading,
+            playerState = currentPlaybackState.playerState,
+            hasError = !currentUiState.errorMessage.isNullOrBlank(),
+        )
         isAppInBackground = true
         isPlaybackSuspendedForBackground = true
         playerEngine?.pause()
@@ -322,7 +334,24 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     fun onAppForegrounded() {
         ensureMainThread("LivePlayerViewModel.onAppForegrounded")
         if (!isAppInBackground) return
+        val currentUiState = _uiState.value
+        val currentPlaybackState = _playbackState.value
+        val shouldResumePlayback = shouldResumeLivePlaybackOnForeground(
+            resumeRequested = resumePlaybackAfterForeground,
+            isPausedByUser = isPlaybackPausedByUser,
+            isLoading = currentUiState.isLoading,
+            hasPlaybackSource = runtimeState.selectedCandidateKey.isNotBlank() ||
+                currentUiState.streamUrl.isNotBlank(),
+            playerState = currentPlaybackState.playerState,
+            hasError = !currentUiState.errorMessage.isNullOrBlank(),
+        )
         isAppInBackground = false
+        isPlaybackSuspendedForBackground = false
+        resumePlaybackAfterForeground = false
+        if (shouldResumePlayback) {
+            lastLiveDanmakuShowAtMs = getPlayerCurrentPosition().coerceAtLeast(0L)
+            playerEngine?.play()
+        }
         if (exoPlayer != null) {
             startPlayerPolling()
         }
@@ -365,6 +394,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         if (isNewRoom) {
             isPlaybackPausedByUser = false
             isPlaybackSuspendedForBackground = isAppInBackground
+            resumePlaybackAfterForeground = false
             liveBufferingStallTracker.reset()
         }
         val bitrateMode = if (isNewRoom) {
@@ -672,10 +702,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     fun togglePlayback() {
         ensureMainThread("togglePlayback")
         val engine = playerEngine ?: return
-        if (engine.isPlaying) {
-            pausePlayback()
-        } else {
-            playPlayback()
+        when (resolveLivePlaybackToggleAction(engine.playWhenReady)) {
+            LivePlaybackToggleAction.Play -> playPlayback()
+            LivePlaybackToggleAction.Pause -> pausePlayback()
         }
     }
 
@@ -685,6 +714,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         if (isAppInBackground) return
         isPlaybackPausedByUser = false
         isPlaybackSuspendedForBackground = false
+        resumePlaybackAfterForeground = false
         lastLiveDanmakuShowAtMs = getPlayerCurrentPosition().coerceAtLeast(0L)
         playerEngine?.play()
         refreshPlaybackState()
@@ -694,6 +724,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     fun pausePlayback() {
         ensureMainThread("pausePlayback")
         isPlaybackPausedByUser = true
+        resumePlaybackAfterForeground = false
         playerEngine?.pause()
         liveBufferingStallTracker.reset()
         resetLiveDanmakuBuffer(clearPayload = true)
@@ -740,6 +771,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         ensureMainThread("finishSession")
         liveLoadJob?.cancel()
         liveLoadJob = null
+        resumePlaybackAfterForeground = false
         liveBufferingStallTracker.reset()
         stopLiveDanmaku(clearPayload = true)
         if (!runtimeState.sessionStarted) return

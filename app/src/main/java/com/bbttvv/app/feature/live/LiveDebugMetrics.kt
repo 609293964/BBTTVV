@@ -36,16 +36,36 @@ internal data class LivePlaybackDebugMetrics(
     val lastAudioEvent: String = "",
 )
 
+internal data class LiveDebugMetricsCollectionPolicy(
+    val collectMetrics: Boolean,
+    val trackRenderFps: Boolean,
+)
+
+internal fun resolveLiveDebugMetricsCollectionPolicy(
+    isDebugBuild: Boolean,
+    isDebugOverlayVisible: Boolean,
+): LiveDebugMetricsCollectionPolicy {
+    return LiveDebugMetricsCollectionPolicy(
+        collectMetrics = isDebugBuild,
+        trackRenderFps = isDebugBuild && isDebugOverlayVisible,
+    )
+}
+
+private val EmptyLivePlaybackDebugMetrics = LivePlaybackDebugMetrics()
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 internal fun rememberLivePlaybackDebugMetrics(
     player: ExoPlayer,
     roomId: Long,
     streamUrl: String,
-    isDebugOverlayVisible: Boolean,
+    collectionEnabled: Boolean,
+    trackRenderFps: Boolean,
 ): LivePlaybackDebugMetrics {
+    if (!collectionEnabled) return EmptyLivePlaybackDebugMetrics
+
     var metrics by remember(roomId) { mutableStateOf(LivePlaybackDebugMetrics()) }
-    val latestShowDebugOverlay = rememberUpdatedState(isDebugOverlayVisible)
+    val latestTrackRenderFps = rememberUpdatedState(trackRenderFps)
 
     LaunchedEffect(streamUrl) {
         if (streamUrl.isNotBlank()) {
@@ -53,8 +73,8 @@ internal fun rememberLivePlaybackDebugMetrics(
         }
     }
 
-    LaunchedEffect(isDebugOverlayVisible) {
-        if (isDebugOverlayVisible) {
+    LaunchedEffect(trackRenderFps) {
+        if (trackRenderFps) {
             metrics = metrics.copy(renderFps = 0f, renderFpsLastAtMs = 0L)
         }
     }
@@ -153,7 +173,7 @@ internal fun rememberLivePlaybackDebugMetrics(
                 totalProcessingOffsetUs: Long,
                 frameCount: Int,
             ) {
-                if (!latestShowDebugOverlay.value) return
+                if (!latestTrackRenderFps.value) return
                 val now = eventTime.realtimeMs
                 update { current ->
                     val last = current.renderFpsLastAtMs

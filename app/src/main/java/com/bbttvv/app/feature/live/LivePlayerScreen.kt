@@ -42,13 +42,13 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
 import com.bbttvv.app.core.player.PausePlaybackOnAppBackgroundEffect
+import com.bbttvv.app.core.player.PlaybackKeepScreenOnEffect
 import com.bbttvv.app.core.player.clearPlayerViewReference
 import com.bbttvv.app.core.player.createConfiguredPlayer
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.core.store.player.toEngineConfig
 import com.bbttvv.app.core.store.SettingsManager
-import com.bbttvv.app.core.util.ScreenUtils
 import com.bbttvv.app.BuildConfig
 import com.bbttvv.app.feature.video.danmaku.DanmakuOverlay
 import com.bbttvv.app.feature.video.screen.buildPanelOptionsFocusKey
@@ -104,11 +104,18 @@ fun LivePlayerScreen(
     var selectedPanelIndex by rememberSaveable(roomId) { mutableIntStateOf(0) }
     var showDebugOverlay by rememberSaveable(roomId) { mutableStateOf(false) }
     val isDebugOverlayVisible = BuildConfig.DEBUG && showDebugOverlay
+    val debugMetricsCollectionPolicy = remember(isDebugOverlayVisible) {
+        resolveLiveDebugMetricsCollectionPolicy(
+            isDebugBuild = BuildConfig.DEBUG,
+            isDebugOverlayVisible = isDebugOverlayVisible,
+        )
+    }
     val debugMetrics = rememberLivePlaybackDebugMetrics(
         player = exoPlayer,
         roomId = roomId,
         streamUrl = uiState.streamUrl,
-        isDebugOverlayVisible = isDebugOverlayVisible,
+        collectionEnabled = debugMetricsCollectionPolicy.collectMetrics,
+        trackRenderFps = debugMetricsCollectionPolicy.trackRenderFps,
     )
     val activePanel = activePanelKey?.let(LiveOverlayAction::valueOf)
     val panelOptions = remember(activePanel, uiState) {
@@ -122,6 +129,10 @@ fun LivePlayerScreen(
     PausePlaybackOnAppBackgroundEffect(
         onEnterBackground = viewModel::onAppBackgrounded,
         onEnterForeground = viewModel::onAppForegrounded,
+    )
+    PlaybackKeepScreenOnEffect(
+        isPlaybackActive = playbackState.isPlaybackActive,
+        playerView = playerViewRef,
     )
 
     RegisterTvFocusEscapeTarget(
@@ -268,7 +279,6 @@ fun LivePlayerScreen(
             com.bbttvv.app.core.player.VolumeBalanceController.unregisterProcessor()
             playerReleaseGuard.releaseOnce(
                 finishSession = {
-                    ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
                     viewModel.resetTransientPlaybackTuning()
                     viewModel.finishSession(reason = "screen_dispose")
                 },
@@ -301,13 +311,6 @@ fun LivePlayerScreen(
         selectedPanelIndex = 0
         showDebugOverlay = false
         viewModel.loadLive(roomId = roomId, force = true)
-    }
-
-    LaunchedEffect(playbackState.isPlaybackActive) {
-        ScreenUtils.setPlaybackKeepScreenOn(
-            context = context,
-            keepScreenOn = playbackState.isPlaybackActive,
-        )
     }
 
     LaunchedEffect(actions.size) {

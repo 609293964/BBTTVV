@@ -23,8 +23,8 @@ import com.bbttvv.app.core.performance.AppPerformanceTracker
 import com.bbttvv.app.core.player.BufferingSpeedMeter
 import com.bbttvv.app.core.player.ExoPlayerReleaseGuard
 import com.bbttvv.app.core.player.PausePlaybackOnAppBackgroundEffect
+import com.bbttvv.app.core.player.PlaybackKeepScreenOnEffect
 import com.bbttvv.app.core.player.clearPlayerViewReference
-import com.bbttvv.app.core.util.ScreenUtils
 import com.bbttvv.app.feature.video.viewmodel.PlayerEvent
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
@@ -104,6 +104,10 @@ internal fun PlayerScreenEffectHost(
         onEnterBackground = viewModel::onAppBackgrounded,
         onEnterForeground = viewModel::onAppForegrounded,
     )
+    PlaybackKeepScreenOnEffect(
+        isPlaybackActive = playbackState.isPlaybackActive,
+        playerView = args.playerView,
+    )
 
     BackHandler {
         when {
@@ -132,13 +136,6 @@ internal fun PlayerScreenEffectHost(
         }
     }
 
-    LaunchedEffect(playbackState.isPlaybackActive) {
-        ScreenUtils.setPlaybackKeepScreenOn(
-            context = context,
-            keepScreenOn = playbackState.isPlaybackActive,
-        )
-    }
-
     DisposableEffect(args.exoPlayer, playerReleaseGuard) {
         val perfListener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
@@ -157,9 +154,6 @@ internal fun PlayerScreenEffectHost(
             try {
                 playerReleaseGuard.releaseOnce(
                     finishSession = {
-                        exitTrace.measure("keepScreenOn:false") {
-                            ScreenUtils.setPlaybackKeepScreenOn(context = context, keepScreenOn = false)
-                        }
                         exitTrace.measure("finishPlaybackSession:dispose") {
                             viewModel.finishPlaybackSession(reason = "screen_dispose")
                         }
