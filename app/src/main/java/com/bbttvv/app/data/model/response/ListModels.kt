@@ -149,6 +149,8 @@ data class VideoItem(
     val owner: Owner = Owner(),
     val stat: Stat = Stat(),
     val duration: Int = 0,
+    val tname: String = "",
+    val isFollowed: Boolean = false,
     val progress: Int = -1,
     val view_at: Long = 0,
     val pubdate: Long = 0,
@@ -235,6 +237,10 @@ data class RecommendItem(
     val pic: String? = null,
     val title: String? = null,
     val duration: Int? = null,
+    val tname: String? = null,
+    @SerialName("is_followed")
+    @Serializable(with = FlexibleBooleanSerializer::class)
+    val isFollowed: Boolean = false,
     val pubdate: Long? = null,
     val owner: RecommendOwner? = null,
     val stat: RecommendStat? = null,
@@ -253,6 +259,8 @@ data class RecommendItem(
             owner = Owner(mid = owner?.mid ?: 0, name = owner?.name ?: "", face = owner?.face ?: ""),
             stat = Stat(view = requestStatConvert(stat?.view), like = requestStatConvert(stat?.like), danmaku = requestStatConvert(stat?.danmaku)),
             duration = duration ?: 0,
+            tname = tname.orEmpty(),
+            isFollowed = isFollowed,
             pubdate = pubdate ?: 0L,
             isVertical = dimension?.isVertical == true,
             rights = rights

@@ -48,7 +48,9 @@ import com.bbttvv.app.ui.components.CommentImageViewerState
 import com.bbttvv.app.ui.components.TvStatusPane
 import com.bbttvv.app.ui.components.createCommentImageViewerState
 import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
+import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
+import com.bbttvv.app.ui.focus.LocalTvFocusReturn
 import com.bbttvv.app.ui.focus.TvFocusSandboxAnchor
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.focus.rememberTvFocusAnchorState
@@ -61,6 +63,8 @@ private const val DetailBackgroundCoverWidthPx = 320
 private const val DetailBackgroundCoverHeightPx = 180
 private const val DetailFocusEscapePriority = 10
 private val DetailBottomPaddingWithoutComments = 320.dp
+
+internal fun videoDetailPlayFocusKey(bvid: String): String = "video_detail:$bvid:play"
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -91,8 +95,11 @@ fun DetailScreen(
     val playButtonFocusRequester = remember { FocusRequester() }
     val firstPageFocusRequester = remember { FocusRequester() }
     val relatedVideosFocusRequester = remember { FocusRequester() }
+    val tvFocusReturn = LocalTvFocusReturn.current
+    val playFocusReturnKey = remember(bvid) { videoDetailPlayFocusKey(bvid) }
     val coroutineScope = rememberCoroutineScope()
     val handlePlayRequest: (String, Long, Long) -> Unit = { playBvid, playAid, playCid ->
+        tvFocusReturn?.capture(playFocusReturnKey)
         viewModel.prefetchPlaybackDanmaku(playCid)
         onPlay(playBvid, playAid, playCid)
     }
@@ -211,6 +218,10 @@ fun DetailScreen(
                         registration.unregister()
                     }
                 }
+                RegisterTvFocusReturnTarget(
+                    key = playFocusReturnKey,
+                    requestFocus = detailFocusCoordinator::tryRequestPlayButtonFocus,
+                )
                 var hasRequestedInitialPlayFocus by rememberSaveable(viewInfo.bvid) {
                     mutableStateOf(false)
                 }
@@ -444,7 +455,12 @@ fun DetailScreen(
                                 },
                                 onPlayButtonPlaced = {
                                     playButtonPlaced = true
-                                    if (!detailFocusCoordinator.drainPendingFocus() &&
+                                    val restoredPlayerFocus = tvFocusReturn?.restorePending() == true
+                                    val restoredInitialFocus = detailFocusCoordinator.drainPendingFocus()
+                                    // The target can register before the button is laid out. Retry
+                                    // the global return once placement has made the requester valid.
+                                    tvFocusReturn?.restorePending()
+                                    if (!restoredPlayerFocus && !restoredInitialFocus &&
                                         hasSubmittedInitialPlayFocusRequest &&
                                         !hasRequestedInitialPlayFocus &&
                                         restoreCommentFocusRpid == null

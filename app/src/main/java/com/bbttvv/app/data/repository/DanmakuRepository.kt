@@ -436,6 +436,8 @@ object DanmakuRepository {
                 commandId = commandId,
                 optionId = optionId,
                 hasSelfDefined = hasSelfDefined,
+                polarisAppId = com.bbttvv.app.core.network.DANMAKU_VOTE_POLARIS_APP_ID,
+                polarisPlatform = com.bbttvv.app.core.network.DANMAKU_VOTE_POLARIS_PLATFORM,
                 csrf = csrf,
             )
             if (response.code != 0) {

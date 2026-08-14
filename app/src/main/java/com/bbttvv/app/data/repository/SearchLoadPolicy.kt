@@ -1,7 +1,5 @@
 ﻿package com.bbttvv.app.data.repository
 
-import com.bbttvv.app.data.model.response.SearchType
-
 internal fun shouldFallbackGuestVideoSearch(
     isLoggedIn: Boolean,
     page: Int,
@@ -15,19 +13,6 @@ internal fun resolveSearchLoadedPage(
     responsePage: Int
 ): Int {
     return maxOf(requestedPage, responsePage.coerceAtLeast(1))
-}
-
-internal fun shouldApplySearchResult(
-    requestSessionId: Long,
-    activeSessionId: Long,
-    requestQuery: String,
-    activeQuery: String,
-    requestType: SearchType,
-    activeType: SearchType
-): Boolean {
-    return requestSessionId == activeSessionId &&
-        requestQuery == activeQuery &&
-        requestType == activeType
 }
 
 internal fun <T, K> mergeSearchPageResults(
@@ -49,4 +34,3 @@ internal fun <T, K> mergeSearchPageResults(
     }
     return merged
 }
-

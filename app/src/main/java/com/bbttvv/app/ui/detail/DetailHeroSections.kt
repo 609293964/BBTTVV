@@ -11,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -61,7 +60,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.semantics.contentDescription
@@ -84,6 +82,7 @@ import com.bbttvv.app.data.model.response.RelatedVideo
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.model.response.ViewInfo
 import com.bbttvv.app.ui.home.VideoCardRecyclerRow
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -155,63 +154,73 @@ internal fun DetailHeroSection(
     onToggleFavourite: () -> Unit,
     onTripleAction: () -> Unit
 ) {
-    Row(
+    val semanticColors = LocalTvSemanticColors.current
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
-        verticalAlignment = Alignment.Top
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(40.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-            Text(
-                text = viewInfo.title.replace("\n", " "),
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (isLightTheme) Color(0xFF18191C) else Color.White,
-                maxLines = 2,
-                lineHeight = 38.sp,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            DetailOwnerSection(
-                avatarModel = ownerAvatarModel,
-                ownerMid = viewInfo.owner.mid,
-                ownerName = viewInfo.owner.name,
-                ownerFace = viewInfo.owner.face,
-                followerCount = followerCount,
-                isFollowing = isFollowing,
-                isFollowActionLoading = isFollowActionLoading,
-                onOpenPublisher = onOpenPublisher,
-                onToggleFollow = onToggleFollow
-            )
-
-            val dateFormat = remember { SimpleDateFormat("yyyy/M/d HH:mm", Locale.CHINA) }
-            val dateStr = if (viewInfo.pubdate > 0L) {
-                dateFormat.format(Date(viewInfo.pubdate * 1000L))
-            } else {
-                null
-            }
-            DetailMetricRow(
-                publishTime = dateStr,
-                views = formatNumber(viewInfo.stat.view),
-                danmaku = formatNumber(viewInfo.stat.danmaku),
-                coins = formatNumber(viewInfo.stat.coin)
-            )
-
-            if (viewInfo.desc.isNotBlank() && viewInfo.desc != "-") {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
                 Text(
-                    text = viewInfo.desc.take(220),
-                    fontSize = 16.sp,
-                    color = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 24.sp
+                    text = viewInfo.title.replace("\n", " "),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = semanticColors.primaryText,
+                    maxLines = 2,
+                    lineHeight = 38.sp,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                DetailOwnerSection(
+                    avatarModel = ownerAvatarModel,
+                    ownerMid = viewInfo.owner.mid,
+                    ownerName = viewInfo.owner.name,
+                    ownerFace = viewInfo.owner.face,
+                    followerCount = followerCount,
+                    isFollowing = isFollowing,
+                    isFollowActionLoading = isFollowActionLoading,
+                    onOpenPublisher = onOpenPublisher,
+                    onToggleFollow = onToggleFollow
+                )
+
+                val dateFormat = remember { SimpleDateFormat("yyyy/M/d HH:mm", Locale.CHINA) }
+                val dateStr = if (viewInfo.pubdate > 0L) {
+                    dateFormat.format(Date(viewInfo.pubdate * 1000L))
+                } else {
+                    null
+                }
+                DetailMetricRow(
+                    publishTime = dateStr,
+                    views = formatNumber(viewInfo.stat.view),
+                    danmaku = formatNumber(viewInfo.stat.danmaku),
+                    coins = formatNumber(viewInfo.stat.coin)
                 )
             }
 
-            DetailStaticFocusArea {
+            DetailPreviewCover(
+                coverModel = coverModel,
+                durationSeconds = viewInfo.pages.firstOrNull()?.duration?.toInt() ?: 0
+            )
+        }
+
+        if (viewInfo.desc.isNotBlank() && viewInfo.desc != "-") {
+            Text(
+                text = viewInfo.desc.take(220),
+                fontSize = 16.sp,
+                color = semanticColors.secondaryText,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 24.sp
+            )
+        }
+
+        DetailStaticFocusArea {
                 Row(
                     modifier = Modifier
                         .focusGroup()
@@ -292,12 +301,6 @@ internal fun DetailHeroSection(
                     )
                 }
             }
-        }
-
-        DetailPreviewCover(
-            coverModel = coverModel,
-            durationSeconds = viewInfo.pages.firstOrNull()?.duration?.toInt() ?: 0
-        )
     }
 }
 
@@ -710,16 +713,6 @@ private fun DetailTripleLikeActionButton(
                     }
                     else -> false
                 }
-            }
-            .pointerInput(enabled) {
-                detectTapGestures(
-                    onPress = press@{
-                        if (!enabled) return@press
-                        startTriplePress()
-                        val released = tryAwaitRelease()
-                        finishPress(released = released)
-                    },
-                )
             }
             .focusable(),
         contentAlignment = Alignment.Center

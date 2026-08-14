@@ -2,7 +2,6 @@ package com.bbttvv.app.ui.components
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -63,6 +62,7 @@ import com.bbttvv.app.ui.input.isTvConfirmKey
 import com.bbttvv.app.ui.input.isTvModalDismissKey
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 import com.bbttvv.app.ui.theme.LocalTvOverlayPalette
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 
 @Immutable
 internal data class TvContextMenuAction(
@@ -229,49 +229,17 @@ private fun TvContextMenuButton(
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val isLightTheme = LocalIsLightTheme.current
+    val semanticColors = LocalTvSemanticColors.current
     val shape = RoundedCornerShape(18.dp)
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) {
-            accentColor.copy(alpha = 0.22f)
-        } else {
-            if (isLightTheme) Color.Black.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.07f)
-        },
-        animationSpec = tween(durationMillis = 150),
-        label = "TvContextMenuButtonBackground",
-    )
-    val textColor by animateColorAsState(
-        targetValue = if (isFocused) {
-            Color.White
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
-        animationSpec = tween(durationMillis = 150),
-        label = "TvContextMenuButtonText",
-    )
+    val backgroundColor = if (isFocused) accentColor.copy(alpha = 0.22f) else semanticColors.surfaceSubtle
+    val textColor = if (isFocused) Color.White else semanticColors.primaryText
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.025f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonScale",
     )
-    val iconBackgroundColor by animateColorAsState(
-        targetValue = if (isFocused) {
-            accentColor.copy(alpha = 0.95f)
-        } else {
-            accentColor.copy(alpha = 0.18f)
-        },
-        animationSpec = tween(durationMillis = 150),
-        label = "TvContextMenuButtonIconBackground",
-    )
-    val iconTintColor by animateColorAsState(
-        targetValue = if (isFocused) {
-            Color.White
-        } else {
-            accentColor
-        },
-        animationSpec = tween(durationMillis = 150),
-        label = "TvContextMenuButtonIconTint",
-    )
+    val iconBackgroundColor = if (isFocused) accentColor.copy(alpha = 0.95f) else accentColor.copy(alpha = 0.18f)
+    val iconTintColor = if (isFocused) Color.White else accentColor
 
     Surface(
         onClick = onClick,
@@ -293,7 +261,7 @@ private fun TvContextMenuButton(
             border = Border(
                 border = BorderStroke(
                     1.dp,
-                    if (isLightTheme) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.08f),
+                    semanticColors.border,
                 ),
                 shape = shape,
             ),

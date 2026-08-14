@@ -20,5 +20,15 @@ interface FeedPlugin : Plugin {
      * @return true 表示显示，false 表示隐藏
      */
     fun shouldShowItem(item: VideoItem): Boolean
+
+    /** Lets filters distinguish the source without breaking existing plugins. */
+    fun shouldShowItem(item: VideoItem, feedKind: FeedKind): Boolean = shouldShowItem(item)
 }
 
+enum class FeedKind {
+    GENERIC,
+    HOME_RECOMMEND,
+    HOME_POPULAR,
+    HOME_REGION,
+    SEARCH,
+}

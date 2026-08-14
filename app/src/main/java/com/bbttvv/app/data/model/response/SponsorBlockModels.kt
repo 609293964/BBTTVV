@@ -129,10 +129,3 @@ data class SponsorSegment(
             category == SponsorCategory.POI_HIGHLIGHT ||
             category == SponsorCategory.CHAPTER
 }
-
-data class SponsorProgressMarker(
-    val segmentId: String,
-    val category: String,
-    val startTimeMs: Long,
-    val endTimeMs: Long
-)

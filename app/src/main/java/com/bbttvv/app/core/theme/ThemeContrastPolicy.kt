@@ -44,7 +44,7 @@ internal fun resolveReadableThemeTextColor(
     } ?: candidate
 }
 
-internal fun enforceDynamicLightTextContrast(
+internal fun enforceLightThemeTextContrast(
     scheme: ColorScheme
 ): ColorScheme {
     val accentFallbacks = listOf(

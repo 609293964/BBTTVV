@@ -456,7 +456,6 @@ fun BangumiDetailScreen(
                                         selected = isSelected,
                                         onFocus = {
                                             selectedIndex = index
-                                            viewModel.switchSeason(season.seasonId)
                                         },
                                         onClick = {
                                             selectedIndex = index
@@ -650,7 +649,7 @@ private fun EpisodeCard(
                         Text(
                             text = episode.badge,
                             color = if (isFocused) Color.White else Color(0xFFFF4081),
-                            fontSize = 9.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -663,7 +662,7 @@ private fun EpisodeCard(
                 Text(
                     text = episode.longTitle,
                     color = if (isFocused) focusedSecondaryTextColor else secondaryTextColor,
-                    fontSize = 11.sp,
+                    fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

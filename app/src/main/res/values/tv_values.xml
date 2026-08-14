@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <attr name="blblFocusStrokeColor" format="reference|color" />
-    
-    <!-- Required theme mappings for item_video_card.xml -->
+    <attr name="tvFocusStrokeColor" format="reference|color" />
+
+    <!-- Theme bridge for the RecyclerView-based TV top bar and video cards. -->
     <style name="Theme.BBTTVV" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="blblFocusStrokeColor">@color/video_card_stroke</item>
+        <item name="tvFocusStrokeColor">@color/video_card_stroke</item>
         <item name="colorOnSurface">#E2E2E2</item>
         <item name="android:textColorSecondary">#A1A1A1</item>
     </style>
 
-    <color name="blbl_text_on_media">#EDEDED</color>
-    <color name="blbl_pink">#FF6699</color>
+    <color name="tv_text_on_media">#EDEDED</color>
     <color name="ic_launcher_background">#212121</color>
     <string name="app_name">BBTTVV</string>
     <string name="tcl_shortcut_service_label">TCL 遥控器快捷键</string>
@@ -19,18 +18,11 @@
     <string name="video_card_accessibility_owner">UP主 %1$s</string>
     <string name="video_card_accessibility_play_count">播放 %1$s</string>
     <string name="video_card_accessibility_danmaku_count">弹幕 %1$s</string>
-    
+
     <dimen name="video_card_margin">8dp</dimen>
-    <dimen name="video_card_text_margin">10dp</dimen>
     <dimen name="video_card_duration_text_size">14sp</dimen>
-    <dimen name="video_card_duration_padding_h">8dp</dimen>
-    <dimen name="video_card_duration_padding_v">3dp</dimen>
     <dimen name="video_card_stat_icon_size">18dp</dimen>
     <dimen name="video_card_stat_text_size">14sp</dimen>
     <dimen name="video_card_title_text_size">16sp</dimen>
     <dimen name="video_card_subtitle_text_size">12sp</dimen>
-    <dimen name="video_card_progress_bar_height">2.5dp</dimen>
-    <dimen name="video_card_progress_bar_radius">1.2dp</dimen>
-    
-    <string name="video_card_progress_complete">已看完</string>
 </resources>

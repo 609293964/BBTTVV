@@ -60,6 +60,12 @@ import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.formatPlayerVolumeCalibrationLabel
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
+import com.bbttvv.app.core.update.AppUpdateCheckResult
+import com.bbttvv.app.core.update.AppUpdateDownloadResult
+import com.bbttvv.app.core.update.AppUpdateInstaller
+import com.bbttvv.app.core.update.AppUpdateRepository
+import com.bbttvv.app.core.update.AvailableAppUpdate
+import com.bbttvv.app.core.update.resolveUpdateNetworkError
 import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.data.repository.BlockedUpRepository
 import com.bbttvv.app.data.model.VideoQuality
@@ -72,12 +78,14 @@ import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 import kotlinx.coroutines.launch
 
 private object SettingsFocusReturnKeys {
     const val Back = "settings:back"
     const val UserAgent = "settings:user_agent"
     const val CustomCdnHost = "settings:custom_cdn_host"
+    const val CheckUpdate = "settings:check_update"
 }
 
 private enum class SettingsChoice(val rowKey: String) {
@@ -164,8 +172,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
 
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val semanticColors = LocalTvSemanticColors.current
     val backgroundModifier = if (isLightTheme) {
-        Modifier.background(Color(0xFFF0F1F5))
+        Modifier.background(semanticColors.pageBackground)
     } else {
         Modifier.background(
             Brush.linearGradient(
@@ -197,12 +206,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = "设置",
-                        color = if (isLightTheme) Color(0xFF18191C) else Color.White,
+                        color = semanticColors.primaryText,
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
                         text = "系统与个性化配置",
-                        color = if (isLightTheme) Color(0xFF61666D) else Color(0xB5FFFFFF),
+                        color = semanticColors.secondaryText,
                         fontSize = 13.sp
                     )
                 }
@@ -292,7 +301,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     if (selectedCategory == SettingsCategory.DANMAKU) {
                         TvDanmakuSettingsList(
                             modifier = Modifier.fillMaxSize(),
-                            compact = false,
                             leftFocusRequester = categoryFocusRequesters[selectedCategory.ordinal],
                             initialFocusRequester = danmakuFirstFocus,
                         )
@@ -300,7 +308,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                         TvSettingsList(
                             selectedCategory = selectedCategory,
                             modifier = Modifier.fillMaxSize(),
-                            compact = false,
                             showBuildInfo = true,
                             categoryFocusRequesters = categoryFocusRequesters,
                             playbackFirstFocus = playbackFirstFocus,
@@ -321,7 +328,6 @@ fun SettingsScreen(onBack: () -> Unit) {
 fun TvSettingsList(
     modifier: Modifier = Modifier,
     selectedCategory: SettingsCategory? = null,
-    compact: Boolean = false,
     showBuildInfo: Boolean = true,
     categoryFocusRequesters: List<FocusRequester> = emptyList(),
     playbackFirstFocus: FocusRequester = remember { FocusRequester() },
@@ -336,72 +342,37 @@ fun TvSettingsList(
     val tvNoticeHostState = LocalTvNoticeHostState.current
     val scope = rememberCoroutineScope()
     val blockedUpRepository = remember(context) { BlockedUpRepository(context.applicationContext) }
+    val updateRepository = remember(context) { AppUpdateRepository(context.applicationContext) }
 
-    val autoHighestQuality by SettingsManager.getAuto1080p(context)
-        .collectAsStateWithLifecycle(initialValue = true)
-    val showOnlineCount by SettingsManager.getShowOnlineCount(context)
-        .collectAsStateWithLifecycle(initialValue = true)
-    val privacyMode by SettingsManager.getPrivacyModeEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
-    val feedApiType by SettingsManager.getFeedApiType(context)
-        .collectAsStateWithLifecycle(initialValue = SettingsManager.FeedApiType.WEB)
-    val homeRefreshCount by SettingsManager.getHomeRefreshCount(context)
-        .collectAsStateWithLifecycle(initialValue = 20)
-    val userAgent by SettingsManager.getUserAgent(context)
-        .collectAsStateWithLifecycle(initialValue = DEFAULT_APP_USER_AGENT)
-    val ipv4OnlyEnabled by SettingsManager.getIpv4OnlyEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
-    val strictCustomCdnEnabled by SettingsManager.getStrictCustomCdnEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = false)
-    val customCdnHost by SettingsManager.getCustomCdnHost(context)
-        .collectAsStateWithLifecycle(initialValue = "")
-    val playerAutoResumeEnabled by SettingsManager.getPlayerAutoResumeEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = true)
-    val playerPlaybackEndAction by SettingsManager.getPlayerPlaybackEndAction(context)
-        .collectAsStateWithLifecycle(initialValue = SettingsManager.PlayerPlaybackEndAction.NONE)
-    val videoDetailCommentsEnabled by SettingsManager.getVideoDetailCommentsEnabled(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getVideoDetailCommentsEnabledSync(context)
-        )
-    val updateContentOnTabFocusEnabled by SettingsManager
-        .getProfileUpdateContentOnTabFocusEnabled(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getProfileUpdateContentOnTabFocusEnabledSync(context)
-        )
-    val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getHomeTopTabSelectOnFocusEnabledSync(context)
-        )
-    val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getWatchLaterInTopTabsEnabledSync(context)
-        )
-    val dynamicPageDisplayMode by SettingsManager.getDynamicPageDisplayMode(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getDynamicPageDisplayModeSync(context)
-        )
-    val singleBackToHomeEnabled by SettingsManager.getSingleBackToHomeEnabled(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getSingleBackToHomeEnabledSync(context)
-        )
-    val themeMode by SettingsManager.getThemeMode(context)
-        .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getThemeModeSync(context)
-        )
-    val rememberLastSpeed by PlayerSettingsStore.getRememberLastPlaybackSpeed(context)
-        .collectAsStateWithLifecycle(initialValue = false)
-    val defaultPlaybackSpeed by PlayerSettingsStore.getDefaultPlaybackSpeed(context)
-        .collectAsStateWithLifecycle(initialValue = 1.0f)
-    val interactiveVideoEnabled by PlayerSettingsStore.getInteractiveVideoEnabled(context)
-        .collectAsStateWithLifecycle(initialValue = true)
-    val pgcPreferredQuality by PlayerSettingsStore.getPgcPreferredQuality(context)
-        .collectAsStateWithLifecycle(initialValue = null)
-    val volumeCalibrationScale by PlayerSettingsStore.getVolumeCalibrationScale(context)
-        .collectAsStateWithLifecycle(initialValue = 1.0f)
-    val audioBalanceLevel by PlayerSettingsStore.getAudioBalanceLevel(context)
-        .collectAsStateWithLifecycle(initialValue = com.bbttvv.app.core.player.AudioBalanceLevel.Off)
-    val audioPassthrough by PlayerSettingsStore.getAudioPassthrough(context)
-        .collectAsStateWithLifecycle(initialValue = false)
+    val appSettings by SettingsManager.getSettingsSnapshot(context)
+        .collectAsStateWithLifecycle(initialValue = SettingsManager.getSettingsSnapshotSync(context))
+    val playerSettings by PlayerSettingsStore.getSettingsSnapshot(context)
+        .collectAsStateWithLifecycle(initialValue = PlayerSettingsStore.getSettingsSnapshotSync(context))
+    val autoHighestQuality = appSettings.autoHighestQuality
+    val showOnlineCount = appSettings.showOnlineCount
+    val privacyMode = appSettings.privacyMode
+    val feedApiType = appSettings.feedApiType
+    val homeRefreshCount = appSettings.homeRefreshCount
+    val userAgent = appSettings.userAgent
+    val ipv4OnlyEnabled = appSettings.ipv4OnlyEnabled
+    val strictCustomCdnEnabled = appSettings.strictCustomCdnEnabled
+    val customCdnHost = appSettings.customCdnHost
+    val playerAutoResumeEnabled = appSettings.playerAutoResumeEnabled
+    val playerPlaybackEndAction = appSettings.playerPlaybackEndAction
+    val videoDetailCommentsEnabled = appSettings.videoDetailCommentsEnabled
+    val updateContentOnTabFocusEnabled = appSettings.updateContentOnTabFocusEnabled
+    val homeTopTabSelectOnFocusEnabled = appSettings.homeTopTabSelectOnFocusEnabled
+    val watchLaterInTopTabsEnabled = appSettings.watchLaterInTopTabsEnabled
+    val dynamicPageDisplayMode = appSettings.dynamicPageDisplayMode
+    val singleBackToHomeEnabled = appSettings.singleBackToHomeEnabled
+    val themeMode = appSettings.themeMode
+    val rememberLastSpeed = playerSettings.rememberLastPlaybackSpeed
+    val defaultPlaybackSpeed = playerSettings.defaultPlaybackSpeed
+    val interactiveVideoEnabled = playerSettings.interactiveVideoEnabled
+    val pgcPreferredQuality = playerSettings.pgcPreferredQuality
+    val volumeCalibrationScale = playerSettings.volumeCalibrationScale
+    val audioBalanceLevel = playerSettings.audioBalanceLevel
+    val audioPassthrough = playerSettings.audioPassthrough
     val blockedUps by blockedUpRepository.getAllBlockedUps()
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -410,12 +381,18 @@ fun TvSettingsList(
     var isClearingCache by remember { mutableStateOf(false) }
     var showUserAgentDialog by remember { mutableStateOf(false) }
     var showCustomCdnDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<AvailableAppUpdate?>(null) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var isDownloadingUpdate by remember { mutableStateOf(false) }
     var customCdnValidationMessage by remember { mutableStateOf<String?>(null) }
     var activeChoice by remember { mutableStateOf<SettingsChoice?>(null) }
     var userAgentDraft by remember { mutableStateOf(DEFAULT_APP_USER_AGENT) }
     var customCdnHostDraft by remember { mutableStateOf("") }
     val userAgentFocusRequester = remember { FocusRequester() }
     val customCdnHostFocusRequester = remember { FocusRequester() }
+    val checkUpdateFocusRequester = remember { FocusRequester() }
     val choiceFocusRequesters = remember {
         SettingsChoice.entries.associateWith { FocusRequester() }
     }
@@ -445,6 +422,10 @@ fun TvSettingsList(
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.UserAgent,
         focusRequester = userAgentFocusRequester,
+    )
+    RegisterTvFocusReturnTarget(
+        key = SettingsFocusReturnKeys.CheckUpdate,
+        focusRequester = checkUpdateFocusRequester,
     )
     RegisterTvFocusReturnTarget(
         key = SettingsFocusReturnKeys.CustomCdnHost,
@@ -504,8 +485,8 @@ fun TvSettingsList(
         modifier = modifier.onFocusChanged { state ->
             isFocusedInRightPanel = state.hasFocus
         },
-        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
-        contentPadding = PaddingValues(bottom = if (compact) 20.dp else 32.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 32.dp)
     ) {
         val leftFocus = if (selectedCategory != null && categoryFocusRequesters.size > selectedCategory.ordinal) {
             categoryFocusRequesters[selectedCategory.ordinal]
@@ -532,13 +513,12 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.PLAYBACK) {
-            item(key = "settings_playback_title") { SettingsSectionTitle("播放设置", compact = compact) }
+            item(key = "settings_playback_title") { SettingsSectionTitle("播放设置") }
             item(key = "settings_auto_highest_quality") {
                 SettingsRow(
                     title = "仅加载最高分辨率",
                     subtitle = "播放时优先请求接口返回的最高画质，关闭后按默认画质策略选择。",
                     value = onOff(autoHighestQuality),
-                    compact = compact,
                     modifier = getRowModifier("settings_auto_highest_quality", leftModifier),
                     onClick = {
                         scope.launch {
@@ -555,7 +535,6 @@ fun TvSettingsList(
                         ?.let { VideoQuality.fromCode(it)?.description ?: it.toString() }
                         ?: "跟随普通视频",
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_pgc_preferred_quality",
                         leftModifier.focusRequester(
@@ -570,7 +549,6 @@ fun TvSettingsList(
                     title = "记住上次播放倍速",
                     subtitle = "自动应用上次观看视频时选择的播放速度。",
                     value = onOff(rememberLastSpeed),
-                    compact = compact,
                     modifier = getRowModifier("settings_remember_last_speed", leftModifier),
                     onClick = {
                         scope.launch {
@@ -589,7 +567,6 @@ fun TvSettingsList(
                     },
                     value = "${defaultPlaybackSpeed}x",
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_default_speed",
                         leftModifier.focusRequester(
@@ -604,7 +581,6 @@ fun TvSettingsList(
                     title = "自动跳到上次播放位置",
                     subtitle = "打开视频时，自动从上次观看中断处继续播放。",
                     value = onOff(playerAutoResumeEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_auto_resume", leftModifier),
                     onClick = {
                         scope.launch {
@@ -622,7 +598,6 @@ fun TvSettingsList(
                     subtitle = resolvePlayerPlaybackEndActionDescription(playerPlaybackEndAction),
                     value = playerPlaybackEndAction.label,
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_playback_end",
                         leftModifier.focusRequester(
@@ -637,7 +612,6 @@ fun TvSettingsList(
                     title = "弹幕投票与互动",
                     subtitle = "显示视频中的投票、分支等互动选项；关闭后不弹出互动框。",
                     value = onOff(interactiveVideoEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_interactive_video", leftModifier),
                     onClick = {
                         scope.launch {
@@ -649,14 +623,13 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.AUDIO) {
-            item(key = "settings_audio_title") { SettingsSectionTitle("音频配置", compact = compact) }
+            item(key = "settings_audio_title") { SettingsSectionTitle("音频配置") }
             item(key = "settings_volume_calibration") {
                 SettingsRow(
                     title = "应用音量校准",
                     subtitle = "调整 BBTTVV 播放输出音量，不改变电视系统音量。超过 100% 可能失真。",
                     value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_volume_calibration",
                         leftModifier.focusRequester(
@@ -672,7 +645,6 @@ fun TvSettingsList(
                     subtitle = "自动调整不同视频的音量差异，避免切换视频时音量忽大忽小。",
                     value = audioBalanceLevel.label,
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_volume_balance",
                         leftModifier.focusRequester(
@@ -687,7 +659,6 @@ fun TvSettingsList(
                     title = "音频直通 [实验性]",
                     subtitle = "将压缩音频（如杜比全景声、Hi-Res）不经解码直接输出到外接音频设备。开启后音量均衡、倍速调节将失效。需要设备支持对应编码格式。",
                     value = onOff(audioPassthrough),
-                    compact = compact,
                     modifier = getRowModifier("settings_audio_passthrough", leftModifier),
                     onClick = {
                         val newValue = !audioPassthrough
@@ -700,13 +671,12 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.UI_UX) {
-            item(key = "settings_ui_ux_title") { SettingsSectionTitle("界面与交互", compact = compact) }
+            item(key = "settings_ui_ux_title") { SettingsSectionTitle("界面与交互") }
             item(key = "settings_show_online_count") {
                 SettingsRow(
                     title = "在线观看人数",
                     subtitle = "控制播放页右上角是否显示当前视频的在线观看人数。",
                     value = onOff(showOnlineCount),
-                    compact = compact,
                     modifier = getRowModifier("settings_show_online_count", leftModifier),
                     onClick = {
                         scope.launch {
@@ -720,7 +690,6 @@ fun TvSettingsList(
                     title = "视频详情页评论",
                     subtitle = "控制视频详情页底部评论区是否显示和加载。",
                     value = onOff(videoDetailCommentsEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_video_detail_comments", leftModifier),
                     onClick = {
                         scope.launch {
@@ -741,7 +710,6 @@ fun TvSettingsList(
                         "已关闭：焦点移动只限于 TAB，需按确定键后才刷新右侧内容。"
                     },
                     value = if (updateContentOnTabFocusEnabled) "开启" else "关闭",
-                    compact = compact,
                     modifier = getRowModifier("settings_update_content_on_tab_focus", leftModifier),
                     onClick = {
                         scope.launch {
@@ -762,7 +730,6 @@ fun TvSettingsList(
                         "移动焦点只浏览 TAB，按确定键后才切换页面。"
                     },
                     value = if (homeTopTabSelectOnFocusEnabled) "焦点切换" else "确认切换",
-                    compact = compact,
                     modifier = getRowModifier("settings_home_top_tab_select_on_focus", leftModifier),
                     onClick = {
                         scope.launch {
@@ -783,7 +750,6 @@ fun TvSettingsList(
                         "当前显示在“我的”左侧菜单中，并从首页顶部 Tabs 隐藏。"
                     },
                     value = if (watchLaterInTopTabsEnabled) "顶部 Tabs" else "我的菜单",
-                    compact = compact,
                     modifier = getRowModifier("settings_watch_later_in_top_tabs", leftModifier),
                     onClick = {
                         scope.launch {
@@ -800,7 +766,6 @@ fun TvSettingsList(
                     title = "相关视频一键回首页",
                     subtitle = "开启后，在相关视频多次跳转时，点击一次返回键即可直接回到首页。",
                     value = onOff(singleBackToHomeEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_single_back_to_home", leftModifier),
                     onClick = {
                         scope.launch {
@@ -817,7 +782,6 @@ fun TvSettingsList(
                     title = "系统主题模式",
                     subtitle = "切换应用全局明暗主题；播放器、评论和设置等区域会同步更新。",
                     value = themeMode.label,
-                    compact = compact,
                     modifier = getRowModifier("settings_theme_mode", leftModifier),
                     onClick = {
                         scope.launch {
@@ -834,14 +798,13 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.FEED) {
-            item(key = "settings_feed_title") { SettingsSectionTitle("推荐与数据", compact = compact) }
+            item(key = "settings_feed_title") { SettingsSectionTitle("推荐与数据") }
             item(key = "settings_feed_api_type") {
                 SettingsRow(
                     title = "推荐页数据源",
                     subtitle = resolveFeedApiTypeDescription(feedApiType),
                     value = resolveFeedApiTypeLabel(feedApiType),
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_feed_api_type",
                         leftModifier.focusRequester(
@@ -857,7 +820,6 @@ fun TvSettingsList(
                     subtitle = "单次刷新时拉取的推荐视频数量。",
                     value = homeRefreshCount.toString(),
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_home_refresh_count",
                         leftModifier.focusRequester(
@@ -873,7 +835,6 @@ fun TvSettingsList(
                     subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
                     value = dynamicPageDisplayMode.label,
                     kind = SettingsRowKind.Choice,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_dynamic_page_display_mode",
                         leftModifier.focusRequester(
@@ -886,14 +847,13 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.NETWORK) {
-            item(key = "settings_network_title") { SettingsSectionTitle("网络与连接", compact = compact) }
+            item(key = "settings_network_title") { SettingsSectionTitle("网络与连接") }
             item(key = "settings_custom_cdn_host") {
                 SettingsRow(
                     title = "自定义 CDN 主机",
                     subtitle = "只接受 bilivideo.com 域名；不保存播放 URL、Cookie 或 token。",
                     value = customCdnHost.ifBlank { "未配置" },
                     kind = SettingsRowKind.Navigation,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_custom_cdn_host",
                         leftModifier.focusRequester(customCdnHostFocusRequester),
@@ -910,7 +870,6 @@ fun TvSettingsList(
                     title = "严格使用自定义 CDN",
                     subtitle = "开启后仅使用上方主机重写出的地址，不回退属地或原始线路；失败会显示规则与 URL 类型。",
                     value = onOff(strictCustomCdnEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_strict_custom_cdn", leftModifier),
                     onClick = {
                         if (!strictCustomCdnEnabled && !isAllowedCustomCdnHost(customCdnHost)) {
@@ -935,7 +894,6 @@ fun TvSettingsList(
                     subtitle = "当前：${buildUserAgentPreview(userAgent)}",
                     value = if (userAgent == DEFAULT_APP_USER_AGENT) "默认" else "自定义",
                     kind = SettingsRowKind.Navigation,
-                    compact = compact,
                     modifier = getRowModifier(
                         "settings_user_agent",
                         leftModifier.focusRequester(userAgentFocusRequester)
@@ -951,7 +909,6 @@ fun TvSettingsList(
                     title = "仅使用 IPv4",
                     subtitle = "开启后只走 IPv4 解析；在双栈网络异常时可作为兼容开关。",
                     value = onOff(ipv4OnlyEnabled),
-                    compact = compact,
                     modifier = getRowModifier("settings_ipv4_only", leftModifier),
                     onClick = {
                         scope.launch {
@@ -963,13 +920,12 @@ fun TvSettingsList(
         }
 
         if (selectedCategory == null || selectedCategory == SettingsCategory.SYSTEM) {
-            item(key = "settings_system_title") { SettingsSectionTitle("系统与关于", compact = compact) }
+            item(key = "settings_system_title") { SettingsSectionTitle("系统与关于") }
             item(key = "settings_privacy_mode") {
                 SettingsRow(
                     title = "隐私无痕模式",
                     subtitle = "关闭搜索历史写入，并跳过观看心跳上报。",
                     value = onOff(privacyMode),
-                    compact = compact,
                     modifier = getRowModifier("settings_privacy_mode", leftModifier),
                     onClick = {
                         scope.launch {
@@ -984,7 +940,6 @@ fun TvSettingsList(
                     subtitle = "当前已屏蔽的 UP 数量。",
                     value = blockedUps.size.toString(),
                     kind = SettingsRowKind.Info,
-                    compact = compact,
                     modifier = getRowModifier("settings_blocked_ups_count", leftModifier),
                     enabled = false,
                     onClick = {}
@@ -1000,7 +955,6 @@ fun TvSettingsList(
                     },
                     value = if (isClearingCache) "清理中..." else cacheSize,
                     kind = SettingsRowKind.Action,
-                    compact = compact,
                     modifier = getRowModifier("settings_clear_cache", leftModifier),
                     enabled = !isClearingCache,
                     onClick = {
@@ -1016,6 +970,52 @@ fun TvSettingsList(
                     }
                 )
             }
+            item(key = "settings_check_update") {
+                SettingsRow(
+                    title = "检查应用更新",
+                    subtitle = when {
+                        isCheckingUpdate -> "正在从 GitHub 检查最新版本..."
+                        isDownloadingUpdate -> "正在下载更新包，请勿退出此页面..."
+                        else -> "手动检查 GitHub Release；下载后由电视系统确认安装。"
+                    },
+                    value = when {
+                        isCheckingUpdate -> "检查中"
+                        isDownloadingUpdate -> "下载中"
+                        else -> "检查"
+                    },
+                    kind = SettingsRowKind.Action,
+                    modifier = getRowModifier(
+                        "settings_check_update",
+                        leftModifier.focusRequester(checkUpdateFocusRequester),
+                    ),
+                    enabled = !isCheckingUpdate && !isDownloadingUpdate,
+                    onClick = {
+                        isCheckingUpdate = true
+                        updateError = null
+                        scope.launch {
+                            try {
+                                when (val result = updateRepository.checkLatest()) {
+                                    AppUpdateCheckResult.NoCompatibleApk -> {
+                                        tvNoticeHostState.show(
+                                            "当前电视架构没有可用的更新包",
+                                            kind = TvNoticeKind.Error,
+                                        )
+                                    }
+                                    is AppUpdateCheckResult.UpdateAvailable -> {
+                                        availableUpdate = result.update
+                                        showUpdateDialog = true
+                                    }
+                                }
+                            } catch (error: Exception) {
+                                updateError = resolveUpdateNetworkError(error)
+                                tvNoticeHostState.show(updateError.orEmpty(), kind = TvNoticeKind.Error)
+                            } finally {
+                                isCheckingUpdate = false
+                            }
+                        }
+                    },
+                )
+            }
 
             if (showBuildInfo) {
                 item(key = "settings_version") {
@@ -1023,7 +1023,6 @@ fun TvSettingsList(
                         title = "版本",
                         subtitle = "当前安装包版本号。",
                         value = BuildConfig.VERSION_NAME,
-                        compact = compact,
                         modifier = getRowModifier("settings_version", leftModifier),
                         enabled = false,
                         onClick = {}
@@ -1034,7 +1033,6 @@ fun TvSettingsList(
                         title = "构建类型",
                         subtitle = "用于区分 debug / release。",
                         value = BuildConfig.BUILD_TYPE,
-                        compact = compact,
                         modifier = leftModifier,
                         enabled = false,
                         onClick = {}
@@ -1045,7 +1043,6 @@ fun TvSettingsList(
                         title = "应用包名",
                         subtitle = "当前安装在设备上的包标识。",
                         value = context.packageName,
-                        compact = compact,
                         modifier = leftModifier,
                         enabled = false,
                         onClick = {}
@@ -1097,6 +1094,69 @@ fun TvSettingsList(
                     }
                 )
             }
+        )
+    }
+
+    if (showUpdateDialog) {
+        val update = availableUpdate
+        TvDialog(
+            title = "发现新版本 ${update?.versionName.orEmpty()}",
+            onDismissRequest = { showUpdateDialog = false },
+            returnFocusKey = SettingsFocusReturnKeys.CheckUpdate,
+            returnFocusFallbackKeys = listOf(SettingsFocusReturnKeys.Back),
+            content = {
+                Text(
+                    text = update?.releaseNotes?.takeIf { it.isNotBlank() }
+                        ?: "已发现适用于此电视的更新包。",
+                    color = if (com.bbttvv.app.ui.theme.LocalIsLightTheme.current) {
+                        Color(0xFF61666D)
+                    } else {
+                        Color(0xDDEAF2F8)
+                    },
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                )
+                if (updateError != null) {
+                    Text(
+                        text = updateError.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 14.sp,
+                    )
+                }
+            },
+            actions = {
+                TvDialogActionButton(
+                    text = "取消",
+                    onClick = { showUpdateDialog = false },
+                )
+                TvDialogActionButton(
+                    text = if (isDownloadingUpdate) "下载中" else "下载更新",
+                    onClick = {
+                        val updateToDownload = update ?: return@TvDialogActionButton
+                        if (isDownloadingUpdate) return@TvDialogActionButton
+                        if (!AppUpdateInstaller.canRequestInstalls(context)) {
+                            updateError = "请先在系统设置中允许 BBTTVV 安装未知应用，然后返回此处下载。"
+                            AppUpdateInstaller.openUnknownSourcesSettings(context)
+                            return@TvDialogActionButton
+                        }
+                        isDownloadingUpdate = true
+                        updateError = null
+                        scope.launch {
+                            when (val result = updateRepository.downloadAndVerify(updateToDownload)) {
+                                is AppUpdateDownloadResult.Rejected -> {
+                                    updateError = result.reason
+                                    isDownloadingUpdate = false
+                                }
+                                    is AppUpdateDownloadResult.ReadyToInstall -> {
+                                        isDownloadingUpdate = false
+                                        showUpdateDialog = false
+                                        AppUpdateInstaller.requestInstall(context, result.apkFile)
+                                    }
+                            }
+                        }
+                    },
+                )
+            },
         )
     }
 
@@ -1327,15 +1387,8 @@ private fun SettingsBackButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-
-    val containerColor = if (isLightTheme) Color(0x0C000000) else Color(0x14000000)
-    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color.White
-    
-    val textColor = when {
-        isFocused -> if (isLightTheme) Color.White else Color(0xFF111111)
-        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
-    }
+    val semanticColors = LocalTvSemanticColors.current
+    val textColor = if (isFocused) semanticColors.focusContent else semanticColors.primaryText
 
     Surface(
         onClick = onBack,
@@ -1343,8 +1396,8 @@ private fun SettingsBackButton(
         interactionSource = interactionSource,
         shape = ClickableSurfaceDefaults.shape(CircleShape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = containerColor,
-            focusedContainerColor = focusedContainerColor
+            containerColor = semanticColors.surfaceSubtle,
+            focusedContainerColor = semanticColors.focusContainer
         )
     ) {
         Box(
@@ -1357,12 +1410,12 @@ private fun SettingsBackButton(
 }
 
 @Composable
-internal fun SettingsSectionTitle(title: String, compact: Boolean) {
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+internal fun SettingsSectionTitle(title: String) {
+    val semanticColors = LocalTvSemanticColors.current
     Text(
         text = title,
-        color = if (isLightTheme) Color(0xFF61666D) else Color(0x8FFFFFFF),
-        fontSize = if (compact) 14.sp else 15.sp,
+        color = semanticColors.secondaryText,
+        fontSize = 15.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 6.dp)
     )
@@ -1374,7 +1427,6 @@ internal fun SettingsRow(
     title: String,
     subtitle: String,
     value: String,
-    compact: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     kind: SettingsRowKind = SettingsRowKind.Toggle,
@@ -1382,101 +1434,64 @@ internal fun SettingsRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-
+    val semanticColors = LocalTvSemanticColors.current
     val titleColor = when {
-        isLightTheme -> when {
-            !enabled -> Color(0x78000000)
-            isFocused -> Color.White
-            else -> Color(0xFF18191C)
-        }
-        else -> when {
-            !enabled -> Color(0x78FFFFFF)
-            isFocused -> Color.White
-            else -> Color.White
-        }
+        !enabled -> semanticColors.disabledText
+        isFocused -> semanticColors.focusContent
+        else -> semanticColors.primaryText
     }
-    
     val subtitleColor = when {
-        isLightTheme -> when {
-            !enabled -> Color(0x5F000000)
-            isFocused -> Color(0xB3FFFFFF)
-            else -> Color(0xFF61666D)
-        }
-        else -> when {
-            !enabled -> Color(0x5FFFFFFF)
-            isFocused -> Color(0xB5FFFFFF)
-            else -> Color(0x8FFFFFFF)
-        }
+        !enabled -> semanticColors.disabledText
+        isFocused -> semanticColors.focusContent.copy(alpha = 0.72f)
+        else -> semanticColors.secondaryText
     }
-    
     val valueContainerColor = when {
-        isLightTheme -> when {
-            !enabled -> Color(0x0A000000)
-            isFocused -> Color(0x24FFFFFF)
-            else -> Color(0x0F000000)
-        }
-        else -> when {
-            !enabled -> Color(0x0FFFFFFF)
-            isFocused -> Color(0x24FFFFFF)
-            else -> Color(0x0DFFFFFF)
-        }
+        !enabled -> semanticColors.surfaceSubtle.copy(alpha = 0.55f)
+        isFocused -> semanticColors.focusContent.copy(alpha = 0.14f)
+        else -> semanticColors.surfaceSubtle
     }
-    
     val valueTextColor = when {
-        isLightTheme -> when {
-            !enabled -> Color(0x72000000)
-            isFocused -> Color.White
-            else -> Color(0xFFFB7299)
-        }
-        else -> when {
-            !enabled -> Color(0x72FFFFFF)
-            isFocused -> Color.White
-            else -> Color(0xCCFFFFFF)
-        }
+        !enabled -> semanticColors.disabledText
+        isFocused -> semanticColors.focusContent
+        else -> semanticColors.accent
     }
-
-    val containerColor = if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
-    val focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xFF26354A)
 
     Surface(
         onClick = onClick,
         enabled = enabled,
         interactionSource = interactionSource,
         modifier = modifier,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (compact) 10.dp else 12.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = containerColor,
-            focusedContainerColor = focusedContainerColor
+            containerColor = semanticColors.surfaceSubtle,
+            focusedContainerColor = semanticColors.focusContainer
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 48.dp else 78.dp)
-                .padding(horizontal = if (compact) 14.dp else 16.dp),
+                .height(78.dp)
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 2.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = title,
                     color = titleColor,
-                    fontSize = if (compact) 15.sp else 16.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
-                if (!compact) {
-                    Text(
-                        text = subtitle,
-                        color = subtitleColor,
-                        fontSize = 14.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = subtitle,
+                    color = subtitleColor,
+                    fontSize = 14.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Box(
                 modifier = Modifier
@@ -1485,8 +1500,8 @@ internal fun SettingsRow(
                         shape = RoundedCornerShape(999.dp)
                     )
                     .padding(
-                        horizontal = if (compact) 10.dp else 12.dp,
-                        vertical = if (compact) 5.dp else 6.dp
+                        horizontal = 12.dp,
+                        vertical = 6.dp
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -1497,7 +1512,7 @@ internal fun SettingsRow(
                         else -> value
                     },
                     color = valueTextColor,
-                    fontSize = if (compact) 13.sp else 14.sp,
+                    fontSize = 14.sp,
                     fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
                 )
             }

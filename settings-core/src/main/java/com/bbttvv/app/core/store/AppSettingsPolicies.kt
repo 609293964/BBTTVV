@@ -6,23 +6,3 @@ const val DEFAULT_APP_USER_AGENT =
 fun normalizeDanmakuDisplayArea(ratio: Float): Float {
     return ratio.coerceIn(0.1f, 1.0f)
 }
-
-data class PlaybackSpeedPreferences(
-    val defaultSpeed: Float = 1.0f,
-    val rememberLastSpeed: Boolean = false,
-    val lastSpeed: Float = 1.0f
-) {
-    val preferredSpeed: Float
-        get() = resolvePreferredPlaybackSpeed(
-            defaultSpeed = defaultSpeed,
-            rememberLastSpeed = rememberLastSpeed,
-            lastSpeed = lastSpeed
-        )
-}
-
-interface PlaybackSpeedSettingsStore {
-    suspend fun readPlaybackSpeedPreferences(): PlaybackSpeedPreferences
-    suspend fun saveDefaultPlaybackSpeed(speed: Float)
-    suspend fun saveRememberLastPlaybackSpeed(enabled: Boolean)
-    suspend fun saveLastPlaybackSpeed(speed: Float)
-}

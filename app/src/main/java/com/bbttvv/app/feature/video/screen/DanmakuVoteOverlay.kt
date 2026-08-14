@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -29,16 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.tv.material3.Text
 import com.bbttvv.app.feature.video.viewmodel.DanmakuVoteUiState
-import com.bbttvv.app.ui.input.isTvBackKey
-import com.bbttvv.app.ui.input.isTvConfirmKey
-import com.bbttvv.app.ui.input.resolveTvSinglePress
 
 internal typealias DanmakuVoteKeyHandler = (KeyEvent) -> Boolean
 
@@ -75,48 +69,29 @@ internal fun BoxScope.DanmakuVoteOverlay(
     val keyHandler = remember(prompt.voteId, prompt.options.size) {
         handler@{ native: KeyEvent ->
             val currentState = latestState.value
-            val isBack = isTvBackKey(native.keyCode)
-            val isConfirm = isTvConfirmKey(native.keyCode)
-            val singlePress = resolveTvSinglePress(
+            val keyState = when (currentState) {
+                is DanmakuVoteUiState.Showing -> DanmakuVoteKeyState.Showing
+                is DanmakuVoteUiState.Submitting -> DanmakuVoteKeyState.Submitting
+                is DanmakuVoteUiState.RetryableError -> DanmakuVoteKeyState.RetryableError
+                is DanmakuVoteUiState.Submitted -> DanmakuVoteKeyState.Submitted
+                DanmakuVoteUiState.Hidden -> return@handler false
+            }
+            val decision = resolveDanmakuVoteKeyDecision(
                 action = native.action,
+                keyCode = native.keyCode,
                 repeatCount = native.repeatCount,
-                isHandledKey = isBack || isConfirm,
+                state = keyState,
+                currentIndex = activeIndex.intValue,
+                lastIndex = prompt.options.lastIndex,
             )
-            if (singlePress.isConsumed) {
-                if (singlePress.shouldTrigger) {
-                    when {
-                        isBack -> latestOnBack.value()
-                        currentState is DanmakuVoteUiState.RetryableError -> latestOnRetry.value()
-                        currentState is DanmakuVoteUiState.Showing -> {
-                            latestOnSelect.value(activeIndex.intValue)
-                        }
-                    }
-                }
-                return@handler true
+            activeIndex.intValue = decision.nextIndex
+            when (decision.command) {
+                DanmakuVoteKeyCommand.Select -> latestOnSelect.value(decision.nextIndex)
+                DanmakuVoteKeyCommand.Retry -> latestOnRetry.value()
+                DanmakuVoteKeyCommand.Dismiss -> latestOnBack.value()
+                DanmakuVoteKeyCommand.None -> Unit
             }
-
-            when (native.keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP,
-                KeyEvent.KEYCODE_DPAD_DOWN,
-                KeyEvent.KEYCODE_DPAD_LEFT,
-                KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (
-                        native.action == KeyEvent.ACTION_DOWN &&
-                        currentState is DanmakuVoteUiState.Showing
-                    ) {
-                        val delta = when (native.keyCode) {
-                            KeyEvent.KEYCODE_DPAD_UP -> -1
-                            KeyEvent.KEYCODE_DPAD_DOWN -> 1
-                            else -> 0
-                        }
-                        activeIndex.intValue = (activeIndex.intValue + delta)
-                            .coerceIn(0, prompt.options.lastIndex)
-                    }
-                    true
-                }
-
-                else -> false
-            }
+            decision.consumed
         }
     }
 
@@ -166,17 +141,9 @@ internal fun BoxScope.DanmakuVoteOverlay(
         Column(
             modifier = Modifier
                 .widthIn(min = 320.dp, max = 460.dp)
-                .graphicsLayer {
-                    scaleX = 0.5f
-                    scaleY = 0.5f
-                    transformOrigin = TransformOrigin(1f, 0.5f)
-                }
                 .background(Color(0xE61A1A1A), RoundedCornerShape(16.dp))
                 .padding(20.dp)
                 .focusRequester(overlayFocusRequester)
-                .onPreviewKeyEvent { event ->
-                    keyHandler(event.nativeKeyEvent)
-                }
                 .focusable(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {

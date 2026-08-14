@@ -10,6 +10,8 @@ import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
 internal const val BANGUMI_PLAY_URL_PATH = "pgc/player/web/v2/playurl"
+internal const val DANMAKU_VOTE_POLARIS_APP_ID = 100
+internal const val DANMAKU_VOTE_POLARIS_PLATFORM = 5
 
 /**
  * Bilibili 主 API 接口
@@ -406,6 +408,8 @@ interface BilibiliApi {
         @retrofit2.http.Field("cmd_id_str") commandId: String,
         @retrofit2.http.Field("option_id") optionId: Int,
         @retrofit2.http.Field("has_self_def") hasSelfDefined: Boolean,
+        @retrofit2.http.Field("polaris_app_id") polarisAppId: Int,
+        @retrofit2.http.Field("polaris_platform") polarisPlatform: Int,
         @retrofit2.http.Field("csrf") csrf: String,
     ): SimpleApiResponse
 

@@ -5,8 +5,6 @@ import okhttp3.OkHttpClient
 private const val BILIBILI_API_BASE_URL = "https://api.bilibili.com/"
 private const val BILIBILI_APP_BASE_URL = "https://app.bilibili.com/"
 private const val BILIBILI_PASSPORT_BASE_URL = "https://passport.bilibili.com/"
-private const val BILIBILI_MESSAGE_BASE_URL = "https://api.vc.bilibili.com/"
-private const val BILIBILI_WEB_BASE_URL = "https://www.bilibili.com/"
 
 internal object ApiClientProvider {
     private val appSessionCookieJar = AppSessionCookieJar()
@@ -116,31 +114,6 @@ internal object AppApiProvider {
         )
     }
 
-    val splashApi: SplashApi by lazy {
-        createNetworkApi(
-            baseUrl = BILIBILI_APP_BASE_URL,
-            client = ApiClientProvider.okHttpClient,
-            serviceClass = SplashApi::class.java,
-        )
-    }
-}
-
-internal object MessagingMediaApiProvider {
-    val messageApi: MessageApi by lazy {
-        createNetworkApi(
-            baseUrl = BILIBILI_MESSAGE_BASE_URL,
-            client = ApiClientProvider.okHttpClient,
-            serviceClass = MessageApi::class.java,
-        )
-    }
-
-    val audioApi: AudioApi by lazy {
-        createNetworkApi(
-            baseUrl = BILIBILI_WEB_BASE_URL,
-            client = ApiClientProvider.okHttpClient,
-            serviceClass = AudioApi::class.java,
-        )
-    }
 }
 
 private fun <T : Any> createNetworkApi(

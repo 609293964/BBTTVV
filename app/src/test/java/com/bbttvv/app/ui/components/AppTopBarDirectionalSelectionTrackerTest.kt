@@ -30,8 +30,43 @@ class AppTopBarDirectionalSelectionTrackerTest {
         val tracker = AppTopBarDirectionalSelectionTracker()
 
         tracker.expect(AppTopLevelTab.DYNAMIC)
+        assertTrue(tracker.hasPendingTarget())
         tracker.clear()
 
+        assertFalse(tracker.hasPendingTarget())
         assertFalse(tracker.consume(AppTopLevelTab.DYNAMIC))
+    }
+
+    @Test
+    fun `old focused tab is not forced into selected visual`() {
+        assertFalse(
+            resolveTopBarSelectedVisual(
+                boundTab = AppTopLevelTab.RECOMMEND,
+                selectedTab = AppTopLevelTab.POPULAR,
+                hideStaleSelectedVisual = false,
+            )
+        )
+    }
+
+    @Test
+    fun `pending move clears stale selected visual synchronously`() {
+        assertFalse(
+            resolveTopBarSelectedVisual(
+                boundTab = AppTopLevelTab.RECOMMEND,
+                selectedTab = AppTopLevelTab.RECOMMEND,
+                hideStaleSelectedVisual = true,
+            )
+        )
+    }
+
+    @Test
+    fun `current selected tab remains selected without pending move`() {
+        assertTrue(
+            resolveTopBarSelectedVisual(
+                boundTab = AppTopLevelTab.RECOMMEND,
+                selectedTab = AppTopLevelTab.RECOMMEND,
+                hideStaleSelectedVisual = false,
+            )
+        )
     }
 }

@@ -180,11 +180,6 @@ object PluginManager {
     }
     
     /**
-     * 获取所有 PlayerPlugin
-     */
-    fun getEnabledPlayerPlugins(): List<PlayerPlugin> = getEnabledPlugins(PlayerPlugin::class)
-    
-    /**
      * 获取所有 DanmakuPlugin
      */
     fun getEnabledDanmakuPlugins(): List<DanmakuPlugin> = getEnabledPlugins(DanmakuPlugin::class)
@@ -197,13 +192,16 @@ object PluginManager {
     /**
      * 使用所有启用的 FeedPlugin 判断单个视频是否可见
      */
-    fun shouldShowFeedItem(item: com.bbttvv.app.data.model.response.VideoItem): Boolean {
+    fun shouldShowFeedItem(
+        item: com.bbttvv.app.data.model.response.VideoItem,
+        feedKind: FeedKind = FeedKind.GENERIC
+    ): Boolean {
         val feedPlugins = enabledFeedPluginsSnapshot()
         if (feedPlugins.isEmpty()) return true
 
         return feedPlugins.all { plugin ->
             try {
-                plugin.shouldShowItem(item)
+                plugin.shouldShowItem(item, feedKind)
             } catch (e: Exception) {
                 Logger.e(TAG, " Feed plugin failed: ${plugin.name}", e)
                 true
@@ -215,7 +213,10 @@ object PluginManager {
      *  使用所有启用的 FeedPlugin 过滤视频列表
      * 用于首页推荐和搜索结果
      */
-    fun filterFeedItems(items: List<com.bbttvv.app.data.model.response.VideoItem>): List<com.bbttvv.app.data.model.response.VideoItem> {
+    fun filterFeedItems(
+        items: List<com.bbttvv.app.data.model.response.VideoItem>,
+        feedKind: FeedKind = FeedKind.GENERIC
+    ): List<com.bbttvv.app.data.model.response.VideoItem> {
         val feedPlugins = enabledFeedPluginsSnapshot()
         if (feedPlugins.isEmpty()) return items
 
@@ -224,7 +225,7 @@ object PluginManager {
             var shouldShow = true
             for (plugin in feedPlugins) {
                 shouldShow = try {
-                    plugin.shouldShowItem(item)
+                    plugin.shouldShowItem(item, feedKind)
                 } catch (e: Exception) {
                     Logger.e(TAG, " Feed plugin failed: ${plugin.name}", e)
                     true
@@ -265,4 +266,3 @@ data class PluginInfo(
     val plugin: Plugin,
     val enabled: Boolean
 )
-

@@ -14,9 +14,20 @@ import com.bbttvv.app.core.store.resolvePreferredPlaybackSpeed
 import com.bbttvv.app.core.store.settingsDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 object PlayerSettingsStore {
+    data class SettingsSnapshot(
+        val rememberLastPlaybackSpeed: Boolean = false,
+        val defaultPlaybackSpeed: Float = 1.0f,
+        val interactiveVideoEnabled: Boolean = true,
+        val pgcPreferredQuality: Int? = null,
+        val volumeCalibrationScale: Float = 1.0f,
+        val audioBalanceLevel: AudioBalanceLevel = AudioBalanceLevel.Off,
+        val audioPassthrough: Boolean = false,
+    )
+
     private val keyDefaultPlaybackSpeed = floatPreferencesKey("default_playback_speed")
     private val keyRememberLastPlaybackSpeed = booleanPreferencesKey("remember_last_playback_speed")
     private val keyLastPlaybackSpeed = floatPreferencesKey("last_playback_speed")
@@ -35,6 +46,49 @@ object PlayerSettingsStore {
     private const val cacheKeyAudioPassthrough = "audio_passthrough"
     private const val cacheKeyPgcPreferredQuality = "pgc_preferred_quality"
     private const val unsetPgcPreferredQuality = -1
+
+    fun getSettingsSnapshot(context: Context): Flow<SettingsSnapshot> =
+        context.settingsDataStore.data
+            .map { preferences ->
+                SettingsSnapshot(
+                    rememberLastPlaybackSpeed = preferences[keyRememberLastPlaybackSpeed] ?: false,
+                    defaultPlaybackSpeed = normalizePlaybackSpeed(
+                        preferences[keyDefaultPlaybackSpeed] ?: 1.0f
+                    ),
+                    interactiveVideoEnabled = preferences[keyInteractiveVideoEnabled] ?: true,
+                    pgcPreferredQuality = preferences[keyPgcPreferredQuality]?.takeIf { it > 0 },
+                    volumeCalibrationScale = normalizePlayerVolumeCalibrationScale(
+                        preferences[keyVolumeCalibrationScale] ?: 1.0f
+                    ),
+                    audioBalanceLevel = AudioBalanceLevel.fromPrefValue(
+                        preferences[keyAudioBalanceLevel] ?: AudioBalanceLevel.Off.prefValue
+                    ),
+                    audioPassthrough = preferences[keyAudioPassthrough] ?: false,
+                )
+            }
+            .distinctUntilChanged()
+
+    fun getSettingsSnapshotSync(context: Context): SettingsSnapshot {
+        val preferences = context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE)
+        return SettingsSnapshot(
+            rememberLastPlaybackSpeed = preferences.getBoolean(cacheKeyRememberLastSpeed, false),
+            defaultPlaybackSpeed = normalizePlaybackSpeed(
+                preferences.getFloat(cacheKeyDefaultPlaybackSpeed, 1.0f)
+            ),
+            interactiveVideoEnabled = true,
+            pgcPreferredQuality = preferences
+                .getInt(cacheKeyPgcPreferredQuality, unsetPgcPreferredQuality)
+                .takeIf { it > 0 },
+            volumeCalibrationScale = normalizePlayerVolumeCalibrationScale(
+                preferences.getFloat(cacheKeyVolumeCalibrationScale, 1.0f)
+            ),
+            audioBalanceLevel = AudioBalanceLevel.fromPrefValue(
+                preferences.getString(cacheKeyAudioBalanceLevel, AudioBalanceLevel.Off.prefValue)
+                    ?: AudioBalanceLevel.Off.prefValue
+            ),
+            audioPassthrough = preferences.getBoolean(cacheKeyAudioPassthrough, false),
+        )
+    }
 
     fun getDefaultPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
         .map { preferences -> normalizePlaybackSpeed(preferences[keyDefaultPlaybackSpeed] ?: 1.0f) }

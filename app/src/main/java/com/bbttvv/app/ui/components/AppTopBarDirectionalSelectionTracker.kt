@@ -19,6 +19,8 @@ internal class AppTopBarDirectionalSelectionTracker {
         return matches
     }
 
+    fun hasPendingTarget(): Boolean = expectedTarget != null
+
     fun clear() {
         expectedTarget = null
     }

@@ -6,11 +6,11 @@
     android:layout_margin="@dimen/video_card_margin"
     android:clickable="true"
     android:focusable="true"
-    android:stateListAnimator="@animator/blbl_focus_scale"
+    android:stateListAnimator="@animator/tv_focus_scale"
     app:cardBackgroundColor="@android:color/transparent"
     app:cardCornerRadius="10dp"
     app:cardElevation="0dp"
-    app:strokeColor="?attr/blblFocusStrokeColor"
+    app:strokeColor="?attr/tvFocusStrokeColor"
     app:strokeWidth="2.7dp"
     app:cardUseCompatPadding="false">
 
@@ -79,7 +79,7 @@
                     android:shadowColor="#CC000000"
                     android:shadowDy="1"
                     android:shadowRadius="2"
-                    android:textColor="@color/blbl_text_on_media"
+                    android:textColor="@color/tv_text_on_media"
                     android:textSize="@dimen/video_card_stat_text_size" />
 
                 <ImageView
@@ -99,7 +99,7 @@
                     android:shadowColor="#CC000000"
                     android:shadowDy="1"
                     android:shadowRadius="2"
-                    android:textColor="@color/blbl_text_on_media"
+                    android:textColor="@color/tv_text_on_media"
                     android:textSize="@dimen/video_card_stat_text_size" />
             </LinearLayout>
 
@@ -112,7 +112,7 @@
                 android:shadowColor="#CC000000"
                 android:shadowDy="1"
                 android:shadowRadius="2"
-                android:textColor="@color/blbl_text_on_media"
+                android:textColor="@color/tv_text_on_media"
                 android:textSize="@dimen/video_card_duration_text_size"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent" />
@@ -126,7 +126,7 @@
                 android:shadowColor="#CC000000"
                 android:shadowDy="1"
                 android:shadowRadius="2"
-                android:textColor="@color/blbl_text_on_media"
+                android:textColor="@color/tv_text_on_media"
                 android:textSize="@dimen/video_card_stat_text_size"
                 android:visibility="gone"
                 app:layout_constraintBottom_toBottomOf="parent"

@@ -37,6 +37,7 @@ import androidx.tv.material3.Text
 import coil.request.ImageRequest
 import com.bbttvv.app.core.util.FormatUtils
 import com.bbttvv.app.ui.components.buildSizedImageModel
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 
 internal val DetailBackdropGradientColors = listOf(
     Color(0xEB0A0A0C),
@@ -94,9 +95,9 @@ internal val DetailCompactActionPillMetrics = DetailPillMetrics(
 
 @Composable
 internal fun DetailMessageCard(text: String) {
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    val cardBg = if (isLightTheme) Color(0x0D000000) else DetailCardColor
-    val textColor = if (isLightTheme) Color(0xFF61666D) else DetailMutedTextColor
+    val semanticColors = LocalTvSemanticColors.current
+    val cardBg = semanticColors.surfaceSubtle
+    val textColor = semanticColors.secondaryText
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -120,16 +121,12 @@ internal fun DetailPillButton(
     focusRequester: FocusRequester? = null,
     leadingContent: (@Composable (Color) -> Unit)? = null
 ) {
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val semanticColors = LocalTvSemanticColors.current
     var isFocused by remember { mutableStateOf(false) }
     val contentColor = when {
-        selected || isFocused -> {
-            if (isLightTheme) Color.White else DetailPrimaryTextColor
-        }
-        active -> DetailAccentColor
-        else -> {
-            if (isLightTheme) Color(0xFF18191C) else Color.White
-        }
+        selected || isFocused -> semanticColors.focusContent
+        active -> semanticColors.accent
+        else -> semanticColors.primaryText
     }.copy(alpha = if (enabled) 1f else 0.62f)
     val composedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
@@ -138,9 +135,7 @@ internal fun DetailPillButton(
     }
 
     val containerColor = when {
-        selected || isFocused -> {
-            if (isLightTheme) DetailAccentColor else DetailPrimaryPillColor
-        }
+        selected || isFocused -> semanticColors.focusContainer
         else -> Color.Transparent
     }
 
@@ -148,7 +143,7 @@ internal fun DetailPillButton(
     val borderColor = if (selected || isFocused) {
         Color.Transparent
     } else {
-        if (isLightTheme) Color(0xFFCCCCCC) else Color(0x66FFFFFF)
+        semanticColors.border
     }
 
     Box(
@@ -194,9 +189,9 @@ internal fun DetailDisabledPill(
     modifier: Modifier = Modifier,
     metrics: DetailPillMetrics = DetailDefaultPillMetrics
 ) {
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    val borderColor = if (isLightTheme) Color(0x22000000) else Color(0x33FFFFFF)
-    val textColor = if (isLightTheme) Color(0x7718191C) else Color.White.copy(alpha = 0.45f)
+    val semanticColors = LocalTvSemanticColors.current
+    val borderColor = semanticColors.border
+    val textColor = semanticColors.disabledText
     Box(
         modifier = modifier
             .height(metrics.height)

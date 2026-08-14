@@ -268,73 +268,41 @@ internal fun PlayerCommentsPanel(
             }
     }
 
-    val isLightTheme = LocalIsLightTheme.current
-    val panelBgColor = if (isLightTheme) Color(0xFFF8F9FB) else Color(0xFF141518)
-    val dividerColor = if (isLightTheme) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.16f)
-    val mainTextColor = if (isLightTheme) Color(0xFF18191C) else Color.White
-    val subTextColor = if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.72f)
-
-    Row(
+    PlayerRightSidebarScaffold(
         modifier = modifier
             .fillMaxWidth(PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION)
-            .fillMaxHeight()
             .focusGroup()
             .focusProperties {
                 onExit = { cancelFocusChange() }
-            }
-            .background(panelBgColor),
-    ) {
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight()
-                .background(dividerColor),
-        )
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        ) {
+            },
+        header = { colors ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    Text(
-                        text = if (isViewingThread) "评论回复" else "视频评论",
-                        color = mainTextColor,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = playerCommentCountLabel(totalCount),
-                        color = subTextColor,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                    )
-                }
-                PlayerCommentPillButton(
-                    label = if (isViewingThread) "返回" else playerCommentSortLabel(uiState.sortMode),
-                    onClick = if (isViewingThread) onBackFromThread else onToggleSort,
-                    focusRequester = primaryFocusRequester,
+                Text(
+                    text = if (isViewingThread) "评论回复" else "视频评论",
+                    color = colors.primaryText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    text = playerCommentCountLabel(totalCount),
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(dividerColor),
+            PlayerCommentPillButton(
+                label = if (isViewingThread) "返回" else playerCommentSortLabel(uiState.sortMode),
+                onClick = if (isViewingThread) onBackFromThread else onToggleSort,
+                focusRequester = primaryFocusRequester,
             )
-
-            uiState.activeThreadRoot?.takeIf { isViewingThread && isContentMounted }?.let { rootReply ->
+        },
+    ) { colors ->
+        uiState.activeThreadRoot?.takeIf { isViewingThread && isContentMounted }?.let { rootReply ->
                 val rootCommentKey = "thread-root:${rootReply.rpid}"
                 val rootFocusRequester = remember(rootCommentKey) { FocusRequester() }
                 DisposableEffect(rootCommentKey, rootFocusRequester, commentFocusCoordinator) {
@@ -354,7 +322,7 @@ internal fun PlayerCommentsPanel(
                 }
                 Text(
                     text = "主评论",
-                    color = subTextColor,
+                    color = colors.secondaryText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp),
@@ -489,17 +457,16 @@ internal fun PlayerCommentsPanel(
                     }
                 }
             }
-        }
-        commentImageViewerState?.let { viewerState ->
-            CommentImageViewer(
-                state = viewerState,
-                onStateChanged = { commentImageViewerState = it },
-                onDismissRequest = {
-                    pendingPictureReturnKey = viewerState.sourceKey
-                    commentImageViewerState = null
-                },
-            )
-        }
+    }
+    commentImageViewerState?.let { viewerState ->
+        CommentImageViewer(
+            state = viewerState,
+            onStateChanged = { commentImageViewerState = it },
+            onDismissRequest = {
+                pendingPictureReturnKey = viewerState.sourceKey
+                commentImageViewerState = null
+            },
+        )
     }
 }
 
@@ -709,7 +676,7 @@ private fun PlayerCommentListItem(
                             Text(
                                 text = "LV$level",
                                 color = if (isLightTheme) Color(0xFF8A5A22) else Color(0xFFF0C98A),
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -718,7 +685,7 @@ private fun PlayerCommentListItem(
                         Text(
                             text = contextText,
                             color = if (isLightTheme) Color(0xFF7A7F87) else Color.White.copy(alpha = 0.56f),
-                            fontSize = 11.sp,
+                            fontSize = 13.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -744,13 +711,13 @@ private fun PlayerCommentListItem(
                             Text(
                                 text = "赞 ${formatCount(reply.like)}",
                                 color = if (isLightTheme) Color(0xFF686D75) else Color.White.copy(alpha = 0.60f),
-                                fontSize = 11.sp,
+                                fontSize = 13.sp,
                             )
                             if (showReplyAction) {
                                 Text(
                                     text = "回复 ${formatCount(reply.rcount)}",
                                     color = if (isLightTheme) Color(0xFF686D75) else Color.White.copy(alpha = 0.60f),
-                                    fontSize = 11.sp,
+                                    fontSize = 13.sp,
                                 )
                             }
                         }
@@ -758,7 +725,7 @@ private fun PlayerCommentListItem(
                             Text(
                                 text = "查看回复 ›",
                                 color = if (isFocused) accentColor else if (isLightTheme) Color(0xFF3467A8) else Color(0xFFDDEBFF),
-                                fontSize = 11.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }

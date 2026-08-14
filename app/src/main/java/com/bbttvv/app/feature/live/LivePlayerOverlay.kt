@@ -72,7 +72,7 @@ internal fun LiveActionBar(
                 Text(
                     text = action.title,
                     color = if (selected) Color.Black.copy(alpha = 0.78f) else Color.White.copy(alpha = 0.72f),
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                 )
             }
@@ -98,7 +98,7 @@ internal fun LiveOptionsPanel(
         Text(
             text = title,
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -115,7 +115,7 @@ internal fun LiveOptionsPanel(
                     Text(
                         text = option.label,
                         color = if (selected) Color.Black else Color.White,
-                        fontSize = 13.sp,
+                        fontSize = 16.sp,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -124,7 +124,7 @@ internal fun LiveOptionsPanel(
                         Text(
                             text = subtitle,
                             color = if (selected) Color.Black.copy(alpha = 0.66f) else Color.White.copy(alpha = 0.62f),
-                            fontSize = 10.sp,
+                            fontSize = 13.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

@@ -26,9 +26,6 @@ internal fun resolveCrashSnapshotFile(baseDir: File): File =
 internal fun resolveCrashSnapshotMarkerFile(baseDir: File): File =
     File(resolveLogPersistenceDir(baseDir), CRASH_SNAPSHOT_MARKER_FILE_NAME)
 
-internal fun resolveCrashSnapshotExportRelativePath(): String =
-    "$DOWNLOAD_LOG_RELATIVE_PATH/$CRASH_SNAPSHOT_FILE_NAME"
-
 internal fun resolvePlayerDiagnosticExportFileName(
     exportedAtMillis: Long
 ): String {

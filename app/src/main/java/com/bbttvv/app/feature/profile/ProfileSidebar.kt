@@ -148,7 +148,11 @@ internal fun LoggedInSidebar(
                     Text(text = navData.uname, color = if (isLightTheme) Color(0xFF18191C) else Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     MiniBadge(text = "LV${navData.level_info.current_level}", backgroundColor = Color(0xFFEF8D39))
                     if (navData.vip.status == 1) {
-                        MiniBadge(text = navData.vip.label.text.ifBlank { "大会员" }, backgroundColor = Color(0xFFB86884))
+                        MiniBadge(
+                            text = navData.vip.label.text.ifBlank { "大会员" },
+                            backgroundColor = Color(0xFFB86884),
+                            compact = navData.vip.type == 2,
+                        )
                     }
                 }
                 ProfileMetricRow(
@@ -213,9 +217,18 @@ internal fun LoggedInSidebar(
 }
 
 @Composable
-private fun MiniBadge(text: String, backgroundColor: Color) {
-    Box(modifier = Modifier.background(backgroundColor, RoundedCornerShape(7.dp)).padding(horizontal = 6.dp, vertical = 1.dp)) {
-        Text(text = text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+private fun MiniBadge(text: String, backgroundColor: Color, compact: Boolean = false) {
+    Box(
+        modifier = Modifier
+            .background(backgroundColor, RoundedCornerShape(7.dp))
+            .padding(horizontal = if (compact) 4.dp else 6.dp, vertical = 1.dp),
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = if (compact) 10.sp else 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

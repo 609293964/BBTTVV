@@ -2,6 +2,8 @@ package com.bbttvv.app.navigation
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -161,7 +163,11 @@ fun AppNavigation() {
 
     NavHost(
         navController = navController,
-        startDestination = ScreenRoutes.Home.route
+        startDestination = ScreenRoutes.Home.route,
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
     ) {
         composable(ScreenRoutes.Home.route) {
             val homeViewModel: HomeViewModel = viewModel()

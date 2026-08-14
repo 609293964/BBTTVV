@@ -2,7 +2,6 @@ package com.bbttvv.app.feature.search
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -67,6 +66,7 @@ import com.bbttvv.app.ui.home.LocalHomeTabActive
 import com.bbttvv.app.ui.home.VideoCardRecyclerGrid
 import com.bbttvv.app.ui.home.rememberHomeCollapsingHeaderState
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 
 @Composable
 internal fun SearchScreen(
@@ -708,27 +708,13 @@ private fun CategoryPill(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val isLightTheme = LocalIsLightTheme.current
-    val targetBgColor = when {
-        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
-        else -> Color.Transparent
+    val semanticColors = LocalTvSemanticColors.current
+    val backgroundColor = if (isFocused) semanticColors.focusContainer else Color.Transparent
+    val textColor = when {
+        isFocused -> semanticColors.focusContent
+        selected -> if (semanticColors.focusContainer == semanticColors.accent) semanticColors.accent else semanticColors.primaryText
+        else -> semanticColors.secondaryText
     }
-    val targetTextColor = when {
-        isFocused -> Color.White
-        selected -> if (isLightTheme) Color(0xFFFB7299) else Color.White
-        else -> if (isLightTheme) Color(0xFF61666D) else Color.White.copy(alpha = 0.6f)
-    }
-
-    val backgroundColor by animateColorAsState(
-        targetValue = targetBgColor,
-        animationSpec = tween(durationMillis = 150),
-        label = "backgroundColor"
-    )
-    val textColor by animateColorAsState(
-        targetValue = targetTextColor,
-        animationSpec = tween(durationMillis = 150),
-        label = "textColor"
-    )
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.06f else if (selected) 1.03f else 1f,
         animationSpec = tween(durationMillis = 150),
@@ -786,26 +772,9 @@ private fun HistorySearchKeywordPill(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val isLightTheme = LocalIsLightTheme.current
-    val targetBgColor = when {
-        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
-        else -> if (isLightTheme) Color(0xFFF1F2F3) else Color(0xFF222733)
-    }
-    val targetContentColor = when {
-        isFocused -> if (isLightTheme) Color.White else Color.Black
-        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
-    }
-
-    val backgroundColor by animateColorAsState(
-        targetValue = targetBgColor,
-        animationSpec = tween(150),
-        label = "historyBg"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = targetContentColor,
-        animationSpec = tween(150),
-        label = "historyContent"
-    )
+    val semanticColors = LocalTvSemanticColors.current
+    val backgroundColor = if (isFocused) semanticColors.focusContainer else semanticColors.surfaceSubtle
+    val contentColor = if (isFocused) semanticColors.focusContent else semanticColors.primaryText
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.05f else 1f,
         animationSpec = tween(150),
@@ -858,26 +827,9 @@ private fun HotSearchKeywordPill(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val isLightTheme = LocalIsLightTheme.current
-    val targetBgColor = when {
-        isFocused -> if (isLightTheme) Color(0xFFFB7299) else Color.White
-        else -> if (isLightTheme) Color(0xFFF1F2F3) else Color(0xFF222733)
-    }
-    val targetContentColor = when {
-        isFocused -> if (isLightTheme) Color.White else Color.Black
-        else -> if (isLightTheme) Color(0xFF18191C) else Color.White
-    }
-
-    val backgroundColor by animateColorAsState(
-        targetValue = targetBgColor,
-        animationSpec = tween(150),
-        label = "bg"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = targetContentColor,
-        animationSpec = tween(150),
-        label = "content"
-    )
+    val semanticColors = LocalTvSemanticColors.current
+    val backgroundColor = if (isFocused) semanticColors.focusContainer else semanticColors.surfaceSubtle
+    val contentColor = if (isFocused) semanticColors.focusContent else semanticColors.primaryText
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.05f else 1f,
         animationSpec = tween(150),

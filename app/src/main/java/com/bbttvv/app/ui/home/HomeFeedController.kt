@@ -3,6 +3,7 @@
 import com.bbttvv.app.core.paging.PagedFeedGridState
 import com.bbttvv.app.core.paging.appliedOrNull
 import com.bbttvv.app.core.plugin.PluginManager
+import com.bbttvv.app.core.plugin.FeedKind
 import com.bbttvv.app.core.plugin.json.JsonPluginManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
@@ -164,7 +165,10 @@ internal class HomeFeedController(
 
     private fun applyFeedFilters(videos: List<VideoItem>, recordStats: Boolean): List<VideoItem> {
         val jsonFiltered = JsonPluginManager.filterVideos(videos, recordStats = recordStats)
-        val pluginFiltered = PluginManager.filterFeedItems(jsonFiltered)
+        val pluginFiltered = PluginManager.filterFeedItems(
+            jsonFiltered,
+            feedKind = FeedKind.HOME_RECOMMEND
+        )
         return if (dismissStore.hasDismissed()) {
             pluginFiltered.filterNot(dismissStore::isDismissed)
         } else {

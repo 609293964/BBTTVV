@@ -85,72 +85,6 @@ internal fun ProfileSettingsPanel(
 }
 
 @Composable
-internal fun ProfilePlaceholderPanel(
-    title: String,
-    subtitle: String,
-    focusCoordinator: HomeFocusCoordinator? = null,
-    focusTab: AppTopLevelTab? = null,
-    onRequestSidebarFocus: () -> Boolean = { false },
-) {
-    val contentFocusTarget = rememberProfileContentFocusTargetState(
-        focusCoordinator = focusCoordinator,
-        focusTab = focusTab,
-    )
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    var focused by remember { mutableStateOf(false) }
-    val cardShape = RoundedCornerShape(28.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .profileContentFocusTarget(
-                state = contentFocusTarget,
-                focusCoordinator = focusCoordinator,
-                focusTab = focusTab,
-                onDpadLeft = onRequestSidebarFocus,
-            )
-            .padding(top = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(text = title, color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
-        Box(
-            modifier = Modifier
-                .focusRequester(contentFocusTarget.initialFocusRequester)
-                .onFocusChanged { focused = it.isFocused }
-                .focusable()
-                .fillMaxWidth()
-                .background(
-                    color = if (focused) {
-                        if (isLightTheme) Color(0xFFFB7299) else Color(0xE9E6EEF4)
-                    } else {
-                        if (isLightTheme) Color(0x0C000000) else Color(0x12000000)
-                    },
-                    shape = cardShape
-                )
-                .border(
-                    width = if (focused) 1.dp else 0.dp,
-                    color = if (focused) {
-                        if (isLightTheme) Color(0xFFFB7299).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.92f)
-                    } else {
-                        Color.Transparent
-                    },
-                    shape = cardShape
-                )
-                .padding(24.dp)
-        ) {
-            Text(
-                text = subtitle,
-                color = if (focused) {
-                    Color.White
-                } else {
-                    if (isLightTheme) Color(0xFF61666D) else Color(0xD9FFFFFF)
-                },
-                lineHeight = 22.sp
-            )
-        }
-    }
-}
-
-@Composable
 internal fun SwitchAccountPanel(
     accounts: List<StoredAccountSession>,
     activeAccountMid: Long?,
@@ -309,39 +243,6 @@ private fun AccountActionButton(
                 fontWeight = FontWeight.Medium
             )
         }
-    }
-}
-
-@Composable
-internal fun ChangeIconPanel(
-    focusCoordinator: HomeFocusCoordinator? = null,
-    focusTab: AppTopLevelTab? = null,
-    onRequestSidebarFocus: () -> Boolean = { false },
-) {
-    val contentFocusTarget = rememberProfileContentFocusTargetState(
-        focusCoordinator = focusCoordinator,
-        focusTab = focusTab,
-    )
-    val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .profileContentFocusTarget(
-                state = contentFocusTarget,
-                focusCoordinator = focusCoordinator,
-                focusTab = focusTab,
-                onDpadLeft = onRequestSidebarFocus,
-            )
-            .padding(top = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(text = "更换图标", color = if (isLightTheme) Color(0xFF18191C) else Color.White, style = MaterialTheme.typography.headlineMedium)
-        ProfileInfoCard(
-            title = "图标入口已预留",
-            value = "后续可在这里选择 TV 启动图标；当前版本暂不提供可切换图标。",
-            modifier = Modifier.focusRequester(contentFocusTarget.initialFocusRequester),
-            focusable = true,
-        )
     }
 }
 

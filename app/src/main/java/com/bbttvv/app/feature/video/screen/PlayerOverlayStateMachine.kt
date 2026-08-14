@@ -47,6 +47,18 @@ internal enum class PanelOptionPresentation {
     Setting,
 }
 
+internal enum class PlayerPanelLayout {
+    Floating,
+    RightSidebar,
+}
+
+internal fun resolvePlayerPanelLayout(activePanel: PlayerAction): PlayerPanelLayout =
+    if (activePanel == PlayerAction.Danmaku) {
+        PlayerPanelLayout.RightSidebar
+    } else {
+        PlayerPanelLayout.Floating
+    }
+
 internal fun buildPanelOptionsFocusKey(options: List<PanelOption>): String {
     return options.joinToString(separator = "|") { option ->
         "${option.key}:${option.isSelected}"

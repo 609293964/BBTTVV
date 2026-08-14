@@ -1,6 +1,5 @@
 package com.bbttvv.app.feature.video.viewmodel
 
-import com.bbttvv.app.data.model.response.DashAudio
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,33 +34,6 @@ class PlaybackCdnFallbackPolicyTest {
 
         assertFalse(state.usesCdnRewrite)
         assertFalse(shouldFallbackFromCdnRewrite(state, playbackReady = false))
-    }
-
-    @Test
-    fun audioCandidatesUseBackupUrlsFromSelectedAudioTrack() {
-        val candidates = buildPlaybackAudioUrlCandidates(
-            audioUrl = "https://audio.example.com/30280-base.m4s",
-            cachedDashAudios = listOf(
-                DashAudio(
-                    id = 30232,
-                    baseUrl = "https://audio.example.com/30232-base.m4s",
-                    backupUrl = listOf("https://audio.example.com/30232-backup.m4s")
-                ),
-                DashAudio(
-                    id = 30280,
-                    baseUrl = "https://audio.example.com/30280-base.m4s",
-                    backupUrl = listOf("https://audio.example.com/30280-backup.m4s")
-                )
-            )
-        )
-
-        assertEquals(
-            listOf(
-                "https://audio.example.com/30280-base.m4s",
-                "https://audio.example.com/30280-backup.m4s"
-            ),
-            candidates
-        )
     }
 
     @Test

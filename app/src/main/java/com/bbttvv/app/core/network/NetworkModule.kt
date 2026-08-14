@@ -87,15 +87,4 @@ object NetworkModule {
         AppApiProvider.storyApi
     }
 
-    val splashApi: SplashApi by lazy {
-        AppApiProvider.splashApi
-    }
-
-    val messageApi: MessageApi by lazy {
-        MessagingMediaApiProvider.messageApi
-    }
-
-    val audioApi: AudioApi by lazy {
-        MessagingMediaApiProvider.audioApi
-    }
 }

@@ -4,7 +4,6 @@ import android.content.Context
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
 import com.bbttvv.app.core.cache.PlayUrlCache
-import com.bbttvv.app.core.cooldown.PlaybackCooldownManager
 import com.bbttvv.app.core.store.FollowingCacheStore
 import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
@@ -151,7 +150,6 @@ object CacheUtils {
 
             if (CacheClearTarget.PLAYBACK_QUALITY in targets) {
                 PlayUrlCache.clear()
-                PlaybackCooldownManager.clearAll()
                 Logger.d(TAG, " Playback quality cache cleared")
             }
 
@@ -231,7 +229,6 @@ object CacheUtils {
         // 应用缓存
         FollowingCacheStore.clear(context)
         com.bbttvv.app.core.network.WbiKeyManager.invalidateCache()
-        PlaybackCooldownManager.clearAll()
         Logger.clearPrivateLogArtifacts(context)
         
         emit(ClearProgress(100, "清理完成"))
@@ -320,7 +317,6 @@ object CacheUtils {
         // 应用缓存
         FollowingCacheStore.clear(context)
         com.bbttvv.app.core.network.WbiKeyManager.invalidateCache()
-        PlaybackCooldownManager.clearAll()
         Logger.clearPrivateLogArtifacts(context)
         
         emit(ClearProgressV2(totalSize, totalSize, true, "清理完成"))
@@ -392,4 +388,3 @@ object CacheUtils {
         return String.format(Locale.US, "%.2f GB", gigaByte)
     }
 }
-

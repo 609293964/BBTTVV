@@ -6,61 +6,41 @@ import org.junit.Test
 
 class CommentFraudDetectionPolicyTest {
     @Test
-    fun startPolicyRequiresEnabledPositiveRpid() {
-        assertEquals(true, shouldStartCommentFraudDetection(enabled = true, rpid = 123L))
-        assertEquals(false, shouldStartCommentFraudDetection(enabled = false, rpid = 123L))
-        assertEquals(false, shouldStartCommentFraudDetection(enabled = true, rpid = 0L))
-    }
+    fun rootStatusDistinguishesReviewAndShadowBan() {
+        val guestMissing = CommentPresenceProbe(requestSucceeded = true, found = false)
+        val authVisible = CommentPresenceProbe(requestSucceeded = true, found = true)
 
-    @Test
-    fun normalResultUsesLightMessageOnly() {
-        assertEquals(false, shouldShowCommentFraudResultDialog(CommentFraudStatus.NORMAL))
-        assertEquals("评论已正常显示", resolveCommentFraudLightMessage(CommentFraudStatus.NORMAL))
-        assertEquals(true, shouldShowCommentFraudResultDialog(CommentFraudStatus.SHADOW_BANNED))
-        assertEquals(null, resolveCommentFraudLightMessage(CommentFraudStatus.SHADOW_BANNED))
-    }
-
-    @Test
-    fun rootTimelineStatusCanDetectShadowBanAndReview() {
-        assertEquals(
-            CommentFraudStatus.SHADOW_BANNED,
-            resolveRootFraudStatusFromTimeline(
-                guestTimelineProbe = CommentPresenceProbe(requestSucceeded = true, found = false),
-                authReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = true),
-                guestReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = false, deletedHint = true),
-                confirmedDeletedAfterRetry = false
-            )
-        )
         assertEquals(
             CommentFraudStatus.UNDER_REVIEW,
-            resolveRootFraudStatusFromTimeline(
-                guestTimelineProbe = CommentPresenceProbe(requestSucceeded = true, found = false),
-                authReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = true),
-                guestReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = true),
-                confirmedDeletedAfterRetry = false
+            resolveRootFraudStatus(
+                guestSeekProbe = guestMissing,
+                authSeekProbe = authVisible,
+                guestReplyPageVisible = true,
+                confirmedNotFoundAfterRetry = false
+            )
+        )
+        assertEquals(
+            CommentFraudStatus.SHADOW_BANNED,
+            resolveRootFraudStatus(
+                guestSeekProbe = guestMissing,
+                authSeekProbe = authVisible,
+                guestReplyPageVisible = false,
+                confirmedNotFoundAfterRetry = false
             )
         )
     }
 
     @Test
-    fun rootTimelineStatusDeletesOnlyAfterRetryConfirmation() {
+    fun rootStatusDeletesOnlyAfterRetryConfirmation() {
+        val missing = CommentPresenceProbe(requestSucceeded = true, found = false)
+
         assertEquals(
             CommentFraudStatus.UNKNOWN,
-            resolveRootFraudStatusFromTimeline(
-                guestTimelineProbe = CommentPresenceProbe(requestSucceeded = true, found = false),
-                authReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = false, deletedHint = true),
-                guestReplyPageProbe = null,
-                confirmedDeletedAfterRetry = false
-            )
+            resolveRootFraudStatus(missing, missing, null, confirmedNotFoundAfterRetry = false)
         )
         assertEquals(
             CommentFraudStatus.DELETED,
-            resolveRootFraudStatusFromTimeline(
-                guestTimelineProbe = CommentPresenceProbe(requestSucceeded = true, found = false),
-                authReplyPageProbe = CommentReplyPageProbe(requestSucceeded = true, visible = false, deletedHint = true),
-                guestReplyPageProbe = null,
-                confirmedDeletedAfterRetry = true
-            )
+            resolveRootFraudStatus(missing, missing, null, confirmedNotFoundAfterRetry = true)
         )
     }
 }

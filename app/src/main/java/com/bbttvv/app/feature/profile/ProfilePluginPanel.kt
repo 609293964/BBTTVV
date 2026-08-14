@@ -1,13 +1,6 @@
 package com.bbttvv.app.feature.profile
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +65,7 @@ import com.bbttvv.app.ui.components.TvDialog
 import com.bbttvv.app.ui.components.TvDialogActionButton
 import com.bbttvv.app.ui.components.TvTextInput
 import com.bbttvv.app.ui.home.HomeFocusCoordinator
+import com.bbttvv.app.ui.player.nextTvOption
 import kotlinx.coroutines.launch
 
 @Composable
@@ -128,7 +122,8 @@ internal fun ProfilePluginCenterPanel(
             com.bbttvv.app.feature.plugin.DANMAKU_ENHANCE_PLUGIN_ID,
             com.bbttvv.app.feature.plugin.TodayWatchPlugin.PLUGIN_ID,
             CDN_REGION_PLUGIN_ID,
-            HOME_FEED_ANONYMIZER_PLUGIN_ID
+            HOME_FEED_ANONYMIZER_PLUGIN_ID,
+            com.bbttvv.app.feature.plugin.PILINARA_FEED_FILTER_PLUGIN_ID
         ).mapNotNull { id ->
             plugins.firstOrNull { it.plugin.id == id }
         }
@@ -232,11 +227,7 @@ internal fun ProfilePluginCenterPanel(
                         null
                     },
                 )
-                AnimatedVisibility(
-                    visible = isExpanded,
-                    enter = expandVertically(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
-                    exit = shrinkVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(150))
-                ) {
+                if (isExpanded) {
                     SubPluginConfigContainer {
                         when (val plugin = pluginInfo.plugin) {
                             is com.bbttvv.app.feature.plugin.SponsorBlockPlugin -> {
@@ -305,6 +296,17 @@ internal fun ProfilePluginCenterPanel(
                                     }
                                 )
                             }
+                            is com.bbttvv.app.feature.plugin.PiliNaraFeedFilterPlugin -> {
+                                PiliNaraFeedFilterPluginPanel(
+                                    plugin = plugin,
+                                    enabled = pluginInfo.enabled,
+                                    onToggleEnabled = {
+                                        scope.launch {
+                                            com.bbttvv.app.core.plugin.PluginManager.setEnabled(plugin.id, !pluginInfo.enabled)
+                                        }
+                                    }
+                                )
+                            }
                             else -> {
                                 ProfileInfoCard("暂不支持的插件类型", "这个插件已经注册进插件系统，但当前插件中心还没有给它单独的 TV 配置面板。", compact = true)
                             }
@@ -320,7 +322,7 @@ internal fun ProfilePluginCenterPanel(
             item(key = "plugin_external_empty") {
                 PluginCenterRowCard(
                     title = "暂无外部规则插件",
-                    subtitle = "系统规则已经就位，后续可在这里接入外部 JSON 规则插件。",
+                    subtitle = "可通过遥控器在下方导入入口填写 JSON 规则地址；导入后可在此启停和管理。",
                     value = "列表结束",
                     modifier = if (targetFirstKey == "plugin_external_empty") {
                         Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
@@ -786,6 +788,155 @@ private fun AdFilterPluginPanel(
 }
 
 @Composable
+private fun PiliNaraFeedFilterPluginPanel(
+    plugin: com.bbttvv.app.feature.plugin.PiliNaraFeedFilterPlugin,
+    enabled: Boolean,
+    onToggleEnabled: () -> Unit
+) {
+    val config by plugin.configState.collectAsStateWithLifecycle(
+        initialValue = com.bbttvv.app.feature.plugin.PiliNaraFeedFilterConfig()
+    )
+    var editingField by remember { mutableStateOf<String?>(null) }
+    var editingValue by remember { mutableStateOf("") }
+
+    fun openEditor(field: String, value: String) {
+        editingField = field
+        editingValue = value
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        PluginCenterRowCard(
+            title = "启用推荐流过滤",
+            subtitle = "只改变已加载列表中的可见项目；关闭后会恢复该列表中原有的视频和焦点键。",
+            value = if (enabled) "点击关闭" else "点击启用",
+            isSubItem = true,
+            onClick = onToggleEnabled
+        )
+        PluginCenterRowCard(
+            title = "最短视频时长",
+            subtitle = "时长未知的视频不会被此规则隐藏。0 表示不限制。",
+            value = "${config.minDurationSeconds} 秒",
+            isSubItem = true,
+            onClick = { openEditor("duration", config.minDurationSeconds.toString()) }
+        )
+        PluginCenterRowCard(
+            title = "最低播放量",
+            subtitle = "播放量低于此值的视频会隐藏。0 表示不限制。",
+            value = "${config.minPlayCount}",
+            isSubItem = true,
+            onClick = { openEditor("play_count", config.minPlayCount.toString()) }
+        )
+        PluginCenterRowCard(
+            title = "最低点赞率",
+            subtitle = "点赞数 ÷ 播放量低于此百分比的视频会隐藏。0 表示不限制。",
+            value = "${config.minLikeRatioPercent}%",
+            isSubItem = true,
+            onClick = { openEditor("like_ratio", config.minLikeRatioPercent.toString()) }
+        )
+        PluginCenterRowCard(
+            title = "已关注 UP 主豁免",
+            subtitle = "仅首页推荐可用；接口未提供关注状态时仍按其余规则过滤。",
+            value = if (config.exemptFollowed) "已开启" else "已关闭",
+            isSubItem = true,
+            onClick = { plugin.setExemptFollowed(!config.exemptFollowed) }
+        )
+        PluginCenterRowCard(
+            title = "同时过滤热门",
+            subtitle = "开启后，热门页会使用相同的时长、播放量、关键词和 UP 主规则；分区页不受影响。",
+            value = if (config.applyToPopular) "已开启" else "已关闭",
+            isSubItem = true,
+            onClick = { plugin.setApplyToPopular(!config.applyToPopular) }
+        )
+        PluginCenterRowCard(
+            title = "标题关键词 / 正则",
+            subtitle = config.titleKeywords.lineSequence().count { it.isNotBlank() }
+                .let { if (it == 0) "每行一条；支持正则。" else "已配置 $it 条规则；点击编辑。" },
+            value = "编辑",
+            isSubItem = true,
+            onClick = { openEditor("title_keywords", config.titleKeywords) }
+        )
+        PluginCenterRowCard(
+            title = "分区关键词 / 正则",
+            subtitle = "按接口提供的分区名过滤；每行一条，支持正则。",
+            value = "编辑",
+            isSubItem = true,
+            onClick = { openEditor("zone_keywords", config.zoneKeywords) }
+        )
+        PluginCenterRowCard(
+            title = "屏蔽 UP MID",
+            subtitle = "每行一个 MID，命中后隐藏该 UP 主的视频。",
+            value = "${config.blockedMids.size} 个",
+            isSubItem = true,
+            onClick = {
+                openEditor("blocked_mids", com.bbttvv.app.feature.plugin.PiliNaraFeedFilterPlugin.midsEditorValue(config.blockedMids))
+            }
+        )
+        PluginCenterRowCard(
+            title = "白名单 UP MID",
+            subtitle = "每行一个 MID；白名单优先于所有过滤条件。",
+            value = "${config.whitelistMids.size} 个",
+            isSubItem = true,
+            onClick = {
+                openEditor("whitelist_mids", com.bbttvv.app.feature.plugin.PiliNaraFeedFilterPlugin.midsEditorValue(config.whitelistMids))
+            }
+        )
+        ProfileInfoCard(
+            "TV 使用说明",
+            "修改规则会重算当前已加载的推荐列表。分页、刷新和返回的焦点恢复仍由首页自身管理；过滤后列表不足时可继续向下加载。",
+            compact = true
+        )
+    }
+
+    editingField?.let { field ->
+        val numeric = field == "duration" || field == "play_count" || field == "like_ratio"
+        TvDialog(
+            title = when (field) {
+                "duration" -> "最短视频时长（秒）"
+                "play_count" -> "最低播放量"
+                "like_ratio" -> "最低点赞率（%）"
+                "title_keywords" -> "标题关键词 / 正则"
+                "zone_keywords" -> "分区关键词 / 正则"
+                "blocked_mids" -> "屏蔽 UP MID"
+                else -> "白名单 UP MID"
+            },
+            onDismissRequest = {
+                editingField = null
+                editingValue = ""
+            },
+            content = {
+                TvTextInput(
+                    value = editingValue,
+                    onValueChange = { value -> editingValue = if (numeric) value.filter(Char::isDigit) else value },
+                    label = if (numeric) "输入数字；0 表示不限制" else "每行一条",
+                    singleLine = numeric,
+                    minLines = if (numeric) 1 else 4,
+                    keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text,
+                )
+            },
+            actions = {
+                TvDialogActionButton(text = "取消", onClick = {
+                    editingField = null
+                    editingValue = ""
+                })
+                TvDialogActionButton(text = "保存", onClick = {
+                    when (field) {
+                        "duration" -> plugin.setMinDuration(editingValue.toLongOrNull() ?: 0L)
+                        "play_count" -> plugin.setMinPlayCount(editingValue.toLongOrNull() ?: 0L)
+                        "like_ratio" -> plugin.setMinLikeRatio(editingValue.toIntOrNull() ?: 0)
+                        "title_keywords" -> plugin.setTitleKeywords(editingValue)
+                        "zone_keywords" -> plugin.setZoneKeywords(editingValue)
+                        "blocked_mids" -> plugin.setBlockedMids(editingValue)
+                        "whitelist_mids" -> plugin.setWhitelistMids(editingValue)
+                    }
+                    editingField = null
+                    editingValue = ""
+                })
+            }
+        )
+    }
+}
+
+@Composable
 private fun DanmakuEnhancePluginPanel(
     plugin: com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin,
     enabled: Boolean,
@@ -922,16 +1073,18 @@ private fun TodayWatchPluginPanel(
         }
     }
     val nextQueueBuildLimit = remember(config.queueBuildLimit) {
-        nextCycledOption(config.queueBuildLimit, listOf(12, 20, 30, 40))
+        nextTvOption(listOf(12, 20, 30, 40), config.queueBuildLimit)
     }
     val nextQueuePreviewLimit = remember(config.queuePreviewLimit, config.queueBuildLimit) {
-        nextCycledOption(
+        nextTvOption(
+            listOf(4, 6, 8, 10)
+                .filter { it <= config.queueBuildLimit }
+                .ifEmpty { listOf(config.queuePreviewLimit) },
             config.queuePreviewLimit,
-            listOf(4, 6, 8, 10).filter { it <= config.queueBuildLimit }
         )
     }
     val nextHistorySampleLimit = remember(config.historySampleLimit) {
-        nextCycledOption(config.historySampleLimit, listOf(40, 80, 120))
+        nextTvOption(listOf(40, 80, 120), config.historySampleLimit)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1380,15 +1533,5 @@ private fun buildCdnRegionLocationLabel(cache: CdnRegionPluginCache): String {
         }
         cache.refreshedAtMs > 0L -> "已刷新，但接口没有返回明确地区。"
         else -> "启用后会自动刷新；也可以在这里手动刷新。"
-    }
-}
-
-private fun <T> nextCycledOption(current: T, options: List<T>): T {
-    if (options.isEmpty()) return current
-    val currentIndex = options.indexOf(current)
-    return if (currentIndex < 0) {
-        options.first()
-    } else {
-        options[(currentIndex + 1) % options.size]
     }
 }

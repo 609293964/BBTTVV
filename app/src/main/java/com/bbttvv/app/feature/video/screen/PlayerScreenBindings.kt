@@ -17,6 +17,43 @@ internal fun shouldRoutePlayerKeyCodeToPreviewHandler(keyCode: Int): Boolean {
     return keyCode != KeyEvent.KEYCODE_BACK
 }
 
+/**
+ * Keeps the tail of a key press inside a modal focus domain after that modal closes on key down.
+ */
+internal class PlayerModalKeyReleaseGuard {
+    private var pendingKeyCode = KeyEvent.KEYCODE_UNKNOWN
+
+    fun recordConsumedModalEvent(
+        action: Int,
+        keyCode: Int,
+        repeatCount: Int,
+    ) {
+        when (action) {
+            KeyEvent.ACTION_DOWN -> if (repeatCount == 0) pendingKeyCode = keyCode
+            KeyEvent.ACTION_UP -> if (keyCode == pendingKeyCode) clear()
+        }
+    }
+
+    fun consumeTrailingEvent(
+        action: Int,
+        keyCode: Int,
+        repeatCount: Int,
+    ): Boolean {
+        if (keyCode != pendingKeyCode) return false
+        if (action == KeyEvent.ACTION_DOWN && repeatCount == 0) {
+            clear()
+            return false
+        }
+        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return false
+        if (action == KeyEvent.ACTION_UP) clear()
+        return true
+    }
+
+    private fun clear() {
+        pendingKeyCode = KeyEvent.KEYCODE_UNKNOWN
+    }
+}
+
 internal data class PlayerScreenFocusBindings(
     val progressFocusRequester: FocusRequester,
     val actionFocusRequesters: List<FocusRequester>,

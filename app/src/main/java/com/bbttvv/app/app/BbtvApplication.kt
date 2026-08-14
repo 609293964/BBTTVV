@@ -25,6 +25,7 @@ import com.bbttvv.app.feature.plugin.AdFilterPlugin
 import com.bbttvv.app.feature.plugin.CdnRegionPlugin
 import com.bbttvv.app.feature.plugin.DanmakuEnhancePlugin
 import com.bbttvv.app.feature.plugin.HomeFeedAnonymizerPlugin
+import com.bbttvv.app.feature.plugin.PiliNaraFeedFilterPlugin
 import com.bbttvv.app.feature.plugin.SPONSOR_BLOCK_PLUGIN_ID
 import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
 import com.bbttvv.app.feature.plugin.TodayWatchPlugin
@@ -168,6 +169,8 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                     PluginManager.register(TodayWatchPlugin())
                     PluginManager.register(CdnRegionPlugin())
                     PluginManager.register(HomeFeedAnonymizerPlugin())
+                    // Disabled by default: enabling it only re-filters already loaded feeds.
+                    PluginManager.register(PiliNaraFeedFilterPlugin())
                     syncBuiltInPluginState()
                 }
             }

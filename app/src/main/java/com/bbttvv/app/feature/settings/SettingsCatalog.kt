@@ -57,6 +57,7 @@ internal object SettingsCatalog {
             "settings_privacy_mode",
             "settings_blocked_ups_count",
             "settings_clear_cache",
+            "settings_check_update",
             "settings_version",
             "settings_build_type",
             "settings_package_name",

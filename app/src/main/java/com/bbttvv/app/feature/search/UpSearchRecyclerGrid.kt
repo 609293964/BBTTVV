@@ -446,7 +446,7 @@ private class UpSearchAdapter(
             card.root.isClickable = true
             card.root.defaultFocusHighlightEnabled = false
             card.root.stateListAnimator = runCatching {
-                AnimatorInflater.loadStateListAnimator(card.root.context, R.animator.blbl_focus_scale)
+                AnimatorInflater.loadStateListAnimator(card.root.context, R.animator.tv_focus_scale)
             }.getOrNull()
             card.root.setOnClickListener {
                 currentItem()?.let(onItemClick)

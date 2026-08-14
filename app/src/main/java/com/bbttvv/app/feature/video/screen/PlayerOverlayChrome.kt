@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,6 +56,7 @@ import com.bbttvv.app.core.util.formatLongVideoPubDate
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 import com.bbttvv.app.feature.video.viewmodel.PlayerUiState
 import com.bbttvv.app.feature.video.viewmodel.ProgressHeatmapPoint
+import com.bbttvv.app.ui.components.rememberSizedImageModel
 import kotlinx.coroutines.delay
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
 
@@ -240,7 +242,11 @@ private fun MetadataRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         AsyncImage(
-            model = uiState.info?.owner?.face.orEmpty(),
+            model = rememberSizedImageModel(
+                url = uiState.info?.owner?.face.orEmpty(),
+                widthPx = 72,
+                heightPx = 72,
+            ),
             contentDescription = uiState.info?.owner?.name.orEmpty(),
             modifier = Modifier
                 .size(24.dp)
@@ -369,7 +375,12 @@ private fun SegmentedProgressBar(
     modifier: Modifier = Modifier,
 ) {
     val isLightTheme = LocalIsLightTheme.current
-    Canvas(modifier = modifier) {
+    Canvas(
+        modifier = modifier.cachedHeatmap(
+            heatmapPoints = heatmapPoints,
+            isLightTheme = isLightTheme,
+        ),
+    ) {
         val hasHeatmap = heatmapPoints.isNotEmpty()
         val progressHeight = if (hasHeatmap) {
             7.dp.toPx().coerceAtMost(size.height)
@@ -381,120 +392,6 @@ private fun SegmentedProgressBar(
         } else {
             0f
         }
-        if (hasHeatmap) {
-            val heatmapGap = 2.dp.toPx().coerceAtMost(progressTop)
-            val heatmapBottom = (progressTop - heatmapGap).coerceAtLeast(0f)
-            val heatmapHeight = heatmapBottom.coerceAtLeast(0f)
-            if (heatmapHeight > 0f && size.width > 0f) {
-                val sampleCount = (size.width / 7.dp.toPx())
-                    .toInt()
-                    .coerceIn(48, 180)
-                val curvePoints = ArrayList<Offset>(sampleCount)
-                var sourceIndex = 0
-
-                repeat(sampleCount) { sampleIndex ->
-                    val fraction = if (sampleCount <= 1) {
-                        0f
-                    } else {
-                        sampleIndex.toFloat() / (sampleCount - 1).toFloat()
-                    }
-                    while (
-                        sourceIndex < heatmapPoints.lastIndex &&
-                        heatmapPoints[sourceIndex + 1].fraction < fraction
-                    ) {
-                        sourceIndex += 1
-                    }
-
-                    val left = heatmapPoints[sourceIndex]
-                    val right = heatmapPoints.getOrNull(sourceIndex + 1) ?: left
-                    val span = (right.fraction - left.fraction).takeIf { it > 0f } ?: 1f
-                    val t = ((fraction - left.fraction) / span).coerceIn(0f, 1f)
-                    val intensity = (left.intensity + (right.intensity - left.intensity) * t)
-                        .coerceIn(0f, 1f)
-                    curvePoints.add(
-                        Offset(
-                            x = size.width * fraction,
-                            y = heatmapBottom - heatmapHeight * intensity,
-                        )
-                    )
-                }
-
-                val fillPath = Path().apply {
-                    moveTo(0f, heatmapBottom)
-                    val first = curvePoints.first()
-                    lineTo(first.x, first.y)
-                    for (index in 1 until curvePoints.size) {
-                        val previous = curvePoints[index - 1]
-                        val current = curvePoints[index]
-                        quadraticTo(
-                            previous.x,
-                            previous.y,
-                            (previous.x + current.x) / 2f,
-                            (previous.y + current.y) / 2f,
-                        )
-                    }
-                    val last = curvePoints.last()
-                    lineTo(last.x, last.y)
-                    lineTo(size.width, heatmapBottom)
-                    close()
-                }
-                val strokePath = Path().apply {
-                    val first = curvePoints.first()
-                    moveTo(first.x, first.y)
-                    for (index in 1 until curvePoints.size) {
-                        val previous = curvePoints[index - 1]
-                        val current = curvePoints[index]
-                        quadraticTo(
-                            previous.x,
-                            previous.y,
-                            (previous.x + current.x) / 2f,
-                            (previous.y + current.y) / 2f,
-                        )
-                    }
-                    val last = curvePoints.last()
-                    lineTo(last.x, last.y)
-                }
-
-                val fillColors = if (isLightTheme) {
-                    listOf(
-                        Color(0xFFFB7299).copy(alpha = 0.36f),
-                        Color(0xFFFB7299).copy(alpha = 0.08f),
-                        Color.Transparent,
-                    )
-                } else {
-                    listOf(
-                        Color.White.copy(alpha = 0.36f),
-                        Color(0xFFBFE9FF).copy(alpha = 0.11f),
-                        Color.Transparent,
-                    )
-                }
-
-                val strokeColor = if (isLightTheme) {
-                    Color(0xFFFB7299).copy(alpha = 0.62f)
-                } else {
-                    Color.White.copy(alpha = 0.62f)
-                }
-
-                drawPath(
-                    path = fillPath,
-                    brush = Brush.verticalGradient(
-                        colors = fillColors,
-                        startY = 0f,
-                        endY = heatmapBottom,
-                    ),
-                )
-                drawPath(
-                    path = strokePath,
-                    color = strokeColor,
-                    style = Stroke(
-                        width = 1.2.dp.toPx(),
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round,
-                    ),
-                )
-            }
-        }
-
         val radius = progressHeight / 2f
         val corner = CornerRadius(radius, radius)
         val trackColor = if (isLightTheme) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.16f)
@@ -552,6 +449,118 @@ private fun SegmentedProgressBar(
                     )
                 }
             }
+        }
+    }
+}
+
+private fun Modifier.cachedHeatmap(
+    heatmapPoints: List<ProgressHeatmapPoint>,
+    isLightTheme: Boolean,
+): Modifier {
+    if (heatmapPoints.isEmpty()) return this
+    return drawWithCache {
+        val progressHeight = 7.dp.toPx().coerceAtMost(size.height)
+        val progressTop = (size.height - progressHeight).coerceAtLeast(0f)
+        val heatmapGap = 2.dp.toPx().coerceAtMost(progressTop)
+        val heatmapBottom = (progressTop - heatmapGap).coerceAtLeast(0f)
+        val heatmapHeight = heatmapBottom.coerceAtLeast(0f)
+        if (heatmapHeight <= 0f || size.width <= 0f) {
+            return@drawWithCache onDrawBehind { }
+        }
+
+        val sampleCount = (size.width / 7.dp.toPx()).toInt().coerceIn(48, 180)
+        val curvePoints = ArrayList<Offset>(sampleCount)
+        var sourceIndex = 0
+        repeat(sampleCount) { sampleIndex ->
+            val fraction = if (sampleCount <= 1) {
+                0f
+            } else {
+                sampleIndex.toFloat() / (sampleCount - 1).toFloat()
+            }
+            while (
+                sourceIndex < heatmapPoints.lastIndex &&
+                heatmapPoints[sourceIndex + 1].fraction < fraction
+            ) {
+                sourceIndex += 1
+            }
+            val left = heatmapPoints[sourceIndex]
+            val right = heatmapPoints.getOrNull(sourceIndex + 1) ?: left
+            val span = (right.fraction - left.fraction).takeIf { it > 0f } ?: 1f
+            val t = ((fraction - left.fraction) / span).coerceIn(0f, 1f)
+            val intensity = (left.intensity + (right.intensity - left.intensity) * t)
+                .coerceIn(0f, 1f)
+            curvePoints += Offset(
+                x = size.width * fraction,
+                y = heatmapBottom - heatmapHeight * intensity,
+            )
+        }
+
+        val fillPath = Path().apply {
+            moveTo(0f, heatmapBottom)
+            val first = curvePoints.first()
+            lineTo(first.x, first.y)
+            for (index in 1 until curvePoints.size) {
+                val previous = curvePoints[index - 1]
+                val current = curvePoints[index]
+                quadraticTo(
+                    previous.x,
+                    previous.y,
+                    (previous.x + current.x) / 2f,
+                    (previous.y + current.y) / 2f,
+                )
+            }
+            val last = curvePoints.last()
+            lineTo(last.x, last.y)
+            lineTo(size.width, heatmapBottom)
+            close()
+        }
+        val strokePath = Path().apply {
+            val first = curvePoints.first()
+            moveTo(first.x, first.y)
+            for (index in 1 until curvePoints.size) {
+                val previous = curvePoints[index - 1]
+                val current = curvePoints[index]
+                quadraticTo(
+                    previous.x,
+                    previous.y,
+                    (previous.x + current.x) / 2f,
+                    (previous.y + current.y) / 2f,
+                )
+            }
+            val last = curvePoints.last()
+            lineTo(last.x, last.y)
+        }
+        val fillColors = if (isLightTheme) {
+            listOf(
+                Color(0xFFFB7299).copy(alpha = 0.36f),
+                Color(0xFFFB7299).copy(alpha = 0.08f),
+                Color.Transparent,
+            )
+        } else {
+            listOf(
+                Color.White.copy(alpha = 0.36f),
+                Color(0xFFBFE9FF).copy(alpha = 0.11f),
+                Color.Transparent,
+            )
+        }
+        val fillBrush = Brush.verticalGradient(
+            colors = fillColors,
+            startY = 0f,
+            endY = heatmapBottom,
+        )
+        val strokeColor = if (isLightTheme) {
+            Color(0xFFFB7299).copy(alpha = 0.62f)
+        } else {
+            Color.White.copy(alpha = 0.62f)
+        }
+        val stroke = Stroke(
+            width = 1.2.dp.toPx(),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        )
+        onDrawBehind {
+            drawPath(path = fillPath, brush = fillBrush)
+            drawPath(path = strokePath, color = strokeColor, style = stroke)
         }
     }
 }

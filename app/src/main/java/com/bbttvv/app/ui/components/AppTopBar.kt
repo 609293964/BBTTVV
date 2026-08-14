@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -21,7 +22,7 @@ import com.bbttvv.app.ui.home.HomeFocusCoordinator
 import com.bbttvv.app.ui.home.HomeFocusRequestResult
 import com.bbttvv.app.ui.home.HomeFocusTarget
 
-import com.bbttvv.app.ui.theme.LocalIsLightTheme
+import com.bbttvv.app.ui.theme.LocalTvSemanticColors
 
 @Composable
 internal fun AppTopBar(
@@ -36,7 +37,7 @@ internal fun AppTopBar(
     onTopBarFocused: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val isLightTheme = LocalIsLightTheme.current
+    val semanticColors = LocalTvSemanticColors.current
     val tabsKey = remember(tabs) {
         tabs.joinToString(separator = "|") { tab -> tab.name }
     }
@@ -135,7 +136,14 @@ internal fun AppTopBar(
         },
         update = {
             controller.setFocusEnabled(focusEnabled)
-            controller.adapter?.setIsLightTheme(isLightTheme)
+            controller.adapter?.setThemeColors(
+                AppTopBarThemeColors(
+                    focusContainer = semanticColors.focusContainer.toArgb(),
+                    focusContent = semanticColors.focusContent.toArgb(),
+                    selectedContent = semanticColors.selectedContent.toArgb(),
+                    content = semanticColors.secondaryText.toArgb(),
+                )
+            )
             controller.adapter?.updateCallbacks(
                 updateSelectedTabOnFocus = updateSelectedTabOnFocus,
                 onTabSelected = latestOnTabSelected,

@@ -1,22 +1,17 @@
 package com.bbttvv.app.core.store
 
 import android.content.Context
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.bbttvv.app.core.util.SubtitleAutoPreference
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 internal val Context.settingsDataStore by preferencesDataStore(name = "settings_prefs")
-
-data class AppNavigationSettings(
-    val orderedVisibleTabIds: List<String> = DEFAULT_TOP_LEVEL_TABS,
-    val startDestination: String = DEFAULT_TOP_LEVEL_TABS.first()
-)
 
 object SettingsManager {
     enum class FeedApiType(
@@ -96,6 +91,27 @@ object SettingsManager {
         }
     }
 
+    data class SettingsSnapshot(
+        val autoHighestQuality: Boolean = true,
+        val showOnlineCount: Boolean = true,
+        val privacyMode: Boolean = false,
+        val feedApiType: FeedApiType = FeedApiType.WEB,
+        val homeRefreshCount: Int = DEFAULT_HOME_REFRESH_COUNT,
+        val userAgent: String = DEFAULT_APP_USER_AGENT,
+        val ipv4OnlyEnabled: Boolean = false,
+        val strictCustomCdnEnabled: Boolean = false,
+        val customCdnHost: String = "",
+        val playerAutoResumeEnabled: Boolean = true,
+        val playerPlaybackEndAction: PlayerPlaybackEndAction = PlayerPlaybackEndAction.NONE,
+        val videoDetailCommentsEnabled: Boolean = false,
+        val updateContentOnTabFocusEnabled: Boolean = true,
+        val homeTopTabSelectOnFocusEnabled: Boolean = true,
+        val watchLaterInTopTabsEnabled: Boolean = false,
+        val dynamicPageDisplayMode: DynamicPageDisplayMode = DynamicPageDisplayMode.ALL,
+        val singleBackToHomeEnabled: Boolean = false,
+        val themeMode: ThemeMode = ThemeMode.DARK,
+    )
+
     private const val SYNC_PREFS_NAME = "settings_sync_cache"
     private const val CACHE_PRIVACY_MODE = "privacy_mode"
     private const val CACHE_SPONSOR_BLOCK_ENABLED = "sponsor_block_enabled"
@@ -107,7 +123,6 @@ object SettingsManager {
     private const val CACHE_HOME_REFRESH_COUNT = "home_refresh_count"
     private const val CACHE_FEED_API_TYPE = "feed_api_type"
     private const val CACHE_STOP_PLAYBACK_ON_EXIT = "stop_playback_on_exit"
-    private const val CACHE_TOP_LEVEL_TABS = "top_level_tabs"
     private const val CACHE_CLICK_TO_PLAY = "click_to_play"
     private const val CACHE_BACKGROUND_PLAYBACK_ENABLED = "background_playback_enabled"
     private const val CACHE_AUDIO_FOCUS_ENABLED = "audio_focus_enabled"
@@ -138,7 +153,6 @@ object SettingsManager {
     private val keyHomeRefreshCount = androidx.datastore.preferences.core.intPreferencesKey(CACHE_HOME_REFRESH_COUNT)
     private val keyFeedApiType = stringPreferencesKey(CACHE_FEED_API_TYPE)
     private val keyStopPlaybackOnExit = booleanPreferencesKey(CACHE_STOP_PLAYBACK_ON_EXIT)
-    private val keyTopLevelTabs = stringPreferencesKey(CACHE_TOP_LEVEL_TABS)
     private val keyClickToPlay = booleanPreferencesKey(CACHE_CLICK_TO_PLAY)
     private val keyBackgroundPlaybackEnabled = booleanPreferencesKey(CACHE_BACKGROUND_PLAYBACK_ENABLED)
     private val keyAudioFocusEnabled = booleanPreferencesKey(CACHE_AUDIO_FOCUS_ENABLED)
@@ -160,6 +174,77 @@ object SettingsManager {
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
     private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
     private val keyThemeMode = stringPreferencesKey(CACHE_THEME_MODE)
+
+    fun getSettingsSnapshot(context: Context): Flow<SettingsSnapshot> {
+        return context.settingsDataStore.data
+            .map { preferences ->
+                SettingsSnapshot(
+                    autoHighestQuality = preferences[keyAuto1080p] ?: true,
+                    showOnlineCount = preferences[keyShowOnlineCount] ?: true,
+                    privacyMode = preferences[keyPrivacyMode] ?: false,
+                    feedApiType = FeedApiType.fromValue(preferences[keyFeedApiType]),
+                    homeRefreshCount = normalizeHomeRefreshCount(
+                        preferences[keyHomeRefreshCount] ?: DEFAULT_HOME_REFRESH_COUNT
+                    ),
+                    userAgent = normalizeUserAgent(preferences[keyUserAgent]),
+                    ipv4OnlyEnabled = preferences[keyIpv4OnlyEnabled] ?: false,
+                    strictCustomCdnEnabled = preferences[keyStrictCustomCdnEnabled] ?: false,
+                    customCdnHost = normalizeCustomCdnHost(preferences[keyCustomCdnHost]),
+                    playerAutoResumeEnabled = preferences[keyPlayerAutoResumeEnabled] ?: true,
+                    playerPlaybackEndAction = PlayerPlaybackEndAction.fromValue(
+                        preferences[keyPlayerPlaybackEndAction]
+                    ),
+                    videoDetailCommentsEnabled = preferences[keyVideoDetailCommentsEnabled] ?: false,
+                    updateContentOnTabFocusEnabled =
+                        preferences[keyProfileUpdateContentOnTabFocusEnabled] ?: true,
+                    homeTopTabSelectOnFocusEnabled =
+                        preferences[keyHomeTopTabSelectOnFocusEnabled] ?: true,
+                    watchLaterInTopTabsEnabled = preferences[keyWatchLaterInTopTabs] ?: false,
+                    dynamicPageDisplayMode = DynamicPageDisplayMode.fromValue(
+                        preferences[keyDynamicPageDisplayMode]
+                    ),
+                    singleBackToHomeEnabled = preferences[keySingleBackToHome] ?: false,
+                    themeMode = ThemeMode.fromValue(preferences[keyThemeMode]),
+                )
+            }
+            .distinctUntilChanged()
+    }
+
+    fun getSettingsSnapshotSync(context: Context): SettingsSnapshot {
+        val preferences = context.syncPrefs()
+        return SettingsSnapshot(
+            autoHighestQuality = preferences.getBoolean(CACHE_AUTO_1080P, true),
+            showOnlineCount = preferences.getBoolean(CACHE_SHOW_ONLINE_COUNT, true),
+            privacyMode = preferences.getBoolean(CACHE_PRIVACY_MODE, false),
+            feedApiType = FeedApiType.fromValue(
+                preferences.getString(CACHE_FEED_API_TYPE, FeedApiType.WEB.value)
+            ),
+            homeRefreshCount = normalizeHomeRefreshCount(
+                preferences.getInt(CACHE_HOME_REFRESH_COUNT, DEFAULT_HOME_REFRESH_COUNT)
+            ),
+            userAgent = normalizeUserAgent(preferences.getString(CACHE_USER_AGENT, null)),
+            ipv4OnlyEnabled = preferences.getBoolean(CACHE_IPV4_ONLY_ENABLED, false),
+            strictCustomCdnEnabled = preferences.getBoolean(CACHE_STRICT_CUSTOM_CDN_ENABLED, false),
+            customCdnHost = normalizeCustomCdnHost(preferences.getString(CACHE_CUSTOM_CDN_HOST, null)),
+            playerAutoResumeEnabled = preferences.getBoolean(CACHE_PLAYER_AUTO_RESUME_ENABLED, true),
+            playerPlaybackEndAction = PlayerPlaybackEndAction.fromValue(
+                preferences.getString(CACHE_PLAYER_PLAYBACK_END_ACTION, PlayerPlaybackEndAction.NONE.value)
+            ),
+            videoDetailCommentsEnabled = preferences.getBoolean(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED, false),
+            updateContentOnTabFocusEnabled =
+                preferences.getBoolean(CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED, true),
+            homeTopTabSelectOnFocusEnabled =
+                preferences.getBoolean(CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED, true),
+            watchLaterInTopTabsEnabled = preferences.getBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, false),
+            dynamicPageDisplayMode = DynamicPageDisplayMode.fromValue(
+                preferences.getString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, DynamicPageDisplayMode.ALL.value)
+            ),
+            singleBackToHomeEnabled = preferences.getBoolean(CACHE_SINGLE_BACK_TO_HOME, false),
+            themeMode = ThemeMode.fromValue(
+                preferences.getString(CACHE_THEME_MODE, ThemeMode.DARK.value)
+            ),
+        )
+    }
 
     fun getThemeMode(context: Context): Flow<ThemeMode> {
         return context.settingsDataStore.data.map { preferences ->
@@ -214,10 +299,6 @@ object SettingsManager {
             preferences[keySingleBackToHome] = enabled
         }
         updateSyncCache(context) { putBoolean(CACHE_SINGLE_BACK_TO_HOME, enabled) }
-    }
-
-    fun observeAppNavigationSettings(context: Context): Flow<AppNavigationSettings> {
-        return context.settingsDataStore.data.map(::mapNavigationSettingsFromPreferences)
     }
 
     fun getAuto1080p(context: Context): Flow<Boolean> {
@@ -551,30 +632,6 @@ object SettingsManager {
         updateSyncCache(context) { putBoolean(CACHE_STOP_PLAYBACK_ON_EXIT, enabled) }
     }
 
-    fun getTopLevelTabs(context: Context): Flow<List<String>> {
-        return context.settingsDataStore.data.map { preferences ->
-            (preferences[keyTopLevelTabs] ?: DEFAULT_TOP_LEVEL_TABS.joinToString(","))
-                .split(",")
-                .map { it.trim().uppercase() }
-                .filter { it.isNotEmpty() }
-                .distinct()
-                .ifEmpty { DEFAULT_TOP_LEVEL_TABS }
-        }
-    }
-
-    suspend fun setTopLevelTabs(context: Context, tabIds: List<String>) {
-        val normalized = tabIds
-            .map { it.trim().uppercase() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .ifEmpty { DEFAULT_TOP_LEVEL_TABS }
-        val serialized = normalized.joinToString(",")
-        updatePreference(context) { preferences ->
-            preferences[keyTopLevelTabs] = serialized
-        }
-        updateSyncCache(context) { putString(CACHE_TOP_LEVEL_TABS, serialized) }
-    }
-
     fun isPrivacyModeEnabledSync(context: Context): Boolean {
         return context.syncPrefs().getBoolean(CACHE_PRIVACY_MODE, false)
     }
@@ -673,19 +730,6 @@ object SettingsManager {
         )
     }
 
-    internal fun mapNavigationSettingsFromPreferences(preferences: Preferences): AppNavigationSettings {
-        val tabs = (preferences[keyTopLevelTabs] ?: DEFAULT_TOP_LEVEL_TABS.joinToString(","))
-            .split(",")
-            .map { it.trim().uppercase() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .ifEmpty { DEFAULT_TOP_LEVEL_TABS }
-        return AppNavigationSettings(
-            orderedVisibleTabIds = tabs,
-            startDestination = tabs.first()
-        )
-    }
-
     private suspend fun updatePreference(
         context: Context,
         block: suspend (androidx.datastore.preferences.core.MutablePreferences) -> Unit
@@ -725,8 +769,6 @@ object SettingsManager {
 }
 
 internal const val DEFAULT_HOME_REFRESH_COUNT = 20
-internal val DEFAULT_TOP_LEVEL_TABS = listOf("HOME", "SEARCH", "PROFILE", "SETTINGS")
-
 internal fun normalizeHomeRefreshCount(count: Int): Int {
     return count.coerceIn(10, 40)
 }

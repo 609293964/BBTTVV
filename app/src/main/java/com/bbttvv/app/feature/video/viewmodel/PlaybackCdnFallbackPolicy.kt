@@ -1,6 +1,5 @@
 package com.bbttvv.app.feature.video.viewmodel
 
-import com.bbttvv.app.data.model.response.DashAudio
 import com.bbttvv.app.feature.video.usecase.PlaybackSource
 import java.net.URI
 
@@ -54,29 +53,6 @@ internal fun buildPlaybackCdnFallbackState(
         fallbackAudioUrl = fallbackAudioUrl,
         regionLabel = regionLabel
     )
-}
-
-internal fun buildPlaybackAudioUrlCandidates(
-    audioUrl: String?,
-    cachedDashAudios: List<DashAudio>
-): List<String> {
-    val selectedAudio = audioUrl
-        ?.takeIf { it.isNotBlank() }
-        ?.let { selectedUrl ->
-            cachedDashAudios.firstOrNull { audio ->
-                audio.getValidUrl() == selectedUrl ||
-                    audio.backupUrl.orEmpty().any { backupUrl -> backupUrl == selectedUrl }
-            }
-        }
-
-    return buildList {
-        audioUrl?.takeIf { it.isNotBlank() }?.let(::add)
-        selectedAudio
-            ?.backupUrl
-            .orEmpty()
-            .filter { it.isNotBlank() }
-            .let(::addAll)
-    }.distinct()
 }
 
 internal fun shouldFallbackFromCdnRewrite(

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -278,17 +279,29 @@ private fun BoxScope.PlayerControlsLayer(
             }
 
             overlayUiState.activePanel?.let { activePanel ->
+                val panelLayout = resolvePlayerPanelLayout(activePanel)
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(
-                            start = PlayerLayoutTokens.overlayHorizontalPadding,
-                            end = PlayerLayoutTokens.overlayHorizontalPadding,
-                            bottom = PlayerLayoutTokens.panelBottomPadding,
-                        )
-                        .widthIn(max = 1080.dp)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.BottomEnd,
+                    modifier = when (panelLayout) {
+                        PlayerPanelLayout.RightSidebar -> Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxWidth(PLAYER_COMMENTS_SIDEBAR_WIDTH_FRACTION)
+                            .fillMaxHeight()
+
+                        PlayerPanelLayout.Floating -> Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(
+                                start = PlayerLayoutTokens.overlayHorizontalPadding,
+                                end = PlayerLayoutTokens.overlayHorizontalPadding,
+                                bottom = PlayerLayoutTokens.panelBottomPadding,
+                            )
+                            .widthIn(max = 1080.dp)
+                            .fillMaxWidth()
+                    },
+                    contentAlignment = if (panelLayout == PlayerPanelLayout.RightSidebar) {
+                        Alignment.CenterEnd
+                    } else {
+                        Alignment.BottomEnd
+                    },
                 ) {
                     PlayerOptionsPanel(
                         title = panelTitleFor(activePanel),
@@ -296,6 +309,7 @@ private fun BoxScope.PlayerControlsLayer(
                         selectedIndex = overlayUiState.selectedPanelIndex,
                         visualEffectsState = visualEffectsState,
                         optionFocusRequesters = panelFocusRequesters,
+                        layout = panelLayout,
                     )
                 }
             }

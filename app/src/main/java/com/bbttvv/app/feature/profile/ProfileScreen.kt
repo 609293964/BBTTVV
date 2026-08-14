@@ -56,7 +56,6 @@ internal enum class ProfileMenu(val label: String) {
     BANGUMI("我的追番"),
     WATCH_LATER("稍后再看"),
     SWITCH_ACCOUNT("切换账号"),
-    CHANGE_ICON("更换图标"),
     SETTINGS("设置"),
     PLUGINS("插件中心"),
     GUIDE("操作说明"),
@@ -71,7 +70,6 @@ private val profileMenuDisplayOrder = listOf(
     ProfileMenu.SETTINGS,
     ProfileMenu.PLUGINS,
     ProfileMenu.SWITCH_ACCOUNT,
-    ProfileMenu.CHANGE_ICON,
     ProfileMenu.GUIDE,
     ProfileMenu.LOGOUT
 )
@@ -589,11 +587,6 @@ private fun ProfileContentPanel(
                     onPrepareRelogin = onPrepareRelogin,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab
-                )
-                ProfileMenu.CHANGE_ICON -> ChangeIconPanel(
-                    focusCoordinator = focusCoordinator,
-                    focusTab = focusTab,
-                    onRequestSidebarFocus = onRequestSidebarFocus
                 )
                 ProfileMenu.PLUGINS -> ProfilePluginCenterPanel(
                     focusCoordinator = focusCoordinator,

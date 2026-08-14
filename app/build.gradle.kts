@@ -1,4 +1,6 @@
 import com.bbttvv.build.BumpReleaseVersionTask
+import com.bbttvv.build.ExportReleaseApksTask
+import com.android.build.api.artifact.SingleArtifact
 import java.util.Properties
 
 plugins {
@@ -27,6 +29,10 @@ val releaseAbiStr = providers.gradleProperty("bbttvv.releaseAbi")
     .orElse("arm64-v8a")
     .get()
 val releaseAbis = releaseAbiStr.split(",").map { it.trim() }
+val splitReleaseApks = providers.gradleProperty("bbttvv.splitReleaseApks")
+    .map(String::toBoolean)
+    .orElse(false)
+    .get()
 val allowedReleaseAbis = setOf("arm64-v8a", "armeabi-v7a")
 check(releaseAbis.all { it in allowedReleaseAbis }) {
     "Unsupported release ABI '$releaseAbiStr'. Expected one of: ${allowedReleaseAbis.joinToString()}"
@@ -64,6 +70,17 @@ android {
         }
     }
 
+    if (splitReleaseApks) {
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include(*releaseAbis.toTypedArray())
+                isUniversalApk = false
+            }
+        }
+    }
+
     signingConfigs {
         create("release") {
             if (hasReleaseKeystore) {
@@ -82,8 +99,10 @@ android {
             isShrinkResources = true
             isDebuggable = false
             isProfileable = false 
-            ndk {
-                abiFilters += releaseAbis
+            if (!splitReleaseApks) {
+                ndk {
+                    abiFilters += releaseAbis
+                }
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -95,8 +114,10 @@ android {
             versionNameSuffix = "-debug"
             isMinifyEnabled = false
             isShrinkResources = false
-            ndk {
-                abiFilters += listOf("arm64-v8a", "x86", "x86_64")
+            if (!splitReleaseApks) {
+                ndk {
+                    abiFilters += listOf("arm64-v8a", "x86", "x86_64")
+                }
             }
         }
         if (!hasReleaseKeystore) {
@@ -151,6 +172,18 @@ androidComponents {
             output.versionCode.set(releaseVersion.map { it.versionCode })
             output.versionName.set(releaseVersion.map { it.versionName })
         }
+        if (splitReleaseApks) {
+            val exportReleaseApks = tasks.register<ExportReleaseApksTask>("exportReleaseApks") {
+                group = "build"
+                description = "Exports canonical arm64-v8a and armeabi-v7a release APKs."
+                packagedApkDirectory.set(variant.artifacts.get(SingleArtifact.APK))
+                versionFile.set(bumpReleaseVersion.flatMap { it.versionFile })
+                outputDirectory.set(layout.buildDirectory.dir("outputs/bbttvv/release"))
+            }
+            tasks.matching { it.name == "assembleRelease" }.configureEach {
+                finalizedBy(exportReleaseApks)
+            }
+        }
     }
 }
 
@@ -192,8 +225,6 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    
     // Android TV Foundation and Material
     implementation(libs.androidx.tv.material)
 

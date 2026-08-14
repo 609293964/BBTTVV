@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 data class BangumiDetailUiState(
@@ -28,6 +29,7 @@ class BangumiViewModel : ViewModel() {
 
     private var currentSeasonId: Long = 0L
     private var currentEpId: Long = 0L
+    private var seasonSwitchJob: Job? = null
 
     fun load(seasonId: Long, epId: Long) {
         if (seasonId <= 0L && epId <= 0L) {
@@ -90,6 +92,8 @@ class BangumiViewModel : ViewModel() {
     fun switchSeason(seasonId: Long) {
         if (seasonId <= 0L || _uiState.value.selectedSeasonId == seasonId) return
 
+        seasonSwitchJob?.cancel()
+
         _uiState.update {
             it.copy(
                 selectedSeasonId = seasonId,
@@ -98,7 +102,7 @@ class BangumiViewModel : ViewModel() {
             )
         }
 
-        viewModelScope.launch {
+        seasonSwitchJob = viewModelScope.launch {
             BangumiRepository.getSeasonDetail(seasonId = seasonId, epId = 0L)
                 .onSuccess { detail ->
                     if (_uiState.value.selectedSeasonId != seasonId) return@onSuccess
@@ -122,6 +126,11 @@ class BangumiViewModel : ViewModel() {
                     }
                 }
         }
+    }
+
+    override fun onCleared() {
+        seasonSwitchJob?.cancel()
+        super.onCleared()
     }
 
     /**

@@ -165,16 +165,6 @@ internal fun shouldCallAccessTokenApi(
     return hasAccessToken && nowMs >= cooldownUntilMs
 }
 
-internal fun shouldTryAppApiForTargetQuality(
-    targetQn: Int,
-    hasSessionCookie: Boolean = true,
-    directedTrafficMode: Boolean = false
-): Boolean {
-    // PiliPlus parity: playback stays on the Web/WBI playurl path instead of
-    // prioritizing the APP access_token endpoint for 1080P and premium tiers.
-    return false
-}
-
 internal fun buildPlayUrlWbiBaseParams(
     bvid: String,
     cid: Long,
@@ -295,16 +285,4 @@ internal fun shouldCachePlayUrlResult(
 ): Boolean {
     if (audioLang != null) return false
     return source != PlayUrlSource.GUEST
-}
-
-internal fun shouldFetchCommentEmoteMapOnVideoLoad(): Boolean {
-    return false
-}
-
-internal fun shouldRefreshVipStatusOnVideoLoad(): Boolean {
-    return false
-}
-
-internal fun shouldFetchInteractionStatusOnVideoLoad(): Boolean {
-    return false
 }

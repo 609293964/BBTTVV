@@ -1,6 +1,5 @@
 package com.bbttvv.app.ui.components
 
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
 import android.view.KeyEvent
@@ -20,12 +19,12 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     private var onSelectedTabConfirmed: (AppTopLevelTab) -> Unit = {}
     private var onDpadDown: () -> Boolean = { false }
     private var onTopBarFocused: () -> Unit = {}
-    private var isLightTheme: Boolean = false
+    private var themeColors = AppTopBarThemeColors.Dark
 
-    fun setIsLightTheme(isLight: Boolean) {
-        if (isLightTheme != isLight) {
-            isLightTheme = isLight
-            notifyDataSetChanged()
+    fun setThemeColors(colors: AppTopBarThemeColors) {
+        if (themeColors != colors) {
+            themeColors = colors
+            notifyItemRangeChanged(0, itemCount, TabThemePayload)
         }
     }
 
@@ -44,7 +43,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     }
 
     override fun onBindViewHolder(holder: TabViewHolder, position: Int, payloads: MutableList<Any>) {
-        if (payloads.contains(TabSelectionPayload)) {
+        if (payloads.contains(TabSelectionPayload) || payloads.contains(TabThemePayload)) {
             holder.updateSelectionVisual()
             return
         }
@@ -158,8 +157,26 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             }
 
             binding.root.setOnFocusChangeListener { _, hasFocus ->
-                updateVisual(animate = true)
-                if (!hasFocus) return@setOnFocusChangeListener
+                if (!hasFocus) {
+                    // A horizontal D-Pad move selects the newly focused tab. The new holder
+                    // receives focus before RecyclerView can dispatch the old holder's
+                    // selection payload, so animating the old selected appearance here leaves
+                    // a visible second cursor for a frame. Clear it synchronously instead.
+                    val hideStaleSelectedVisual =
+                        updateSelectedTabOnFocus &&
+                            boundTab == selectedTab &&
+                            directionalSelectionTracker.hasPendingTarget()
+                    updateVisual(
+                        selectedOverride = resolveTopBarSelectedVisual(
+                            boundTab = boundTab,
+                            selectedTab = selectedTab,
+                            hideStaleSelectedVisual = hideStaleSelectedVisual,
+                        ),
+                    )
+                    return@setOnFocusChangeListener
+                }
+
+                updateVisual()
                 onTopBarFocused()
                 val tab = boundTab ?: return@setOnFocusChangeListener
                 val selectFromDirectionalFocus = directionalSelectionTracker.consume(tab)
@@ -219,55 +236,33 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             boundTab = tab
             binding.tvLabel.text = tab.title
             binding.root.contentDescription = tab.title
-            updateVisual(animate = false)
+            updateVisual()
         }
 
         fun updateSelectionVisual() {
-            updateVisual(animate = false)
+            updateVisual()
         }
 
-        private fun updateVisual(animate: Boolean) {
-            val selected = boundTab == selectedTab
+        private fun updateVisual(selectedOverride: Boolean = boundTab == selectedTab) {
+            val selected = selectedOverride
             val focused = binding.root.isFocused
             val scale = when {
                 focused -> 1.06f
                 selected -> 1.03f
                 else -> 1f
             }
-            if (animate) {
-                binding.root.animate()
-                    .scaleX(scale)
-                    .scaleY(scale)
-                    .setDuration(150L)
-                    .start()
-            } else {
-                binding.root.animate().cancel()
-                binding.root.scaleX = scale
-                binding.root.scaleY = scale
-            }
+            // 焦点移动是高频 TV 操作，缩放必须同步更新，避免产生第二个残留光标。
+            binding.root.animate().cancel()
+            binding.root.scaleX = scale
+            binding.root.scaleY = scale
 
-            val cardColor = when {
-                focused -> {
-                    if (isLightTheme) Color.rgb(251, 114, 153) // #FB7299
-                    else Color.WHITE
-                }
-                else -> Color.TRANSPARENT
-            }
+            val cardColor = if (focused) themeColors.focusContainer else android.graphics.Color.TRANSPARENT
             binding.root.setCardBackgroundColor(cardColor)
 
             val textColor = when {
-                focused -> {
-                    if (isLightTheme) Color.WHITE
-                    else Color.rgb(17, 20, 24)
-                }
-                selected -> {
-                    if (isLightTheme) Color.rgb(251, 114, 153) // #FB7299
-                    else Color.WHITE
-                }
-                else -> {
-                    if (isLightTheme) Color.rgb(97, 102, 109) // #61666D
-                    else Color.argb(153, 255, 255, 255)
-                }
+                focused -> themeColors.focusContent
+                selected -> themeColors.selectedContent
+                else -> themeColors.content
             }
             binding.tvLabel.setTextColor(textColor)
             binding.tvLabel.typeface = topBarTypeface(if (selected || focused) 600 else 500)
@@ -284,6 +279,31 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
 
     private companion object {
         val TabSelectionPayload = Any()
+        val TabThemePayload = Any()
+    }
+}
+
+internal fun resolveTopBarSelectedVisual(
+    boundTab: AppTopLevelTab?,
+    selectedTab: AppTopLevelTab?,
+    hideStaleSelectedVisual: Boolean,
+): Boolean {
+    return !hideStaleSelectedVisual && boundTab == selectedTab
+}
+
+internal data class AppTopBarThemeColors(
+    val focusContainer: Int,
+    val focusContent: Int,
+    val selectedContent: Int,
+    val content: Int,
+) {
+    companion object {
+        val Dark = AppTopBarThemeColors(
+            focusContainer = android.graphics.Color.WHITE,
+            focusContent = android.graphics.Color.rgb(17, 20, 24),
+            selectedContent = android.graphics.Color.WHITE,
+            content = android.graphics.Color.argb(153, 255, 255, 255),
+        )
     }
 }
 

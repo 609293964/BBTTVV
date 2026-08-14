@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bbttvv.app.core.paging.PagedFeedGridState
 import com.bbttvv.app.core.paging.appliedOrNull
 import com.bbttvv.app.core.plugin.PluginManager
+import com.bbttvv.app.core.plugin.FeedKind
 import com.bbttvv.app.core.plugin.json.JsonPluginManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.VideoItem
@@ -153,7 +154,8 @@ class PopularViewModel : ViewModel() {
                             sourceItems = incomingVideos,
                             visibleItems = applyFeedFiltersOffMain(
                                 videos = incomingVideos,
-                                recordStats = true
+                                recordStats = true,
+                                feedKind = feedKindForCategory(index)
                             ),
                             nextKey = if (incomingVideos.isNotEmpty()) pageKey + 1 else pageKey,
                             endReached = incomingVideos.isEmpty()
@@ -217,8 +219,12 @@ class PopularViewModel : ViewModel() {
                 if (token <= 0L) return@collectLatest
                 val selectedIndex = _uiState.value.selectedCategoryIndex
                 if (categoryFeeds.isEmpty()) return@collectLatest
-                categoryFeeds.forEach { (_, feed) ->
-                    val filteredVideos = applyFeedFiltersOffMain(feed.sourceSnapshot(), recordStats = false)
+                categoryFeeds.forEach { (index, feed) ->
+                    val filteredVideos = applyFeedFiltersOffMain(
+                        feed.sourceSnapshot(),
+                        recordStats = false,
+                        feedKind = feedKindForCategory(index)
+                    )
                     feed.replaceVisible(filteredVideos)
                 }
                 val filteredSelectedVideos = feedForCategory(selectedIndex).visibleSnapshot()
@@ -231,13 +237,25 @@ class PopularViewModel : ViewModel() {
 
     private suspend fun applyFeedFiltersOffMain(
         videos: List<VideoItem>,
-        recordStats: Boolean
+        recordStats: Boolean,
+        feedKind: FeedKind
     ): List<VideoItem> = withContext(Dispatchers.Default) {
-        applyFeedFilters(videos, recordStats = recordStats)
+        applyFeedFilters(videos, recordStats = recordStats, feedKind = feedKind)
     }
 
-    private fun applyFeedFilters(videos: List<VideoItem>, recordStats: Boolean): List<VideoItem> {
+    private fun applyFeedFilters(
+        videos: List<VideoItem>,
+        recordStats: Boolean,
+        feedKind: FeedKind
+    ): List<VideoItem> {
         val jsonFiltered = JsonPluginManager.filterVideos(videos, recordStats = recordStats)
-        return PluginManager.filterFeedItems(jsonFiltered)
+        return PluginManager.filterFeedItems(jsonFiltered, feedKind)
     }
+
+    private fun feedKindForCategory(index: Int): FeedKind =
+        if (defaultPopularCategories.getOrNull(index)?.rid == null) {
+            FeedKind.HOME_POPULAR
+        } else {
+            FeedKind.HOME_REGION
+        }
 }

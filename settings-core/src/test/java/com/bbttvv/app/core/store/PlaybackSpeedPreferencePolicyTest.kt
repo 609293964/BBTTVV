@@ -85,18 +85,6 @@ class PlaybackSpeedPreferencePolicyTest {
     }
 
     @Test
-    fun `playback speed preferences expose resolved speed`() {
-        assertEquals(
-            2.0f,
-            PlaybackSpeedPreferences(
-                defaultSpeed = 1.25f,
-                rememberLastSpeed = true,
-                lastSpeed = 2.0f
-            ).preferredSpeed
-        )
-    }
-
-    @Test
     fun `danmaku display area is clamped`() {
         assertEquals(0.1f, normalizeDanmakuDisplayArea(0.0f))
         assertEquals(0.55f, normalizeDanmakuDisplayArea(0.55f))
