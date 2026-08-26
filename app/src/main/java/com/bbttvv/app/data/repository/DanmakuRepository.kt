@@ -446,6 +446,28 @@ object DanmakuRepository {
         }
     }
 
+    internal suspend fun submitDanmakuGrade(
+        aid: Long,
+        cid: Long,
+        progressMs: Long,
+        gradeId: Long,
+        gradeScore: Int,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val csrf = TokenManager.csrfCache.orEmpty()
+        if (csrf.isBlank() || TokenManager.sessDataCache.isNullOrBlank()) {
+            return@withContext Result.failure(IllegalStateException("请先登录后打分"))
+        }
+        runCatching {
+            val response = api.submitDanmakuGrade(
+                aid = aid, cid = cid, progress = progressMs.coerceAtLeast(0L),
+                gradeId = gradeId, gradeScore = gradeScore, csrf = csrf,
+            )
+            if (response.code != 0) {
+                throw IllegalStateException(response.message.ifBlank { "打分失败(${response.code})" })
+            }
+        }
+    }
+
     internal suspend fun getDanmakuUserFilter(forceRefresh: Boolean = false): DanmakuUserFilter = withContext(Dispatchers.IO) {
         val mid = TokenManager.midCache?.takeIf { it > 0L } ?: return@withContext DanmakuUserFilter.EMPTY
         if (TokenManager.sessDataCache.isNullOrBlank()) return@withContext DanmakuUserFilter.EMPTY

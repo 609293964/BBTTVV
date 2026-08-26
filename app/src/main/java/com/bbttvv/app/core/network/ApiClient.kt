@@ -413,6 +413,17 @@ interface BilibiliApi {
         @retrofit2.http.Field("csrf") csrf: String,
     ): SimpleApiResponse
 
+    @retrofit2.http.FormUrlEncoded
+    @POST("https://api.bilibili.com/x/v2/dm/command/grade/post")
+    suspend fun submitDanmakuGrade(
+        @retrofit2.http.Field("aid") aid: Long,
+        @retrofit2.http.Field("cid") cid: Long,
+        @retrofit2.http.Field("progress") progress: Long,
+        @retrofit2.http.Field("grade_id") gradeId: Long,
+        @retrofit2.http.Field("grade_score") gradeScore: Int,
+        @retrofit2.http.Field("csrf") csrf: String,
+    ): SimpleApiResponse
+
     @GET("https://api.bilibili.com/x/dm/filter/user")
     suspend fun getDanmakuFilterUser(): ResponseBody
 

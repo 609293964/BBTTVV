@@ -14,13 +14,18 @@ data class DanmakuVoteOption(
     val text: String,
     val count: Int,
     val hasSelfDefined: Boolean,
+    val gradeScore: Int? = null,
 )
+
+enum class DanmakuVoteKind { Vote, Grade }
 
 data class DanmakuVotePrompt(
     val commandId: String,
     val voteId: Long,
     val voteType: Int,
+    val kind: DanmakuVoteKind,
     val question: String,
+    val participantCount: Int = 0,
     val options: List<DanmakuVoteOption>,
     val triggerPositionMs: Long,
     val durationMs: Long,
@@ -65,28 +70,42 @@ private val danmakuVoteJson = Json { ignoreUnknownKeys = true }
 internal fun parseDanmakuVotePrompts(
     commands: List<DanmakuProto.CommandDm>,
 ): List<DanmakuVotePrompt> = commands.mapNotNull { command ->
-    if (command.command != "#VOTE#" || command.extra.isBlank()) return@mapNotNull null
+    val kind = when (command.command.trim().uppercase()) {
+        "#VOTE#", "VIDEO_VOTE_MSG" -> DanmakuVoteKind.Vote
+        "#GRADE#", "GRADE_MSG", "VIDEO_GRADE_MSG" -> DanmakuVoteKind.Grade
+        else -> return@mapNotNull null
+    }
+    if (command.extra.isBlank() && command.content.isBlank()) return@mapNotNull null
     val payload = runCatching {
-        danmakuVoteJson.decodeFromString<DanmakuVotePayload>(command.extra)
+        danmakuVoteJson.decodeFromString<DanmakuVotePayload>(command.extra.ifBlank { command.content })
     }.getOrNull() ?: return@mapNotNull null
-    val options = payload.options.mapNotNull { option ->
-        if (option.id <= 0 || option.description.isBlank()) return@mapNotNull null
+    val sourceOptions = if (kind == DanmakuVoteKind.Grade && payload.options.isEmpty()) {
+        (1..5).map { level -> DanmakuVotePayloadOption(id = level, description = "$level", score = level * 2) }
+    } else payload.options
+    val options = sourceOptions.mapNotNull { option ->
+        val gradeScore = option.score?.takeIf { it in 2..10 && it % 2 == 0 }
+        if (option.id <= 0 || (option.description.isBlank() && gradeScore == null)) return@mapNotNull null
         DanmakuVoteOption(
             id = option.id,
-            text = option.description.trim(),
+            text = option.description.trim().ifBlank { (gradeScore!! / 2).toString() },
             count = option.count.coerceAtLeast(0),
             hasSelfDefined = option.hasSelfDefined,
+            gradeScore = gradeScore,
         )
     }
+    val promptId = if (kind == DanmakuVoteKind.Grade) payload.gradeId else payload.voteId
     val commandId = command.idStr.ifBlank { command.id.takeIf { it > 0L }?.toString().orEmpty() }
-    if (payload.voteId <= 0L || commandId.isBlank() || payload.question.isBlank() || options.isEmpty()) {
+    val title = payload.question.ifBlank { payload.title }.trim()
+    if (promptId <= 0L || (kind == DanmakuVoteKind.Vote && commandId.isBlank()) || title.isBlank() || options.isEmpty()) {
         return@mapNotNull null
     }
     DanmakuVotePrompt(
         commandId = commandId,
-        voteId = payload.voteId,
+        voteId = promptId,
         voteType = payload.voteType,
-        question = payload.question.trim(),
+        kind = kind,
+        question = title,
+        participantCount = payload.count.coerceAtLeast(0),
         options = options,
         triggerPositionMs = command.progress.toLong().coerceAtLeast(0L),
         durationMs = payload.duration
@@ -101,9 +120,14 @@ internal fun parseDanmakuVotePrompts(
 private data class DanmakuVotePayload(
     @SerialName("vote_id")
     val voteId: Long = 0L,
+    @SerialName("grade_id")
+    val gradeId: Long = 0L,
     @SerialName("vote_type")
     val voteType: Int = 0,
     val question: String = "",
+    val title: String = "",
+    @SerialName("cnt")
+    val count: Int = 0,
     val options: List<DanmakuVotePayloadOption> = emptyList(),
     @SerialName("my_vote")
     val myVote: Int = 0,
@@ -120,4 +144,5 @@ private data class DanmakuVotePayloadOption(
     val count: Int = 0,
     @SerialName("has_self_def")
     val hasSelfDefined: Boolean = false,
+    val score: Int? = null,
 )

@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Text
 import com.bbttvv.app.feature.video.viewmodel.DanmakuVoteUiState
+import com.bbttvv.app.feature.video.viewmodel.DanmakuVoteKind
 
 internal typealias DanmakuVoteKeyHandler = (KeyEvent) -> Boolean
 
@@ -147,8 +150,43 @@ internal fun BoxScope.DanmakuVoteOverlay(
                 .focusable(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(prompt.question, color = Color.White, fontSize = 22.sp)
-            LazyColumn(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(prompt.question, color = Color.White, fontSize = 22.sp)
+                if (prompt.kind == DanmakuVoteKind.Grade && prompt.participantCount > 0) {
+                    Text("${prompt.participantCount}人参与", color = Color(0xFFBDBDBD), fontSize = 18.sp)
+                }
+            }
+            if (prompt.kind == DanmakuVoteKind.Grade) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    prompt.options.forEachIndexed { index, option ->
+                        val focused = index == activeIndex.intValue
+                        val selected = prompt.selectedOptionId == option.id
+                        Box(
+                            modifier = Modifier
+                                .border(
+                                    width = if (focused) 3.dp else 1.dp,
+                                    color = if (focused) Color.White else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                                .background(
+                                    if (focused) Color(0xFF3F51B5) else Color.Transparent,
+                                    RoundedCornerShape(10.dp),
+                                )
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = if (focused || selected) "★" else "☆",
+                                color = if (selected) Color(0xFFFFD54F) else Color.White,
+                                fontSize = 42.sp,
+                            )
+                        }
+                    }
+                }
+            } else LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 2.dp),
@@ -176,7 +214,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                         val suffix = when {
                             submitting?.selectedIndex == index -> " · 提交中"
                             submitted?.selectedIndex == index || selected -> " · 已投票"
-                            else -> " · ${option.count}票"
+                            else -> if (prompt.kind == DanmakuVoteKind.Grade) "" else " · ${option.count}票"
                         }
                         Text(
                             text = option.text + suffix,
@@ -189,9 +227,9 @@ internal fun BoxScope.DanmakuVoteOverlay(
             if (error != null) {
                 Text(error.message, color = Color(0xFFFFB4AB), fontSize = 15.sp)
             } else if (submitted != null) {
-                Text("投票成功", color = Color(0xFF9BE8C2), fontSize = 15.sp)
+                Text(if (prompt.kind == DanmakuVoteKind.Grade) "打分成功" else "投票成功", color = Color(0xFF9BE8C2), fontSize = 15.sp)
             } else if (prompt.selectedOptionId > 0) {
-                Text("你已经参与过该投票", color = Color(0xFFB7C7FF), fontSize = 15.sp)
+                Text(if (prompt.kind == DanmakuVoteKind.Grade) "你已经参与过该打分" else "你已经参与过该投票", color = Color(0xFFB7C7FF), fontSize = 15.sp)
             }
         }
     }

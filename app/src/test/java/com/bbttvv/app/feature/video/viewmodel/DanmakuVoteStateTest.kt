@@ -69,6 +69,26 @@ class DanmakuVoteStateTest {
     }
 
     @Test
+    fun `grade command uses author title and five star levels`() {
+        val prompts = parseDanmakuVotePrompts(
+            listOf(
+                DanmakuProto.CommandDm(
+                    id = 88L,
+                    command = "#GRADE#",
+                    extra = """{"grade_id":99,"title":"作者自定义标题","options":[],"cnt":49}""",
+                )
+            )
+        )
+
+        val prompt = prompts.single()
+        assertEquals(DanmakuVoteKind.Grade, prompt.kind)
+        assertEquals("作者自定义标题", prompt.question)
+        assertEquals(49, prompt.participantCount)
+        assertEquals(listOf("1", "2", "3", "4", "5"), prompt.options.map { it.text })
+        assertEquals(listOf(2, 4, 6, 8, 10), prompt.options.map { it.gradeScore })
+    }
+
+    @Test
     fun `prompt passed during resume remains eligible after seeking back into its window`() {
         val controller = DanmakuVoteController(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),

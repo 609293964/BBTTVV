@@ -15,7 +15,17 @@ import kotlinx.coroutines.launch
 internal class DanmakuVoteController(
     private val scope: CoroutineScope,
     private val submitVote: suspend (DanmakuVoteSubmitRequest) -> Result<Unit> = { request ->
-        DanmakuRepository.submitDanmakuVote(
+        if (request.prompt.kind == DanmakuVoteKind.Grade) {
+            val score = request.option.gradeScore
+            if (score == null) {
+                Result.failure(IllegalArgumentException("无效评分"))
+            } else {
+                DanmakuRepository.submitDanmakuGrade(
+                    aid = request.aid, cid = request.cid, progressMs = request.progressMs,
+                    gradeId = request.prompt.voteId, gradeScore = score,
+                )
+            }
+        } else DanmakuRepository.submitDanmakuVote(
             aid = request.aid,
             cid = request.cid,
             progressMs = request.progressMs,

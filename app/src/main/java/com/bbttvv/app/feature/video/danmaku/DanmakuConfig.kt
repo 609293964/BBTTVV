@@ -24,7 +24,11 @@ class DanmakuConfig {
         playbackSpeed: Float = 1f,
     ) {
         engineConfig.apply {
-            val layoutTextSize = 42f
+            // The overlay normalizes each item's text size from [itemTextSize].
+            // Keep lane geometry in the same coordinate space; using the old
+            // fixed 42px baseline made the largest size (96px) collapse
+            // adjacent scrolling lanes into each other.
+            val layoutTextSize = resolveDanmakuLayoutTextSize(itemTextSize)
             val normalizedPlaybackSpeed = normalizeDanmakuPlaybackSpeed(playbackSpeed)
             common.alpha = (opacity * 255).toInt()
             common.playSpeed = mapDanmakuPlaybackSpeedToEnginePercent(normalizedPlaybackSpeed)
@@ -86,6 +90,12 @@ class DanmakuConfig {
             .toLong()
             .coerceIn(1200L, 18000L)
     }
+}
+
+internal fun resolveDanmakuLayoutTextSize(itemTextSize: Float): Float {
+    return itemTextSize.takeIf { it.isFinite() && it > 0f }
+        ?.coerceIn(42f, 120f)
+        ?: 42f
 }
 
 internal fun mapDanmakuPlaybackSpeedToEnginePercent(playbackSpeed: Float): Int {
