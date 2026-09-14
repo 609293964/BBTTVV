@@ -1,10 +1,12 @@
 package com.bbttvv.app.data.repository
 
 import android.util.Log
+import com.bbttvv.app.core.cache.PlayUrlCache
 import com.bbttvv.app.core.network.AppSignUtils
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.TokenRefreshHelper
 import com.bbttvv.app.core.network.WbiUtils
+import com.bbttvv.app.core.store.AccountSessionEpoch
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.data.model.response.PlayUrlData
@@ -28,6 +30,7 @@ internal object PlayUrlResolver {
         audioLang: String? = null,
         requestKind: PlayUrlRequestKind
     ): PlayUrlFetchResult? {
+        val sessionEpoch = AccountSessionEpoch.current()
         PlaybackSessionManager.ensureBuvid3()
         TokenManager.awaitWarmup()
 
@@ -87,7 +90,11 @@ internal object PlayUrlResolver {
         } else {
             GuestPlaybackStrategy
         }
-        return strategy.resolve(request = request, gateway = gateway)
+        return strategy.resolve(request = request, gateway = gateway).also { result ->
+            result?.data?.let { data ->
+                PlayUrlCache.tagFetchedForSession(data, sessionEpoch)
+            }
+        }
     }
 
     suspend fun getPlayUrlData(
