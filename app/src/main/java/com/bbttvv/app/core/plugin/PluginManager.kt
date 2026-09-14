@@ -130,8 +130,18 @@ object PluginManager {
             _pluginsFlow.value = _plugins.toList()
 
             if (activation.persistDisabled) {
-                withContext(Dispatchers.IO) {
-                    PluginStore.setEnabled(appContext, plugin.id, false)
+                try {
+                    withContext(Dispatchers.IO) {
+                        PluginStore.setEnabled(appContext, plugin.id, false)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Logger.e(
+                        TAG,
+                        " Failed to persist disabled state after startup activation failure: ${plugin.name}",
+                        error
+                    )
                 }
             }
 
