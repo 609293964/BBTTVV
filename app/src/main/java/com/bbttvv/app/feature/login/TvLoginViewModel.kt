@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bbttvv.app.core.coroutines.RequestGeneration
 import com.bbttvv.app.core.network.AppSignUtils
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.store.AccountSessionStore
@@ -14,14 +15,19 @@ import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
 import com.bbttvv.app.data.repository.VideoRepository
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class TvLoginUiState(
     val isLoading: Boolean = true,
@@ -36,14 +42,19 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow(TvLoginUiState())
     val uiState: StateFlow<TvLoginUiState> = _uiState.asStateFlow()
 
-    private var authCode: String = ""
+    private val loginGeneration = RequestGeneration()
+    private var qrLoadJob: Job? = null
     private var pollingJob: Job? = null
 
     fun loadQrCode() {
+        qrLoadJob?.cancel()
         pollingJob?.cancel()
-        viewModelScope.launch {
+        pollingJob = null
+        val generation = loginGeneration.next()
+
+        qrLoadJob = viewModelScope.launch {
             try {
-                _uiState.update { TvLoginUiState() }
+                publishIfCurrent(generation) { TvLoginUiState() }
                 val params = mapOf(
                     "appkey" to AppSignUtils.TV_APP_KEY,
                     "local_id" to "0",
@@ -51,8 +62,11 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                 )
                 val signedParams = AppSignUtils.signForTvLogin(params)
                 val response = NetworkModule.passportApi.generateTvQrCode(signedParams)
+                currentCoroutineContext().ensureActive()
+                if (!loginGeneration.isCurrent(generation)) return@launch
+
                 if (response.code != 0 || response.data == null) {
-                    _uiState.update {
+                    publishIfCurrent(generation) {
                         it.copy(
                             isLoading = false,
                             errorMessage = response.message.ifBlank { "获取二维码失败" },
@@ -62,10 +76,10 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
-                authCode = response.data.authCode.orEmpty()
+                val requestAuthCode = response.data.authCode.orEmpty()
                 val qrUrl = response.data.url.orEmpty()
-                if (authCode.isBlank() || qrUrl.isBlank()) {
-                    _uiState.update {
+                if (requestAuthCode.isBlank() || qrUrl.isBlank()) {
+                    publishIfCurrent(generation) {
                         it.copy(
                             isLoading = false,
                             errorMessage = "二维码数据为空",
@@ -75,8 +89,13 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
-                val qrBitmap = generateQrBitmap(qrUrl)
-                _uiState.update {
+                val qrBitmap = withContext(Dispatchers.Default) {
+                    generateQrBitmap(qrUrl)
+                }
+                currentCoroutineContext().ensureActive()
+                if (!loginGeneration.isCurrent(generation)) return@launch
+
+                publishIfCurrent(generation) {
                     it.copy(
                         isLoading = false,
                         qrBitmap = qrBitmap,
@@ -86,10 +105,11 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                         isSuccess = false
                     )
                 }
-
-                startPolling()
+                startPolling(generation = generation, authCode = requestAuthCode)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                _uiState.update {
+                publishIfCurrent(generation) {
                     it.copy(
                         isLoading = false,
                         errorMessage = error.message ?: "网络错误",
@@ -101,14 +121,18 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun stopPolling() {
+        loginGeneration.invalidate()
         pollingJob?.cancel()
         pollingJob = null
     }
 
-    private fun startPolling() {
+    private fun startPolling(generation: Long, authCode: String) {
+        if (!loginGeneration.isCurrent(generation)) return
+        pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
-            while (isActive) {
+            while (isActive && loginGeneration.isCurrent(generation)) {
                 delay(2000L)
+                if (!loginGeneration.isCurrent(generation)) break
                 try {
                     val params = mapOf(
                         "appkey" to AppSignUtils.TV_APP_KEY,
@@ -118,12 +142,17 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                     )
                     val signedParams = AppSignUtils.signForTvLogin(params)
                     val response = NetworkModule.passportApi.pollTvQrCode(signedParams)
+                    currentCoroutineContext().ensureActive()
+                    if (!loginGeneration.isCurrent(generation)) break
+
                     when (response.code) {
                         0 -> {
                             val data = response.data
                             if (data != null) {
                                 handleLoginSuccess(data)
-                                _uiState.update {
+                                currentCoroutineContext().ensureActive()
+                                if (!loginGeneration.isCurrent(generation)) break
+                                publishIfCurrent(generation) {
                                     it.copy(
                                         isSuccess = true,
                                         isScanned = true,
@@ -134,26 +163,22 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
 
-                        86090 -> {
-                            _uiState.update {
-                                it.copy(
-                                    isScanned = true,
-                                    statusText = "已扫码，请在手机上确认"
-                                )
-                            }
+                        86090 -> publishIfCurrent(generation) {
+                            it.copy(
+                                isScanned = true,
+                                statusText = "已扫码，请在手机上确认"
+                            )
                         }
 
-                        86039 -> {
-                            _uiState.update {
-                                it.copy(
-                                    isScanned = false,
-                                    statusText = "等待扫码确认"
-                                )
-                            }
+                        86039 -> publishIfCurrent(generation) {
+                            it.copy(
+                                isScanned = false,
+                                statusText = "等待扫码确认"
+                            )
                         }
 
                         86038 -> {
-                            _uiState.update {
+                            publishIfCurrent(generation) {
                                 it.copy(
                                     errorMessage = "二维码已过期，请刷新",
                                     statusText = "二维码已过期"
@@ -162,9 +187,22 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                             break
                         }
                     }
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (_: Exception) {
+                    // 短暂轮询失败保持二维码有效，下一轮继续尝试。
                 }
             }
+        }
+    }
+
+    private inline fun publishIfCurrent(
+        generation: Long,
+        transform: (TvLoginUiState) -> TvLoginUiState
+    ) {
+        if (!loginGeneration.isCurrent(generation)) return
+        _uiState.update { current ->
+            if (loginGeneration.isCurrent(generation)) transform(current) else current
         }
     }
 
@@ -206,7 +244,11 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
-        stopPolling()
+        loginGeneration.invalidate()
+        qrLoadJob?.cancel()
+        qrLoadJob = null
+        pollingJob?.cancel()
+        pollingJob = null
         super.onCleared()
     }
 }
