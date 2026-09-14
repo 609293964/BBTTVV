@@ -33,13 +33,21 @@ object AccountSessionStore {
     }
 
     fun getAccounts(context: Context): List<StoredAccountSession> {
-        val raw = context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_ACCOUNTS, null)
-            .orEmpty()
+        val prefs = context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_ACCOUNTS, null).orEmpty()
         if (raw.isBlank()) return emptyList()
-        return runCatching {
-            json.decodeFromString<List<StoredAccountSession>>(raw)
-        }.getOrDefault(emptyList()).sortedByDescending { it.lastUsedAt }
+
+        val accounts = runCatching {
+            val payload = SecureStorageCipher.decryptOrPlaintext(raw).orEmpty()
+            json.decodeFromString<List<StoredAccountSession>>(payload)
+        }.getOrDefault(emptyList())
+
+        // One-time migration for installations that still have the historical
+        // plaintext JSON value. New writes are always encrypted.
+        if (accounts.isNotEmpty() && !SecureStorageCipher.isEncrypted(raw)) {
+            persistAccounts(context, accounts)
+        }
+        return accounts.sortedByDescending { it.lastUsedAt }
     }
 
     fun getActiveAccountMid(context: Context): Long? {
@@ -133,7 +141,7 @@ object AccountSessionStore {
         context: Context,
         accounts: List<StoredAccountSession>
     ) {
-        val payload = json.encodeToString(accounts)
+        val payload = SecureStorageCipher.encrypt(json.encodeToString(accounts))
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_ACCOUNTS, payload)
@@ -147,4 +155,3 @@ object AccountSessionStore {
             .apply()
     }
 }
-
