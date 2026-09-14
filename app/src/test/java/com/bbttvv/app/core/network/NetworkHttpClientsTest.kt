@@ -74,4 +74,21 @@ class NetworkHttpClientsTest {
         assertEquals(1, imageClient.interceptors.size)
         assertNotSame(apiClient.interceptors.single(), imageClient.interceptors.single())
     }
+
+    @Test
+    fun playbackClientDoesNotInheritAuthenticatedCookieJar() {
+        val apiCookieJar = object : CookieJar {
+            override fun loadForRequest(url: HttpUrl): List<Cookie> = emptyList()
+
+            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = Unit
+        }
+        val apiClient = OkHttpClient.Builder()
+            .cookieJar(apiCookieJar)
+            .build()
+
+        val playbackClient = NetworkHttpClients.buildPlaybackOkHttpClient(apiClient)
+
+        assertSame(CookieJar.NO_COOKIES, playbackClient.cookieJar)
+        assertNotSame(apiClient.cookieJar, playbackClient.cookieJar)
+    }
 }
