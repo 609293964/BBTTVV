@@ -27,7 +27,6 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.CRC32
-import kotlin.math.abs
 
 internal data class DanmakuThumbupState(
     val likes: Int,
@@ -163,8 +162,7 @@ internal fun resolveDanmakuThumbupState(
     dmid: Long,
     data: Map<String, DanmakuThumbupStatsItem>
 ): DanmakuThumbupState? {
-    val key = dmid.toString()
-    val matched = data[key] ?: return null
+    val matched = data[dmid.toString()] ?: return null
     return DanmakuThumbupState(
         likes = matched.likes.coerceAtLeast(0),
         liked = matched.userLike == 1
@@ -215,6 +213,7 @@ internal fun resolveDanmakuSegmentCount(
 object DanmakuRepository {
     private val api = NetworkModule.api
     private val guestApi = NetworkModule.guestApi
+
     @Volatile
     private var danmakuUserFilterCache: DanmakuUserFilterCache? = null
 
@@ -252,9 +251,7 @@ object DanmakuRepository {
         danmakuCacheManager.trimToSmall()
     }
 
-    fun getDanmakuCacheStats(): DanmakuCacheStats {
-        return danmakuCacheManager.stats()
-    }
+    fun getDanmakuCacheStats(): DanmakuCacheStats = danmakuCacheManager.stats()
 
     suspend fun warmUpDanmaku(
         cid: Long,
@@ -273,7 +270,6 @@ object DanmakuRepository {
     }
 
     suspend fun getDanmakuRawData(cid: Long): ByteArray? = withContext(Dispatchers.IO) {
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuRawData: cid=$cid")
         if (cid <= 0L) return@withContext null
         danmakuCacheManager.getRawXml(cid)?.let { return@withContext it }
 
@@ -699,17 +695,19 @@ object DanmakuRepository {
                         response = api.getDanmuInfoWbi(buildSignedParams(refreshedKeys))
                     }
                 }
-                if (response.code != 0 || response.data == null) {
+                if (response.code != 0) {
                     return@withContext Result.failure(Exception("获取弹幕服务信息失败: ${response.code} (msg=${response.message})"))
                 }
-                val endpoints = buildLiveDanmakuEndpoints(response.data.host_list)
+                val info = response.data
+                    ?: return@withContext Result.failure(Exception("获取弹幕服务信息失败: empty data"))
+                val endpoints = buildLiveDanmakuEndpoints(info.host_list)
                 if (endpoints.isEmpty()) return@withContext Result.failure(Exception("无可用弹幕服务器"))
                 val hasSess = !TokenManager.sessDataCache.isNullOrEmpty()
                 val uid = if (hasSess) (TokenManager.midCache ?: 0L) else 0L
                 Result.success(
                     LiveDanmakuConnectionConfig(
                         endpoints = endpoints,
-                        token = response.data.token,
+                        token = info.token,
                         realRoomId = realRoomId,
                         uid = uid,
                     )
