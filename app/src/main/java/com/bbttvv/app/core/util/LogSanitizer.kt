@@ -46,7 +46,7 @@ internal fun sanitizeDiagnosticText(message: String): String {
     sanitized = sanitized.replace(Regex("/Users/[^/]+/"), "/Users/***/")
     sanitized = BVID.replace(sanitized, "BV***")
     sanitized = CONTENT_ID.replace(sanitized) { match -> "${match.groupValues[1]}=***" }
-    sanitized = SEARCH_KEYWORD.replace(sanitized, "$1***")
+    sanitized = SEARCH_KEYWORD.replace(sanitized) { match -> "${match.groupValues[1]}***" }
     return sanitized
 }
 
