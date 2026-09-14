@@ -4,6 +4,7 @@ package com.bbttvv.app.core.plugin
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import com.bbttvv.app.core.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,61 +33,64 @@ internal fun consumePendingPluginEnabledState(
     }
 }
 
+internal data class PluginRegistrationActivation(
+    val publishedEnabled: Boolean,
+    val persistDisabled: Boolean
+)
+
+internal fun resolvePluginRegistrationActivation(
+    requestedEnabled: Boolean,
+    enableSucceeded: Boolean
+): PluginRegistrationActivation {
+    val publishedEnabled = requestedEnabled && enableSucceeded
+    return PluginRegistrationActivation(
+        publishedEnabled = publishedEnabled,
+        persistDisabled = requestedEnabled && !enableSucceeded
+    )
+}
+
 /**
- *  插件管理器
- * 
- * 负责管理所有插件的注册、启用/禁用、生命周期调用等。
- * 使用单例模式，在 Application 启动时初始化。
+ * 插件管理器。
+ *
+ * 生命周期状态只有在对应 hook 成功后才提交，避免 UI/执行路径看到与真实生命周期
+ * 不一致的 enabled 状态。
  */
 object PluginManager {
-    
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val pendingEnabledOverridesLock = Any()
     private val pendingEnabledOverrides = mutableMapOf<String, Boolean>()
-    
-    /** 所有已注册插件 */
+
     private val _plugins = mutableStateListOf<PluginInfo>()
     val plugins: List<PluginInfo> get() = _plugins.toList()
-    
-    /** 插件列表状态流 (用于 Compose 监听) */
+
     private val _pluginsFlow = MutableStateFlow<List<PluginInfo>>(emptyList())
     val pluginsFlow: StateFlow<List<PluginInfo>> = _pluginsFlow.asStateFlow()
 
-    /** 弹幕插件更新信号（用于播放中热刷新当前弹幕） */
     private val _danmakuPluginUpdateToken = MutableStateFlow(0L)
     val danmakuPluginUpdateToken: StateFlow<Long> = _danmakuPluginUpdateToken.asStateFlow()
 
-    /** 信息流插件更新信号（用于首页/热门重算过滤结果） */
     private val _feedPluginUpdateToken = MutableStateFlow(0L)
     val feedPluginUpdateToken: StateFlow<Long> = _feedPluginUpdateToken.asStateFlow()
-    
+
     private var isInitialized = false
     private lateinit var appContext: Context
-    
-    /**
-     * 初始化插件管理器
-     * 应在 Application.onCreate() 中调用
-     */
+
     fun initialize(context: Context) {
         if (isInitialized) return
         appContext = context.applicationContext
         isInitialized = true
         Logger.d(TAG, " PluginManager initialized")
     }
-    
-    /** 获取Application Context供插件使用 */
+
     fun getContext(): Context = appContext
-    
-    /**
-     * 注册插件
-     * 内置插件在 Application 中注册
-     */
+
     fun register(plugin: Plugin) {
         applicationScope.launch {
             if (_plugins.any { it.plugin.id == plugin.id }) {
                 Logger.w(TAG, " Plugin already registered: ${plugin.id}")
                 return@launch
             }
+
             val storedEnabled = withContext(Dispatchers.IO) {
                 PluginStore.isEnabled(appContext, plugin.id)
             }
@@ -94,32 +98,60 @@ object PluginManager {
                 Logger.w(TAG, " Plugin already registered: ${plugin.id}")
                 return@launch
             }
-            val enabled = consumePendingPluginEnabledState(
+
+            val requestedEnabled = consumePendingPluginEnabledState(
                 pluginId = plugin.id,
                 storedEnabled = storedEnabled,
                 pendingEnabledOverrides = pendingEnabledOverrides,
                 lock = pendingEnabledOverridesLock
             )
-            val info = PluginInfo(plugin, enabled)
-            _plugins.add(info)
-            _pluginsFlow.value = _plugins.toList()
-            
-            if (enabled) {
+
+            val enableSucceeded = if (!requestedEnabled) {
+                true
+            } else {
                 try {
                     plugin.onEnable()
                     Logger.d(TAG, " Plugin enabled on start: ${plugin.name}")
-                } catch (e: Exception) {
-                    Logger.e(TAG, " Failed to enable plugin: ${plugin.name}", e)
+                    true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Logger.e(TAG, " Failed to enable plugin: ${plugin.name}", error)
+                    false
                 }
             }
-            
-            Logger.d(TAG, " Plugin registered: ${plugin.name} (enabled=$enabled)")
+
+            val activation = resolvePluginRegistrationActivation(
+                requestedEnabled = requestedEnabled,
+                enableSucceeded = enableSucceeded
+            )
+            val info = PluginInfo(plugin, activation.publishedEnabled)
+            _plugins.add(info)
+            _pluginsFlow.value = _plugins.toList()
+
+            if (activation.persistDisabled) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        PluginStore.setEnabled(appContext, plugin.id, false)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Logger.e(
+                        TAG,
+                        " Failed to persist disabled state after startup activation failure: ${plugin.name}",
+                        error
+                    )
+                }
+            }
+
+            Logger.d(
+                TAG,
+                " Plugin registered: ${plugin.name} (enabled=${activation.publishedEnabled})"
+            )
         }
     }
-    
-    /**
-     * 启用/禁用插件
-     */
+
     suspend fun setEnabled(pluginId: String, enabled: Boolean) {
         val shouldPersist = withContext(Dispatchers.Main.immediate) {
             val index = _plugins.indexOfFirst { it.plugin.id == pluginId }
@@ -136,28 +168,24 @@ object PluginManager {
             if (info.enabled == enabled) return@withContext false
 
             try {
-                if (enabled && !info.enabled) {
+                if (enabled) {
                     plugin.onEnable()
                     Logger.d(TAG, " Plugin enabled: ${plugin.name}")
-                } else if (!enabled && info.enabled) {
+                } else {
                     plugin.onDisable()
-                    Logger.d(TAG, "🔴 Plugin disabled: ${plugin.name}")
+                    Logger.d(TAG, " Plugin disabled: ${plugin.name}")
                 }
 
-                // 更新状态
                 _plugins[index] = info.copy(enabled = enabled)
                 _pluginsFlow.value = _plugins.toList()
 
-                if (plugin is DanmakuPlugin) {
-                    notifyDanmakuPluginsUpdated()
-                }
-                if (plugin is FeedPlugin) {
-                    notifyFeedPluginsUpdated()
-                }
-
+                if (plugin is DanmakuPlugin) notifyDanmakuPluginsUpdated()
+                if (plugin is FeedPlugin) notifyFeedPluginsUpdated()
                 true
-            } catch (e: Exception) {
-                Logger.e(TAG, " Failed to toggle plugin: ${plugin.name}", e)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Logger.e(TAG, " Failed to toggle plugin: ${plugin.name}", error)
                 false
             }
         }
@@ -168,30 +196,18 @@ object PluginManager {
             }
         }
     }
-    
-    /**
-     * 获取指定类型的所有已启用插件
-     */
+
     @Suppress("UNCHECKED_CAST")
     fun <T : Plugin> getEnabledPlugins(type: KClass<T>): List<T> {
         return _pluginsFlow.value
             .filter { it.enabled && type.isInstance(it.plugin) }
             .map { it.plugin as T }
     }
-    
-    /**
-     * 获取所有 DanmakuPlugin
-     */
+
     fun getEnabledDanmakuPlugins(): List<DanmakuPlugin> = getEnabledPlugins(DanmakuPlugin::class)
-    
-    /**
-     * 获取所有 FeedPlugin
-     */
+
     fun getEnabledFeedPlugins(): List<FeedPlugin> = getEnabledPlugins(FeedPlugin::class)
-    
-    /**
-     * 使用所有启用的 FeedPlugin 判断单个视频是否可见
-     */
+
     fun shouldShowFeedItem(
         item: com.bbttvv.app.data.model.response.VideoItem,
         feedKind: FeedKind = FeedKind.GENERIC
@@ -202,17 +218,13 @@ object PluginManager {
         return feedPlugins.all { plugin ->
             try {
                 plugin.shouldShowItem(item, feedKind)
-            } catch (e: Exception) {
-                Logger.e(TAG, " Feed plugin failed: ${plugin.name}", e)
+            } catch (error: Exception) {
+                Logger.e(TAG, " Feed plugin failed: ${plugin.name}", error)
                 true
             }
         }
     }
 
-    /**
-     *  使用所有启用的 FeedPlugin 过滤视频列表
-     * 用于首页推荐和搜索结果
-     */
     fun filterFeedItems(
         items: List<com.bbttvv.app.data.model.response.VideoItem>,
         feedKind: FeedKind = FeedKind.GENERIC
@@ -226,15 +238,13 @@ object PluginManager {
             for (plugin in feedPlugins) {
                 shouldShow = try {
                     plugin.shouldShowItem(item, feedKind)
-                } catch (e: Exception) {
-                    Logger.e(TAG, " Feed plugin failed: ${plugin.name}", e)
+                } catch (error: Exception) {
+                    Logger.e(TAG, " Feed plugin failed: ${plugin.name}", error)
                     true
                 }
                 if (!shouldShow) break
             }
-            if (shouldShow) {
-                visibleItems.add(item)
-            }
+            if (shouldShow) visibleItems.add(item)
         }
         return visibleItems
     }
@@ -244,10 +254,7 @@ object PluginManager {
             if (info.enabled) info.plugin as? FeedPlugin else null
         }
     }
-    
-    /**
-     * 获取已启用插件数量
-     */
+
     fun getEnabledCount(): Int = _plugins.count { it.enabled }
 
     fun notifyDanmakuPluginsUpdated() {
@@ -259,9 +266,6 @@ object PluginManager {
     }
 }
 
-/**
- * 插件信息包装类
- */
 data class PluginInfo(
     val plugin: Plugin,
     val enabled: Boolean
