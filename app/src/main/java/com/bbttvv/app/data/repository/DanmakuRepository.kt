@@ -629,8 +629,17 @@ object DanmakuRepository {
             val csrf = TokenManager.csrfCache
             if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
             val response = api.reportDanmaku(cid = cid, dmid = dmid, reason = reason, content = content, csrf = csrf)
-            if (response.code == 0) Result.success(Unit)
-            else Result.failure(Exception(response.message.ifEmpty { "举报失败 (${response.code})" }))
+            if (response.code == 0) {
+                Result.success(Unit)
+            } else {
+                val errorMsg = when (response.code) {
+                    -101 -> "请先登录"
+                    -111 -> "鉴权失败，请重新登录"
+                    -400 -> "请求参数错误"
+                    else -> response.message.ifEmpty { "举报失败 (${response.code})" }
+                }
+                Result.failure(Exception(errorMsg))
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -656,8 +665,17 @@ object DanmakuRepository {
                 fontSize = payload.fontSize,
                 csrf = csrf
             )
-            if (isDanmakuCloudSyncSuccessful(response.code)) Result.success(Unit)
-            else Result.failure(Exception(response.message.ifEmpty { "弹幕云同步失败 (${response.code})" }))
+            if (isDanmakuCloudSyncSuccessful(response.code)) {
+                Result.success(Unit)
+            } else {
+                val errorMsg = when (response.code) {
+                    -101 -> "请先登录"
+                    -111 -> "鉴权失败，请重新登录"
+                    -400 -> "弹幕云同步参数错误"
+                    else -> response.message.ifEmpty { "弹幕云同步失败 (${response.code})" }
+                }
+                Result.failure(Exception(errorMsg))
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -699,9 +717,15 @@ object DanmakuRepository {
                     return@withContext Result.failure(Exception("获取弹幕服务信息失败: ${response.code} (msg=${response.message})"))
                 }
                 val info = response.data
-                    ?: return@withContext Result.failure(Exception("获取弹幕服务信息失败: empty data"))
-                val endpoints = buildLiveDanmakuEndpoints(info.host_list)
-                if (endpoints.isEmpty()) return@withContext Result.failure(Exception("无可用弹幕服务器"))
+                    ?: return@withContext Result.failure(Exception("获取弹幕服务信息失败: ${response.code} (msg=${response.message})"))
+                val hosts = info.host_list
+                if (hosts.isEmpty()) {
+                    return@withContext Result.failure(Exception("无可用弹幕服务器"))
+                }
+                val endpoints = buildLiveDanmakuEndpoints(hosts)
+                if (endpoints.isEmpty()) {
+                    return@withContext Result.failure(Exception("未找到有效的 WebSocket 地址"))
+                }
                 val hasSess = !TokenManager.sessDataCache.isNullOrEmpty()
                 val uid = if (hasSess) (TokenManager.midCache ?: 0L) else 0L
                 Result.success(
