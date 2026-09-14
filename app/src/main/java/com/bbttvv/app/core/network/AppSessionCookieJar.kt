@@ -44,9 +44,7 @@ internal class AppSessionCookieJar : CookieJar {
             return anonymousHomeFeedCookies(url)
         }
 
-        TokenManager.awaitWarmupBlocking()
         val cookies = mutableListOf<Cookie>()
-
         synchronized(cookieLock) {
             pruneExpiredCookiesLocked(nowMs = System.currentTimeMillis())
             cookieStore.values.forEach { storedCookies ->
@@ -56,24 +54,31 @@ internal class AppSessionCookieJar : CookieJar {
             }
         }
 
+        // Never synthesize account/device cookies for arbitrary hosts. This is
+        // especially important for playback/CDN URLs and redirect targets.
+        if (!isBilibiliAccountCookieHost(url.host)) {
+            return cookies
+        }
+
+        TokenManager.awaitWarmupBlocking()
+
         val buvid3 = TokenManager.getOrCreateBuvid3()
         if (cookies.none { it.name == "buvid3" }) {
             cookies.add(
                 Cookie.Builder()
-                    .domain(url.host)
+                    .domain(BILIBILI_COOKIE_DOMAIN)
                     .name("buvid3")
                     .value(buvid3)
                     .build()
             )
         }
 
-        val biliBiliDomain = if (url.host.endsWith("bilibili.com")) "bilibili.com" else url.host
         val sessData = TokenManager.sessDataCache
         if (!sessData.isNullOrEmpty()) {
             cookies.removeAll { it.name == "SESSDATA" }
             cookies.add(
                 Cookie.Builder()
-                    .domain(biliBiliDomain)
+                    .domain(BILIBILI_COOKIE_DOMAIN)
                     .name("SESSDATA")
                     .value(sessData)
                     .build()
@@ -85,7 +90,7 @@ internal class AppSessionCookieJar : CookieJar {
             cookies.removeAll { it.name == "bili_jct" }
             cookies.add(
                 Cookie.Builder()
-                    .domain(biliBiliDomain)
+                    .domain(BILIBILI_COOKIE_DOMAIN)
                     .name("bili_jct")
                     .value(biliJct)
                     .build()
@@ -95,7 +100,7 @@ internal class AppSessionCookieJar : CookieJar {
         if (url.encodedPath.contains("playurl") || url.encodedPath.contains("pgc/view")) {
             Logger.d(
                 "CookieJar",
-                " ${url.encodedPath} request: domain=$biliBiliDomain, " +
+                " ${url.encodedPath} request: accountCookieHost=true, " +
                     "hasSess=${!sessData.isNullOrEmpty()}, hasCsrf=${!biliJct.isNullOrEmpty()}"
             )
         }
@@ -142,5 +147,15 @@ internal class AppSessionCookieJar : CookieJar {
             .keys
             .toList()
         emptyHosts.forEach(cookieStore::remove)
+    }
+
+    companion object {
+        private const val BILIBILI_COOKIE_DOMAIN = "bilibili.com"
+
+        internal fun isBilibiliAccountCookieHost(host: String): Boolean {
+            val normalized = host.trimEnd('.').lowercase()
+            return normalized == BILIBILI_COOKIE_DOMAIN ||
+                normalized.endsWith(".$BILIBILI_COOKIE_DOMAIN")
+        }
     }
 }
