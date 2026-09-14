@@ -74,7 +74,7 @@ internal object NetworkHttpClients {
 
                 Logger.d(
                     "ApiClient",
-                    " Sending request to ${original.url}, Referer: " +
+                    " Sending request to ${original.url.encodedPath}, Referer: " +
                         "${if (shouldAttachReferer) referer else "OMITTED (WBI)"}, " +
                         "hasSess=${!TokenManager.sessDataCache.isNullOrEmpty()}, " +
                         "hasCsrf=${!TokenManager.csrfCache.isNullOrEmpty()}"
@@ -126,6 +126,9 @@ internal object NetworkHttpClients {
 
     fun buildPlaybackOkHttpClient(sharedClient: OkHttpClient): OkHttpClient {
         return sharedClient.newBuilder()
+            // Playback URLs frequently point at CDN domains outside bilibili.com.
+            // Never inherit the authenticated API client's CookieJar.
+            .cookieJar(CookieJar.NO_COOKIES)
             .proxy(Proxy.NO_PROXY)
             .connectionPool(
                 ConnectionPool(
