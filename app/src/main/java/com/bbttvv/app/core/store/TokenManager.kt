@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.util.Logger
+import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +21,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.UUID
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
@@ -30,6 +30,7 @@ object TokenManager {
     private val buvid3Lock = Any()
     private val dataStoreObserverLock = Any()
     private val warmupLock = Any()
+    private val warmupGate = TokenWarmupGate()
 
     @Volatile
     private var appContext: Context? = null
@@ -39,9 +40,6 @@ object TokenManager {
 
     @Volatile
     private var warmupSignal: CompletableDeferred<Unit>? = null
-
-    @Volatile
-    private var warmupCompleted = false
 
     // SharedPreferences 快速缓存。所有可复用认证凭据均使用 Android Keystore 加密后落盘。
     private const val SP_NAME = "token_backup_sp"
@@ -95,19 +93,15 @@ object TokenManager {
         if (claim.shouldRun) {
             runWarmup(claim)
         } else {
-            runBlocking {
-                claim.signal.await()
-            }
+            runBlocking { claim.signal.await() }
         }
     }
 
     suspend fun awaitWarmup(context: Context? = null) {
-        if (warmupCompleted) return
+        if (warmupGate.state() == TokenWarmupState.SUCCEEDED) return
         val claim = claimWarmup(context) ?: return
         if (claim.shouldRun) {
-            withContext(Dispatchers.IO) {
-                runWarmup(claim)
-            }
+            withContext(Dispatchers.IO) { runWarmup(claim) }
         } else {
             claim.signal.await()
         }
@@ -117,7 +111,7 @@ object TokenManager {
         context: Context? = null,
         timeoutMs: Long = DEFAULT_BLOCKING_WARMUP_TIMEOUT_MS
     ) {
-        if (warmupCompleted) return
+        if (warmupGate.state() == TokenWarmupState.SUCCEEDED) return
         val claim = claimWarmup(context) ?: return
         if (claim.shouldRun) {
             runWarmup(claim)
@@ -143,7 +137,7 @@ object TokenManager {
     private fun claimWarmup(context: Context?): WarmupClaim? {
         val resolvedContext = resolveAppContext(context) ?: return null
         synchronized(warmupLock) {
-            if (warmupCompleted) {
+            if (warmupGate.state() == TokenWarmupState.SUCCEEDED) {
                 return WarmupClaim(
                     context = resolvedContext,
                     signal = CompletableDeferred(Unit),
@@ -152,7 +146,7 @@ object TokenManager {
             }
 
             val activeSignal = warmupSignal
-            if (activeSignal != null) {
+            if (warmupGate.state() == TokenWarmupState.RUNNING && activeSignal != null) {
                 return WarmupClaim(
                     context = resolvedContext,
                     signal = activeSignal,
@@ -160,6 +154,7 @@ object TokenManager {
                 )
             }
 
+            check(warmupGate.tryStart()) { "Token warmup state is inconsistent" }
             val newSignal = CompletableDeferred<Unit>()
             warmupSignal = newSignal
             return WarmupClaim(
@@ -172,25 +167,31 @@ object TokenManager {
 
     private fun resolveAppContext(context: Context?): Context? {
         val resolved = context?.applicationContext ?: appContext
-        if (resolved != null && appContext == null) {
-            appContext = resolved
-        }
+        if (resolved != null && appContext == null) appContext = resolved
         return resolved
     }
 
     private fun runWarmup(claim: WarmupClaim) {
-        runCatching {
+        var failure: Exception? = null
+        try {
             performWarmup(claim.context)
-        }.onFailure { error ->
+        } catch (error: Exception) {
+            failure = error
             Logger.e("TokenManager", " token warmup failed", error)
         }
 
         synchronized(warmupLock) {
-            warmupCompleted = true
+            if (failure == null) {
+                warmupGate.markSucceeded()
+            } else {
+                warmupGate.markFailed()
+            }
             warmupSignal = null
         }
         claim.signal.complete(Unit)
     }
+
+    internal fun warmupStateForTest(): TokenWarmupState = warmupGate.state()
 
     private fun performWarmup(appContext: Context) {
         val sp = appContext.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
@@ -212,11 +213,8 @@ object TokenManager {
     fun getOrCreateBuvid3(): String {
         return synchronized(buvid3Lock) {
             val cached = buvid3CacheBacking
-            if (!cached.isNullOrBlank()) {
-                cached
-            } else {
-                generateBuvid3().also { buvid3CacheBacking = it }
-            }
+            if (!cached.isNullOrBlank()) cached
+            else generateBuvid3().also { buvid3CacheBacking = it }
         }
     }
 
@@ -300,25 +298,17 @@ object TokenManager {
     suspend fun saveCookies(context: Context, sessData: String) {
         sessDataCache = sessData
         Logger.d("TokenManager", " saveCookies: session credential updated")
-
         val encrypted = SecureStorageCipher.encrypt(sessData)
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putString(SP_KEY_SESS, encrypted).apply()
-
-        context.dataStore.edit { prefs ->
-            prefs[SESSDATA_KEY] = encrypted
-        }
+        context.dataStore.edit { prefs -> prefs[SESSDATA_KEY] = encrypted }
     }
 
     suspend fun saveBuvid3(context: Context, buvid3: String) {
         buvid3Cache = buvid3
-
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putString(SP_KEY_BUVID, buvid3).apply()
-
-        context.dataStore.edit { prefs ->
-            prefs[BUVID3_KEY] = buvid3
-        }
+        context.dataStore.edit { prefs -> prefs[BUVID3_KEY] = buvid3 }
     }
 
     suspend fun applyStoredSession(
