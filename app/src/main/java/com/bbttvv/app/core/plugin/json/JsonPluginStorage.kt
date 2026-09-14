@@ -4,18 +4,27 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStreamWriter
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 internal object JsonPluginStorage {
     /**
-     * Writes in the target directory, fsyncs the temp file, then renames it into place.
-     * On Android/Linux the rename is atomic within one filesystem. If rename fails the
-     * existing target is left untouched and the temp file is cleaned up.
+     * Writes in the target directory, fsyncs the temp file, then atomically replaces the
+     * target on the same filesystem. If moving fails, the previous target remains intact.
      */
     fun writeAtomically(
         target: File,
         content: String,
-        rename: (File, File) -> Boolean = { from, to -> from.renameTo(to) }
+        move: (File, File) -> Unit = { from, to ->
+            Files.move(
+                from.toPath(),
+                to.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
+            Unit
+        }
     ) {
         val parent = target.parentFile ?: throw IOException("插件目录无效")
         if (!parent.exists() && !parent.mkdirs()) {
@@ -31,9 +40,7 @@ internal object JsonPluginStorage {
                     output.fd.sync()
                 }
             }
-            if (!rename(temp, target)) {
-                throw IOException("原子替换插件文件失败")
-            }
+            move(temp, target)
         } finally {
             if (temp.exists()) temp.delete()
         }
