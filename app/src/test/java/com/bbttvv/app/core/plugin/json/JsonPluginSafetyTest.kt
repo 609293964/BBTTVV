@@ -92,7 +92,7 @@ class JsonPluginSafetyTest {
     }
 
     @Test
-    fun `atomic save keeps previous target when rename fails`() {
+    fun `atomic save keeps previous target when move fails`() {
         val dir = Files.createTempDirectory("json-plugin-storage").toFile()
         val target = dir.resolve("plugin.json")
         try {
@@ -103,7 +103,7 @@ class JsonPluginSafetyTest {
                 JsonPluginStorage.writeAtomically(
                     target = target,
                     content = "second",
-                    rename = { _, _ -> false }
+                    move = { _, _ -> throw IOException("forced move failure") }
                 )
             }
             assertEquals("first", target.readText())
