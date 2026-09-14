@@ -4,6 +4,7 @@ import android.util.Log
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
 import com.bbttvv.app.core.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,9 +35,7 @@ internal fun shouldRetryLiveDanmakuTransport(retryCount: Int): Boolean {
     return retryCount.coerceAtLeast(0) < LIVE_DANMAKU_MAX_TRANSPORT_RETRIES
 }
 
-data class LiveDanmakuEndpoint(
-    val url: String,
-)
+data class LiveDanmakuEndpoint(val url: String)
 
 data class LiveDanmakuConnectionConfig(
     val endpoints: List<LiveDanmakuEndpoint>,
@@ -55,15 +54,6 @@ enum class LiveDanmakuConnectionState {
     RELEASED,
 }
 
-/**
- * Bilibili 直播弹幕 WebSocket 客户端
- *
- * 功能：
- * 1. 自动重连：指数退避 + host 轮换
- * 2. 鉴权：认证失败时刷新 token/host 后有限重试
- * 3. 心跳保活
- * 4. 消息分发：串行解码 + 背压丢旧
- */
 class LiveDanmakuClient(
     private val scope: CoroutineScope,
     private val reconnectConfigProvider: (suspend () -> LiveDanmakuConnectionConfig?)? = null,
@@ -74,6 +64,7 @@ class LiveDanmakuClient(
 
     private var webSocket: WebSocket? = null
     private var socketGeneration: Long = 0L
+    private var connectionLifecycleGeneration: Long = 0L
     private var currentConfig: LiveDanmakuConnectionConfig? = null
     private var currentEndpointIndex: Int = 0
     private var currentAuthBody: String = ""
@@ -90,10 +81,7 @@ class LiveDanmakuClient(
     private val _connectionState = MutableStateFlow(LiveDanmakuConnectionState.IDLE)
     val connectionState = _connectionState.asStateFlow()
 
-    private data class IncomingFrame(
-        val generation: Long,
-        val data: ByteArray,
-    )
+    private data class IncomingFrame(val generation: Long, val data: ByteArray)
 
     private val incomingFrames = Channel<IncomingFrame>(
         capacity = 128,
@@ -133,9 +121,7 @@ class LiveDanmakuClient(
             clearSocketIfCurrent(webSocket)
             _isConnected.set(false)
             stopHeartbeat()
-            if (code != NORMAL_CLOSURE_CODE && !released.get()) {
-                scheduleReconnect()
-            }
+            if (code != NORMAL_CLOSURE_CODE && !released.get()) scheduleReconnect()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -144,9 +130,7 @@ class LiveDanmakuClient(
             clearSocketIfCurrent(webSocket)
             _isConnected.set(false)
             stopHeartbeat()
-            if (!released.get()) {
-                scheduleReconnect()
-            }
+            if (!released.get()) scheduleReconnect()
         }
     }
 
@@ -154,9 +138,6 @@ class LiveDanmakuClient(
         startDecodeLoop()
     }
 
-    /**
-     * 兼容旧调用：单 endpoint 连接。
-     */
     fun connect(url: String, token: String, roomId: Long, uid: Long = 0L) {
         connect(
             LiveDanmakuConnectionConfig(
@@ -176,6 +157,7 @@ class LiveDanmakuClient(
             return
         }
 
+        val lifecycle = beginConnectionLifecycle()
         retryCount = 0
         authFailureCount = 0
         refreshBeforeNextReconnect = false
@@ -184,11 +166,12 @@ class LiveDanmakuClient(
         currentConfig = normalizedConfig
         currentEndpointIndex = 0
         updateAuthBody(normalizedConfig)
-        internalConnect()
+        internalConnect(lifecycle)
     }
 
     fun disconnect() {
         Logger.d(tag) { "Disconnecting" }
+        invalidateConnectionLifecycle()
         closeCurrentSocket(force = false, cancelReconnect = true)
         _connectionState.value = LiveDanmakuConnectionState.IDLE
     }
@@ -196,18 +179,20 @@ class LiveDanmakuClient(
     fun release() {
         if (!released.compareAndSet(false, true)) return
         Logger.d(tag) { "Releasing" }
+        invalidateConnectionLifecycle()
         closeCurrentSocket(force = true, cancelReconnect = true)
         stopDecodeLoop()
         _connectionState.value = LiveDanmakuConnectionState.RELEASED
     }
 
-    private fun internalConnect() {
-        if (released.get()) return
+    private fun internalConnect(expectedLifecycle: Long = currentLifecycleGeneration()) {
+        if (released.get() || !isLifecycleCurrent(expectedLifecycle)) return
         val config = currentConfig ?: return failConnection("Live danmaku config is missing")
         val endpoint = config.endpoints.getOrNull(currentEndpointIndex)
             ?: return failConnection("Live danmaku endpoint is missing")
 
         closeCurrentSocket(force = false, cancelReconnect = false)
+        if (released.get() || !isLifecycleCurrent(expectedLifecycle)) return
         updateAuthBody(config)
 
         _isConnected.set(false)
@@ -220,17 +205,30 @@ class LiveDanmakuClient(
         Logger.d(tag) {
             "Connecting to ${endpoint.url}, room=${config.realRoomId}, endpointIndex=$currentEndpointIndex"
         }
-        val request = Request.Builder()
-            .url(endpoint.url)
-            .header("User-Agent", resolveAppUserAgent(NetworkModule.appContext))
-            .header("Origin", "https://live.bilibili.com")
-            .build()
-
-        val socket = NetworkModule.okHttpClient.newWebSocket(request, listener)
-        synchronized(socketLock) {
-            socketGeneration += 1L
-            webSocket = socket
+        val request = try {
+            Request.Builder()
+                .url(endpoint.url)
+                .header("User-Agent", resolveAppUserAgent(NetworkModule.appContext))
+                .header("Origin", "https://live.bilibili.com")
+                .build()
+        } catch (error: IllegalArgumentException) {
+            Log.e(tag, "Invalid live danmaku endpoint: ${error.message}")
+            failConnection("Invalid live danmaku endpoint")
+            return
         }
+
+        if (released.get() || !isLifecycleCurrent(expectedLifecycle)) return
+        val socket = NetworkModule.okHttpClient.newWebSocket(request, listener)
+        val accepted = synchronized(socketLock) {
+            if (released.get() || connectionLifecycleGeneration != expectedLifecycle) {
+                false
+            } else {
+                socketGeneration += 1L
+                webSocket = socket
+                true
+            }
+        }
+        if (!accepted) socket.cancel()
     }
 
     private fun closeCurrentSocket(force: Boolean, cancelReconnect: Boolean) {
@@ -246,11 +244,24 @@ class LiveDanmakuClient(
             current
         }
         _isConnected.set(false)
-        if (force) {
-            socket?.cancel()
-        } else {
-            socket?.close(NORMAL_CLOSURE_CODE, "Normal Closure")
+        if (force) socket?.cancel() else socket?.close(NORMAL_CLOSURE_CODE, "Normal Closure")
+    }
+
+    private fun beginConnectionLifecycle(): Long {
+        return synchronized(socketLock) {
+            connectionLifecycleGeneration += 1L
+            connectionLifecycleGeneration
         }
+    }
+
+    private fun invalidateConnectionLifecycle(): Long = beginConnectionLifecycle()
+
+    private fun currentLifecycleGeneration(): Long {
+        return synchronized(socketLock) { connectionLifecycleGeneration }
+    }
+
+    private fun isLifecycleCurrent(expected: Long): Boolean {
+        return synchronized(socketLock) { connectionLifecycleGeneration == expected }
     }
 
     private fun clearSocketIfCurrent(socket: WebSocket) {
@@ -268,9 +279,7 @@ class LiveDanmakuClient(
         }
     }
 
-    private fun currentGeneration(): Long {
-        return synchronized(socketLock) { socketGeneration }
-    }
+    private fun currentGeneration(): Long = synchronized(socketLock) { socketGeneration }
 
     private fun currentEndpointUrl(): String {
         val config = currentConfig ?: return ""
@@ -321,15 +330,14 @@ class LiveDanmakuClient(
     }
 
     private fun scheduleReconnect(forceRefresh: Boolean = false) {
-        if (forceRefresh) {
-            refreshBeforeNextReconnect = true
-        }
+        if (forceRefresh) refreshBeforeNextReconnect = true
         if (reconnectJob?.isActive == true) return
         if (!shouldRetryLiveDanmakuTransport(retryCount)) {
             failConnection("Live danmaku reconnect attempts exhausted")
             return
         }
 
+        val expectedLifecycle = currentLifecycleGeneration()
         reconnectJob = scope.launch {
             val delayMs = min(
                 BASE_RECONNECT_DELAY_MS * 2.0.pow(retryCount),
@@ -338,10 +346,11 @@ class LiveDanmakuClient(
             _connectionState.value = LiveDanmakuConnectionState.RECONNECTING
             Logger.d(tag) { "Reconnecting in ${delayMs}ms, attempt=${retryCount + 1}" }
             delay(delayMs)
-            if (released.get()) return@launch
+            if (!isActive || released.get() || !isLifecycleCurrent(expectedLifecycle)) return@launch
             retryCount += 1
             prepareReconnectConfig()
-            internalConnect()
+            if (!isActive || released.get() || !isLifecycleCurrent(expectedLifecycle)) return@launch
+            internalConnect(expectedLifecycle)
         }
     }
 
@@ -353,9 +362,14 @@ class LiveDanmakuClient(
             refreshBeforeNextReconnect = false
             return
         }
-        val refreshed = runCatching { provider()?.normalized() }
-            .onFailure { error -> Log.w(tag, "Refresh live danmaku config failed: ${error.message}") }
-            .getOrNull()
+        val refreshed = try {
+            provider()?.normalized()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(tag, "Refresh live danmaku config failed: ${error.message}")
+            null
+        }
         refreshBeforeNextReconnect = false
         if (refreshed != null && refreshed.endpoints.isNotEmpty()) {
             currentConfig = refreshed
@@ -407,7 +421,6 @@ class LiveDanmakuClient(
                             Logger.d(tag) { "Popularity: $popularity" }
                         }
                     }
-
                     DanmakuProtocol.OP_AUTH_REPLY -> {
                         val authCode = runCatching {
                             JSONObject(String(packet.body, Charsets.UTF_8)).optInt("code", -1)
@@ -423,14 +436,13 @@ class LiveDanmakuClient(
                             handleAuthFailure(authCode)
                         }
                     }
-
-                    DanmakuProtocol.OP_MESSAGE -> {
-                        _messageFlow.tryEmit(packet)
-                    }
+                    DanmakuProtocol.OP_MESSAGE -> _messageFlow.tryEmit(packet)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(tag, "Message handling failed: ${e.message}")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(tag, "Message handling failed: ${error.message}")
         }
     }
 
@@ -462,12 +474,7 @@ class LiveDanmakuClient(
     }
 
     private fun onIncomingMessage(generation: Long, bytes: ByteString) {
-        enqueueMessageFrame(
-            IncomingFrame(
-                generation = generation,
-                data = bytes.toByteArray(),
-            )
-        )
+        enqueueMessageFrame(IncomingFrame(generation = generation, data = bytes.toByteArray()))
     }
 
     private fun LiveDanmakuConnectionConfig.normalized(): LiveDanmakuConnectionConfig {

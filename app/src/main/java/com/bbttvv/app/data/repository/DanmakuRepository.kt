@@ -9,6 +9,7 @@ import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.socket.LiveDanmakuClient
 import com.bbttvv.app.core.network.socket.LiveDanmakuConnectionConfig
 import com.bbttvv.app.core.network.socket.LiveDanmakuEndpoint
+import com.bbttvv.app.core.util.runSuspendCatching
 import com.bbttvv.app.data.model.response.DanmakuThumbupStatsItem
 import com.bbttvv.app.data.model.response.LiveDanmuHost
 import kotlinx.coroutines.CancellationException
@@ -26,7 +27,6 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.CRC32
-import kotlin.math.abs
 
 internal data class DanmakuThumbupState(
     val likes: Int,
@@ -121,7 +121,6 @@ internal fun mapDanmakuFontScaleToCloudFontSize(fontScale: Float): Float {
 internal fun buildDanmakuCloudConfigPayload(settings: DanmakuCloudSyncSettings): DanmakuCloudConfigPayload {
     return DanmakuCloudConfigPayload(
         dmSwitch = settings.enabled.toCloudFlag(),
-        // B站 blockxxx 字段语义：true=不屏蔽，false=屏蔽；与本地 allow 语义一致
         blockScroll = settings.allowScroll.toCloudFlag(),
         blockTop = settings.allowTop.toCloudFlag(),
         blockBottom = settings.allowBottom.toCloudFlag(),
@@ -163,8 +162,7 @@ internal fun resolveDanmakuThumbupState(
     dmid: Long,
     data: Map<String, DanmakuThumbupStatsItem>
 ): DanmakuThumbupState? {
-    val key = dmid.toString()
-    val matched = data[key] ?: return null
+    val matched = data[dmid.toString()] ?: return null
     return DanmakuThumbupState(
         likes = matched.likes.coerceAtLeast(0),
         liked = matched.userLike == 1
@@ -209,18 +207,13 @@ internal fun resolveDanmakuSegmentCount(
 
     val fromMetadata = metadataSegmentCount?.coerceAtLeast(0) ?: 0
     if (fromMetadata > 0) return fromMetadata
-
-    // duration 与 metadata 同时缺失时，默认预取 3 段，避免从非首段位置进入时“无弹幕”
     return DANMAKU_SEGMENT_SAFE_FALLBACK_COUNT
 }
 
-/**
- * 弹幕相关数据仓库
- * 从 VideoRepository 拆分出来，专注于弹幕功能
- */
 object DanmakuRepository {
     private val api = NetworkModule.api
     private val guestApi = NetworkModule.guestApi
+
     @Volatile
     private var danmakuUserFilterCache: DanmakuUserFilterCache? = null
 
@@ -233,9 +226,6 @@ object DanmakuRepository {
         danmakuCacheManager.configure(DanmakuCacheProfile.fromContext(context))
     }
 
-    /**
-     * 清除弹幕缓存
-     */
     fun clearDanmakuCache() {
         rawXmlInFlight.values.forEach { it.cancel() }
         segmentInFlight.values.forEach { it.cancel() }
@@ -261,35 +251,27 @@ object DanmakuRepository {
         danmakuCacheManager.trimToSmall()
     }
 
-    fun getDanmakuCacheStats(): DanmakuCacheStats {
-        return danmakuCacheManager.stats()
-    }
+    fun getDanmakuCacheStats(): DanmakuCacheStats = danmakuCacheManager.stats()
 
     suspend fun warmUpDanmaku(
         cid: Long,
         durationMs: Long = 0L
     ) {
         if (cid <= 0L) return
-        val segmentBytes = runCatching {
+        val segmentBytes = runSuspendCatching {
             getDanmakuSegments(
                 cid = cid,
                 durationMs = durationMs.coerceAtLeast(0L)
             )
         }.getOrDefault(emptyList())
         if (segmentBytes.isNotEmpty()) return
+        currentCoroutineContext().ensureActive()
         getDanmakuRawData(cid)
     }
 
-    /**
-     * 获取 XML 格式弹幕原始数据
-     */
     suspend fun getDanmakuRawData(cid: Long): ByteArray? = withContext(Dispatchers.IO) {
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuRawData: cid=$cid")
         if (cid <= 0L) return@withContext null
-        danmakuCacheManager.getRawXml(cid)?.let {
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku cache hit for cid=$cid, size=${it.size}")
-            return@withContext it
-        }
+        danmakuCacheManager.getRawXml(cid)?.let { return@withContext it }
 
         val request = rawXmlInFlight.computeIfAbsent(cid) {
             AppScope.ioScope.async { fetchDanmakuRawData(cid) }
@@ -297,9 +279,7 @@ object DanmakuRepository {
         try {
             request.await()
         } finally {
-            if (request.isCompleted) {
-                rawXmlInFlight.remove(cid, request)
-            }
+            if (request.isCompleted) rawXmlInFlight.remove(cid, request)
         }
     }
 
@@ -310,36 +290,20 @@ object DanmakuRepository {
                 primary = { api.getDanmakuXml(cid).bytes() },
                 fallback = { guestApi.getDanmakuXml(cid).bytes() }
             )
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 Danmaku raw bytes: ${bytes.size}, first byte: ${if (bytes.isNotEmpty()) String.format(Locale.US, "0x%02X", bytes[0]) else "empty"}")
-
-            if (bytes.isEmpty()) {
-                android.util.Log.w("DanmakuRepo", " Danmaku response is empty!")
-                return null
-            }
-
+            if (bytes.isEmpty()) return null
             val result = decodeRawXmlBytes(bytes)
-            if (result.isNotEmpty()) {
-                danmakuCacheManager.putRawXml(cid, result)
-                com.bbttvv.app.core.util.Logger.d(
-                    "DanmakuRepo",
-                    " Danmaku cached: cid=$cid, size=${result.size}, bytes=${danmakuCacheManager.stats().rawBytes}"
-                )
-            }
+            if (result.isNotEmpty()) danmakuCacheManager.putRawXml(cid, result)
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             com.bbttvv.app.core.util.Logger.e("DanmakuRepo", "getDanmakuRawData failed: cid=$cid", e)
             null
         }
     }
 
     private fun decodeRawXmlBytes(bytes: ByteArray): ByteArray {
-        if (bytes[0] == 0x3C.toByte()) {
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku is plain XML, size=${bytes.size}")
-            return bytes
-        }
-
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku appears compressed, attempting deflate...")
+        if (bytes[0] == 0x3C.toByte()) return bytes
         return try {
             val inflater = java.util.zip.Inflater(true)
             inflater.setInput(bytes)
@@ -354,61 +318,46 @@ object DanmakuRepository {
                 outputStream.write(tempBuffer, 0, count)
             }
             inflater.end()
-            val decompressed = outputStream.toByteArray()
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Danmaku decompressed: ${bytes.size} → ${decompressed.size} bytes")
-            decompressed
+            outputStream.toByteArray()
         } catch (e: Exception) {
             com.bbttvv.app.core.util.Logger.e("DanmakuRepo", "Deflate failed, using raw danmaku bytes", e)
             bytes
         }
     }
-    
-    /**
-     * 获取弹幕元数据 (High-Energy, Command Dms, etc.)
-     */
+
     internal suspend fun getDanmakuView(cid: Long, aid: Long): DanmakuViewMetadata? = withContext(Dispatchers.IO) {
         try {
-             com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuView: cid=$cid, aid=$aid")
-             val bytes = requestBytesWithGuestFallback(
-                 requestName = "getDanmakuView cid=$cid aid=$aid",
-                 primary = { api.getDanmakuView(oid = cid, pid = aid).bytes() },
-                 fallback = { guestApi.getDanmakuView(oid = cid, pid = aid).bytes() }
-             )
-             if (bytes.isNotEmpty()) {
-                 val reply = com.bbttvv.app.feature.video.danmaku.DanmakuProto.parseWebViewReply(bytes)
-                 val serverSetting = reply.dmSetting?.let { setting ->
-                     DanmakuWebSetting(
-                         dmSwitch = setting.dmSwitch,
-                         allowScroll = setting.allowScroll,
-                         allowTop = setting.allowTop,
-                         allowBottom = setting.allowBottom,
-                         allowColor = setting.allowColor,
-                         allowSpecial = setting.allowSpecial,
-                         aiEnabled = setting.aiSwitch,
-                         aiLevel = when (setting.aiLevel) {
-                             0 -> 3
-                             else -> setting.aiLevel.coerceIn(0, 10)
-                         }
-                     )
-                 }
-                 DanmakuViewMetadata(
-                     segmentTotal = reply.dmSge?.total?.coerceAtLeast(0)?.toInt() ?: 0,
-                     segmentPageSizeMs = reply.dmSge?.pageSize?.coerceAtLeast(0L) ?: 0L,
-                     count = reply.count,
-                     setting = serverSetting,
-                     commandDms = reply.commandDms,
-                 ).also { metadata ->
-                     com.bbttvv.app.core.util.Logger.d(
-                         "DanmakuRepo",
-                         "Danmaku metadata ready cid=$cid aid=$aid commands=${metadata.commandDms.size}"
-                     )
-                 }
-             } else {
-                 null
-             }
+            val bytes = requestBytesWithGuestFallback(
+                requestName = "getDanmakuView cid=$cid aid=$aid",
+                primary = { api.getDanmakuView(oid = cid, pid = aid).bytes() },
+                fallback = { guestApi.getDanmakuView(oid = cid, pid = aid).bytes() }
+            )
+            if (bytes.isEmpty()) return@withContext null
+            val reply = com.bbttvv.app.feature.video.danmaku.DanmakuProto.parseWebViewReply(bytes)
+            val serverSetting = reply.dmSetting?.let { setting ->
+                DanmakuWebSetting(
+                    dmSwitch = setting.dmSwitch,
+                    allowScroll = setting.allowScroll,
+                    allowTop = setting.allowTop,
+                    allowBottom = setting.allowBottom,
+                    allowColor = setting.allowColor,
+                    allowSpecial = setting.allowSpecial,
+                    aiEnabled = setting.aiSwitch,
+                    aiLevel = if (setting.aiLevel == 0) 3 else setting.aiLevel.coerceIn(0, 10)
+                )
+            }
+            DanmakuViewMetadata(
+                segmentTotal = reply.dmSge?.total?.coerceAtLeast(0)?.toInt() ?: 0,
+                segmentPageSizeMs = reply.dmSge?.pageSize?.coerceAtLeast(0L) ?: 0L,
+                count = reply.count,
+                setting = serverSetting,
+                commandDms = reply.commandDms,
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-             android.util.Log.e("DanmakuRepo", " getDanmakuView failed: ${e.message}")
-             null
+            android.util.Log.e("DanmakuRepo", " getDanmakuView failed: ${e.message}")
+            null
         }
     }
 
@@ -426,7 +375,7 @@ object DanmakuRepository {
         if (csrf.isBlank() || TokenManager.sessDataCache.isNullOrBlank()) {
             return@withContext Result.failure(IllegalStateException("请先登录后投票"))
         }
-        runCatching {
+        runSuspendCatching {
             val response = api.submitDanmakuVote(
                 aid = aid,
                 cid = cid,
@@ -452,20 +401,14 @@ object DanmakuRepository {
 
         val now = System.currentTimeMillis()
         val cached = danmakuUserFilterCache
-        if (!forceRefresh &&
-            cached != null &&
-            cached.mid == mid &&
-            now - cached.fetchedAtMs < DM_FILTER_USER_CACHE_TTL_MS
-        ) {
+        if (!forceRefresh && cached != null && cached.mid == mid && now - cached.fetchedAtMs < DM_FILTER_USER_CACHE_TTL_MS) {
             return@withContext cached.filter
         }
 
         try {
-            val responseBody = api.getDanmakuFilterUser()
-            val body = responseBody.string()
+            val body = api.getDanmakuFilterUser().string()
             val json = JSONObject(body)
-            val code = json.optInt("code", 0)
-            if (code != 0) {
+            if (json.optInt("code", 0) != 0) {
                 return@withContext cached?.takeIf { it.mid == mid }?.filter ?: DanmakuUserFilter.EMPTY
             }
 
@@ -473,73 +416,42 @@ object DanmakuRepository {
             val keywords = mutableListOf<String>()
             val regexes = mutableListOf<Regex>()
             val blockedMidHashes = linkedSetOf<String>()
-
             for (index in 0 until (rules?.length() ?: 0)) {
                 val item = rules?.optJSONObject(index) ?: continue
                 val type = item.optInt("type", -1)
-                val raw = item.optString(
-                    "filter",
-                    item.optString(
-                        "filter_content",
-                        item.optString("content", "")
-                    )
-                ).trim()
+                val raw = item.optString("filter", item.optString("filter_content", item.optString("content", ""))).trim()
                 if (raw.isBlank()) continue
-
                 when (type) {
                     0 -> keywords.add(raw)
                     1 -> normalizeRegexRule(raw)?.let(regexes::add)
                     2 -> normalizeMidHashRule(raw)?.let(blockedMidHashes::add)
                 }
             }
-
-            val fetched = DanmakuUserFilter(
+            DanmakuUserFilter(
                 keywords = keywords.distinct(),
                 regexes = regexes.distinctBy { it.pattern },
                 blockedUserMidHashes = blockedMidHashes
-            )
-            danmakuUserFilterCache = DanmakuUserFilterCache(
-                mid = mid,
-                fetchedAtMs = now,
-                filter = fetched
-            )
-            fetched
+            ).also { fetched ->
+                danmakuUserFilterCache = DanmakuUserFilterCache(mid = mid, fetchedAtMs = now, filter = fetched)
+            }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             cached?.takeIf { it.mid == mid }?.filter ?: DanmakuUserFilter.EMPTY
         }
     }
-    
-    /**
-     * 获取单个 Protobuf 格式弹幕分段
-     *
-     * @param cid 视频 cid
-     * @param segmentIndex 分段索引 (1-based)
-     * @return 该分段的 Protobuf 数据
-     */
+
     suspend fun getDanmakuSegment(cid: Long, segmentIndex: Int): ByteArray? = withContext(Dispatchers.IO) {
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuSegment: cid=$cid, index=$segmentIndex")
-        if (segmentIndex <= 0) {
-            return@withContext null
-        }
-
+        if (segmentIndex <= 0) return@withContext null
         val cacheKey = DanmakuSegmentCacheKey(cid = cid, segmentIndex = segmentIndex)
-        danmakuCacheManager.getSegment(cacheKey)?.let { cached ->
-            com.bbttvv.app.core.util.Logger.d(
-                "DanmakuRepo",
-                " Protobuf danmaku segment cache hit: cid=$cid, index=$segmentIndex, size=${cached.size}"
-            )
-            return@withContext cached
-        }
-
+        danmakuCacheManager.getSegment(cacheKey)?.let { return@withContext it }
         val request = segmentInFlight.computeIfAbsent(cacheKey) {
             AppScope.ioScope.async { fetchDanmakuSegment(cacheKey) }
         }
         try {
             request.await()
         } finally {
-            if (request.isCompleted) {
-                segmentInFlight.remove(cacheKey, request)
-            }
+            if (request.isCompleted) segmentInFlight.remove(cacheKey, request)
         }
     }
 
@@ -552,48 +464,23 @@ object DanmakuRepository {
             )
             if (bytes.isNotEmpty()) {
                 danmakuCacheManager.putSegment(cacheKey, bytes)
-                com.bbttvv.app.core.util.Logger.d(
-                    "DanmakuRepo",
-                    " Segment ${cacheKey.segmentIndex}: ${bytes.size} bytes, cacheBytes=${danmakuCacheManager.stats().segmentBytes}"
-                )
                 bytes
-            } else {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Segment ${cacheKey.segmentIndex} is empty")
-                null
-            }
+            } else null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             android.util.Log.w("DanmakuRepo", " Segment ${cacheKey.segmentIndex} failed: ${e.message}")
             null
         }
     }
 
-    /**
-     * 获取 Protobuf 格式弹幕 (分段加载)
-     * 
-     * @param cid 视频 cid
-     * @param durationMs 视频时长 (毫秒)，用于计算所需分段数
-     * @param metadataSegmentCount 弹幕元数据返回的总分段数（可选）
-     * @return 所有分段的 Protobuf 数据列表
-     */
     suspend fun getDanmakuSegments(
         cid: Long,
         durationMs: Long,
         metadataSegmentCount: Int? = null
     ): List<ByteArray> = withContext(Dispatchers.IO) {
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "🎯 getDanmakuSegments: cid=$cid, duration=${durationMs}ms")
-
-        // 计算所需分段数（优先 duration，其次 metadata，最后安全默认值）
         val segmentCount = resolveDanmakuSegmentCount(durationMs, metadataSegmentCount)
-        
-        com.bbttvv.app.core.util.Logger.d(
-            "DanmakuRepo",
-            " Fetching $segmentCount segments for ${durationMs}ms video (metadata=$metadataSegmentCount)"
-        )
-        
         data class SegmentResult(val index: Int, val bytes: ByteArray)
-        
-        // 并发获取分段，限制并发度避免过载
         val segmentResults = coroutineScope {
             val semaphore = Semaphore(MAX_SEGMENT_PARALLELISM)
             (1..segmentCount).map { index ->
@@ -605,14 +492,7 @@ object DanmakuRepository {
                 }
             }.awaitAll()
         }
-        
-        val results = segmentResults
-            .filterNotNull()
-            .sortedBy { it.index }
-            .map { it.bytes }
-        
-        com.bbttvv.app.core.util.Logger.d("DanmakuRepo", " Got ${results.size}/$segmentCount segments for cid=$cid")
-        results.toList()
+        segmentResults.filterNotNull().sortedBy { it.index }.map { it.bytes }
     }
 
     private suspend fun requestBytesWithGuestFallback(
@@ -620,45 +500,20 @@ object DanmakuRepository {
         primary: suspend () -> ByteArray,
         fallback: suspend () -> ByteArray
     ): ByteArray {
-        val primaryResult = runCatching { primary() }
-        primaryResult.exceptionOrNull()?.let { error ->
-            if (error is CancellationException) throw error
-        }
+        val primaryResult = runSuspendCatching { primary() }
         primaryResult.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
-
         val primaryError = primaryResult.exceptionOrNull()
         if (primaryError != null) {
             com.bbttvv.app.core.util.Logger.w(
                 "DanmakuRepo",
                 "$requestName primary failed, retrying without cookies: ${primaryError.message}"
             )
-        } else {
-            com.bbttvv.app.core.util.Logger.d(
-                "DanmakuRepo",
-                "$requestName primary returned empty bytes, retrying without cookies"
-            )
         }
-
-        return runCatching { fallback() }
-            .onFailure { error ->
-                if (error is CancellationException) throw error
-                primaryError?.let { error.addSuppressed(it) }
-            }
+        return runSuspendCatching { fallback() }
+            .onFailure { error -> primaryError?.let { error.addSuppressed(it) } }
             .getOrThrow()
     }
-    
-    /**
-     * 发送弹幕
-     * 
-     * @param aid 视频 aid (必需)
-     * @param cid 视频 cid (必需)
-     * @param message 弹幕内容 (最多 100 字)
-     * @param progress 弹幕出现时间 (毫秒)
-     * @param color 弹幕颜色 (十进制 RGB，默认白色 16777215)
-     * @param fontSize 字号: 18=小, 25=中(默认), 36=大
-     * @param mode 模式: 1=滚动(默认), 4=底部, 5=顶部
-     * @return 发送结果，包含弹幕 ID
-     */
+
     suspend fun sendDanmaku(
         aid: Long,
         cid: Long,
@@ -669,25 +524,10 @@ object DanmakuRepository {
         mode: Int = 1
     ): Result<com.bbttvv.app.data.model.response.SendDanmakuData> = withContext(Dispatchers.IO) {
         try {
-            // 验证登录状态
-            val csrf = com.bbttvv.app.core.store.TokenManager.csrfCache
-            if (csrf.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("请先登录"))
-            }
-            
-            // 验证弹幕内容
-            if (message.isBlank()) {
-                return@withContext Result.failure(Exception("弹幕内容不能为空"))
-            }
-            if (message.length > 100) {
-                return@withContext Result.failure(Exception("弹幕内容过长，最多 100 字"))
-            }
-            
-            com.bbttvv.app.core.util.Logger.d(
-                "DanmakuRepo",
-                "📤 sendDanmaku: aid=$aid, cid=$cid, msg=$message, progress=${progress}ms, color=$color, mode=$mode"
-            )
-            
+            val csrf = TokenManager.csrfCache
+            if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
+            if (message.isBlank()) return@withContext Result.failure(Exception("弹幕内容不能为空"))
+            if (message.length > 100) return@withContext Result.failure(Exception("弹幕内容过长，最多 100 字"))
             val response = api.sendDanmaku(
                 oid = cid,
                 aid = aid,
@@ -698,123 +538,68 @@ object DanmakuRepository {
                 mode = mode,
                 csrf = csrf
             )
-            
             if (response.code == 0 && response.data != null) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "✅ Danmaku sent: dmid=${response.data.dmid_str}")
                 Result.success(response.data)
             } else {
-                val errorMsg = mapSendDanmakuErrorMessage(response.code, response.message)
-                android.util.Log.e("DanmakuRepo", "❌ sendDanmaku failed: ${response.code} - ${response.message}")
-                Result.failure(Exception(errorMsg))
+                Result.failure(Exception(mapSendDanmakuErrorMessage(response.code, response.message)))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", "❌ sendDanmaku exception: ${e.message}", e)
+            android.util.Log.e("DanmakuRepo", "sendDanmaku exception: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * 撤回弹幕
-     * 
-     * 仅能撤回自己 2 分钟内的弹幕，每天 3 次机会
-     * 
-     * @param cid 视频 cid
-     * @param dmid 弹幕 ID
-     * @return 撤回结果 (message 包含剩余次数)
-     */
-    suspend fun recallDanmaku(
-        cid: Long,
-        dmid: Long
-    ): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun recallDanmaku(cid: Long, dmid: Long): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val csrf = com.bbttvv.app.core.store.TokenManager.csrfCache
-            if (csrf.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("请先登录"))
-            }
-
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "📤 recallDanmaku: cid=$cid, dmid=$dmid")
-            
+            val csrf = TokenManager.csrfCache
+            if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
             val response = api.recallDanmaku(cid = cid, dmid = dmid, csrf = csrf)
-            
             if (response.code == 0) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "✅ Danmaku recalled: ${response.message}")
                 Result.success(response.message)
             } else {
                 val errorMsg = when (response.code) {
                     -101 -> "请先登录"
                     -111 -> "鉴权失败，请重新登录"
                     -400 -> "请求参数错误"
-                    36301 -> "撤回次数已用完" 
+                    36301 -> "撤回次数已用完"
                     36302 -> "弹幕发送超过2分钟，无法撤回"
                     36303 -> "该弹幕无法撤回"
                     else -> response.message.ifEmpty { "撤回失败 (${response.code})" }
                 }
-                android.util.Log.e("DanmakuRepo", "❌ recallDanmaku failed: ${response.code} - ${response.message}")
                 Result.failure(Exception(errorMsg))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", "❌ recallDanmaku exception: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * 查询单条弹幕的点赞状态与票数
-     */
-    internal suspend fun getDanmakuThumbupState(
-        cid: Long,
-        dmid: Long
-    ): Result<DanmakuThumbupState> = withContext(Dispatchers.IO) {
+    internal suspend fun getDanmakuThumbupState(cid: Long, dmid: Long): Result<DanmakuThumbupState> = withContext(Dispatchers.IO) {
         try {
-            if (dmid <= 0L) {
-                return@withContext Result.failure(IllegalArgumentException("弹幕ID无效"))
-            }
-
-            val response = api.getDanmakuThumbupStats(
-                oid = cid,
-                ids = dmid.toString()
-            )
-
+            if (dmid <= 0L) return@withContext Result.failure(IllegalArgumentException("弹幕ID无效"))
+            val response = api.getDanmakuThumbupStats(oid = cid, ids = dmid.toString())
             if (response.code != 0) {
-                val message = response.message.ifEmpty { "查询弹幕投票状态失败 (${response.code})" }
-                return@withContext Result.failure(Exception(message))
+                return@withContext Result.failure(Exception(response.message.ifEmpty { "查询弹幕投票状态失败 (${response.code})" }))
             }
-
             val state = resolveDanmakuThumbupState(dmid = dmid, data = response.data)
                 ?: return@withContext Result.failure(Exception("未找到该弹幕投票信息"))
-
             Result.success(state)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", "❌ getDanmakuThumbupState exception: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * 点赞弹幕
-     * 
-     * @param cid 视频 cid
-     * @param dmid 弹幕 ID
-     * @param like true=点赞, false=取消点赞
-     */
-    suspend fun likeDanmaku(
-        cid: Long,
-        dmid: Long,
-        like: Boolean = true
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun likeDanmaku(cid: Long, dmid: Long, like: Boolean = true): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val csrf = com.bbttvv.app.core.store.TokenManager.csrfCache
-            if (csrf.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("请先登录"))
-            }
-
-            val op = if (like) 1 else 2
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "📤 likeDanmaku: cid=$cid, dmid=$dmid, op=$op")
-            
-            val response = api.likeDanmaku(oid = cid, dmid = dmid, op = op, csrf = csrf)
-            
+            val csrf = TokenManager.csrfCache
+            if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
+            val response = api.likeDanmaku(oid = cid, dmid = dmid, op = if (like) 1 else 2, csrf = csrf)
             if (response.code == 0) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "✅ Danmaku ${if (like) "liked" else "unliked"}")
                 Result.success(Unit)
             } else {
                 val errorMsg = when (response.code) {
@@ -825,23 +610,15 @@ object DanmakuRepository {
                     65005 -> "已经取消点赞了"
                     else -> response.message.ifEmpty { "操作失败 (${response.code})" }
                 }
-                android.util.Log.e("DanmakuRepo", "❌ likeDanmaku failed: ${response.code} - ${response.message}")
                 Result.failure(Exception(errorMsg))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", "❌ likeDanmaku exception: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * 举报弹幕
-     * 
-     * @param cid 视频 cid
-     * @param dmid 弹幕 ID
-     * @param reason 举报原因: 1=违法/2=色情/3=广告/4=引战/5=辱骂/6=剧透/7=刷屏/8=其他
-     * @param content 举报描述 (可选)
-     */
     suspend fun reportDanmaku(
         cid: Long,
         dmid: Long,
@@ -849,17 +626,10 @@ object DanmakuRepository {
         content: String = ""
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val csrf = com.bbttvv.app.core.store.TokenManager.csrfCache
-            if (csrf.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("请先登录"))
-            }
-
-            com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "📤 reportDanmaku: cid=$cid, dmid=$dmid, reason=$reason")
-            
+            val csrf = TokenManager.csrfCache
+            if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
             val response = api.reportDanmaku(cid = cid, dmid = dmid, reason = reason, content = content, csrf = csrf)
-            
             if (response.code == 0) {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "✅ Danmaku reported")
                 Result.success(Unit)
             } else {
                 val errorMsg = when (response.code) {
@@ -868,27 +638,19 @@ object DanmakuRepository {
                     -400 -> "请求参数错误"
                     else -> response.message.ifEmpty { "举报失败 (${response.code})" }
                 }
-                android.util.Log.e("DanmakuRepo", "❌ reportDanmaku failed: ${response.code} - ${response.message}")
                 Result.failure(Exception(errorMsg))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("DanmakuRepo", "❌ reportDanmaku exception: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * 同步弹幕配置到账号云端（对齐 Web 原版行为）
-     */
-    internal suspend fun syncDanmakuCloudConfig(
-        settings: DanmakuCloudSyncSettings
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    internal suspend fun syncDanmakuCloudConfig(settings: DanmakuCloudSyncSettings): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val csrf = com.bbttvv.app.core.store.TokenManager.csrfCache
-            if (csrf.isNullOrEmpty()) {
-                return@withContext Result.failure(Exception("请先登录"))
-            }
-
+            val csrf = TokenManager.csrfCache
+            if (csrf.isNullOrEmpty()) return@withContext Result.failure(Exception("请先登录"))
             val payload = buildDanmakuCloudConfigPayload(settings)
             val response = api.updateDanmakuWebConfig(
                 dmSwitch = payload.dmSwitch,
@@ -903,7 +665,6 @@ object DanmakuRepository {
                 fontSize = payload.fontSize,
                 csrf = csrf
             )
-
             if (isDanmakuCloudSyncSuccessful(response.code)) {
                 Result.success(Unit)
             } else {
@@ -915,6 +676,8 @@ object DanmakuRepository {
                 }
                 Result.failure(Exception(errorMsg))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -923,81 +686,60 @@ object DanmakuRepository {
     private suspend fun resolveLiveDanmakuConnectionConfig(roomId: Long): Result<LiveDanmakuConnectionConfig> {
         return withContext(Dispatchers.IO) {
             try {
-                com.bbttvv.app.core.util.Logger.d("DanmakuRepo", "📡 Getting live danmaku info for room=$roomId...")
-
-                // 1) 确保 buvid3 已初始化（getDanmuInfo 从 2025-06 起要求 buvid3）
                 SubtitleAndAuxRepository.ensureBuvid3()
-
-                // 2) 统一解析真实房间号（避免短号导致弹幕 token 或房间参数不一致）
-                val realRoomId = runCatching { api.getLiveRoomInit(roomId) }
+                val realRoomId = runSuspendCatching { api.getLiveRoomInit(roomId) }
                     .getOrNull()
                     ?.data
                     ?.roomId
                     ?.takeIf { it > 0L }
                     ?: roomId
 
-                // 3) 强制使用 WBI 签名请求 getDanmuInfo，不再回退无签名
                 val initialWbiKeys = com.bbttvv.app.core.network.WbiKeyManager.getWbiKeys().getOrNull()
                     ?: com.bbttvv.app.core.network.WbiKeyManager.refreshKeys().getOrNull()
                     ?: return@withContext Result.failure(Exception("获取 WBI 密钥失败，无法连接直播弹幕"))
 
                 fun buildSignedParams(keys: Pair<String, String>): Map<String, String> {
-                    val params = mapOf(
-                        "id" to realRoomId.toString(),
-                        "type" to "0",
-                        "web_location" to "444.8"
+                    return com.bbttvv.app.core.network.WbiUtils.sign(
+                        mapOf("id" to realRoomId.toString(), "type" to "0", "web_location" to "444.8"),
+                        keys.first,
+                        keys.second
                     )
-                    return com.bbttvv.app.core.network.WbiUtils.sign(params, keys.first, keys.second)
                 }
 
                 var response = api.getDanmuInfoWbi(buildSignedParams(initialWbiKeys))
                 if (response.code != 0) {
-                    // WBI 相关失败时，主动刷新密钥再重试一次
                     com.bbttvv.app.core.network.WbiKeyManager.invalidateCache()
-                    val refreshedKeys = com.bbttvv.app.core.network.WbiKeyManager.refreshKeys().getOrNull()
-                    if (refreshedKeys != null) {
+                    com.bbttvv.app.core.network.WbiKeyManager.refreshKeys().getOrNull()?.let { refreshedKeys ->
                         response = api.getDanmuInfoWbi(buildSignedParams(refreshedKeys))
                     }
                 }
-
-                if (response.code != 0 || response.data == null) {
+                if (response.code != 0) {
                     return@withContext Result.failure(Exception("获取弹幕服务信息失败: ${response.code} (msg=${response.message})"))
                 }
-
                 val info = response.data
-                val token = info.token
+                    ?: return@withContext Result.failure(Exception("获取弹幕服务信息失败: ${response.code} (msg=${response.message})"))
                 val hosts = info.host_list
-
                 if (hosts.isEmpty()) {
                     return@withContext Result.failure(Exception("无可用弹幕服务器"))
                 }
-
                 val endpoints = buildLiveDanmakuEndpoints(hosts)
-
-                com.bbttvv.app.core.util.Logger.d(
-                    "DanmakuRepo",
-                    "🔗 Live Danmaku endpoints=${endpoints.size}, first=${endpoints.firstOrNull()?.url.orEmpty()}"
-                )
-
-                if (endpoints.isNotEmpty()) {
-                    // uid 与 token 必须同一账号；账号状态不完整时退回游客 uid=0，避免认证后强制断连
-                    val hasSess = !com.bbttvv.app.core.store.TokenManager.sessDataCache.isNullOrEmpty()
-                    val uid = if (hasSess) (com.bbttvv.app.core.store.TokenManager.midCache ?: 0L) else 0L
-                    Result.success(
-                        LiveDanmakuConnectionConfig(
-                            endpoints = endpoints,
-                            token = token,
-                            realRoomId = realRoomId,
-                            uid = uid,
-                        )
-                    )
-                } else {
-                    Result.failure(Exception("未找到有效的 WebSocket 地址"))
+                if (endpoints.isEmpty()) {
+                    return@withContext Result.failure(Exception("未找到有效的 WebSocket 地址"))
                 }
+                val hasSess = !TokenManager.sessDataCache.isNullOrEmpty()
+                val uid = if (hasSess) (TokenManager.midCache ?: 0L) else 0L
+                Result.success(
+                    LiveDanmakuConnectionConfig(
+                        endpoints = endpoints,
+                        token = info.token,
+                        realRoomId = realRoomId,
+                        uid = uid,
+                    )
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.e("DanmakuRepo", "❌ Start live danmaku failed: ${e.message}", e)
+                android.util.Log.e("DanmakuRepo", "Start live danmaku failed: ${e.message}", e)
                 Result.failure(e)
             }
         }
@@ -1007,23 +749,12 @@ object DanmakuRepository {
         return hosts
             .flatMap { host ->
                 val hostName = host.host.trim()
-                if (hostName.isBlank()) {
-                    emptyList()
-                } else {
-                    buildList {
-                        if (host.wss_port > 0) {
-                            add(LiveDanmakuEndpoint("wss://$hostName:${host.wss_port}/sub"))
-                        }
-                        if (host.ws_port > 0) {
-                            add(LiveDanmakuEndpoint("ws://$hostName:${host.ws_port}/sub"))
-                        }
-                        if (
-                            host.port > 0 &&
-                            host.port != host.wss_port &&
-                            host.port != host.ws_port
-                        ) {
-                            add(LiveDanmakuEndpoint("ws://$hostName:${host.port}/sub"))
-                        }
+                if (hostName.isBlank()) emptyList()
+                else buildList {
+                    if (host.wss_port > 0) add(LiveDanmakuEndpoint("wss://$hostName:${host.wss_port}/sub"))
+                    if (host.ws_port > 0) add(LiveDanmakuEndpoint("ws://$hostName:${host.ws_port}/sub"))
+                    if (host.port > 0 && host.port != host.wss_port && host.port != host.ws_port) {
+                        add(LiveDanmakuEndpoint("ws://$hostName:${host.port}/sub"))
                     }
                 }
             }
@@ -1039,32 +770,18 @@ object DanmakuRepository {
         }
     }
 
-    /**
-     * 启动直播弹幕连接
-     * 
-     * @param scope 用于管理 WebSocket 生命周期的协程作用域 (通常是 ViewModelScope)
-     * @param roomId 直播间 ID
-     * @return 连接成功的 Client 实例
-     */
     suspend fun startLiveDanmaku(
         scope: kotlinx.coroutines.CoroutineScope,
         roomId: Long
     ): Result<LiveDanmakuClient> {
         val config = resolveLiveDanmakuConnectionConfig(roomId)
             .getOrElse { return Result.failure(it) }
-
         currentCoroutineContext().ensureActive()
         val client = LiveDanmakuClient(
             scope = scope,
-            reconnectConfigProvider = {
-                resolveLiveDanmakuConnectionConfig(roomId).getOrNull()
-            },
+            reconnectConfigProvider = { resolveLiveDanmakuConnectionConfig(roomId).getOrNull() },
         )
         return try {
-            com.bbttvv.app.core.util.Logger.d(
-                "DanmakuRepo",
-                "🔌 Connecting with UID: ${config.uid}, endpoints=${config.endpoints.size}"
-            )
             client.connect(config)
             currentCoroutineContext().ensureActive()
             Result.success(client)
@@ -1073,7 +790,6 @@ object DanmakuRepository {
             throw e
         } catch (e: Exception) {
             client.release()
-            android.util.Log.e("DanmakuRepo", "❌ Start live danmaku failed: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -1086,9 +802,7 @@ private fun normalizeMidHashRule(raw: String): String? {
         val mid = trimmed.toLongOrNull()?.takeIf { it > 0L } ?: return null
         return if (trimmed.length > 8) midHashOfMid(mid) else trimmed.lowercase(Locale.US).padStart(8, '0')
     }
-    if (MID_HASH_REGEX.matches(trimmed)) {
-        return trimmed.lowercase(Locale.US).padStart(8, '0')
-    }
+    if (MID_HASH_REGEX.matches(trimmed)) return trimmed.lowercase(Locale.US).padStart(8, '0')
     return null
 }
 

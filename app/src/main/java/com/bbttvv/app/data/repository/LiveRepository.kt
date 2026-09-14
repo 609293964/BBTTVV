@@ -130,6 +130,8 @@ object LiveRepository {
                     val online = roomInfo.data?.online ?: 0
                     Logger.d(TAG, "🔴 Room ${room.roomid} online: $online")
                     liveRoom.copy(online = online)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     android.util.Log.w(TAG, "Failed to get room info for ${room.roomid}: ${e.message}")
                     liveRoom  // 失败时使用原数据
@@ -295,6 +297,8 @@ object LiveRepository {
             } else {
                 Result.failure(Exception(resp.message))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
 
             // 点赞失败静默处理
