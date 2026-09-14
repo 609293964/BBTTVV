@@ -4,12 +4,14 @@ package com.bbttvv.app.core.cache
 import android.util.LruCache
 import com.bbttvv.app.core.store.AccountSessionEpoch
 import com.bbttvv.app.data.model.response.PlayUrlData
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * 播放地址缓存管理器。
  *
- * 缓存严格绑定到账号会话 epoch。账号切换后，旧请求即使晚到也不能把旧账号的
- * 签名/权益相关播放地址重新写入新账号缓存。
+ * 缓存严格绑定到账号会话 epoch。播放地址请求开始时会给返回的数据标记请求所属
+ * epoch；账号切换后，旧请求即使晚到也不能把旧账号的签名/权益数据写进新缓存。
  */
 object PlayUrlCache {
     private const val TAG = "PlayUrlCache"
@@ -50,6 +52,15 @@ object PlayUrlCache {
 
     private val cache: LruCache<String, CachedPlayUrl> = LruCache(MAX_CACHE_SIZE)
 
+    // Weak keys keep this provenance tag from extending PlayUrlData lifetime. Do not clear
+    // this map on account rotation: late responses from the previous epoch still need their
+    // original marker so put() can reject them.
+    private val fetchedEpochs = Collections.synchronizedMap(WeakHashMap<PlayUrlData, Long>())
+
+    fun tagFetchedForSession(data: PlayUrlData, sessionEpoch: Long) {
+        fetchedEpochs[data] = sessionEpoch
+    }
+
     @Synchronized
     fun get(
         bvid: String,
@@ -74,13 +85,7 @@ object PlayUrlCache {
         }
 
         return when {
-            cached == null -> {
-                com.bbttvv.app.core.util.Logger.d(
-                    TAG,
-                    " Cache miss: bvid=$bvid, cid=$cid, epoch=$sessionEpoch, reqQ=${requestedQuality ?: "auto"}, lang=${audioLang ?: "default"}"
-                )
-                null
-            }
+            cached == null -> null
             cached.isExpired() -> {
                 cache.remove(matchedKey)
                 null
@@ -96,17 +101,20 @@ object PlayUrlCache {
         data: PlayUrlData,
         quality: Int? = null,
         audioLang: String? = null,
-        sessionEpoch: Long = AccountSessionEpoch.current()
+        sessionEpoch: Long? = null
     ) {
-        if (!AccountSessionEpoch.isCurrent(sessionEpoch)) {
+        val resolvedEpoch = sessionEpoch
+            ?: fetchedEpochs.remove(data)
+            ?: AccountSessionEpoch.current()
+        if (!AccountSessionEpoch.isCurrent(resolvedEpoch)) {
             com.bbttvv.app.core.util.Logger.d(
                 TAG,
-                " Skip stale cache write: bvid=$bvid, cid=$cid, epoch=$sessionEpoch, current=${AccountSessionEpoch.current()}"
+                " Skip stale cache write: bvid=$bvid, cid=$cid, epoch=$resolvedEpoch, current=${AccountSessionEpoch.current()}"
             )
             return
         }
 
-        val key = generateKey(bvid, cid, quality, audioLang, sessionEpoch)
+        val key = generateKey(bvid, cid, quality, audioLang, resolvedEpoch)
         cache.put(
             key,
             CachedPlayUrl(
@@ -116,7 +124,7 @@ object PlayUrlCache {
                 quality = data.quality,
                 requestedQuality = quality,
                 requestedAudioLang = audioLang,
-                sessionEpoch = sessionEpoch
+                sessionEpoch = resolvedEpoch
             )
         )
     }
@@ -136,7 +144,6 @@ object PlayUrlCache {
                 .forEach(cache::remove)
             return
         }
-
         cache.remove(generateKey(bvid, cid, requestedQuality, audioLang, sessionEpoch))
     }
 
@@ -147,10 +154,7 @@ object PlayUrlCache {
         com.bbttvv.app.core.util.Logger.d(TAG, " Cache cleared")
     }
 
-    /**
-     * Commits an account boundary. This must be called exactly when a new account session
-     * becomes active (or the active account is cleared).
-     */
+    /** Commits a new account boundary and invalidates all old-epoch cache entries. */
     @Synchronized
     fun rotateAccountScope(): Long {
         val nextEpoch = AccountSessionEpoch.advance()
@@ -165,7 +169,6 @@ object PlayUrlCache {
             clear()
             return
         }
-
         val target = maxEntries.coerceAtMost(MAX_CACHE_SIZE)
         if (cache.size() <= target) return
         cache.resize(target)
@@ -186,7 +189,6 @@ object PlayUrlCache {
     ): Pair<String, CachedPlayUrl>? {
         val prefix = generateVideoPrefix(bvid, cid, sessionEpoch)
         var candidate: Pair<String, CachedPlayUrl>? = null
-
         cache.snapshot().forEach { (key, entry) ->
             if (!key.startsWith(prefix)) return@forEach
             if (entry.sessionEpoch != sessionEpoch || entry.isExpired()) {
