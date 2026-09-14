@@ -12,6 +12,13 @@ import com.bbttvv.app.core.network.socket.LiveDanmakuEndpoint
 import com.bbttvv.app.core.util.runSuspendCatching
 import com.bbttvv.app.data.model.response.DanmakuThumbupStatsItem
 import com.bbttvv.app.data.model.response.LiveDanmuHost
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.zip.CRC32
+import java.util.zip.Inflater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -20,13 +27,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import okhttp3.ResponseBody
 import org.json.JSONObject
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import java.util.zip.CRC32
 
 internal data class DanmakuThumbupState(
     val likes: Int,
@@ -137,6 +140,11 @@ internal fun isDanmakuCloudSyncSuccessful(code: Int): Boolean = code == 0 || cod
 
 internal const val DANMAKU_SEGMENT_DURATION_MS = 360000L
 internal const val DANMAKU_SEGMENT_SAFE_FALLBACK_COUNT = 3
+internal const val DANMAKU_MAX_SEGMENT_COUNT = 600
+internal const val DANMAKU_MAX_NETWORK_BODY_BYTES = 8 * 1024 * 1024
+internal const val DANMAKU_MAX_RAW_XML_BYTES = 16 * 1024 * 1024
+private const val DANMAKU_MAX_DEFLATE_RATIO = 64
+private const val DANMAKU_MIN_DEFLATE_BUDGET_BYTES = 256 * 1024
 private const val DM_FILTER_USER_CACHE_TTL_MS = 10L * 60 * 1000
 private val MID_HASH_REGEX = Regex("^[0-9a-fA-F]{1,8}$")
 private val MID_REGEX = Regex("^\\d{1,20}$")
@@ -198,14 +206,18 @@ internal fun resolveDanmakuSegmentCount(
     durationMs: Long,
     metadataSegmentCount: Int?
 ): Int {
-    val fromDuration = if (durationMs > 0) {
-        ((durationMs + DANMAKU_SEGMENT_DURATION_MS - 1) / DANMAKU_SEGMENT_DURATION_MS).toInt()
+    val fromDuration = if (durationMs > 0L) {
+        val quotient = durationMs / DANMAKU_SEGMENT_DURATION_MS
+        val roundedUp = quotient + if (durationMs % DANMAKU_SEGMENT_DURATION_MS == 0L) 0L else 1L
+        roundedUp.coerceAtMost(DANMAKU_MAX_SEGMENT_COUNT.toLong()).toInt()
     } else {
         0
     }
     if (fromDuration > 0) return fromDuration
 
-    val fromMetadata = metadataSegmentCount?.coerceAtLeast(0) ?: 0
+    val fromMetadata = metadataSegmentCount
+        ?.coerceIn(0, DANMAKU_MAX_SEGMENT_COUNT)
+        ?: 0
     if (fromMetadata > 0) return fromMetadata
     return DANMAKU_SEGMENT_SAFE_FALLBACK_COUNT
 }
@@ -287,8 +299,18 @@ object DanmakuRepository {
         return try {
             val bytes = requestBytesWithGuestFallback(
                 requestName = "getDanmakuXml cid=$cid",
-                primary = { api.getDanmakuXml(cid).bytes() },
-                fallback = { guestApi.getDanmakuXml(cid).bytes() }
+                primary = {
+                    readResponseBodyBounded(
+                        api.getDanmakuXml(cid),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                },
+                fallback = {
+                    readResponseBodyBounded(
+                        guestApi.getDanmakuXml(cid),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                }
             )
             if (bytes.isEmpty()) return null
             val result = decodeRawXmlBytes(bytes)
@@ -303,25 +325,44 @@ object DanmakuRepository {
     }
 
     private fun decodeRawXmlBytes(bytes: ByteArray): ByteArray {
-        if (bytes[0] == 0x3C.toByte()) return bytes
-        return try {
-            val inflater = java.util.zip.Inflater(true)
-            inflater.setInput(bytes)
-            val outputStream = java.io.ByteArrayOutputStream(bytes.size * 3)
-            val tempBuffer = ByteArray(1024)
+        if (bytes.isEmpty()) return bytes
+        if (bytes[0] == 0x3C.toByte()) {
+            if (bytes.size > DANMAKU_MAX_RAW_XML_BYTES) {
+                throw IOException("Danmaku XML exceeds maximum size")
+            }
+            return bytes
+        }
+
+        val inflater = Inflater(true)
+        inflater.setInput(bytes)
+        val outputStream = ByteArrayOutputStream(minOf(bytes.size * 3, 64 * 1024).coerceAtLeast(1024))
+        val tempBuffer = ByteArray(8192)
+        val outputBudget = bytes.size.toLong()
+            .times(DANMAKU_MAX_DEFLATE_RATIO.toLong())
+            .coerceAtLeast(DANMAKU_MIN_DEFLATE_BUDGET_BYTES.toLong())
+            .coerceAtMost(DANMAKU_MAX_RAW_XML_BYTES.toLong())
+        var total = 0L
+
+        try {
             while (!inflater.finished()) {
                 val count = inflater.inflate(tempBuffer)
-                if (count == 0) {
-                    if (inflater.needsInput()) break
-                    if (inflater.needsDictionary()) break
+                if (count > 0) {
+                    total += count.toLong()
+                    if (total > outputBudget || total > DANMAKU_MAX_RAW_XML_BYTES) {
+                        throw IOException("Danmaku XML decompression exceeded resource budget")
+                    }
+                    outputStream.write(tempBuffer, 0, count)
+                    continue
                 }
-                outputStream.write(tempBuffer, 0, count)
+                if (inflater.needsInput() || inflater.needsDictionary()) break
+                throw IOException("Danmaku XML inflater made no progress")
             }
+            if (!inflater.finished()) {
+                throw IOException("Danmaku XML compressed payload is incomplete")
+            }
+            return outputStream.toByteArray()
+        } finally {
             inflater.end()
-            outputStream.toByteArray()
-        } catch (e: Exception) {
-            com.bbttvv.app.core.util.Logger.e("DanmakuRepo", "Deflate failed, using raw danmaku bytes", e)
-            bytes
         }
     }
 
@@ -329,8 +370,18 @@ object DanmakuRepository {
         try {
             val bytes = requestBytesWithGuestFallback(
                 requestName = "getDanmakuView cid=$cid aid=$aid",
-                primary = { api.getDanmakuView(oid = cid, pid = aid).bytes() },
-                fallback = { guestApi.getDanmakuView(oid = cid, pid = aid).bytes() }
+                primary = {
+                    readResponseBodyBounded(
+                        api.getDanmakuView(oid = cid, pid = aid),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                },
+                fallback = {
+                    readResponseBodyBounded(
+                        guestApi.getDanmakuView(oid = cid, pid = aid),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                }
             )
             if (bytes.isEmpty()) return@withContext null
             val reply = com.bbttvv.app.feature.video.danmaku.DanmakuProto.parseWebViewReply(bytes)
@@ -442,7 +493,7 @@ object DanmakuRepository {
     }
 
     suspend fun getDanmakuSegment(cid: Long, segmentIndex: Int): ByteArray? = withContext(Dispatchers.IO) {
-        if (segmentIndex <= 0) return@withContext null
+        if (segmentIndex <= 0 || segmentIndex > DANMAKU_MAX_SEGMENT_COUNT) return@withContext null
         val cacheKey = DanmakuSegmentCacheKey(cid = cid, segmentIndex = segmentIndex)
         danmakuCacheManager.getSegment(cacheKey)?.let { return@withContext it }
         val request = segmentInFlight.computeIfAbsent(cacheKey) {
@@ -459,8 +510,18 @@ object DanmakuRepository {
         return try {
             val bytes = requestBytesWithGuestFallback(
                 requestName = "getDanmakuSeg cid=${cacheKey.cid} segment=${cacheKey.segmentIndex}",
-                primary = { api.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex).bytes() },
-                fallback = { guestApi.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex).bytes() }
+                primary = {
+                    readResponseBodyBounded(
+                        api.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                },
+                fallback = {
+                    readResponseBodyBounded(
+                        guestApi.getDanmakuSeg(oid = cacheKey.cid, segmentIndex = cacheKey.segmentIndex),
+                        DANMAKU_MAX_NETWORK_BODY_BYTES
+                    )
+                }
             )
             if (bytes.isNotEmpty()) {
                 danmakuCacheManager.putSegment(cacheKey, bytes)
@@ -481,18 +542,24 @@ object DanmakuRepository {
     ): List<ByteArray> = withContext(Dispatchers.IO) {
         val segmentCount = resolveDanmakuSegmentCount(durationMs, metadataSegmentCount)
         data class SegmentResult(val index: Int, val bytes: ByteArray)
-        val segmentResults = coroutineScope {
-            val semaphore = Semaphore(MAX_SEGMENT_PARALLELISM)
-            (1..segmentCount).map { index ->
+
+        val nextIndex = AtomicInteger(1)
+        val results = java.util.Collections.synchronizedList(mutableListOf<SegmentResult>())
+        coroutineScope {
+            val workerCount = minOf(MAX_SEGMENT_PARALLELISM, segmentCount)
+            List(workerCount) {
                 async {
-                    semaphore.withPermit {
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val index = nextIndex.getAndIncrement()
+                        if (index > segmentCount) break
                         getDanmakuSegment(cid = cid, segmentIndex = index)
-                            ?.let { bytes -> SegmentResult(index, bytes) }
+                            ?.let { bytes -> results.add(SegmentResult(index, bytes)) }
                     }
                 }
             }.awaitAll()
         }
-        segmentResults.filterNotNull().sortedBy { it.index }.map { it.bytes }
+        results.sortedBy { it.index }.map { it.bytes }
     }
 
     private suspend fun requestBytesWithGuestFallback(
@@ -791,6 +858,38 @@ object DanmakuRepository {
         } catch (e: Exception) {
             client.release()
             Result.failure(e)
+        }
+    }
+
+    private fun readResponseBodyBounded(body: ResponseBody, maxBytes: Int): ByteArray {
+        require(maxBytes > 0) { "maxBytes must be positive" }
+        val declaredLength = body.contentLength()
+        if (declaredLength > maxBytes) {
+            body.close()
+            throw IOException("Danmaku response exceeds maximum size: $declaredLength > $maxBytes")
+        }
+
+        return body.use { responseBody ->
+            val initialCapacity = declaredLength
+                .takeIf { it in 1..maxBytes.toLong() }
+                ?.toInt()
+                ?: minOf(8192, maxBytes)
+            val output = ByteArrayOutputStream(initialCapacity)
+            val buffer = ByteArray(8192)
+            var total = 0
+            responseBody.byteStream().use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    total += read
+                    if (total > maxBytes) {
+                        throw IOException("Danmaku response exceeds maximum size: $total > $maxBytes")
+                    }
+                    output.write(buffer, 0, read)
+                }
+            }
+            output.toByteArray()
         }
     }
 }
