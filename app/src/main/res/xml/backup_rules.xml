@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="multi_account_sessions.xml" />
+    <exclude domain="sharedpref" path="token_backup_sp.xml" />
+    <exclude domain="file" path="datastore/user_prefs.preferences_pb" />
+</full-backup-content>

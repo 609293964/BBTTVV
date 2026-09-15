@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.util.Logger
+import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +21,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.UUID
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
@@ -30,6 +30,7 @@ object TokenManager {
     private val buvid3Lock = Any()
     private val dataStoreObserverLock = Any()
     private val warmupLock = Any()
+    private val warmupGate = TokenWarmupGate()
 
     @Volatile
     private var appContext: Context? = null
@@ -40,17 +41,14 @@ object TokenManager {
     @Volatile
     private var warmupSignal: CompletableDeferred<Unit>? = null
 
-    @Volatile
-    private var warmupCompleted = false
-
-    //  [新增] SharedPreferences 备份，解决冷启动时 DataStore 异步加载慢导致 ApiClient 无 Cookie 的问题
+    // SharedPreferences 快速缓存。所有可复用认证凭据均使用 Android Keystore 加密后落盘。
     private const val SP_NAME = "token_backup_sp"
     private const val SP_KEY_SESS = "sessdata_backup"
     private const val SP_KEY_BUVID = "buvid3_backup"
-    private const val SP_KEY_CSRF = "bili_jct_backup"  //  新增 CSRF 持久化
-    private const val SP_KEY_MID = "mid_backup"        //  新增 MID 持久化
-    private const val SP_KEY_ACCESS_TOKEN = "access_token_backup"  //  [新增] APP access_token
-    private const val SP_KEY_REFRESH_TOKEN = "refresh_token_backup"  //  [新增] APP refresh_token
+    private const val SP_KEY_CSRF = "bili_jct_backup"
+    private const val SP_KEY_MID = "mid_backup"
+    private const val SP_KEY_ACCESS_TOKEN = "access_token_backup"
+    private const val SP_KEY_REFRESH_TOKEN = "refresh_token_backup"
     private const val DEFAULT_BLOCKING_WARMUP_TIMEOUT_MS = 800L
 
     @Volatile
@@ -60,7 +58,6 @@ object TokenManager {
     @Volatile
     private var buvid3CacheBacking: String? = null
 
-    //  [修复]：移除了 private set，允许 ApiClient 生成临时 ID 后写入
     var buvid3Cache: String?
         get() = synchronized(buvid3Lock) { buvid3CacheBacking }
         set(value) {
@@ -68,25 +65,20 @@ object TokenManager {
                 buvid3CacheBacking = value?.takeIf { it.isNotBlank() }
             }
         }
-    
-    //  [新增] VIP 状态缓存 (1=有效大会员, 0=非VIP)
+
     @Volatile
     var isVipCache: Boolean = false
-    
-    //  [新增] CSRF Token 缓存 (bili_jct)
+
     @Volatile
     var csrfCache: String? = null
-    
-    //  [新增] 用户 MID 缓存
+
     @Volatile
     var midCache: Long? = null
-    
-    //  [新增] APP access_token - 用于调用 APP API 获取高画质视频流
+
     @Volatile
     var accessTokenCache: String? = null
         private set
-    
-    //  [新增] APP refresh_token - 用于刷新 access_token
+
     @Volatile
     var refreshTokenCache: String? = null
         private set
@@ -101,19 +93,15 @@ object TokenManager {
         if (claim.shouldRun) {
             runWarmup(claim)
         } else {
-            runBlocking {
-                claim.signal.await()
-            }
+            runBlocking { claim.signal.await() }
         }
     }
 
     suspend fun awaitWarmup(context: Context? = null) {
-        if (warmupCompleted) return
+        if (warmupGate.state() == TokenWarmupState.SUCCEEDED) return
         val claim = claimWarmup(context) ?: return
         if (claim.shouldRun) {
-            withContext(Dispatchers.IO) {
-                runWarmup(claim)
-            }
+            withContext(Dispatchers.IO) { runWarmup(claim) }
         } else {
             claim.signal.await()
         }
@@ -123,7 +111,7 @@ object TokenManager {
         context: Context? = null,
         timeoutMs: Long = DEFAULT_BLOCKING_WARMUP_TIMEOUT_MS
     ) {
-        if (warmupCompleted) return
+        if (warmupGate.state() == TokenWarmupState.SUCCEEDED) return
         val claim = claimWarmup(context) ?: return
         if (claim.shouldRun) {
             runWarmup(claim)
@@ -149,7 +137,7 @@ object TokenManager {
     private fun claimWarmup(context: Context?): WarmupClaim? {
         val resolvedContext = resolveAppContext(context) ?: return null
         synchronized(warmupLock) {
-            if (warmupCompleted) {
+            if (warmupGate.state() == TokenWarmupState.SUCCEEDED) {
                 return WarmupClaim(
                     context = resolvedContext,
                     signal = CompletableDeferred(Unit),
@@ -158,7 +146,7 @@ object TokenManager {
             }
 
             val activeSignal = warmupSignal
-            if (activeSignal != null) {
+            if (warmupGate.state() == TokenWarmupState.RUNNING && activeSignal != null) {
                 return WarmupClaim(
                     context = resolvedContext,
                     signal = activeSignal,
@@ -166,6 +154,7 @@ object TokenManager {
                 )
             }
 
+            check(warmupGate.tryStart()) { "Token warmup state is inconsistent" }
             val newSignal = CompletableDeferred<Unit>()
             warmupSignal = newSignal
             return WarmupClaim(
@@ -178,47 +167,54 @@ object TokenManager {
 
     private fun resolveAppContext(context: Context?): Context? {
         val resolved = context?.applicationContext ?: appContext
-        if (resolved != null && appContext == null) {
-            appContext = resolved
-        }
+        if (resolved != null && appContext == null) appContext = resolved
         return resolved
     }
 
     private fun runWarmup(claim: WarmupClaim) {
-        runCatching {
+        var failure: Exception? = null
+        try {
             performWarmup(claim.context)
-        }.onFailure { error ->
+        } catch (error: Exception) {
+            failure = error
             Logger.e("TokenManager", " token warmup failed", error)
         }
 
         synchronized(warmupLock) {
-            warmupCompleted = true
+            if (failure == null) {
+                warmupGate.markSucceeded()
+            } else {
+                warmupGate.markFailed()
+            }
             warmupSignal = null
         }
         claim.signal.complete(Unit)
     }
 
+    internal fun warmupStateForTest(): TokenWarmupState = warmupGate.state()
+
     private fun performWarmup(appContext: Context) {
         val sp = appContext.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
-        sessDataCache = sp.getString(SP_KEY_SESS, null)
+        sessDataCache = readSecureString(sp, SP_KEY_SESS)
         buvid3Cache = sp.getString(SP_KEY_BUVID, null)
-        csrfCache = sp.getString(SP_KEY_CSRF, null)  //  读取 CSRF
-        midCache = sp.getLong(SP_KEY_MID, 0L).takeIf { it > 0 }  //  读取 MID
-        accessTokenCache = sp.getString(SP_KEY_ACCESS_TOKEN, null)  //  读取 access_token
-        refreshTokenCache = sp.getString(SP_KEY_REFRESH_TOKEN, null)  //  读取 refresh_token
+        csrfCache = readSecureString(sp, SP_KEY_CSRF)
+        midCache = sp.getLong(SP_KEY_MID, 0L).takeIf { it > 0 }
+        accessTokenCache = readSecureString(sp, SP_KEY_ACCESS_TOKEN)
+        refreshTokenCache = readSecureString(sp, SP_KEY_REFRESH_TOKEN)
 
-        Logger.d("TokenManager", " warmup: sessData=${sessDataCache?.take(10)}..., accessToken=${accessTokenCache?.take(10)}..., mid=$midCache")
+        Logger.d(
+            "TokenManager",
+            " warmup: sessionLoaded=${!sessDataCache.isNullOrEmpty()}, " +
+                "accessTokenLoaded=${!accessTokenCache.isNullOrEmpty()}, mid=$midCache"
+        )
         startDataStoreObserver(appContext, sp)
     }
 
     fun getOrCreateBuvid3(): String {
         return synchronized(buvid3Lock) {
             val cached = buvid3CacheBacking
-            if (!cached.isNullOrBlank()) {
-                cached
-            } else {
-                generateBuvid3().also { buvid3CacheBacking = it }
-            }
+            if (!cached.isNullOrBlank()) cached
+            else generateBuvid3().also { buvid3CacheBacking = it }
         }
     }
 
@@ -227,12 +223,17 @@ object TokenManager {
             if (dataStoreObserverJob?.isActive == true) return
             dataStoreObserverJob = AppScope.ioScope.launch {
                 context.dataStore.data.collect { prefs ->
-                    val dsSess = prefs[SESSDATA_KEY]
+                    val dsSessRaw = prefs[SESSDATA_KEY]
+                    val dsSess = SecureStorageCipher.decryptOrPlaintext(dsSessRaw)
                     val dsBuvid = prefs[BUVID3_KEY]
 
-                    // 更新内存 -  [修复] 只有 DataStore 有值时才更新，避免覆盖 SP 的备份值
                     if (!dsSess.isNullOrEmpty()) {
                         sessDataCache = dsSess
+                        if (!SecureStorageCipher.isEncrypted(dsSessRaw)) {
+                            context.dataStore.edit { mutablePrefs ->
+                                mutablePrefs[SESSDATA_KEY] = SecureStorageCipher.encrypt(dsSess)
+                            }
+                        }
                     }
 
                     if (dsBuvid == null) {
@@ -242,9 +243,11 @@ object TokenManager {
                         buvid3Cache = dsBuvid
                     }
 
-                    //  数据同步：如果 DataStore 有值但 SP 没值 (或值不同)，同步写入 SP (从 V1 迁移到 V2)
-                    if (sessDataCache != null && sessDataCache != sp.getString(SP_KEY_SESS, null)) {
-                        sp.edit().putString(SP_KEY_SESS, sessDataCache).apply()
+                    val spSess = readSecureString(sp, SP_KEY_SESS)
+                    if (sessDataCache != null && sessDataCache != spSess) {
+                        sp.edit()
+                            .putString(SP_KEY_SESS, SecureStorageCipher.encrypt(sessDataCache!!))
+                            .apply()
                     }
                     if (buvid3Cache != null && buvid3Cache != sp.getString(SP_KEY_BUVID, null)) {
                         sp.edit().putString(SP_KEY_BUVID, buvid3Cache).apply()
@@ -260,33 +263,32 @@ object TokenManager {
         }
         job?.cancelAndJoin()
     }
-    
-    //  [新增] 保存 CSRF Token
+
     fun saveCsrf(context: Context, csrf: String) {
         csrfCache = csrf
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
-            .edit().putString(SP_KEY_CSRF, csrf).apply()
-        Logger.d("TokenManager", " saveCsrf: ${csrf.take(10)}...")
+            .edit()
+            .putString(SP_KEY_CSRF, SecureStorageCipher.encrypt(csrf))
+            .apply()
+        Logger.d("TokenManager", " saveCsrf: credential updated")
     }
-    
-    //  [新增] 保存用户 MID
+
     fun saveMid(context: Context, mid: Long) {
         midCache = mid
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putLong(SP_KEY_MID, mid).apply()
         Logger.d("TokenManager", " saveMid: $mid")
     }
-    
-    //  [新增] 保存 APP access_token 和 refresh_token - 高画质鉴权登录后调用
+
     fun saveAccessToken(context: Context, accessToken: String, refreshToken: String) {
         accessTokenCache = accessToken
         refreshTokenCache = refreshToken
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(SP_KEY_ACCESS_TOKEN, accessToken)
-            .putString(SP_KEY_REFRESH_TOKEN, refreshToken)
+            .putString(SP_KEY_ACCESS_TOKEN, SecureStorageCipher.encrypt(accessToken))
+            .putString(SP_KEY_REFRESH_TOKEN, SecureStorageCipher.encrypt(refreshToken))
             .apply()
-        Logger.d("TokenManager", " saveAccessToken: ${accessToken.take(10)}..., refreshToken: ${refreshToken.take(10)}...")
+        Logger.d("TokenManager", " saveAccessToken: credentials updated")
     }
 
     fun saveVipStatus(isVip: Boolean) {
@@ -295,29 +297,18 @@ object TokenManager {
 
     suspend fun saveCookies(context: Context, sessData: String) {
         sessDataCache = sessData
-        Logger.d("TokenManager", " saveCookies: ${sessData.take(10)}..., cache updated to: ${sessDataCache?.take(10)}...")
-        
-        // 1. 存入 SP (同步/快速)
+        Logger.d("TokenManager", " saveCookies: session credential updated")
+        val encrypted = SecureStorageCipher.encrypt(sessData)
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
-            .edit().putString(SP_KEY_SESS, sessData).apply()
-
-        // 2. 存入 DataStore (异步/持久)
-        context.dataStore.edit { prefs ->
-            prefs[SESSDATA_KEY] = sessData
-        }
+            .edit().putString(SP_KEY_SESS, encrypted).apply()
+        context.dataStore.edit { prefs -> prefs[SESSDATA_KEY] = encrypted }
     }
 
     suspend fun saveBuvid3(context: Context, buvid3: String) {
         buvid3Cache = buvid3
-        
-        // 1. 存入 SP
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit().putString(SP_KEY_BUVID, buvid3).apply()
-
-        // 2. 存入 DataStore
-        context.dataStore.edit { prefs ->
-            prefs[BUVID3_KEY] = buvid3
-        }
+        context.dataStore.edit { prefs -> prefs[BUVID3_KEY] = buvid3 }
     }
 
     suspend fun applyStoredSession(
@@ -340,10 +331,10 @@ object TokenManager {
         isVipCache = isVip
 
         sp.edit()
-            .putString(SP_KEY_CSRF, csrfCache)
+            .putString(SP_KEY_CSRF, csrfCache?.let(SecureStorageCipher::encrypt))
             .putLong(SP_KEY_MID, midCache ?: 0L)
-            .putString(SP_KEY_ACCESS_TOKEN, accessTokenCache)
-            .putString(SP_KEY_REFRESH_TOKEN, refreshTokenCache)
+            .putString(SP_KEY_ACCESS_TOKEN, accessTokenCache?.let(SecureStorageCipher::encrypt))
+            .putString(SP_KEY_REFRESH_TOKEN, refreshTokenCache?.let(SecureStorageCipher::encrypt))
             .apply()
 
         if (buvid3.isNotBlank()) {
@@ -354,7 +345,9 @@ object TokenManager {
     }
 
     fun getSessData(context: Context): Flow<String?> {
-        return context.dataStore.data.map { prefs -> prefs[SESSDATA_KEY] }
+        return context.dataStore.data.map { prefs ->
+            SecureStorageCipher.decryptOrPlaintext(prefs[SESSDATA_KEY])
+        }
     }
 
     suspend fun clear(context: Context) {
@@ -365,10 +358,9 @@ object TokenManager {
         csrfCache = null
         midCache = null
         isVipCache = false
-        accessTokenCache = null  //  [新增] 清除 access_token
+        accessTokenCache = null
         refreshTokenCache = null
-        
-        // 清除 SP
+
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(SP_KEY_SESS)
@@ -379,15 +371,22 @@ object TokenManager {
             .remove(SP_KEY_REFRESH_TOKEN)
             .apply()
 
-        // 清除 DataStore
         context.dataStore.edit {
             it.remove(SESSDATA_KEY)
             it.remove(BUVID3_KEY)
         }
     }
 
+    private fun readSecureString(sp: SharedPreferences, key: String): String? {
+        val raw = sp.getString(key, null) ?: return null
+        val plaintext = SecureStorageCipher.decryptOrPlaintext(raw)
+        if (!plaintext.isNullOrEmpty() && !SecureStorageCipher.isEncrypted(raw)) {
+            sp.edit().putString(key, SecureStorageCipher.encrypt(plaintext)).apply()
+        }
+        return plaintext
+    }
+
     private fun generateBuvid3(): String {
         return UUID.randomUUID().toString().replace("-", "") + "infoc"
     }
 }
-

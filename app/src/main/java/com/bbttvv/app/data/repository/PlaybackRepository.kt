@@ -7,6 +7,7 @@ import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.data.model.response.PlayUrlData
 import com.bbttvv.app.data.model.response.ViewInfo
 import com.bbttvv.app.data.service.video.VideoSessionService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -14,7 +15,6 @@ object PlaybackRepository {
     private val api get() = VideoSessionService.api
 
     fun init(context: Context) {
-        // This repository is process-wide; only ApplicationContext may be retained.
         PlaybackSessionManager.init(context)
     }
 
@@ -45,8 +45,10 @@ object PlaybackRepository {
             )
             com.bbttvv.app.core.util.Logger.d("PlaybackRepo", "Heartbeat response: code=${resp.code}, msg=${resp.message}")
             resp.code == 0
-        } catch (e: Exception) {
-            android.util.Log.e("PlaybackRepo", "Heartbeat failed: ${e.message}")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.e("PlaybackRepo", "Heartbeat failed: ${error.message}")
             false
         }
     }
@@ -89,8 +91,10 @@ object PlaybackRepository {
             )
             com.bbttvv.app.core.util.Logger.d("PlaybackRepo", "History report response: code=${resp.code}, msg=${resp.message}")
             resp.code == 0
-        } catch (e: Exception) {
-            android.util.Log.e("PlaybackRepo", "History report failed: ${e.message}")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.e("PlaybackRepo", "History report failed: ${error.message}")
             false
         }
     }
@@ -154,18 +158,13 @@ object PlaybackRepository {
                 pages = rawInfo.pages,
                 allowInteractiveCid = allowInteractiveCid,
             )
-            val info = if (cid > 0L && cid != rawInfo.cid) {
-                rawInfo.copy(cid = cid)
-            } else {
-                rawInfo
-            }
+            val info = if (cid > 0L && cid != rawInfo.cid) rawInfo.copy(cid = cid) else rawInfo
             val cacheBvid = info.bvid.ifBlank { lookup.bvid.ifBlank { bvid } }
 
             com.bbttvv.app.core.util.Logger.d(
                 "PlaybackRepo",
                 "getVideoDetails: bvid=${info.bvid}, aid=${info.aid}, requestCid=$requestedCid, infoCid=${rawInfo.cid}, resolvedCid=$cid, title=${info.title.take(20)}..."
             )
-
             if (cid == 0L) throw Exception("CID 获取失败")
 
             val isAutoHighestQuality = targetQuality >= 127
@@ -279,7 +278,6 @@ object PlaybackRepository {
             }
 
             val playData = effectivePlayData
-
             val hasDash = !playData.dash?.video.isNullOrEmpty()
             val hasDurl = !playData.durl.isNullOrEmpty()
             val dashVideoIds = playData.dash?.video?.map { it.id }?.distinct()?.sortedDescending() ?: emptyList()
@@ -320,13 +318,15 @@ object PlaybackRepository {
             }
 
             Result.success(Pair(effectiveInfo, playData))
-        } catch (e: Exception) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
             com.bbttvv.app.core.util.Logger.e(
                 "PlaybackRepo",
                 "getVideoDetails failed: bvid=$bvid, aid=$aid, requestedCid=$requestedCid",
-                e
+                error
             )
-            Result.failure(e)
+            Result.failure(error)
         }
     }
 
@@ -379,9 +379,7 @@ private fun resolveAutoResumeTargetCid(
 ): Long? {
     if (requestedCid != 0L) return null
     val resumeCid = playUrlData.lastPlayCid?.takeIf { it > 0L && it != currentCid } ?: return null
-    if (normalizeAutoResumePositionMs(playUrlData.lastPlayTime, playUrlData.timelength) <= 0L) {
-        return null
-    }
+    if (normalizeAutoResumePositionMs(playUrlData.lastPlayTime, playUrlData.timelength) <= 0L) return null
     return resumeCid.takeIf { cid -> availablePages.any { it.cid == cid } }
 }
 
