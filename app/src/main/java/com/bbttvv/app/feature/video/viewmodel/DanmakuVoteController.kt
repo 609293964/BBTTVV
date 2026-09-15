@@ -5,6 +5,9 @@ import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.feature.video.danmaku.DanmakuProto
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,9 +49,11 @@ internal class DanmakuVoteController(
     private var cid = 0L
     private var lastPositionMs = 0L
     private var prompts = emptyList<DanmakuVotePrompt>()
-    private val handledVoteIds = mutableSetOf<Long>()
+    private val handledVoteIds = mutableSetOf<String>()
     private var timeoutJob: Job? = null
     private var submitJob: Job? = null
+    private var overlaySuppressed = false
+    private var suspendedRemainingMs: Long? = null
 
     fun initialize(aid: Long, cid: Long, commands: List<DanmakuProto.CommandDm>) {
         cancel()
@@ -79,7 +84,7 @@ internal class DanmakuVoteController(
             DanmakuVoteUiState.Hidden -> Unit
         }
         prompts.forEach { prompt ->
-            if (prompt.voteId in handledVoteIds) return@forEach
+            if (prompt.interactionKey in handledVoteIds) return@forEach
             val endPositionMs = prompt.triggerPositionMs + prompt.durationMs
             if (lastPositionMs > endPositionMs) {
                 return@forEach
@@ -88,6 +93,21 @@ internal class DanmakuVoteController(
                 show(prompt, remainingMs = endPositionMs - lastPositionMs)
                 return
             }
+        }
+    }
+
+    fun setOverlaySuppressed(suppressed: Boolean) {
+        if (overlaySuppressed == suppressed) return
+        overlaySuppressed = suppressed
+        val showing = _uiState.value as? DanmakuVoteUiState.Showing ?: return
+        if (suppressed) {
+            suspendedRemainingMs = (showing.deadlineElapsedMs - nowElapsedMs()).coerceAtLeast(1L)
+            timeoutJob?.cancel()
+            timeoutJob = null
+        } else {
+            val remaining = suspendedRemainingMs ?: return
+            suspendedRemainingMs = null
+            startTimeout(showing.prompt, remaining)
         }
     }
 
@@ -110,8 +130,10 @@ internal class DanmakuVoteController(
             is DanmakuVoteUiState.Submitted -> state.prompt
             else -> return
         }
-        handledVoteIds += prompt.voteId
+        generation += 1
+        handledVoteIds += prompt.interactionKey
         timeoutJob?.cancel()
+        suspendedRemainingMs = null
         submitJob?.cancel()
         timeoutJob = null
         submitJob = null
@@ -142,12 +164,16 @@ internal class DanmakuVoteController(
             prompt = prompt,
             deadlineElapsedMs = nowElapsedMs() + safeRemainingMs,
         )
+        if (!overlaySuppressed) startTimeout(prompt, safeRemainingMs)
+    }
+
+    private fun startTimeout(prompt: DanmakuVotePrompt, remainingMs: Long) {
         timeoutJob?.cancel()
         val token = generation
         timeoutJob = scope.launch {
-            delay(safeRemainingMs)
+            delay(remainingMs)
             if (generation != token) return@launch
-            handledVoteIds += prompt.voteId
+            handledVoteIds += prompt.interactionKey
             _uiState.value = DanmakuVoteUiState.Hidden
         }
     }
@@ -166,14 +192,27 @@ internal class DanmakuVoteController(
         val token = generation
         submitJob?.cancel()
         submitJob = scope.launch {
-            submitVote(request).fold(
+            val result = try {
+                submitVote(request)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            currentCoroutineContext().ensureActive()
+            result.fold(
                 onSuccess = {
                     if (generation != token) return@fold
-                    handledVoteIds += prompt.voteId
+                    handledVoteIds += prompt.interactionKey
                     val updatedPrompt = prompt.copy(
                         options = prompt.options.map { current ->
-                            if (current.id == option.id) current.copy(count = current.count + 1) else current
+                            if (prompt.kind == DanmakuVoteKind.Vote && current.id == option.id) {
+                                current.copy(count = current.count + 1)
+                            } else current
                         },
+                        participantCount = if (prompt.kind == DanmakuVoteKind.Grade) {
+                            (prompt.participantCount.toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                        } else prompt.participantCount,
                         selectedOptionId = option.id,
                     )
                     _uiState.value = DanmakuVoteUiState.Submitted(updatedPrompt, index)
@@ -185,7 +224,9 @@ internal class DanmakuVoteController(
                     _uiState.value = DanmakuVoteUiState.RetryableError(
                         prompt = prompt,
                         selectedIndex = index,
-                        message = error.message ?: "投票失败，请重试",
+                        message = error.message?.takeIf { it.isNotBlank() } ?: if (prompt.kind == DanmakuVoteKind.Grade) {
+                            "打分失败，请重试"
+                        } else "投票失败，请重试",
                     )
                 },
             )

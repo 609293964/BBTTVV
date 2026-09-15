@@ -13,10 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.bbttvv.app.core.util.Logger
-import com.bytedance.danmaku.render.engine.DanmakuView
 import com.bytedance.danmaku.render.engine.control.DanmakuController
 import com.bytedance.danmaku.render.engine.data.DanmakuData
 import com.bytedance.danmaku.render.engine.render.draw.text.TextData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private const val DANMAKU_OVERLAY_TAG = "DanmakuOverlay"
@@ -104,6 +105,28 @@ private fun TextData.copyTextDataFrom(source: TextData, targetTextSize: Float) {
     textSize = targetTextSize.coerceIn(10f, 120f) * sourceSizeRatio
 }
 
+internal fun resolveDanmakuAppendStartIndex(
+    previous: List<DanmakuData>,
+    current: List<DanmakuData>,
+): Int? {
+    if (previous.isEmpty() || current.size <= previous.size) return null
+    if (previous.indices.any { index -> !sameDanmakuRenderItem(previous[index], current[index]) }) return null
+    val previousLastTime = previous.last().showAtTime
+    if (current.drop(previous.size).any { it.showAtTime < previousLastTime }) return null
+    return previous.size
+}
+
+private fun sameDanmakuRenderItem(left: DanmakuData, right: DanmakuData): Boolean {
+    if (left === right) return true
+    val leftText = left as? TextData ?: return false
+    val rightText = right as? TextData ?: return false
+    return leftText.showAtTime == rightText.showAtTime &&
+        leftText.layerType == rightText.layerType &&
+        leftText.text == rightText.text &&
+        leftText.textColor == rightText.textColor &&
+        leftText.textSize == rightText.textSize
+}
+
 @Composable
 fun DanmakuOverlay(
     payload: DanmakuRenderPayload?,
@@ -113,17 +136,29 @@ fun DanmakuOverlay(
     playbackSpeed: Float = 1f,
     visibleWidthFraction: Float = 1f,
     config: DanmakuConfig,
+    mask: DanmakuMask? = null,
+    maskEnabled: Boolean = false,
+    videoAspectRatio: Float = 16f / 9f,
     modifier: Modifier = Modifier
 ) {
     var controller by remember { mutableStateOf<DanmakuController?>(null) }
-    var danmakuView by remember { mutableStateOf<DanmakuView?>(null) }
+    var danmakuView by remember { mutableStateOf<DanmakuMaskHostView?>(null) }
     var attachChangeToken by remember { mutableIntStateOf(0) }
     var viewportChangeToken by remember { mutableIntStateOf(0) }
     val syncState = remember { DanmakuOverlaySyncState() }
+    var lastRenderedList by remember { mutableStateOf<List<DanmakuData>>(emptyList()) }
     val dataToken = remember(payload) { payload?.renderToken() ?: Long.MIN_VALUE }
     val configToken = config.renderToken()
     val renderStandardList = remember(payload, configToken) {
         payload?.let { buildRenderStandardList(it.standardList, config) }.orEmpty()
+    }
+    var maskFrame by remember(mask) { mutableStateOf<DanmakuMask.Frame?>(null) }
+    LaunchedEffect(mask, maskEnabled, isEnabled, playbackPositionMs) {
+        maskFrame = if (mask != null && maskEnabled && isEnabled) {
+            withContext(Dispatchers.Default) { mask.frameAt(playbackPositionMs) }
+        } else {
+            null
+        }
     }
 
     fun hardSync(
@@ -173,6 +208,7 @@ fun DanmakuOverlay(
             playbackSpeed = playbackSpeed,
             elapsedRealtimeMs = elapsedRealtimeMs,
         )
+        lastRenderedList = targetRenderList
     }
 
     @Suppress("UNUSED_VARIABLE")
@@ -181,11 +217,13 @@ fun DanmakuOverlay(
     val observedViewportChangeToken = viewportChangeToken
     AndroidView(
         factory = { context ->
-            DanmakuView(context).apply {
+            DanmakuMaskHostView(context).apply {
+                danmakuView.apply {
                 alpha = if (isEnabled) config.opacity else 0f
                 visibility = if (isEnabled) View.VISIBLE else View.INVISIBLE
                 isClickable = false
                 isFocusable = false
+                }
             }.also { view ->
                 danmakuView = view
             }
@@ -194,7 +232,12 @@ fun DanmakuOverlay(
             if (danmakuView !== view) {
                 danmakuView = view
             }
-            val targetController = view.controller
+            view.frame = maskFrame?.takeIf {
+                playbackPositionMs >= it.startMs && playbackPositionMs < it.endMs
+            }
+            view.maskEnabled = maskEnabled && isEnabled
+            view.videoAspectRatio = videoAspectRatio
+            val targetController = view.danmakuView.controller
             if (controller !== targetController) {
                 controller = targetController
             }
@@ -218,13 +261,14 @@ fun DanmakuOverlay(
             }
             val elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
             val targetAlpha = if (isEnabled) config.opacity else 0f
-            if (view.alpha != targetAlpha) {
-                view.alpha = targetAlpha
+            if (view.danmakuView.alpha != targetAlpha) {
+                view.danmakuView.alpha = targetAlpha
             }
             val targetVisibility = if (isEnabled) View.VISIBLE else View.INVISIBLE
-            if (view.visibility != targetVisibility) {
-                view.visibility = targetVisibility
+            if (view.danmakuView.visibility != targetVisibility) {
+                view.danmakuView.visibility = targetVisibility
             }
+            view.invalidate()
 
             if (!isEnabled) {
                 targetController.pause()
@@ -234,9 +278,12 @@ fun DanmakuOverlay(
 
             if (payload == null || payload.standardList.isEmpty()) {
                 if (syncState.hasLoadedData) {
-                    targetController.clear(0)
+                    // stop() clears the renderer, timeline data, pending query list and fake data.
+                    // clear() only clears draw layers and can let the previous media reappear.
+                    targetController.stop()
                 }
                 syncState.resetLoadedState()
+                lastRenderedList = emptyList()
                 return@AndroidView
             }
 
@@ -275,6 +322,40 @@ fun DanmakuOverlay(
                 }
 
                 is DanmakuOverlaySyncDecision.HardSync -> {
+                    val appendStart = if (
+                        syncDecision.reason == DanmakuSyncReason.PayloadChanged &&
+                        syncState.canAppendData(
+                            configToken = configToken,
+                            attachToken = attachChangeToken,
+                            viewportWidth = viewportWidth,
+                            viewportHeight = viewportHeight,
+                        )
+                    ) {
+                        resolveDanmakuAppendStartIndex(lastRenderedList, renderStandardList)
+                    } else {
+                        null
+                    }
+                    if (appendStart != null) {
+                        val appended = renderStandardList.subList(appendStart, renderStandardList.size)
+                        targetController.appendData(appended)
+                        targetController.invalidateView()
+                        lastRenderedList = renderStandardList
+                        syncState.notifyHardSynced(
+                            dataToken = dataToken,
+                            configToken = configToken,
+                            attachToken = attachChangeToken,
+                            viewportWidth = viewportWidth,
+                            viewportHeight = viewportHeight,
+                            positionMs = playbackPositionMs,
+                            isPlaying = isPlaying,
+                            playbackSpeed = playbackSpeed,
+                            elapsedRealtimeMs = elapsedRealtimeMs,
+                        )
+                        Logger.d(DANMAKU_OVERLAY_TAG) {
+                            "appendSync added=${appended.size} total=${renderStandardList.size}"
+                        }
+                        return@AndroidView
+                    }
                     hardSync(
                         reason = syncDecision.reason,
                         targetController = targetController,
@@ -376,8 +457,10 @@ fun DanmakuOverlay(
     }
 
     DisposableEffect(controller) {
+        // Capture this effect's controller, not the mutable state read at disposal.
+        val ownedController = controller
         onDispose {
-            controller?.stop()
+            ownedController?.stop()
         }
     }
 

@@ -27,6 +27,7 @@ enum class DanmakuLaneDensityPreset {
 
 data class DanmakuSettings(
     val enabled: Boolean = true,
+    val smartMaskEnabled: Boolean = false,
     val opacity: Float = 0.8f,
     val textSizeSp: Int = 20,
     val fontWeight: DanmakuFontWeightPreset = DanmakuFontWeightPreset.Normal,
@@ -167,6 +168,7 @@ fun DanmakuSettings.toEngineConfig(): DanmakuConfig {
 
 object DanmakuSettingsStore {
     private val keyEnabled = booleanPreferencesKey("danmaku_enabled")
+    private val keySmartMaskEnabled = booleanPreferencesKey("danmaku_smart_mask_enabled")
     private val keyOpacity = floatPreferencesKey("danmaku_opacity")
     private val keyTextSizeSp = intPreferencesKey("danmaku_text_size_sp")
     private val keyFontWeight = stringPreferencesKey("danmaku_font_weight")
@@ -185,6 +187,7 @@ object DanmakuSettingsStore {
 
     private const val danmakuCachePrefs = "danmaku_settings_cache"
     private const val cacheKeyEnabled = "enabled"
+    private const val cacheKeySmartMaskEnabled = "smart_mask_enabled"
     private const val cacheKeyOpacity = "opacity"
     private const val cacheKeyTextSizeSp = "text_size_sp"
     private const val cacheKeyFontWeight = "font_weight"
@@ -209,6 +212,7 @@ object DanmakuSettingsStore {
         return normalizeDanmakuSettings(
             DanmakuSettings(
                 enabled = prefs.getBoolean(cacheKeyEnabled, DanmakuSettings().enabled),
+                smartMaskEnabled = prefs.getBoolean(cacheKeySmartMaskEnabled, DanmakuSettings().smartMaskEnabled),
                 opacity = prefs.getFloat(cacheKeyOpacity, DanmakuSettings().opacity),
                 textSizeSp = prefs.getInt(cacheKeyTextSizeSp, DanmakuSettings().textSizeSp),
                 fontWeight = resolveDanmakuFontWeightPreset(
@@ -252,6 +256,7 @@ object DanmakuSettingsStore {
         return normalizeDanmakuSettings(
             DanmakuSettings(
                 enabled = this[keyEnabled] ?: DanmakuSettings().enabled,
+                smartMaskEnabled = this[keySmartMaskEnabled] ?: DanmakuSettings().smartMaskEnabled,
                 opacity = this[keyOpacity] ?: DanmakuSettings().opacity,
                 textSizeSp = this[keyTextSizeSp] ?: DanmakuSettings().textSizeSp,
                 fontWeight = resolveDanmakuFontWeightPreset(this[keyFontWeight]),
@@ -273,6 +278,7 @@ object DanmakuSettingsStore {
 
     private fun MutablePreferences.applyDanmakuSettings(settings: DanmakuSettings) {
         this[keyEnabled] = settings.enabled
+        this[keySmartMaskEnabled] = settings.smartMaskEnabled
         this[keyOpacity] = settings.opacity
         this[keyTextSizeSp] = settings.textSizeSp
         this[keyFontWeight] = settings.fontWeight.name
@@ -294,6 +300,7 @@ object DanmakuSettingsStore {
         context.getSharedPreferences(danmakuCachePrefs, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(cacheKeyEnabled, settings.enabled)
+            .putBoolean(cacheKeySmartMaskEnabled, settings.smartMaskEnabled)
             .putFloat(cacheKeyOpacity, settings.opacity)
             .putInt(cacheKeyTextSizeSp, settings.textSizeSp)
             .putString(cacheKeyFontWeight, settings.fontWeight.name)

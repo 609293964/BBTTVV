@@ -6,6 +6,45 @@ import org.junit.Test
 
 class DanmakuOverlaySyncStateTest {
     @Test
+    fun `data loaded while buffering resumes timeline without reloading payload`() {
+        val state = DanmakuOverlaySyncState()
+        state.notifyHardSynced(
+            dataToken = 10L,
+            configToken = 20L,
+            attachToken = 1,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            positionMs = 0L,
+            isPlaying = false,
+        )
+
+        fun decision(playing: Boolean, position: Long) = state.decide(
+            viewAttached = true,
+            viewportWidth = 1920,
+            viewportHeight = 1080,
+            attachToken = 1,
+            dataToken = 10L,
+            configToken = 20L,
+            isPlaying = playing,
+            playbackPositionMs = position,
+        )
+
+        assertEquals(
+            DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.PlayStateChanged),
+            decision(true, 100L),
+        )
+        state.notifySoftTimelineSynced(100L, true, 1f, 100L)
+        assertEquals(DanmakuOverlaySyncDecision.Noop, decision(true, 200L))
+        assertEquals(DanmakuOverlaySyncDecision.SoftSyncPlayState, decision(false, 200L))
+        state.notifySoftPlayStateObserved(false)
+        assertEquals(
+            DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.PlayStateChanged),
+            decision(true, 200L),
+        )
+        assertTrue(state.hasLoadedData)
+    }
+
+    @Test
     fun `payload waits for attach and viewport before hard sync`() {
         val state = DanmakuOverlaySyncState()
 
@@ -124,7 +163,7 @@ class DanmakuOverlaySyncStateTest {
     }
 
     @Test
-    fun `playback speed change triggers one hard timeline sync`() {
+    fun `playback speed change uses soft timeline sync`() {
         val state = DanmakuOverlaySyncState()
         state.notifyHardSynced(
             dataToken = 10L,
@@ -152,7 +191,7 @@ class DanmakuOverlaySyncStateTest {
         )
 
         assertEquals(
-            DanmakuOverlaySyncDecision.HardSync(DanmakuSyncReason.PlaybackSpeedChanged),
+            DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.PlaybackSpeedChanged),
             decision,
         )
     }

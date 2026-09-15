@@ -5,6 +5,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SettingsManagerTest {
+    @Test
+    fun `automatic cache threshold accepts supported values and falls back safely`() {
+        assertEquals(0, SettingsManager.normalizeAutomaticCacheThresholdMb(0))
+        assertEquals(100, SettingsManager.normalizeAutomaticCacheThresholdMb(100))
+        assertEquals(500, SettingsManager.normalizeAutomaticCacheThresholdMb(500))
+        assertEquals(
+            SettingsManager.DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB,
+            SettingsManager.normalizeAutomaticCacheThresholdMb(123)
+        )
+    }
+
 
     @Test
     fun `normalizeHomeRefreshCount clamps values into supported range`() {

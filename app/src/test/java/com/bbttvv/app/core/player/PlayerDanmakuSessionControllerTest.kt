@@ -68,4 +68,17 @@ class PlayerDanmakuSessionControllerTest {
         assertTrue(snapshot.failedSegments.isEmpty())
         assertFalse(controller.matches(100L))
     }
+
+    @Test
+    fun `trimmed loaded segments may be requested again after seeking back`() {
+        val controller = PlayerDanmakuSessionController(windowRadius = 1)
+        controller.begin(cid = 100L, aid = 200L, startPositionMs = 720_000L)
+        controller.markLoaded(2)
+        controller.markLoaded(3)
+        controller.markLoaded(4)
+
+        controller.retainLoadedSegments(setOf(3, 4))
+
+        assertEquals(listOf(1, 2), controller.prefetchWindow(positionMs = 360_000L))
+    }
 }

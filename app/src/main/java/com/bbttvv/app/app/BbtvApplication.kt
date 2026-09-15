@@ -140,6 +140,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
     private fun runStartupTask(task: AppStartupTask) {
         AppPerformanceTracker.measureStartupTask(task) {
             when (task.id) {
+                "plugin_manager_context_init" -> PluginManager.initialize(this)
                 "network_module_init" -> {
                     NetworkModule.init(this)
                     WbiKeyManager.restoreFromStorage(this)
@@ -160,8 +161,7 @@ class BbtvApplication : Application(), ImageLoaderFactory, ComponentCallbacks2 {
                     CrashReporter.init(this)
                     CrashReporter.installGlobalExceptionHandler()
                 }
-                "plugin_manager_init" -> {
-                    PluginManager.initialize(this)
+                "plugin_registration_init" -> {
                     JsonPluginManager.initialize(this)
                     PluginManager.register(SponsorBlockPlugin())
                     PluginManager.register(AdFilterPlugin())

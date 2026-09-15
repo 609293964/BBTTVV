@@ -9,6 +9,7 @@ import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
+import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.feature.video.danmaku.DanmakuProto
 import com.bbttvv.app.feature.video.danmaku.DanmakuRenderPayload
 import com.bbttvv.app.feature.video.danmaku.ParsedDanmaku
@@ -51,8 +52,10 @@ abstract class BasePlayerViewModel : ViewModel() {
     private var danmakuPluginObserverJob: Job? = null
     private var volumeCalibrationObserverJob: Job? = null
     private var danmakuLoadJob: Job? = null
+    private var danmakuCommandLoadJob: Job? = null
     private var danmakuLoadSequence: Long = 0L
     private var danmakuSourceVersion: Long = 0L
+    private val danmakuSegmentSources = linkedMapOf<Int, ParsedDanmaku>()
     private val sponsorBlockController = SponsorBlockController(
         scope = viewModelScope,
         playerEngineProvider = { playerEngine },
@@ -334,6 +337,8 @@ abstract class BasePlayerViewModel : ViewModel() {
     protected fun loadDanmaku(cid: Long, aid: Long = 0L, startPositionMs: Long = 0L) {
         ensureMainThread("loadDanmaku")
         danmakuLoadJob?.cancel()
+        danmakuCommandLoadJob?.cancel()
+        danmakuCommandLoadJob = null
         currentDanmakuCid = cid
         currentDanmakuAid = aid
         val initialSegmentIndex = danmakuSessionController.begin(
@@ -341,8 +346,29 @@ abstract class BasePlayerViewModel : ViewModel() {
             aid = aid,
             startPositionMs = startPositionMs,
         )
-        
+        danmakuSegmentSources.clear()
         val loadSequence = ++danmakuLoadSequence
+
+        // Command danmaku (vote/grade) is an independent interaction channel.
+        // Do not make it wait for protobuf/XML rendering or filtering to finish.
+        if (aid > 0L) {
+            danmakuCommandLoadJob = viewModelScope.launch {
+                val metadata = withContext(Dispatchers.IO) {
+                    DanmakuRepository.getDanmakuView(cid = cid, aid = aid)
+                } ?: return@launch
+                currentCoroutineContext().ensureActive()
+                if (loadSequence != danmakuLoadSequence ||
+                    currentDanmakuCid != cid ||
+                    currentDanmakuAid != aid
+                ) return@launch
+                onDanmakuCommandsLoaded(
+                    commands = metadata.commandDms,
+                    cid = cid,
+                    aid = aid,
+                )
+            }
+        }
+
         danmakuLoadJob = viewModelScope.launch {
             _isDanmakuLoading.value = true
             try {
@@ -362,6 +388,9 @@ abstract class BasePlayerViewModel : ViewModel() {
                 }
 
                 _danmakuData.value = loadResult.rawData
+                loadResult.parsed?.let { parsed ->
+                    danmakuSegmentSources[initialSegmentIndex] = parsed
+                }
                 danmakuSource = loadResult.parsed
                 danmakuFilterContext = loadResult.filterContext
                 danmakuSourceVersion += 1
@@ -498,8 +527,11 @@ abstract class BasePlayerViewModel : ViewModel() {
                 }
 
                 danmakuSessionController.markLoaded(targetSegmentIndex)
-                val currentSource = danmakuSource
-                danmakuSource = currentSource?.mergeWith(newParsed) ?: newParsed
+                danmakuSegmentSources[targetSegmentIndex] = newParsed
+                val currentSegmentIndex = PlayerDanmakuSessionController.segmentIndexFor(
+                    playerEngine?.currentPosition ?: positionMs
+                )
+                danmakuSource = rebuildDanmakuSourceWindow(currentSegmentIndex)
                 danmakuSourceVersion += 1
 
                 val payload = danmakuSource?.let {
@@ -538,6 +570,7 @@ abstract class BasePlayerViewModel : ViewModel() {
             }
         }
         currentCoroutineContext().ensureActive()
+        danmakuSegmentSources.clear()
         danmakuSource = parsed
         danmakuFilterContext = filterContext
         danmakuSourceVersion += 1
@@ -551,11 +584,14 @@ abstract class BasePlayerViewModel : ViewModel() {
     protected fun clearDanmaku() {
         ensureMainThread("clearDanmaku")
         danmakuLoadJob?.cancel()
+        danmakuCommandLoadJob?.cancel()
+        danmakuCommandLoadJob = null
         danmakuLoadJob = null
         danmakuLoadSequence += 1
         currentDanmakuCid = 0L
         currentDanmakuAid = 0L
         danmakuSessionController.clear()
+        danmakuSegmentSources.clear()
         _danmakuData.value = null
         _danmakuPayload.value = null
         _isDanmakuLoading.value = false
@@ -608,6 +644,18 @@ abstract class BasePlayerViewModel : ViewModel() {
         _danmakuPayload.value = rebuiltPayload
     }
 
+    private fun rebuildDanmakuSourceWindow(centerSegmentIndex: Int): ParsedDanmaku? {
+        val start = (centerSegmentIndex - DANMAKU_RETAIN_WINDOW_RADIUS).coerceAtLeast(1)
+        val end = centerSegmentIndex + DANMAKU_RETAIN_WINDOW_RADIUS
+        val retained = (start..end).toSet()
+        danmakuSegmentSources.keys.retainAll(retained)
+        danmakuSessionController.retainLoadedSegments(danmakuSegmentSources.keys)
+        return danmakuSegmentSources.entries
+            .sortedBy { it.key }
+            .map { it.value }
+            .reduceOrNull(ParsedDanmaku::mergeWith)
+    }
+
     // ========== 生命周期 ==========
 
     override fun onCleared() {
@@ -624,6 +672,7 @@ abstract class BasePlayerViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "BasePlayerVM"
+        private const val DANMAKU_RETAIN_WINDOW_RADIUS = 2
     }
 
     @MainThread

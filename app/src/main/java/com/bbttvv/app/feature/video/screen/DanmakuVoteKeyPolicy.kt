@@ -34,6 +34,7 @@ internal fun resolveDanmakuVoteKeyDecision(
     state: DanmakuVoteKeyState,
     currentIndex: Int,
     lastIndex: Int,
+    horizontal: Boolean = false,
 ): DanmakuVoteKeyDecision {
     val safeLastIndex = lastIndex.coerceAtLeast(0)
     val safeIndex = currentIndex.coerceIn(0, safeLastIndex)
@@ -72,9 +73,11 @@ internal fun resolveDanmakuVoteKeyDecision(
     }
 
     val nextIndex = if (action == KeyEvent.ACTION_DOWN && state == DanmakuVoteKeyState.Showing) {
+        val previousKey = if (horizontal) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_UP
+        val nextKey = if (horizontal) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_DOWN
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> (safeIndex - 1).coerceAtLeast(0)
-            KeyEvent.KEYCODE_DPAD_DOWN -> (safeIndex + 1).coerceAtMost(safeLastIndex)
+            previousKey -> (safeIndex - 1).coerceAtLeast(0)
+            nextKey -> (safeIndex + 1).coerceAtMost(safeLastIndex)
             else -> safeIndex
         }
     } else {

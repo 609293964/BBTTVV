@@ -89,6 +89,39 @@ class DanmakuVoteStateTest {
     }
 
     @Test
+    fun `web grade fields preserve different author messages counts and previous scores`() {
+        // Anonymous fixture with the field structure returned by dm web view.
+        listOf("发布者甲的问题", "发布者乙的自定义问题").forEach { title ->
+            listOf("#GRADE#", "GRADE_MSG", "VIDEO_GRADE_MSG").forEach { command ->
+                val prompt = parseDanmakuVotePrompts(listOf(DanmakuProto.CommandDm(
+                    command = command,
+                    progress = 32_000,
+                    extra = """{"grade_id":99,"msg":"$title","title":"旧标题","count":49,"mid_score":8,"duration":5000,"skin":3,"avg_score":9.5}""",
+                ))).single()
+                assertEquals(title, prompt.question)
+                assertEquals(49, prompt.participantCount)
+                assertEquals(4, prompt.selectedOptionId)
+                assertEquals(32_000L, prompt.triggerPositionMs)
+                assertEquals(5_000L, prompt.durationMs)
+                assertEquals(listOf(2, 4, 6, 8, 10), prompt.options.map { it.gradeScore })
+            }
+        }
+    }
+
+    @Test
+    fun `invalid grade data does not create a focusable prompt`() {
+        listOf(
+            """{"grade_id":0,"msg":"问题"}""",
+            """{"grade_id":99,"msg":" "}""",
+            "{malformed",
+        ).forEach { extra ->
+            assertTrue(parseDanmakuVotePrompts(listOf(
+                DanmakuProto.CommandDm(command = "#GRADE#", extra = extra),
+            )).isEmpty())
+        }
+    }
+
+    @Test
     fun `prompt passed during resume remains eligible after seeking back into its window`() {
         val controller = DanmakuVoteController(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),

@@ -31,9 +31,22 @@ data class PlayerInfoData(
     @SerialName("online_count")
     val onlineCount: Int = 0,
     val subtitle: SubtitleInfo? = null,
+    @SerialName("dm_mask")
+    val dmMask: PlayerDmMaskInfo? = null,
     val interaction: PlayerInteractionInfo? = null,
     @SerialName("bgm_info")
     val bgmInfo: BgmInfo? = null
+)
+
+/** Bilibili's precomputed danmaku occlusion mask metadata. */
+@Serializable
+data class PlayerDmMaskInfo(
+    val cid: Long = 0,
+    val plat: Int = 0,
+    val fps: Int = 0,
+    val time: Long = 0,
+    @SerialName("mask_url")
+    val maskUrl: String = "",
 )
 
 @Serializable
@@ -113,4 +126,3 @@ data class SubtitleItem(
     val isLock: Boolean = false,
     val type: Int = 0
 )
-

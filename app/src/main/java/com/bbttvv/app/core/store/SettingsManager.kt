@@ -110,6 +110,7 @@ object SettingsManager {
         val dynamicPageDisplayMode: DynamicPageDisplayMode = DynamicPageDisplayMode.ALL,
         val singleBackToHomeEnabled: Boolean = false,
         val themeMode: ThemeMode = ThemeMode.DARK,
+        val automaticCacheThresholdMb: Int = DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB,
     )
 
     private const val SYNC_PREFS_NAME = "settings_sync_cache"
@@ -142,6 +143,8 @@ object SettingsManager {
     private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
     private const val CACHE_SINGLE_BACK_TO_HOME = "single_back_to_home"
     private const val CACHE_THEME_MODE = "theme_mode"
+    private const val CACHE_AUTOMATIC_CACHE_THRESHOLD_MB = "automatic_cache_threshold_mb"
+    private const val CACHE_LIVE_SUPER_CHAT_ENABLED = "live_super_chat_enabled"
 
     private val keyPrivacyMode = booleanPreferencesKey(CACHE_PRIVACY_MODE)
     private val keySponsorBlockEnabled = booleanPreferencesKey(CACHE_SPONSOR_BLOCK_ENABLED)
@@ -174,6 +177,9 @@ object SettingsManager {
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
     private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
     private val keyThemeMode = stringPreferencesKey(CACHE_THEME_MODE)
+    private val keyAutomaticCacheThresholdMb =
+        androidx.datastore.preferences.core.intPreferencesKey(CACHE_AUTOMATIC_CACHE_THRESHOLD_MB)
+    private val keyLiveSuperChatEnabled = booleanPreferencesKey(CACHE_LIVE_SUPER_CHAT_ENABLED)
 
     fun getSettingsSnapshot(context: Context): Flow<SettingsSnapshot> {
         return context.settingsDataStore.data
@@ -205,9 +211,24 @@ object SettingsManager {
                     ),
                     singleBackToHomeEnabled = preferences[keySingleBackToHome] ?: false,
                     themeMode = ThemeMode.fromValue(preferences[keyThemeMode]),
+                    automaticCacheThresholdMb = normalizeAutomaticCacheThresholdMb(
+                        preferences[keyAutomaticCacheThresholdMb] ?: DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB
+                    ),
                 )
             }
             .distinctUntilChanged()
+    }
+
+    /** 直播醒目留言默认开启；具体显示仍需同时满足直播弹幕和画面浮层条件。 */
+    fun getLiveSuperChatEnabled(context: Context): Flow<Boolean> =
+        context.settingsDataStore.data
+            .map { preferences -> preferences[keyLiveSuperChatEnabled] ?: true }
+            .distinctUntilChanged()
+
+    suspend fun setLiveSuperChatEnabled(context: Context, enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyLiveSuperChatEnabled] = enabled
+        }
     }
 
     fun getSettingsSnapshotSync(context: Context): SettingsSnapshot {
@@ -243,7 +264,23 @@ object SettingsManager {
             themeMode = ThemeMode.fromValue(
                 preferences.getString(CACHE_THEME_MODE, ThemeMode.DARK.value)
             ),
+            automaticCacheThresholdMb = normalizeAutomaticCacheThresholdMb(
+                preferences.getInt(
+                    CACHE_AUTOMATIC_CACHE_THRESHOLD_MB,
+                    DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB
+                )
+            ),
         )
+    }
+
+    suspend fun setAutomaticCacheThresholdMb(context: Context, thresholdMb: Int) {
+        val normalized = normalizeAutomaticCacheThresholdMb(thresholdMb)
+        updatePreference(context) { preferences ->
+            preferences[keyAutomaticCacheThresholdMb] = normalized
+        }
+        updateSyncCache(context) {
+            putInt(CACHE_AUTOMATIC_CACHE_THRESHOLD_MB, normalized)
+        }
     }
 
     fun getThemeMode(context: Context): Flow<ThemeMode> {
@@ -766,6 +803,14 @@ object SettingsManager {
 
     private fun Context.syncPrefs() =
         getSharedPreferences(SYNC_PREFS_NAME, Context.MODE_PRIVATE)
+
+    const val DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB = 200
+    val AUTOMATIC_CACHE_THRESHOLD_OPTIONS_MB = listOf(0, 100, 200, 500)
+
+    internal fun normalizeAutomaticCacheThresholdMb(value: Int): Int {
+        return value.takeIf { it in AUTOMATIC_CACHE_THRESHOLD_OPTIONS_MB }
+            ?: DEFAULT_AUTOMATIC_CACHE_THRESHOLD_MB
+    }
 }
 
 internal const val DEFAULT_HOME_REFRESH_COUNT = 20

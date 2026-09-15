@@ -52,6 +52,7 @@ object CacheUtils {
         val imageCache: Long get() = imageDiskCache + imageMemoryCache
         val memoryCache: Long get() = imageMemoryCache + playUrlMemoryCache + subtitleDanmakuMemoryCache
         val totalSize: Long get() = imageDiskCache + httpCache + otherCache + memoryCache
+        val managedDiskSize: Long get() = imageDiskCache + httpCache
         
         fun format(): String = formatSize(totalSize.toDouble())
         
@@ -63,6 +64,40 @@ object CacheUtils {
                 append(" | 内存: ${formatSize(memoryCache.toDouble())}")
             }
         }
+    }
+
+    data class AutomaticCleanupResult(
+        val beforeBytes: Long,
+        val estimatedAfterBytes: Long,
+        val clearedTargets: Set<CacheClearTarget>,
+    )
+
+    suspend fun runAutomaticCacheCleanup(
+        context: Context,
+        thresholdMb: Int,
+    ): AutomaticCleanupResult = withContext(Dispatchers.IO) {
+        val breakdown = getCacheBreakdown(context)
+        val thresholdBytes = thresholdMb.coerceAtLeast(0).toLong() * 1024L * 1024L
+        val targets = resolveAutomaticCacheCleanupTargets(
+            imageBytes = breakdown.imageDiskCache,
+            httpBytes = breakdown.httpCache,
+            thresholdBytes = thresholdBytes,
+        )
+        if (CacheClearTarget.IMAGE_PREVIEW in targets) {
+            context.imageLoader.diskCache?.clear()
+        }
+        if (CacheClearTarget.NETWORK in targets) {
+            runCatching { com.bbttvv.app.core.network.NetworkModule.okHttpClient.cache?.evictAll() }
+                .onFailure { error -> Logger.w(TAG, "Automatic network cache cleanup failed: ${error.message}") }
+        }
+        val estimatedCleared =
+            (if (CacheClearTarget.IMAGE_PREVIEW in targets) breakdown.imageDiskCache else 0L) +
+                (if (CacheClearTarget.NETWORK in targets) breakdown.httpCache else 0L)
+        AutomaticCleanupResult(
+            beforeBytes = breakdown.managedDiskSize,
+            estimatedAfterBytes = (breakdown.managedDiskSize - estimatedCleared).coerceAtLeast(0L),
+            clearedTargets = targets,
+        )
     }
 
     /**

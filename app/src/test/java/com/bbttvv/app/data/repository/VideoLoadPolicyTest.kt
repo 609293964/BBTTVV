@@ -65,6 +65,14 @@ class VideoLoadPolicyTest {
     }
 
     @Test
+    fun `primary premium quality retries only transient empty responses`() {
+        assertEquals(listOf(0L, 450L), resolveDashRetryDelays(120, isPrimaryAttempt = true))
+        assertEquals(listOf(0L), resolveDashRetryDelays(116, isPrimaryAttempt = false))
+        assertTrue(shouldRetryOnlyTransientEmptyDashResponse(120, isPrimaryAttempt = true))
+        assertFalse(shouldRetryOnlyTransientEmptyDashResponse(80, isPrimaryAttempt = true))
+    }
+
+    @Test
     fun `auto highest rejects downgraded response while requested quality is advertised`() {
         assertFalse(
             shouldAcceptAppApiResultForTargetQuality(

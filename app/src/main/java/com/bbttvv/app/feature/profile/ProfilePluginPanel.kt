@@ -1230,6 +1230,7 @@ private fun CdnRegionPluginPanel(
     onToggleEnabled: () -> Unit
 ) {
     val cache by plugin.cacheState.collectAsStateWithLifecycle(initialValue = CdnRegionPluginCache())
+    val probe by plugin.probeState.collectAsStateWithLifecycle(initialValue = com.bbttvv.app.feature.plugin.CdnProbeState())
     val locationLabel = buildCdnRegionLocationLabel(cache)
     val selectedHosts = cache.selectedHosts.take(3).joinToString("、").ifBlank { "尚未命中属地线路" }
 
@@ -1241,6 +1242,21 @@ private fun CdnRegionPluginPanel(
             isSubItem = true,
             onClick = onToggleEnabled
         )
+        PluginCenterRowCard(
+            title = "检测当前播放线路",
+            subtitle = "最多检测 5 个候选，每条只读取 32 KB；完整签名地址不会保存或显示。",
+            value = if (probe.isProbing) "检测中" else "立即检测",
+            isSubItem = true,
+            onClick = { if (enabled && !probe.isProbing) plugin.probeCurrentSessionNow() }
+        )
+        probe.results.take(3).forEach { result ->
+            PluginCenterStaticInfoCard(
+                title = result.host,
+                subtitle = if (result.success) "可用，采样 ${result.sampledBytes / 1024} KB" else "检测失败",
+                value = "${result.latencyMs} ms",
+                isSubItem = true
+            )
+        }
         PluginCenterStaticInfoCard(
             title = "当前属地",
             subtitle = locationLabel,

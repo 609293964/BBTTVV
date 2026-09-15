@@ -453,6 +453,9 @@ object DanmakuRepository {
         gradeId: Long,
         gradeScore: Int,
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (aid <= 0L || cid <= 0L || gradeId <= 0L || gradeScore !in 2..10 || gradeScore % 2 != 0) {
+            return@withContext Result.failure(IllegalArgumentException("无效评分参数"))
+        }
         val csrf = TokenManager.csrfCache.orEmpty()
         if (csrf.isBlank() || TokenManager.sessDataCache.isNullOrBlank()) {
             return@withContext Result.failure(IllegalStateException("请先登录后打分"))
@@ -465,6 +468,8 @@ object DanmakuRepository {
             if (response.code != 0) {
                 throw IllegalStateException(response.message.ifBlank { "打分失败(${response.code})" })
             }
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
         }
     }
 

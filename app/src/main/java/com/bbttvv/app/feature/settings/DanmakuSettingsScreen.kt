@@ -29,6 +29,7 @@ import com.bbttvv.app.core.store.player.DanmakuFontWeightPreset
 import com.bbttvv.app.core.store.player.DanmakuLaneDensityPreset
 import com.bbttvv.app.core.store.player.DanmakuSettings
 import com.bbttvv.app.core.store.player.DanmakuSettingsStore
+import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 import com.bbttvv.app.ui.player.formatDanmakuAreaRatio
 import com.bbttvv.app.ui.player.formatDanmakuFontWeight
@@ -128,6 +129,36 @@ fun TvDanmakuSettingsList(
                     scope.launch {
                         DanmakuSettingsStore.updateSettings(context) { current ->
                             current.copy(enabled = !current.enabled)
+                        }
+                    }
+                }
+            )
+        }
+        item(key = "danmaku_live_super_chat") {
+            val liveSuperChatEnabled by SettingsManager.getLiveSuperChatEnabled(context)
+                .collectAsStateWithLifecycle(initialValue = true)
+            SettingsRow(
+                title = "直播醒目留言",
+                subtitle = "跟随直播弹幕总开关；关闭后不显示醒目留言浮层。",
+                value = onOff(liveSuperChatEnabled),
+                modifier = getRowModifier("danmaku_live_super_chat", Modifier),
+                onClick = {
+                    scope.launch {
+                        SettingsManager.setLiveSuperChatEnabled(context, !liveSuperChatEnabled)
+                    }
+                }
+            )
+        }
+        item(key = "danmaku_smart_mask") {
+            SettingsRow(
+                title = "智能防挡弹幕",
+                subtitle = "使用 B 站提供的人物蒙版；仅部分视频支持，未提供蒙版时自动使用普通弹幕。",
+                value = onOff(settings.smartMaskEnabled),
+                modifier = getRowModifier("danmaku_smart_mask", Modifier),
+                onClick = {
+                    scope.launch {
+                        DanmakuSettingsStore.updateSettings(context) { current ->
+                            current.copy(smartMaskEnabled = !current.smartMaskEnabled)
                         }
                     }
                 }

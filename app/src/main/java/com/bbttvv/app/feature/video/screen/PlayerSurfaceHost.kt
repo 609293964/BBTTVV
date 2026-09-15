@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.bbttvv.app.feature.video.danmaku.DanmakuConfig
 import com.bbttvv.app.feature.video.danmaku.DanmakuOverlay
+import com.bbttvv.app.feature.video.danmaku.DanmakuMask
 import com.bbttvv.app.feature.video.danmaku.DanmakuRenderPayload
 import com.bbttvv.app.feature.video.viewmodel.PlayerPlaybackState
 
@@ -41,6 +42,9 @@ internal fun PlayerDanmakuOverlayHost(
     playbackSpeed: Float,
     visibleWidthFraction: Float,
     config: DanmakuConfig,
+    mask: DanmakuMask? = null,
+    maskEnabled: Boolean = false,
+    videoAspectRatio: Float = 16f / 9f,
     modifier: Modifier = Modifier,
 ) {
     if (payload == null) return
@@ -54,6 +58,9 @@ internal fun PlayerDanmakuOverlayHost(
         playbackSpeed = playbackSpeed,
         visibleWidthFraction = visibleWidthFraction,
         config = config,
+        mask = mask,
+        maskEnabled = maskEnabled,
+        videoAspectRatio = videoAspectRatio,
         modifier = modifier.fillMaxSize(),
     )
 }

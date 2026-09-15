@@ -89,7 +89,13 @@ internal class SponsorBlockController(
             _currentSegment.value = segment
 
             if (sponsorConfig.playbackMode(segment.category) == SponsorCategoryMode.AUTO) {
-                engine.seekTo(segment.endTimeMs)
+                engine.seekTo(
+                    resolveSponsorBlockSkipTargetPositionMs(
+                        requestedPositionMs = segment.endTimeMs,
+                        durationMs = engine.duration,
+                        category = segment.category,
+                    )
+                )
                 skippedSegmentIds.add(segment.UUID)
                 _currentSegment.value = null
                 _showSkipButton.value = false
@@ -111,7 +117,13 @@ internal class SponsorBlockController(
         val segment = _currentSegment.value ?: return
         val engine = playerEngineProvider() ?: return
 
-        engine.seekTo(segment.endTimeMs)
+        engine.seekTo(
+            resolveSponsorBlockSkipTargetPositionMs(
+                requestedPositionMs = segment.endTimeMs,
+                durationMs = engine.duration,
+                category = segment.category,
+            )
+        )
         skippedSegmentIds.add(segment.UUID)
         _currentSegment.value = null
         _showSkipButton.value = false

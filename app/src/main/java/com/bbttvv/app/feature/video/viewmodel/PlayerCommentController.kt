@@ -16,12 +16,18 @@ internal class PlayerCommentController(
     private val currentAid: () -> Long,
     private val fallbackCommentCount: () -> Int,
     private val isVideoLoading: () -> Boolean,
+    private val commentsLoader: suspend (Long, Int, Int, Int) -> Result<ReplyData> =
+        { aid, page, pageSize, mode -> CommentRepository.getComments(aid, page, pageSize, mode) },
+    private val repliesLoader: suspend (Long, Long, Int, Int) -> Result<ReplyData> =
+        { aid, rootId, page, pageSize -> CommentRepository.getSubComments(aid, rootId, page, pageSize) },
 ) {
     private val _uiState = MutableStateFlow(PlayerCommentsUiState())
     val uiState: StateFlow<PlayerCommentsUiState> = _uiState.asStateFlow()
 
     private var commentsJob: Job? = null
     private var commentRepliesJob: Job? = null
+    private val sortCache = mutableMapOf<PlayerCommentSortMode, PlayerCommentsUiState>()
+    private var commentsGeneration = 0L
 
     fun ensureLoaded() {
         val current = _uiState.value
@@ -38,10 +44,12 @@ internal class PlayerCommentController(
         if (current.isViewingThread) {
             loadCommentReplies(page = 1, append = false)
         } else {
+            sortCache.remove(current.sortMode)
             loadComments(
                 page = 1,
                 sortMode = current.sortMode,
                 append = false,
+                preserveExistingItems = true,
             )
         }
     }
@@ -49,6 +57,14 @@ internal class PlayerCommentController(
     fun changeSort(sortMode: PlayerCommentSortMode) {
         val current = _uiState.value
         if (current.sortMode == sortMode && current.items.isNotEmpty()) return
+        cacheCurrentSort(current)
+        commentsJob?.cancel()
+        commentsGeneration += 1
+        sortCache[sortMode]?.let { cached ->
+            commentRepliesJob?.cancel()
+            _uiState.value = cached.withoutActiveThread().copy(sortMode = sortMode)
+            return
+        }
         loadComments(
             page = 1,
             sortMode = sortMode,
@@ -132,6 +148,8 @@ internal class PlayerCommentController(
         commentRepliesJob?.cancel()
         commentsJob = null
         commentRepliesJob = null
+        commentsGeneration += 1
+        sortCache.clear()
         _uiState.value = PlayerCommentsUiState()
     }
 
@@ -139,6 +157,7 @@ internal class PlayerCommentController(
         page: Int,
         sortMode: PlayerCommentSortMode,
         append: Boolean,
+        preserveExistingItems: Boolean = false,
     ) {
         val aid = currentAid()
         val current = _uiState.value
@@ -176,7 +195,7 @@ internal class PlayerCommentController(
                 it.copy(
                     sortMode = sortMode,
                     currentPage = 1,
-                    items = emptyList(),
+                    items = if (preserveExistingItems && it.sortMode == sortMode) it.items else emptyList(),
                     totalCount = initialTotalCount,
                     totalPages = calculateCommentTotalPages(initialTotalCount, current.pageSize),
                     isLoading = true,
@@ -197,14 +216,14 @@ internal class PlayerCommentController(
         }
 
         commentsJob?.cancel()
+        val generation = ++commentsGeneration
         commentsJob = scope.launch {
-            val result = CommentRepository.getComments(
-                aid = aid,
-                page = page,
-                ps = current.pageSize,
-                mode = sortMode.apiMode,
-            )
-            if (currentAid() != aid) return@launch
+            val result = commentsLoader(aid, page, current.pageSize, sortMode.apiMode)
+            if (
+                currentAid() != aid ||
+                generation != commentsGeneration ||
+                _uiState.value.sortMode != sortMode
+            ) return@launch
 
             result.onSuccess { data ->
                 val pageItems = resolveDisplayComments(data, current.pageSize)
@@ -230,6 +249,7 @@ internal class PlayerCommentController(
                         errorMessage = null,
                     )
                 }
+                cacheCurrentSort(_uiState.value)
             }.onFailure { error ->
                 _uiState.update { state ->
                     if (append && state.items.isNotEmpty()) {
@@ -242,9 +262,31 @@ internal class PlayerCommentController(
                         )
                     }
                 }
+                cacheCurrentSort(_uiState.value)
             }
         }
     }
+
+    private fun cacheCurrentSort(state: PlayerCommentsUiState) {
+        if (state.isViewingThread) return
+        if (state.items.isEmpty() && state.errorMessage == null) return
+        sortCache[state.sortMode] = state.withoutActiveThread().copy(
+            isLoading = false,
+            isAppending = false,
+        )
+    }
+
+    private fun PlayerCommentsUiState.withoutActiveThread(): PlayerCommentsUiState = copy(
+        activeThreadRoot = null,
+        threadItems = emptyList(),
+        threadCurrentPage = 1,
+        threadTotalCount = 0,
+        threadTotalPages = 1,
+        isThreadLoading = false,
+        isThreadAppending = false,
+        threadHasMore = true,
+        threadErrorMessage = null,
+    )
 
     private fun loadCommentReplies(
         page: Int,
@@ -282,12 +324,7 @@ internal class PlayerCommentController(
 
         commentRepliesJob?.cancel()
         commentRepliesJob = scope.launch {
-            val result = CommentRepository.getSubComments(
-                aid = aid,
-                rootId = rootReply.rpid,
-                page = page,
-                ps = current.pageSize,
-            )
+            val result = repliesLoader(aid, rootReply.rpid, page, current.pageSize)
             val latestRoot = _uiState.value.activeThreadRoot
             if (currentAid() != aid || latestRoot?.rpid != rootReply.rpid) return@launch
 

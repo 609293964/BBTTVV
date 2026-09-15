@@ -104,10 +104,19 @@ internal fun buildDashAttemptQualities(targetQn: Int): List<Int> {
     return (listOf(targetQn) + premiumFallbacks + 80).distinct()
 }
 
-internal fun resolveDashRetryDelays(targetQn: Int): List<Long> {
-    // 标准画质（80/64 等）偶发返回空流时，给一次短重试窗口，避免误降级到游客 720。
-    return if (targetQn <= 80) listOf(0L, 450L) else listOf(0L)
+internal fun resolveDashRetryDelays(
+    targetQn: Int,
+    isPrimaryAttempt: Boolean = false
+): List<Long> {
+    // The requested tier gets one short window to recover from a code=0 empty payload. Premium
+    // fallback tiers do not repeat this retry, which keeps the total request count bounded.
+    return if (isPrimaryAttempt || targetQn <= 80) listOf(0L, 450L) else listOf(0L)
 }
+
+internal fun shouldRetryOnlyTransientEmptyDashResponse(
+    targetQn: Int,
+    isPrimaryAttempt: Boolean,
+): Boolean = isPrimaryAttempt && targetQn > 80
 
 internal fun shouldRetryDashTrackRecovery(
     targetQn: Int,

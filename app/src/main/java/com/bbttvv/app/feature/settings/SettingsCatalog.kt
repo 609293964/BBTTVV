@@ -56,6 +56,7 @@ internal object SettingsCatalog {
             "settings_system_title",
             "settings_privacy_mode",
             "settings_blocked_ups_count",
+            "settings_automatic_cache_cleanup",
             "settings_clear_cache",
             "settings_check_update",
             "settings_version",
@@ -74,6 +75,8 @@ internal object DanmakuSettingsCatalog {
     val keys = listOf(
         "danmaku_basic_title",
         "danmaku_default_enabled",
+        "danmaku_live_super_chat",
+        "danmaku_smart_mask",
         "danmaku_opacity",
         "danmaku_text_size",
         "danmaku_font_weight",

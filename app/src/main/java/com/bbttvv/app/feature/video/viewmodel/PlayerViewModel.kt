@@ -16,9 +16,12 @@ import com.bbttvv.app.core.plugin.PluginManager
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.core.store.player.PlayerSettingsStore
+import com.bbttvv.app.core.store.player.DanmakuSettingsStore
+import com.bbttvv.app.data.repository.DanmakuMaskRepository
 import com.bbttvv.app.data.model.response.Page
 import com.bbttvv.app.data.model.response.ReplyItem
 import com.bbttvv.app.feature.video.danmaku.DanmakuProto
+import com.bbttvv.app.feature.video.danmaku.DanmakuMask
 import com.bbttvv.app.feature.plugin.SponsorBlockConfig
 import com.bbttvv.app.feature.plugin.SponsorBlockPlugin
 import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
@@ -62,10 +65,14 @@ class PlayerViewModel : BasePlayerViewModel() {
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
     private val _playbackState = MutableStateFlow(PlayerPlaybackState())
     val playbackState: StateFlow<PlayerPlaybackState> = _playbackState.asStateFlow()
+    private val _danmakuMask = MutableStateFlow<DanmakuMask?>(null)
+    val danmakuMask: StateFlow<DanmakuMask?> = _danmakuMask.asStateFlow()
     private val _events = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 1)
     internal val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
 
     private var playbackRuntime = PlaybackRuntimeState()
+    private var danmakuMaskJob: Job? = null
+    private val maskMedia = MutableStateFlow<Pair<String, Long>?>(null)
     private val playbackHistoryReporter = PlaybackHistoryReporter(
         scope = viewModelScope,
         ensureMainThread = { caller -> ensureMainThread(caller) },
@@ -216,6 +223,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         videoShotController = videoShotController,
         progressHeatmapController = progressHeatmapController,
         resetDanmakuRequestState = {
+            maskMedia.value = null
+            _danmakuMask.value = null
             lastDanmakuCid = 0L
             lastDanmakuDurationMs = 0L
             lastDanmakuRequestAtMs = 0L
@@ -248,17 +257,21 @@ class PlayerViewModel : BasePlayerViewModel() {
             val branch = request.interactiveBranch
             if (branch != null) {
                 interactiveVideoController.onBranchLoaded(branch, result.source.durationMs)
-            } else if (interactiveVideoEnabled && !request.bvid.startsWith("ep") && !request.bvid.startsWith("ss")) {
+            }
+            maskMedia.value = result.info.bvid to result.info.cid
+            val shouldLoadPlayerInfo = branch == null && interactiveVideoEnabled &&
+                !request.bvid.startsWith("ep") && !request.bvid.startsWith("ss")
+            if (shouldLoadPlayerInfo) {
                 viewModelScope.launch {
                     val playerInfo = com.bbttvv.app.data.repository.VideoRepository
                         .getPlayerInfo(result.info.bvid, result.info.cid)
                         .getOrNull()
                     if (
-                        playerInfo != null &&
-                        playbackRuntime.bvid == result.info.bvid &&
-                        playbackRuntime.cid == result.info.cid &&
-                        playerInfo.interaction?.graphVersion ?: 0L > 0L
-                    ) {
+                        playerInfo == null ||
+                        playbackRuntime.bvid != result.info.bvid ||
+                        playbackRuntime.cid != result.info.cid
+                    ) return@launch
+                    if ((playerInfo.interaction?.graphVersion ?: 0L) > 0L) {
                         interactiveVideoController.initialize(
                             bvid = result.info.bvid,
                             graphVersion = playerInfo.interaction!!.graphVersion,
@@ -297,6 +310,33 @@ class PlayerViewModel : BasePlayerViewModel() {
     init {
         startSponsorPluginUiObservation()
         startInteractiveVideoSettingsObservation()
+        startDanmakuMaskObservation()
+    }
+
+    private fun startDanmakuMaskObservation() {
+        val context = NetworkModule.appContext ?: return
+        danmakuMaskJob = viewModelScope.launch {
+            danmakuMaskRequests(maskMedia, DanmakuSettingsStore.getSettings(context)).collectLatest { media ->
+                _danmakuMask.value = null
+                if (media == null) return@collectLatest
+                val info = com.bbttvv.app.data.repository.VideoRepository
+                    .getPlayerInfo(media.first, media.second).getOrNull()
+                val url = info?.dmMask?.maskUrl.orEmpty()
+                if (url.isBlank()) {
+                    com.bbttvv.app.core.util.Logger.w(
+                        "DanmakuMask",
+                        if (info == null) "Player metadata unavailable" else "Video has no webmask",
+                    )
+                    return@collectLatest
+                }
+                val mask = DanmakuMaskRepository.load(url)
+                if (isActive && maskMedia.value == media &&
+                    playbackRuntime.bvid == media.first && playbackRuntime.cid == media.second
+                ) {
+                    _danmakuMask.value = mask
+                }
+            }
+        }
     }
 
     private val playerListener = object : Player.Listener {
@@ -458,6 +498,9 @@ class PlayerViewModel : BasePlayerViewModel() {
 
     @MainThread
     fun hideDanmakuVote() = danmakuVoteController.hide()
+
+    fun setDanmakuVoteOverlaySuppressed(suppressed: Boolean) =
+        danmakuVoteController.setOverlaySuppressed(suppressed)
 
     @MainThread
     fun retryDanmakuVote() = danmakuVoteController.retry()
@@ -780,6 +823,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         playWhenReady: Boolean = true
     ) {
         ensureMainThread("applyPlaybackSource")
+        // Quality/CDN changes retain the same media and its mask.
+        // New media is cleared by resetDanmakuRequestState.
         val effectivePlayWhenReady = resolvePlayWhenReadyForAppVisibility(
             requestedPlayWhenReady = playWhenReady,
             isPlaybackSuppressed = isAppInBackground || isPlaybackSuspendedForBackground,
@@ -1240,6 +1285,9 @@ class PlayerViewModel : BasePlayerViewModel() {
 
     override fun onCleared() {
         ensureMainThread("PlayerViewModel.onCleared")
+        danmakuMaskJob?.cancel()
+        danmakuMaskJob = null
+        _danmakuMask.value = null
         finishPlaybackSession(reason = "viewmodel_cleared")
         detachPlayer()
         playbackLoadCoordinator.cancel()

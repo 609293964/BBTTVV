@@ -122,10 +122,17 @@ internal class DanmakuOverlaySyncState(
             return DanmakuOverlaySyncDecision.HardSync(reason)
         }
 
-        return if (shouldSoftSyncHighSpeedTimeline(normalizedPlaybackSpeed, isPlaying, elapsedRealtimeMs)) {
+        return if (abs(normalizedPlaybackSpeed - lastAppliedPlaybackSpeed) > 0.01f) {
+            DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.PlaybackSpeedChanged)
+        } else if (shouldSoftSyncHighSpeedTimeline(normalizedPlaybackSpeed, isPlaying, elapsedRealtimeMs)) {
             DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.HighSpeedDriftCorrection)
         } else if (isPlaying != lastObservedPlayState) {
-            DanmakuOverlaySyncDecision.SoftSyncPlayState
+            if (isPlaying) {
+                // invalidateView alone does not resume the engine after pause().
+                DanmakuOverlaySyncDecision.SoftSyncTimeline(DanmakuSyncReason.PlayStateChanged)
+            } else {
+                DanmakuOverlaySyncDecision.SoftSyncPlayState
+            }
         } else {
             DanmakuOverlaySyncDecision.Noop
         }
@@ -193,13 +200,23 @@ internal class DanmakuOverlaySyncState(
             lastAppliedViewportWidth <= 0 || lastAppliedViewportHeight <= 0 -> DanmakuSyncReason.ViewportReady
             viewportWidth != lastAppliedViewportWidth || viewportHeight != lastAppliedViewportHeight ->
                 DanmakuSyncReason.ViewportChanged
-            abs(playbackSpeed - lastAppliedPlaybackSpeed) > 0.01f ->
-                DanmakuSyncReason.PlaybackSpeedChanged
-            isPlaying && isPlaying != lastObservedPlayState -> DanmakuSyncReason.PlayStateChanged
             abs(playbackPositionMs - lastObservedPosition) > discontinuityThresholdMs ->
                 DanmakuSyncReason.PositionDiscontinuity
             else -> null
         }
+    }
+
+    fun canAppendData(
+        configToken: Long,
+        attachToken: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+    ): Boolean {
+        return hasLoadedData &&
+            configToken == lastAppliedConfigToken &&
+            attachToken == lastAppliedAttachToken &&
+            viewportWidth == lastAppliedViewportWidth &&
+            viewportHeight == lastAppliedViewportHeight
     }
 
 

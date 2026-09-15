@@ -366,6 +366,7 @@ fun TvSettingsList(
     val dynamicPageDisplayMode = appSettings.dynamicPageDisplayMode
     val singleBackToHomeEnabled = appSettings.singleBackToHomeEnabled
     val themeMode = appSettings.themeMode
+    val automaticCacheThresholdMb = appSettings.automaticCacheThresholdMb
     val rememberLastSpeed = playerSettings.rememberLastPlaybackSpeed
     val defaultPlaybackSpeed = playerSettings.defaultPlaybackSpeed
     val interactiveVideoEnabled = playerSettings.interactiveVideoEnabled
@@ -943,6 +944,30 @@ fun TvSettingsList(
                     modifier = getRowModifier("settings_blocked_ups_count", leftModifier),
                     enabled = false,
                     onClick = {}
+                )
+            }
+            item(key = "settings_automatic_cache_cleanup") {
+                SettingsRow(
+                    title = "自动清理缓存",
+                    subtitle = "超过阈值后在后台清理受管理的图片和网络缓存。",
+                    value = if (automaticCacheThresholdMb <= 0) {
+                        "关闭"
+                    } else {
+                        "${automaticCacheThresholdMb} MB"
+                    },
+                    modifier = getRowModifier("settings_automatic_cache_cleanup", leftModifier),
+                    onClick = {
+                        scope.launch {
+                            val options = SettingsManager.AUTOMATIC_CACHE_THRESHOLD_OPTIONS_MB
+                            val currentIndex = options.indexOf(automaticCacheThresholdMb).coerceAtLeast(0)
+                            val next = options[(currentIndex + 1) % options.size]
+                            SettingsManager.setAutomaticCacheThresholdMb(context, next)
+                            if (next > 0) {
+                                CacheUtils.runAutomaticCacheCleanup(context.applicationContext, next)
+                                cacheRefreshTick += 1
+                            }
+                        }
+                    }
                 )
             }
             item(key = "settings_clear_cache") {

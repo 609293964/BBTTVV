@@ -58,6 +58,11 @@ internal class PlayerDanmakuSessionController(
         return true
     }
 
+    fun retainLoadedSegments(retainedSegments: Set<Int>) {
+        loadedSegments.retainAll(retainedSegments)
+        failedSegments.retainAll(retainedSegments)
+    }
+
     fun prefetchWindow(positionMs: Long): List<Int> {
         if (currentCid <= 0L) return emptyList()
         val currentSegment = segmentIndexFor(positionMs)

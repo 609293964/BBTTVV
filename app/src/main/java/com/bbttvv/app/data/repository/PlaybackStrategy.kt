@@ -35,7 +35,8 @@ internal interface PlaybackStrategy {
 internal object QualitySelectionPolicy {
     fun dashAttemptQualities(targetQn: Int): List<Int> = buildDashAttemptQualities(targetQn)
 
-    fun dashRetryDelays(targetQn: Int): List<Long> = resolveDashRetryDelays(targetQn)
+    fun dashRetryDelays(targetQn: Int, isPrimaryAttempt: Boolean): List<Long> =
+        resolveDashRetryDelays(targetQn, isPrimaryAttempt)
 
     fun shouldRetryTrackRecovery(
         targetQn: Int,
@@ -127,9 +128,14 @@ internal object LoggedInPlaybackStrategy : PlaybackStrategy {
         val dashQualities = QualitySelectionPolicy.dashAttemptQualities(request.targetQn)
         com.bbttvv.app.core.util.Logger.d(TAG, "DASH-first strategy, qn=${request.targetQn}")
 
-        for (dashQn in dashQualities) {
-            val retryDelays = QualitySelectionPolicy.dashRetryDelays(dashQn)
-            for ((attemptIndex, delayMs) in retryDelays.withIndex()) {
+        for ((qualityIndex, dashQn) in dashQualities.withIndex()) {
+            val isPrimaryAttempt = qualityIndex == 0
+            val retryDelays = QualitySelectionPolicy.dashRetryDelays(dashQn, isPrimaryAttempt)
+            val retryOnlyTransientEmptyResponse = shouldRetryOnlyTransientEmptyDashResponse(
+                targetQn = dashQn,
+                isPrimaryAttempt = isPrimaryAttempt,
+            )
+            dashRetry@ for ((attemptIndex, delayMs) in retryDelays.withIndex()) {
                 if (delayMs > 0L) {
                     com.bbttvv.app.core.util.Logger.d(TAG, "DASH retry ${attemptIndex + 1} for qn=$dashQn")
                     delay(delayMs)
@@ -164,7 +170,8 @@ internal object LoggedInPlaybackStrategy : PlaybackStrategy {
                             TAG,
                             "Reject downgraded DASH result: requestedQn=$dashQn, quality=${payload.quality}, dashIds=$dashVideoIds"
                         )
-                        continue
+                        if (retryOnlyTransientEmptyResponse) break@dashRetry
+                        continue@dashRetry
                     }
                     com.bbttvv.app.core.util.Logger.d(TAG, "DASH success: quality=${payload.quality}, requestedQn=$dashQn")
                     return PlayUrlFetchResult(payload, PlayUrlSource.DASH)
@@ -178,6 +185,12 @@ internal object LoggedInPlaybackStrategy : PlaybackStrategy {
                     if (diagnosis.shouldInvalidateWbiKeys && attemptIndex < retryDelays.lastIndex) {
                         PlaybackSessionManager.invalidateWbiKeys()
                     }
+                }
+                if (
+                    retryOnlyTransientEmptyResponse &&
+                    result.diagnosis?.kind != PlaybackErrorKind.EMPTY_PAYLOAD
+                ) {
+                    break@dashRetry
                 }
             }
         }

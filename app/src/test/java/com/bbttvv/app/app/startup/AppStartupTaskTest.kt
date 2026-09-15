@@ -3,9 +3,23 @@ package com.bbttvv.app.app.startup
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppStartupTaskTest {
+    @Test
+    fun `plugin context is ready before deferred registration`() {
+        val tasks = defaultAppStartupTasks(deferredDelayMs = 800L)
+        val contextTask = tasks.single { it.id == "plugin_manager_context_init" }
+        val registrationTask = tasks.single { it.id == "plugin_registration_init" }
+
+        assertEquals(StartupPhase.BEFORE_FIRST_INTERACTIVE, contextTask.phase)
+        assertEquals(StartupThread.MAIN, contextTask.thread)
+        assertEquals(StartupPhase.AFTER_FIRST_INTERACTIVE, registrationTask.phase)
+        assertEquals(StartupThread.IO, registrationTask.thread)
+        assertTrue(tasks.indexOf(contextTask) < tasks.indexOf(registrationTask))
+    }
+
     @Test
     fun `background warmup stays on io after first interactive`() {
         val deferredDelayMs = 800L

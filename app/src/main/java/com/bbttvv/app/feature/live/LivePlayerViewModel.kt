@@ -232,6 +232,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         System.currentTimeMillis() / 1_000L
     }
     private val liveBufferingStallTracker = PlaybackBufferingStallTracker()
+    private val behindLiveWindowRecoveryAttemptsMs = ArrayDeque<Long>()
 
     private val playerListener = object : Player.Listener {
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -256,7 +257,10 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             refreshPlaybackState()
             when (playbackState) {
                 Player.STATE_BUFFERING -> CrashReporter.markLivePlaybackStage("buffering")
-                Player.STATE_READY -> CrashReporter.markLivePlaybackStage("ready")
+                Player.STATE_READY -> {
+                    CrashReporter.markLivePlaybackStage("ready")
+                    behindLiveWindowRecoveryAttemptsMs.clear()
+                }
                 Player.STATE_ENDED -> CrashReporter.markLivePlaybackStage("ended")
             }
         }
@@ -265,6 +269,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             ensureMainThread("LivePlayer.Listener.onPlayerError")
             val roomId = _uiState.value.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId
             CrashReporter.markLivePlaybackStage("player_error")
+            if (!isAppInBackground && tryRecoverBehindLiveWindow(error)) return
             if (
                 !isAppInBackground &&
                 recoverLivePlayback(
@@ -1018,6 +1023,53 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             return true
         }
         return false
+    }
+
+    private fun tryRecoverBehindLiveWindow(error: PlaybackException): Boolean {
+        if (error.errorCode != PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return false
+        if (isPlaybackSuppressed()) return false
+        val nowMs = SystemClock.elapsedRealtime()
+        val action = resolveLiveBehindWindowRecoveryAction(
+            previousAttemptsMs = behindLiveWindowRecoveryAttemptsMs.toList(),
+            nowMs = nowMs,
+        )
+        if (action == LiveBehindWindowRecoveryAction.IGNORE_DUPLICATE) return true
+        if (action == LiveBehindWindowRecoveryAction.NONE) return false
+        val player = exoPlayer ?: return false
+        val currentUrl = if (action == LiveBehindWindowRecoveryAction.REBUILD_SOURCE) {
+            _uiState.value.streamUrl.takeIf { it.isNotBlank() } ?: return false
+        } else {
+            null
+        }
+        while (
+            behindLiveWindowRecoveryAttemptsMs.isNotEmpty() &&
+            nowMs - behindLiveWindowRecoveryAttemptsMs.first() > 15_000L
+        ) {
+            behindLiveWindowRecoveryAttemptsMs.removeFirst()
+        }
+        behindLiveWindowRecoveryAttemptsMs.addLast(nowMs)
+        when (action) {
+            LiveBehindWindowRecoveryAction.SEEK_DEFAULT -> {
+                player.seekToDefaultPosition()
+                player.prepare()
+                player.playWhenReady = true
+                _uiState.update { it.copy(errorMessage = null, statusMessage = "直播窗口已重新对齐") }
+            }
+            LiveBehindWindowRecoveryAction.REBUILD_SOURCE -> {
+                val refererRoomId = runtimeState.realRoomId.takeIf { it > 0L } ?: runtimeState.roomId
+                playStreamingUrl(
+                    url = checkNotNull(currentUrl),
+                    referer = "https://live.bilibili.com/$refererRoomId",
+                    resetPlayer = true,
+                    playWhenReady = true,
+                )
+                _uiState.update { it.copy(errorMessage = null, statusMessage = "直播窗口已重建") }
+            }
+            LiveBehindWindowRecoveryAction.NONE -> return false
+            LiveBehindWindowRecoveryAction.IGNORE_DUPLICATE -> return true
+        }
+        scheduleStatusAutoClear()
+        return true
     }
 
     private fun buildStreamLoadResultForCandidate(candidate: LiveStreamCandidate): LiveStreamLoadResult {

@@ -92,6 +92,8 @@ fun LivePlayerScreen(
         )
     val storedDanmakuSettings by DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
+    val liveSuperChatEnabled by SettingsManager.getLiveSuperChatEnabled(context)
+        .collectAsStateWithLifecycle(initialValue = true)
     val danmakuConfig = remember(storedDanmakuSettings) { storedDanmakuSettings.toEngineConfig() }
     val exoPlayer = remember(context) { createConfiguredPlayer(context) }
     val playerReleaseGuard = remember(exoPlayer) { ExoPlayerReleaseGuard(exoPlayer) }
@@ -416,7 +418,12 @@ fun LivePlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        superChat?.let { item ->
+        superChat?.takeIf {
+            shouldShowLiveSuperChat(
+                isDanmakuEnabled = isDanmakuEnabled,
+                flashEnabled = liveSuperChatEnabled,
+            )
+        }?.let { item ->
             LiveSuperChatOverlay(
                 item = item,
                 privacyMode = privacyMode,

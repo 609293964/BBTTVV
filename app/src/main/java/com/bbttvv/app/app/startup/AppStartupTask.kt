@@ -24,6 +24,12 @@ internal fun defaultAppStartupTasks(
 ): List<AppStartupTask> {
     return listOf(
         AppStartupTask(
+            id = "plugin_manager_context_init",
+            phase = StartupPhase.BEFORE_FIRST_INTERACTIVE,
+            thread = StartupThread.MAIN,
+            coldStartBudgetMs = 1.0
+        ),
+        AppStartupTask(
             id = "network_module_init",
             phase = StartupPhase.BEFORE_FIRST_INTERACTIVE,
             thread = StartupThread.MAIN,
@@ -75,7 +81,7 @@ internal fun defaultAppStartupTasks(
             delayMs = deferredDelayMs
         ),
         AppStartupTask(
-            id = "plugin_manager_init",
+            id = "plugin_registration_init",
             phase = StartupPhase.AFTER_FIRST_INTERACTIVE,
             thread = StartupThread.IO,
             delayMs = deferredDelayMs

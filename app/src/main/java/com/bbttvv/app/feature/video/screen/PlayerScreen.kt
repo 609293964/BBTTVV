@@ -70,6 +70,7 @@ fun PlayerScreen(
     val sponsorUiState by viewModel.sponsorUiState.collectAsStateWithLifecycle()
     val interactiveUiState by viewModel.interactiveUiState.collectAsStateWithLifecycle()
     val danmakuVoteUiState by viewModel.danmakuVoteUiState.collectAsStateWithLifecycle()
+    val danmakuMask by viewModel.danmakuMask.collectAsStateWithLifecycle()
     val isDanmakuEnabled by viewModel.isDanmakuEnabled.collectAsStateWithLifecycle()
     val storedDanmakuSettings by DanmakuSettingsStore.getSettings(context)
         .collectAsStateWithLifecycle(initialValue = DanmakuSettings())
@@ -163,6 +164,12 @@ fun PlayerScreen(
         exclusiveOverlayOwner == PlayerExclusiveOverlayOwner.InteractiveVideo
     val isDanmakuVoteFocusDomain =
         exclusiveOverlayOwner == PlayerExclusiveOverlayOwner.DanmakuVote
+    LaunchedEffect(exclusiveOverlayOwner, isDanmakuVoteOverlayOpen) {
+        viewModel.setDanmakuVoteOverlaySuppressed(
+            isDanmakuVoteOverlayOpen &&
+                exclusiveOverlayOwner != PlayerExclusiveOverlayOwner.DanmakuVote
+        )
+    }
     var danmakuVoteKeyHandler by remember {
         mutableStateOf<DanmakuVoteKeyHandler?>(null)
     }
@@ -378,6 +385,11 @@ fun PlayerScreen(
             playbackSpeed = uiState.playbackSpeed,
             visibleWidthFraction = resolvePlayerDanmakuVisibleWidthFraction(isCommentsPanelVisible),
             config = danmakuConfig,
+            mask = danmakuMask,
+            maskEnabled = presentationState.danmakuSettings.smartMaskEnabled,
+            videoAspectRatio = uiState.selectedVideoWidth.takeIf { it > 0 }?.let { width ->
+                uiState.selectedVideoHeight.takeIf { it > 0 }?.let { height -> width.toFloat() / height }
+            } ?: (16f / 9f),
         )
 
         PlayerOverlaySection(
@@ -488,6 +500,9 @@ private fun PlayerDanmakuSection(
     playbackSpeed: Float,
     visibleWidthFraction: Float,
     config: DanmakuConfig,
+    mask: com.bbttvv.app.feature.video.danmaku.DanmakuMask?,
+    maskEnabled: Boolean,
+    videoAspectRatio: Float,
 ) {
     val payload by viewModel.danmakuPayload.collectAsStateWithLifecycle()
     if (payload == null) return
@@ -499,6 +514,9 @@ private fun PlayerDanmakuSection(
         playbackSpeed = playbackSpeed,
         visibleWidthFraction = visibleWidthFraction,
         config = config,
+        mask = mask,
+        maskEnabled = maskEnabled,
+        videoAspectRatio = videoAspectRatio,
     )
 }
 

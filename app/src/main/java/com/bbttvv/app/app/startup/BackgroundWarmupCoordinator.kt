@@ -5,6 +5,8 @@ import android.os.Looper
 import android.os.SystemClock
 import com.bbttvv.app.core.network.NetworkWarmup
 import com.bbttvv.app.core.store.StartupSettingsCache
+import com.bbttvv.app.core.store.SettingsManager
+import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.repository.CommentRepository
@@ -80,6 +82,20 @@ internal object BackgroundWarmupCoordinator {
                             TAG,
                             "network preconnect ready dns=${result.dnsResolvedCount}, " +
                                 "http=${result.httpPreconnectCount}, images=${result.imagePreconnectCount}"
+                        )
+                    }
+                }
+
+                launch {
+                    runWarmupTask("automatic_cache_cleanup", timeoutMs = 4_000L) {
+                        val thresholdMb = SettingsManager.getSettingsSnapshotSync(appContext)
+                            .automaticCacheThresholdMb
+                        val result = CacheUtils.runAutomaticCacheCleanup(appContext, thresholdMb)
+                        Logger.d(
+                            TAG,
+                            "automatic cache cleanup thresholdMb=$thresholdMb " +
+                                "before=${result.beforeBytes} after=${result.estimatedAfterBytes} " +
+                                "targets=${result.clearedTargets}"
                         )
                     }
                 }
