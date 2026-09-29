@@ -55,10 +55,10 @@ internal fun BoxScope.DanmakuVoteOverlay(
     onKeyHandlerChanged: (DanmakuVoteKeyHandler?) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
-    val compactDialogWidth = (configuration.screenWidthDp * 0.30f).dp
-        .coerceIn(300.dp, 420.dp)
-    val compactDialogHeight = (configuration.screenHeightDp * 0.40f).dp
-        .coerceIn(180.dp, 440.dp)
+    val compactDialogWidth = (configuration.screenWidthDp * 0.25f).dp
+        .coerceIn(280.dp, 360.dp)
+    val compactDialogHeight = (configuration.screenHeightDp * 0.32f).dp
+        .coerceIn(160.dp, 360.dp)
     val showing = state as? DanmakuVoteUiState.Showing
     val submitting = state as? DanmakuVoteUiState.Submitting
     val error = state as? DanmakuVoteUiState.RetryableError
@@ -171,18 +171,18 @@ internal fun BoxScope.DanmakuVoteOverlay(
             .align(Alignment.CenterEnd)
             .zIndex(20f)
             .fillMaxHeight()
-            .padding(end = 56.dp, top = 48.dp, bottom = 48.dp),
+            .padding(end = 40.dp, top = 40.dp, bottom = 40.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 300.dp, max = compactDialogWidth)
+                .widthIn(min = 280.dp, max = compactDialogWidth)
                 .heightIn(min = 180.dp, max = compactDialogHeight)
                 .background(Color(0xE61A1A1A), RoundedCornerShape(16.dp))
-                .padding(20.dp)
+                .padding(16.dp)
                 .focusRequester(overlayFocusRequester)
                 .focusable(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -190,7 +190,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    prompt.question, modifier = Modifier.weight(1f), color = Color.White, fontSize = 22.sp,
+                    prompt.question, modifier = Modifier.weight(1f), color = Color.White, fontSize = 20.sp,
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
                 if (showing != null && remainingSeconds.intValue > 0) {
@@ -209,11 +209,11 @@ internal fun BoxScope.DanmakuVoteOverlay(
                     }
                 }
                 if (prompt.kind == DanmakuVoteKind.Grade) {
-                    Text("${prompt.participantCount}人参与", color = Color(0xFFBDBDBD), fontSize = 18.sp)
+                    Text("${prompt.participantCount}人参与", color = Color(0xFFBDBDBD), fontSize = 15.sp)
                 }
             }
             if (prompt.kind == DanmakuVoteKind.Grade) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     prompt.options.forEachIndexed { index, option ->
                         val focused = index == activeIndex.intValue
                         val selected = prompt.selectedOptionId > 0 && option.id <= prompt.selectedOptionId
@@ -231,21 +231,21 @@ internal fun BoxScope.DanmakuVoteOverlay(
                                     if (focused) Color(0xFF3F51B5) else Color.Transparent,
                                     RoundedCornerShape(10.dp),
                                 )
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 4.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = if (preview || selected) "★" else "☆",
                                 color = if (selected) Color(0xFFFFD54F) else Color.White,
-                                fontSize = 42.sp,
+                                fontSize = 34.sp,
                             )
                         }
                     }
                 }
             } else LazyColumn(
                 state = listState,
-                modifier = Modifier.heightIn(max = 250.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.heightIn(max = 220.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(vertical = 2.dp),
             ) {
                 itemsIndexed(prompt.options, key = { _, option -> option.id }) { index, option ->
@@ -266,7 +266,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                                 },
                                 RoundedCornerShape(10.dp),
                             )
-                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                     ) {
                         val suffix = when {
                             submitting?.selectedIndex == index -> " · 提交中"
@@ -276,7 +276,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                         Text(
                             text = option.text + suffix,
                             color = Color.White,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -284,16 +284,16 @@ internal fun BoxScope.DanmakuVoteOverlay(
                 }
             }
             if (error != null) {
-                Text(error.message, color = Color(0xFFFFB4AB), fontSize = 15.sp)
-                Text("确认重试 · 返回关闭", color = Color.White, fontSize = 15.sp)
+                Text(error.message, color = Color(0xFFFFB4AB), fontSize = 14.sp)
+                Text("确认重试 · 返回关闭", color = Color.White, fontSize = 14.sp)
             } else if (submitting != null && prompt.kind == DanmakuVoteKind.Grade) {
-                Text("正在提交 ${submitting.selectedIndex + 1} 星 · 返回关闭", color = Color.White, fontSize = 15.sp)
+                Text("正在提交 ${submitting.selectedIndex + 1} 星 · 返回关闭", color = Color.White, fontSize = 14.sp)
             } else if (submitted != null) {
-                Text(if (prompt.kind == DanmakuVoteKind.Grade) "打分成功" else "投票成功", color = Color(0xFF9BE8C2), fontSize = 15.sp)
+                Text(if (prompt.kind == DanmakuVoteKind.Grade) "打分成功" else "投票成功", color = Color(0xFF9BE8C2), fontSize = 14.sp)
             } else if (prompt.selectedOptionId > 0) {
-                Text(if (prompt.kind == DanmakuVoteKind.Grade) "你已经参与过该打分" else "你已经参与过该投票", color = Color(0xFFB7C7FF), fontSize = 15.sp)
+                Text(if (prompt.kind == DanmakuVoteKind.Grade) "你已经参与过该打分" else "你已经参与过该投票", color = Color(0xFFB7C7FF), fontSize = 14.sp)
             } else if (prompt.kind == DanmakuVoteKind.Grade) {
-                Text("${activeIndex.intValue + 1} 星 · 左右选择 · 确认打分 · 返回关闭", color = Color.White, fontSize = 15.sp)
+                Text("${activeIndex.intValue + 1} 星 · 左右选择 · 确认打分 · 返回关闭", color = Color.White, fontSize = 14.sp)
             }
         }
     }

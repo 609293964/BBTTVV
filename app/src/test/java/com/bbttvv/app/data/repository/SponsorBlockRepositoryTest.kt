@@ -4,6 +4,7 @@ import com.bbttvv.app.data.model.response.SponsorActionType
 import com.bbttvv.app.data.model.response.SponsorCategory
 import com.bbttvv.app.data.model.response.SponsorSegment
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,20 +14,33 @@ class SponsorBlockRepositoryTest {
         val url = buildSponsorBlockSegmentsUrl(
             bvid = " BV1TEST ",
             cid = 123L,
-            categories = listOf(SponsorCategory.SPONSOR, SponsorCategory.CHAPTER),
-            actionTypes = listOf(SponsorActionType.SKIP, SponsorActionType.CHAPTER),
+            categories = listOf(SponsorCategory.SPONSOR, SponsorCategory.POI_HIGHLIGHT),
+            actionTypes = listOf(SponsorActionType.SKIP, SponsorActionType.POI),
         )
 
         assertEquals("BV1TEST", url.queryParameter("videoID"))
         assertEquals("123", url.queryParameter("cid"))
         assertEquals(
-            listOf(SponsorCategory.SPONSOR, SponsorCategory.CHAPTER),
+            listOf(SponsorCategory.SPONSOR, SponsorCategory.POI_HIGHLIGHT),
             url.queryParameterValues("category"),
         )
         assertEquals(
-            listOf(SponsorActionType.SKIP, SponsorActionType.CHAPTER),
+            listOf(SponsorActionType.SKIP, SponsorActionType.POI),
             url.queryParameterValues("actionType"),
         )
+    }
+
+    @Test
+    fun `default skip segments request omits unsupported chapter filters`() {
+        val url = buildSponsorBlockSegmentsUrl(
+            bvid = "BV14741127BN",
+            cid = 168885122L,
+            categories = SponsorCategory.PLAYBACK_CATEGORIES,
+            actionTypes = SponsorActionType.PLAYBACK_ACTION_TYPES,
+        )
+
+        assertFalse(url.queryParameterValues("category").contains(SponsorCategory.CHAPTER))
+        assertFalse(url.queryParameterValues("actionType").contains(SponsorActionType.CHAPTER))
     }
 
     @Test

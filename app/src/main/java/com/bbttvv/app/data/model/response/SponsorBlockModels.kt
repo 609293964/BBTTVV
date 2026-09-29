@@ -34,7 +34,6 @@ object SponsorCategory {
         FILLER,
         MUSIC_OFFTOPIC,
         POI_HIGHLIGHT,
-        CHAPTER,
     )
     
     fun getCategoryName(category: String): String = when (category) {
@@ -63,7 +62,10 @@ object SponsorActionType {
     const val POI = "poi"       // 精彩片段点
     const val CHAPTER = "chapter" // 章节
 
-    val PLAYBACK_ACTION_TYPES = listOf(SKIP, POI, CHAPTER)
+    // bsbsb.top's skipSegments endpoint rejects the synthetic `chapter`
+    // category/actionType with HTTP 400. Chapters remain supported by the
+    // model for responses from other sources, but must not be requested here.
+    val PLAYBACK_ACTION_TYPES = listOf(SKIP, POI)
 }
 
 @Serializable
