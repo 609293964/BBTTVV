@@ -148,7 +148,7 @@ object PlaybackRepository {
                 VideoDetailRepository.getVideoInfo(lookup.bvid)
             } else {
                 com.bbttvv.app.core.util.Logger.d("PlaybackRepo", "getVideoDetails: using aid=${lookup.aid}")
-                api.getVideoInfoByAid(lookup.aid)
+                VideoRepository.getVideoInfoByAid(lookup.aid)
             }
 
             val rawInfo = viewResp.data ?: throw Exception("视频详情为空: ${viewResp.code}")
