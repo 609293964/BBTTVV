@@ -98,6 +98,7 @@ data class CreatorCardStats(
 
 object VideoRepository {
     private val api get() = VideoSessionService.api
+    private val videoInfoEndpointState = VideoInfoEndpointState()
     private val subtitleCueCache get() = VideoCacheService.subtitleCueCache
     private val videoInfoCache get() = VideoCacheService.videoInfoCache
     private val videoPreviewCache get() = VideoCacheService.videoPreviewCache
@@ -148,7 +149,7 @@ object VideoRepository {
             val response = if (lookup.bvid.isNotEmpty()) {
                 getVideoInfo(lookup.bvid)
             } else {
-                api.getVideoInfoByAid(lookup.aid)
+                getVideoInfoByAid(lookup.aid)
             }
             val info = response.data ?: throw Exception("视频详情为空: ${response.code}")
             val title = info.title.trim()
@@ -408,7 +409,9 @@ object VideoRepository {
         }
         videoInfoCache[cacheKey]?.let { return@withContext it }
         val request = videoInfoInFlight.computeIfAbsent(cacheKey) {
-            AppScope.ioScope.async { api.getVideoInfo(cacheKey) }
+            AppScope.ioScope.async {
+                requestVideoInfoWithWbiFallback(bvid = cacheKey) { api.getVideoInfo(cacheKey) }
+            }
         }
         val response = try {
             request.await()
@@ -421,6 +424,34 @@ object VideoRepository {
             videoInfoCache[cacheKey] = response
         }
         response
+    }
+
+    suspend fun getVideoInfoByAid(aid: Long): VideoDetailResponse = withContext(Dispatchers.IO) {
+        requestVideoInfoWithWbiFallback(aid = aid) { api.getVideoInfoByAid(aid) }
+    }
+
+    private suspend fun requestVideoInfoWithWbiFallback(
+        bvid: String = "",
+        aid: Long = 0L,
+        legacyRequest: suspend () -> VideoDetailResponse,
+    ): VideoDetailResponse = resolveVideoInfoWithWbiFallback(
+        state = videoInfoEndpointState,
+        legacyRequest = legacyRequest,
+        wbiRequest = { requestWbiVideoInfo(bvid = bvid, aid = aid) },
+        invalidateWbiKeys = PlaybackSessionManager::invalidateWbiKeys,
+        onLegacyBlocked = {
+            com.bbttvv.app.core.util.Logger.w(
+                "VideoRepo",
+                "Legacy view blocked by risk control, fallback to wbi/view: bvid=$bvid, aid=$aid"
+            )
+        },
+    )
+
+    private suspend fun requestWbiVideoInfo(bvid: String, aid: Long): VideoDetailResponse {
+        val (imgKey, subKey) = PlaybackSessionManager.getWbiKeys()
+        return api.getVideoInfoWbi(
+            buildVideoInfoWbiParams(bvid = bvid, aid = aid, imgKey = imgKey, subKey = subKey)
+        )
     }
 
     fun prefetchVideoInfo(bvid: String, scope: CoroutineScope = AppScope.ioScope) {

@@ -273,7 +273,11 @@ interface BilibiliApi {
     // [修复] 通过 aid 获取视频信息 - 用于移动端推荐流（可能只返回 aid）
     @GET("x/web-interface/view")
     suspend fun getVideoInfoByAid(@Query("aid") aid: Long): VideoDetailResponse
-    
+
+    // 旧版 view 在部分出口 IP（如海外网络）会被 HTTP 412 风控，此时降级到 WBI 版本
+    @GET("x/web-interface/wbi/view")
+    suspend fun getVideoInfoWbi(@QueryMap params: Map<String, String>): VideoDetailResponse
+
     @GET("x/tag/archive/tags")
     suspend fun getVideoTags(@Query("bvid") bvid: String): VideoTagResponse
 
