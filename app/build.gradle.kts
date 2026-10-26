@@ -116,7 +116,8 @@ android {
             isShrinkResources = false
             if (!splitReleaseApks) {
                 ndk {
-                    abiFilters += listOf("arm64-v8a", "x86", "x86_64")
+                    // armeabi-v7a：部分电视（如 Sony BRAVIA VH22）只有 32 位用户空间。
+                    abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
                 }
             }
         }
