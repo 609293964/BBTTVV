@@ -35,9 +35,17 @@ internal fun AppTopBar(
     focusEnabled: Boolean = true,
     focusCoordinator: HomeFocusCoordinator? = null,
     onTopBarFocused: () -> Unit = {},
+    isSidebar: Boolean = false,
+    registerAsTopBarFallback: Boolean = false,
+    onDpadLeft: () -> Boolean = { false },
+    onDpadRight: () -> Boolean = { false },
+    categories: List<AppTopBarCategory> = emptyList(),
+    selectedCategoryIndex: Int = 0,
+    onCategorySelected: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val semanticColors = LocalTvSemanticColors.current
+    val sidebarTheme = com.bbttvv.app.ui.theme.LocalSidebarTheme.current
     val tabsKey = remember(tabs) {
         tabs.joinToString(separator = "|") { tab -> tab.name }
     }
@@ -47,6 +55,10 @@ internal fun AppTopBar(
     val latestOnSelectedTabConfirmed by rememberUpdatedState(onSelectedTabConfirmed)
     val latestOnDpadDown by rememberUpdatedState(onDpadDown)
     val latestOnTopBarFocused by rememberUpdatedState(onTopBarFocused)
+    val latestOnDpadLeft by rememberUpdatedState(onDpadLeft)
+    val latestOnDpadRight by rememberUpdatedState(onDpadRight)
+    val latestOnCategorySelected by rememberUpdatedState(onCategorySelected)
+    val headerEntries = remember(tabs, categories) { homeHeaderEntries(tabs, categories) }
     val latestFocusTargetTab by rememberUpdatedState(focusTargetTab)
     val latestFocusEnabled by rememberUpdatedState(focusEnabled)
 
@@ -56,9 +68,8 @@ internal fun AppTopBar(
         }
     }
 
-    DisposableEffect(focusCoordinator, controller, tabsKey) {
-        val registration = focusCoordinator?.registerTopBarTarget(
-            object : HomeFocusTarget {
+    DisposableEffect(focusCoordinator, controller, tabsKey, isSidebar, registerAsTopBarFallback) {
+        val target = object : HomeFocusTarget {
                 override fun tryRequestFocus(): Boolean {
                     return latestFocusEnabled && controller.tryRequestFocus(latestFocusTargetTab)
                 }
@@ -89,9 +100,14 @@ internal fun AppTopBar(
                     return controller.hasFocus(tab)
                 }
             }
-        )
+        val registration = if (isSidebar) focusCoordinator?.registerSidebarTarget(target)
+            else focusCoordinator?.registerTopBarTarget(target)
+        val fallbackRegistration = if (isSidebar && registerAsTopBarFallback) {
+            focusCoordinator?.registerTopBarTarget(target)
+        } else null
         onDispose {
             registration?.unregister()
+            fallbackRegistration?.unregister()
         }
     }
 
@@ -115,7 +131,8 @@ internal fun AppTopBar(
                 isFocusable = false
                 descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                 setPadding(dp(8), dp(4), dp(8), dp(4))
-                layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+                layoutManager = LinearLayoutManager(context,
+                    if (isSidebar) LinearLayoutManager.VERTICAL else LinearLayoutManager.HORIZONTAL, false)
                 this.adapter = adapter
                 (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
             }
@@ -128,7 +145,7 @@ internal fun AppTopBar(
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.WRAP_CONTENT,
                         FrameLayout.LayoutParams.WRAP_CONTENT,
-                        Gravity.CENTER
+                        if (isSidebar || sidebarTheme) Gravity.TOP or Gravity.START else Gravity.CENTER
                     )
                 )
                 controller.attach(recyclerView, adapter)
@@ -142,6 +159,9 @@ internal fun AppTopBar(
                     focusContent = semanticColors.focusContent.toArgb(),
                     selectedContent = semanticColors.selectedContent.toArgb(),
                     content = semanticColors.secondaryText.toArgb(),
+                    underline = sidebarTheme && !isSidebar,
+                    sidebar = isSidebar,
+                    accent = semanticColors.accent.toArgb(),
                 )
             )
             controller.adapter?.updateCallbacks(
@@ -149,9 +169,10 @@ internal fun AppTopBar(
                 onTabSelected = latestOnTabSelected,
                 onSelectedTabConfirmed = latestOnSelectedTabConfirmed,
                 onDpadDown = latestOnDpadDown,
-                onTopBarFocused = latestOnTopBarFocused
+                onTopBarFocused = latestOnTopBarFocused,
+                onDpadLeft = latestOnDpadLeft, onDpadRight = latestOnDpadRight,
             )
-            controller.adapter?.submitTabs(tabs, selectedTab)
+            controller.adapter?.submitTabs(headerEntries, selectedTab, selectedCategoryIndex, latestOnCategorySelected)
             focusCoordinator?.drainPendingFocus()
         }
     )
@@ -336,6 +357,6 @@ private class AppTopBarController {
     }
 }
 
-private fun View.dp(value: Int): Int {
+internal fun View.dp(value: Int): Int {
     return (value * resources.displayMetrics.density).toInt()
 }

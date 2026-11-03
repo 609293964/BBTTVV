@@ -119,6 +119,9 @@ interface BilibiliApi {
     //  移动端推荐流 API (需要 access_token + appkey 签名)
     @GET("https://app.bilibili.com/x/v2/feed/index")
     suspend fun getMobileFeed(@QueryMap params: Map<String, String>): MobileFeedResponse
+
+    @GET("https://app.bilibili.com/x/feed/dislike")
+    suspend fun submitMobileFeedDislike(@QueryMap params: Map<String, String>): SimpleApiResponse
     
     @GET("x/web-interface/popular")
     suspend fun getPopularVideos(
@@ -220,7 +223,8 @@ interface BilibiliApi {
         @Query("codec") codec: String = "0,1",        // 0=avc, 1=hevc
         @Query("qn") quality: Int = 150,              // 150=高清
         @Query("platform") platform: String = "web",
-        @Query("ptype") ptype: Int = 8
+        @Query("ptype") ptype: Int = 8,
+        @Query("supported_eotf") supportedEotf: String = "0,1,2",
     ): LivePlayUrlResponse
     
     //  [新增] 旧版直播流 API - 可靠返回 quality_description 画质列表

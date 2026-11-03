@@ -1,8 +1,11 @@
 # Gradle / Android build output
 .gradle/
 .kotlin/
-/build/
-/*/build/
+build/
+# Keep source packages named "build", including buildSrc task implementations.
+!**/src/**/build/
+.cxx/
+.externalNativeBuild/
 captures/
 *.apk
 *.ap_
@@ -15,6 +18,10 @@ captures/
 # Local Android SDK and IDE state (Android Studio & IntelliJ)
 local.properties
 .idea/
+*.iml
+.project
+.classpath
+.settings/
 
 # VS Code local state
 .vscode/*
@@ -28,6 +35,10 @@ local.properties
 *.pem
 *.pkcs12
 *.key
+.env
+.env.*
+!.env.example
+!.env.sample
 keystore.properties
 signing.properties
 local-plugins.json
@@ -57,6 +68,15 @@ release_output/
 *.bak
 *.trace
 
+# Local script caches
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
 # Media / Screenshots / Screen recordings (Android TV debugging)
 /emu-*.png
 /screenshot*.png
@@ -80,4 +100,5 @@ ehthumbs.db
 /plans/
 /reports/
 打包正式版.bat
-UPSTREAM_PORT_REPORT_2026W38.md
+/UPSTREAM_PORT_REPORT_*.md
+/upstream-port-manifest*.json

@@ -1,5 +1,6 @@
 ﻿package com.bbttvv.app.core.network
 
+import kotlinx.coroutines.CancellationException
 import android.content.Context
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.Logger
@@ -45,7 +46,6 @@ object TokenRefreshHelper {
             if (response.code == 0 && response.data != null) {
                 val data = response.data
                 Logger.d(TAG, "Token refresh success!")
-                Logger.d(TAG, "New access_token: ${data.accessToken.take(10)}...")
                 
                 // 更新 Token
                 TokenManager.saveAccessToken(
@@ -68,6 +68,8 @@ object TokenRefreshHelper {
                 Logger.e(TAG, "Token refresh failed: code=${response.code}, msg=${response.message}")
                 return false
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG, "Token refresh exception", e)
             return false

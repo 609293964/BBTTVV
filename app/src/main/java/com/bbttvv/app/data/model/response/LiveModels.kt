@@ -86,6 +86,10 @@ data class CodecInfo(
     @SerialName("codec_name") val codecName: String = "",
     @SerialName("current_qn") val currentQn: Int = 0,
     @SerialName("accept_qn") val acceptQn: List<Int>? = null,
+    @SerialName("hdr_qn") val hdrQn: Int = 0,
+    @SerialName("hdr_type") val hdrType: Int = 0,
+    val eotf: Int = 0,
+    val codecs: String = "",
     @SerialName("base_url") val baseUrl: String = "",
     val url_info: List<UrlInfo>? = null
 )
@@ -105,7 +109,10 @@ data class LiveDurl(
 @Serializable
 data class LiveQuality(
     val qn: Int = 0,
-    val desc: String = ""
+    val desc: String = "",
+    @SerialName("hdr_desc") val hdrDesc: String = "",
+    @SerialName("hdr_type") val hdrType: Int = 0,
+    val eotf: Int = 0,
 )
 
 // --- 关注的直播 Response ---

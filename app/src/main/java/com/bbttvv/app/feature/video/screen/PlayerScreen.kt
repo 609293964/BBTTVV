@@ -79,7 +79,6 @@ fun PlayerScreen(
         .collectAsStateWithLifecycle(initialValue = true)
     val showSponsorSkipNotice = sponsorUiState.showSkipNotice
 
-    val visualEffectsState = rememberPlayerVisualEffectsState()
     val overlayStateMachine = remember { PlayerOverlayStateMachine() }
     val overlayUiState = overlayStateMachine.uiState
     val isDebugOverlayVisible = overlayUiState.showDebugOverlay
@@ -346,7 +345,6 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .playerBackdropSource(visualEffectsState)
             .onPreviewKeyEvent { keyEvent ->
                 val nativeEvent = keyEvent.nativeKeyEvent
                 if (isDanmakuVoteFocusDomain) {
@@ -405,7 +403,6 @@ fun PlayerScreen(
             isDebugOverlayVisible = isDebugOverlayVisible,
             isDanmakuEnabled = isDanmakuEnabled,
             isCommentsPanelVisible = isCommentsPanelVisible,
-            visualEffectsState = visualEffectsState,
             focusBindings = focusBindings,
             handlePlayerKey = handlePlayerPreviewKey,
             onToggleCommentSort = viewModel::toggleCommentSort,
@@ -534,7 +531,6 @@ private fun BoxScope.PlayerOverlaySection(
     isDebugOverlayVisible: Boolean,
     isDanmakuEnabled: Boolean,
     isCommentsPanelVisible: Boolean,
-    visualEffectsState: PlayerVisualEffectsState,
     focusBindings: PlayerScreenFocusBindings,
     handlePlayerKey: (KeyEvent) -> Boolean,
     onToggleCommentSort: () -> Unit,
@@ -582,7 +578,6 @@ private fun BoxScope.PlayerOverlaySection(
         isDebugOverlayVisible = isDebugOverlayVisible,
         isDanmakuEnabled = isDanmakuEnabled,
         isCommentsPanelVisible = isCommentsPanelVisible,
-        visualEffectsState = visualEffectsState,
         progressFocusRequester = focusBindings.progressFocusRequester,
         actionFocusRequesters = focusBindings.actionFocusRequesters,
         panelFocusRequesters = focusBindings.panelFocusRequesters,

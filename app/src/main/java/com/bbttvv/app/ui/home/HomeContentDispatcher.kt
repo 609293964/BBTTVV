@@ -383,17 +383,19 @@ private fun HomeTabContent(
         }
 
         AppTopLevelTab.POPULAR -> {
-            PopularScreen(
-                onVideoClick = onVideoClick,
-                onContentRowFocused = focusCoordinator::onContentRowFocused,
-                focusCoordinator = focusCoordinator,
-                videoCardRecycledViewPool = recyclerPools.videoCardPool,
-                gridColumnCount = 4,
-                focusState = tabGridFocusStates.stateFor(AppTopLevelTab.POPULAR),
-                topBarHeightPx = topBarHeightPx,
-                collapseHeaderEnabled = collapseHeaderEnabled,
-                collapsingHeaderState = collapsingHeaderState
-            )
+            TabViewModelScope(tab, viewModel) {
+                PopularScreen(
+                    onVideoClick = onVideoClick,
+                    onContentRowFocused = focusCoordinator::onContentRowFocused,
+                    focusCoordinator = focusCoordinator,
+                    videoCardRecycledViewPool = recyclerPools.videoCardPool,
+                    gridColumnCount = 4,
+                    focusState = tabGridFocusStates.stateFor(AppTopLevelTab.POPULAR),
+                    topBarHeightPx = topBarHeightPx,
+                    collapseHeaderEnabled = collapseHeaderEnabled,
+                    collapsingHeaderState = collapsingHeaderState
+                )
+            }
         }
 
         AppTopLevelTab.LIVE -> {
@@ -570,6 +572,7 @@ private fun RecommendTabContent(
     onRecommendVideoClick: (String, VideoItem) -> Unit,
     onOpenRecommendMenu: (VideoItem, String) -> Unit
 ) {
+    val sidebarTheme = com.bbttvv.app.ui.theme.LocalSidebarTheme.current
     val loadState by viewModel.recommendLoadState.collectAsStateWithLifecycle()
     HomeCollapsingHeaderGrid(
         topBarHeightPx = topBarHeightPx,
@@ -612,7 +615,10 @@ private fun RecommendTabContent(
                     onVideoFocused = { video, _ ->
                         viewModel.prefetchVideoDetail(video)
                     },
-                    onFocusedRowChanged = focusCoordinator::onContentRowFocused,
+                    onFocusedRowChanged = { row ->
+                        if (sidebarTheme && row == 0) collapsingHeaderState.reset()
+                        focusCoordinator.onContentRowFocused(row)
+                    },
                     onTopRowDpadUp = {
                         collapsingHeaderState.reset()
                         onRequestTopBarFocus(HomeFocusScene.BackToTopBar)

@@ -8,6 +8,13 @@ import org.junit.Test
 class SearchModelsParsingTest {
     private val json = Json { ignoreUnknownKeys = true }
 
+    @Test fun aggregateSearchPreservesBusinessErrorAndOldDefaults() {
+        val failure = json.decodeFromString<SearchResponse>("""{"code":-412,"message":"blocked"}""")
+        assertEquals(-412, failure.code)
+        assertEquals("blocked", failure.message)
+        assertEquals(0, json.decodeFromString<SearchResponse>("""{"data":null}""").code)
+    }
+
     @Test
     fun videoSearchKeepsNavigationMetadataAndCleanDisplayTitle() {
         val item = json.decodeFromString<SearchVideoItem>(

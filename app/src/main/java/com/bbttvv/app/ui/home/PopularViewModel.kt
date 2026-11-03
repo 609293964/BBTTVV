@@ -70,6 +70,8 @@ class PopularViewModel : ViewModel() {
     }
 
     fun selectCategory(index: Int) {
+        // The unified header can select a category before this page is first composed.
+        initialLoadStarted = true
         val safeIndex = index.coerceIn(0, defaultPopularCategories.lastIndex)
         if (safeIndex == _uiState.value.selectedCategoryIndex) {
             loadCategory(index = safeIndex, refresh = true)

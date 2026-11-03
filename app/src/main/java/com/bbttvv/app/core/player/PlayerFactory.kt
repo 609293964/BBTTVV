@@ -19,20 +19,6 @@ import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.resolveAppUserAgent
 import com.bbttvv.app.core.store.PlayerSettingsCache
 
-internal data class PlayerBufferPolicy(
-    val minBufferMs: Int,
-    val maxBufferMs: Int,
-    val bufferForPlaybackMs: Int,
-    val bufferForPlaybackAfterRebufferMs: Int
-)
-
-internal fun resolvePlayerBufferPolicy(): PlayerBufferPolicy = PlayerBufferPolicy(
-    minBufferMs = 15_000,
-    maxBufferMs = 50_000,
-    bufferForPlaybackMs = 1_600,
-    bufferForPlaybackAfterRebufferMs = 3_000
-)
-
 /**
  * 创建配置好的 ExoPlayer 实例
  *
@@ -103,7 +89,8 @@ fun createConfiguredPlayer(
                     bufferPolicy.bufferForPlaybackMs,
                     bufferPolicy.bufferForPlaybackAfterRebufferMs
                 )
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setTargetBufferBytes(bufferPolicy.targetBufferBytes)
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         )
         .setSeekParameters(SeekParameters.CLOSEST_SYNC)

@@ -10,6 +10,8 @@ import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.repository.HomeFeedRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal sealed class HomeFeedLoadResult {
@@ -34,9 +36,13 @@ internal data class HomeRecommendFeedSnapshot(
 /** Handles recommendation paging and plugin filtering outside HomeViewModel. */
 internal class HomeFeedController(
     private val dismissStore: RecommendDismissStore,
-    private val feedRepository: HomeFeedRepository
+    private val feedRepository: HomeFeedRepository,
+    private val filterOverride: ((List<VideoItem>) -> List<VideoItem>)? = null
 ) {
     private val feed = PagedFeedGridState<Int, VideoItem, VideoItem>(initialKey = 0)
+    private val operations = Mutex()
+    private val sourceKeys = hashSetOf<String>()
+    private var pendingSource: List<VideoItem> = emptyList()
     private val videoKeyRegistry = HomeRecommendVideoKeyRegistry()
     private var recommendVideoItems: List<HomeRecommendVideoCardItem> = emptyList()
 
@@ -55,7 +61,9 @@ internal class HomeFeedController(
         feed.resetPageCursor()
     }
 
-    suspend fun loadMore(): HomeFeedLoadResult {
+    suspend fun loadMore(): HomeFeedLoadResult = operations.withLock { loadMoreLocked() }
+
+    private suspend fun loadMoreLocked(): HomeFeedLoadResult {
         val startGeneration = feed.snapshot().generation
         return try {
             val loadResult = feed.loadNextPage(
@@ -64,6 +72,7 @@ internal class HomeFeedController(
                 reduce = { _, page -> page }
             )
             val applied = loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored
+            pendingSource.mapNotNullTo(sourceKeys) { HomeFeedDeduper.key(it) }
             val appendedItems = videoKeyRegistry.append(
                 videos = applied.items,
                 startIndex = recommendVideoItems.size,
@@ -86,7 +95,9 @@ internal class HomeFeedController(
         }
     }
 
-    suspend fun refresh(): HomeFeedLoadResult {
+    suspend fun refresh(): HomeFeedLoadResult = operations.withLock { refreshLocked() }
+
+    private suspend fun refreshLocked(): HomeFeedLoadResult {
         val snapshotAtStart = feed.snapshot()
         val refreshGeneration = snapshotAtStart.generation + 1
         val refreshPageKey = snapshotAtStart.nextKey
@@ -97,6 +108,8 @@ internal class HomeFeedController(
                 reduce = { _, page -> page }
             )
             loadResult.appliedOrNull() ?: return HomeFeedLoadResult.Ignored
+            sourceKeys.clear()
+            pendingSource.mapNotNullTo(sourceKeys) { HomeFeedDeduper.key(it) }
             val visibleVideos = feed.visibleSnapshot()
             recommendVideoItems = videoKeyRegistry.resetAndBuild(visibleVideos)
             HomeFeedLoadResult.Success(
@@ -112,9 +125,11 @@ internal class HomeFeedController(
         }
     }
 
-    suspend fun reapplyPluginFilters(): HomeRecommendFeedSnapshot {
+    suspend fun reapplyPluginFilters(): HomeRecommendFeedSnapshot = operations.withLock { reapplyPluginFiltersLocked() }
+
+    private suspend fun reapplyPluginFiltersLocked(): HomeRecommendFeedSnapshot {
         val filteredVideos = applyFeedFiltersOffMain(feed.sourceSnapshot(), recordStats = false)
-        val visibleVideos = feed.replaceVisible(filteredVideos)
+        val visibleVideos = feed.replaceVisible(filteredVideos.filterNot(dismissStore::isDismissed))
         recommendVideoItems = videoKeyRegistry.rebuildReusingAssigned(visibleVideos)
         return HomeRecommendFeedSnapshot(
             videos = visibleVideos,
@@ -138,8 +153,8 @@ internal class HomeFeedController(
     ): PagedFeedGridState.Page<Int, VideoItem, VideoItem> {
         val incomingVideos = feedRepository.getHomeVideos(idx = pageKey).getOrElse { error -> throw error }
         val dedupedIncomingVideos = withContext(Dispatchers.Default) {
-            HomeFeedDeduper.dedupeNewVideos(
-                existingVideos = if (incremental) feed.sourceSnapshot() else emptyList(),
+            HomeFeedDeduper.dedupeAgainstKeys(
+                existingKeys = if (incremental) sourceKeys else emptySet(),
                 incomingVideos = incomingVideos,
             )
         }
@@ -148,6 +163,7 @@ internal class HomeFeedController(
         } else {
             applyFeedFiltersOffMain(dedupedIncomingVideos, recordStats = true)
         }
+        pendingSource = dedupedIncomingVideos
         return PagedFeedGridState.Page(
             sourceItems = dedupedIncomingVideos,
             visibleItems = filteredVideos,
@@ -164,6 +180,7 @@ internal class HomeFeedController(
     }
 
     private fun applyFeedFilters(videos: List<VideoItem>, recordStats: Boolean): List<VideoItem> {
+        filterOverride?.let { return it(videos) }
         val jsonFiltered = JsonPluginManager.filterVideos(videos, recordStats = recordStats)
         val pluginFiltered = PluginManager.filterFeedItems(
             jsonFiltered,
@@ -192,14 +209,19 @@ internal object HomeFeedDeduper {
     ): List<VideoItem> {
         if (incomingVideos.isEmpty()) return emptyList()
         val seenKeys = LinkedHashSet<String>(existingVideos.size + incomingVideos.size)
-        existingVideos.mapNotNullTo(seenKeys) { it.feedDedupeKey() }
+        existingVideos.mapNotNullTo(seenKeys) { key(it) }
+        return dedupeAgainstKeys(seenKeys, incomingVideos)
+    }
+
+    fun dedupeAgainstKeys(existingKeys: Set<String>, incomingVideos: List<VideoItem>): List<VideoItem> {
+        val pageKeys = hashSetOf<String>()
         return incomingVideos.filter { video ->
-            val key = video.feedDedupeKey()
-            key == null || seenKeys.add(key)
+            val key = key(video)
+            key == null || (key !in existingKeys && pageKeys.add(key))
         }
     }
 
-    private fun VideoItem.feedDedupeKey(): String? {
+    fun key(video: VideoItem): String? = with(video) {
         dynamicId.trim().takeIf { it.isNotEmpty() }?.let { return "dynamic:$it" }
         bvid.trim().takeIf { it.isNotEmpty() }?.let { return "bvid:$it" }
         if (id > 0L) return "id:$id"

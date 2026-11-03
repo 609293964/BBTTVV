@@ -29,7 +29,9 @@ internal fun consumeVideoFromTodayWatchPlan(
     val updatedQueue = plan.videoQueue.filterNot { it.bvid == consumedBvid }
     val updatedPlan = plan.copy(
         videoQueue = updatedQueue,
-        explanationByBvid = plan.explanationByBvid - consumedBvid
+        explanationByBvid = plan.explanationByBvid - consumedBvid,
+        scoreByBvid = plan.scoreByBvid - consumedBvid,
+        confidenceByBvid = plan.confidenceByBvid - consumedBvid,
     )
     val previewLimit = queuePreviewLimit.coerceAtLeast(1)
     return TodayWatchQueueConsumeUpdate(

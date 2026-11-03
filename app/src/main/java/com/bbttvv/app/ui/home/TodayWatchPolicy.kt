@@ -1,21 +1,58 @@
 package com.bbttvv.app.ui.home
 
+import com.bbttvv.app.core.plugin.RecommendationStrategy
 import com.bbttvv.app.data.model.response.VideoItem
 import kotlin.math.ln
+import kotlin.math.pow
 
-private data class CreatorAgg(
+private const val RECENT_CREATOR_WEIGHT = 0.65
+private const val PERSISTED_CREATOR_WEIGHT = 0.35
+private const val COMPLETED_WATCH_THRESHOLD = 0.8
+private const val TOP_PREVIEW_LIMIT = 6
+private const val TOP_PREVIEW_REPEAT_LIMIT = 2
+
+private data class CreatorAggregate(
     val mid: Long,
     val name: String,
-    var watchCount: Int = 0,
-    var score: Double = 0.0
+    val score: Double,
+    val watchCount: Int
+)
+
+private data class StrategyWeights(
+    val interest: Double,
+    val mode: Double,
+    val freshness: Double,
+    val quality: Double,
+    val exploration: Double,
+    val diversity: Double
+)
+
+private data class CandidateFeatures(
+    val creatorAffinity: Double,
+    val topicAffinity: Double,
+    val interest: Double,
+    val modeFit: Double,
+    val freshness: Double,
+    val quality: Double,
+    val exploration: Double,
+    val partialWatchPenalty: Double,
+    val topicKeys: Set<String>
 )
 
 private data class ScoredCandidate(
     val video: VideoItem,
-    val score: Double,
-    val explanation: String
+    val originalIndex: Int,
+    val baseScore: Double,
+    val confidence: Float,
+    val features: CandidateFeatures,
+    val explanation: String,
+    val finalScore: Double = baseScore
 )
 
+/**
+ * 基于本地观看历史与首页候选生成“今日推荐单”V2。
+ * 历史与持久画像先分别归一化，候选特征统一到 0..1，再由策略权重与 MMR 排序。
+ */
 internal fun buildTodayWatchPlan(
     historyVideos: List<VideoItem>,
     candidateVideos: List<VideoItem>,
@@ -25,389 +62,345 @@ internal fun buildTodayWatchPlan(
     upRankLimit: Int = 5,
     queueLimit: Int = 20,
     creatorSignals: List<TodayWatchCreatorSignal> = emptyList(),
-    penaltySignals: TodayWatchPenaltySignals = TodayWatchPenaltySignals()
+    penaltySignals: TodayWatchPenaltySignals = TodayWatchPenaltySignals(),
+    strategy: RecommendationStrategy = RecommendationStrategy.BALANCED
 ): TodayWatchPlan {
     val cleanedHistory = historyVideos
-        .filter { it.bvid.isNotBlank() && it.owner.mid > 0L }
+        .filter { it.bvid.isNotBlank() }
         .sortedByDescending { it.view_at }
+    val completionByBvid = cleanedHistory.associate { it.bvid to estimateCompletionRatio(it) }
+    val recentCreatorScores = linkedMapOf<Long, Double>()
+    val recentCreatorCounts = linkedMapOf<Long, Int>()
+    val creatorNames = linkedMapOf<Long, String>()
+    val rawTopicScores = linkedMapOf<String, Double>()
 
-    val creatorMap = linkedMapOf<Long, CreatorAgg>()
     cleanedHistory.forEach { item ->
-        val mid = item.owner.mid
-        val agg = creatorMap.getOrPut(mid) {
-            CreatorAgg(mid = mid, name = item.owner.name.ifBlank { "UP主$mid" })
-        }
         val completion = estimateCompletionRatio(item)
-        val recencyBonus = recencyBonus(item.view_at, nowEpochSec)
-        agg.watchCount += 1
-        agg.score += 1.0 + completion * 1.2 + recencyBonus
+        val affinity = watchAffinityScore(completion, recencyBonus(item.view_at, nowEpochSec))
+        if (item.owner.mid > 0L) {
+            recentCreatorScores[item.owner.mid] = (recentCreatorScores[item.owner.mid] ?: 0.0) + affinity
+            recentCreatorCounts[item.owner.mid] = (recentCreatorCounts[item.owner.mid] ?: 0) + 1
+            creatorNames[item.owner.mid] = item.owner.name.ifBlank { "UP主${item.owner.mid}" }
+        }
+        resolveTodayWatchTopicKeys(item).forEach { topic ->
+            rawTopicScores[topic] = (rawTopicScores[topic] ?: 0.0) + affinity
+        }
     }
 
-    creatorSignals
-        .filter { it.mid > 0L }
-        .forEach { signal ->
-            val agg = creatorMap.getOrPut(signal.mid) {
-                CreatorAgg(
-                    mid = signal.mid,
-                    name = signal.name.ifBlank { "UP主${signal.mid}" }
-                )
-            }
-            agg.watchCount += signal.watchCount.coerceAtLeast(1)
-            agg.score += signal.score
-        }
+    val persistedCreatorScores = linkedMapOf<Long, Double>()
+    val persistedCreatorCounts = linkedMapOf<Long, Int>()
+    creatorSignals.filter { it.mid > 0L }.forEach { signal ->
+        persistedCreatorScores[signal.mid] = maxOf(persistedCreatorScores[signal.mid] ?: 0.0, signal.score)
+        persistedCreatorCounts[signal.mid] = maxOf(persistedCreatorCounts[signal.mid] ?: 0, signal.watchCount)
+        creatorNames.putIfAbsent(signal.mid, signal.name.ifBlank { "UP主${signal.mid}" })
+    }
 
-    val creatorAffinity = creatorMap.mapValues { it.value.score }
-    val seenBvids = cleanedHistory.map { it.bvid }.toSet()
-    val dedupCandidates = candidateVideos
+    val normalizedRecentCreators = normalizePositiveScores(recentCreatorScores)
+    val normalizedPersistedCreators = normalizePositiveScores(persistedCreatorScores)
+    val creatorAffinity = (normalizedRecentCreators.keys + normalizedPersistedCreators.keys).associateWith { mid ->
+        val recent = normalizedRecentCreators[mid]
+        val persisted = normalizedPersistedCreators[mid]
+        when {
+            recent != null && persisted != null ->
+                recent * RECENT_CREATOR_WEIGHT + persisted * PERSISTED_CREATOR_WEIGHT
+            recent != null -> recent
+            else -> persisted ?: 0.0
+        }
+    }
+    val topicAffinity = normalizePositiveScores(rawTopicScores)
+    val creators = creatorAffinity.map { (mid, score) ->
+        CreatorAggregate(
+            mid = mid,
+            name = creatorNames[mid].orEmpty().ifBlank { "UP主$mid" },
+            score = score,
+            watchCount = maxOf(recentCreatorCounts[mid] ?: 0, persistedCreatorCounts[mid] ?: 0, 1)
+        )
+    }
+
+    val normalizedDislikedKeywords = penaltySignals.dislikedKeywords
+        .map { it.trim().lowercase() }
+        .filter { it.isNotBlank() }
+        .toSet()
+    val eligibleCandidates = candidateVideos
         .asSequence()
         .filter { it.bvid.isNotBlank() && it.title.isNotBlank() }
         .filter { it.bvid !in penaltySignals.consumedBvids }
         .filter { it.bvid !in penaltySignals.dislikedBvids }
+        .filter { it.owner.mid !in penaltySignals.dislikedCreatorMids }
+        .filterNot { matchesDislikedKeyword(it, normalizedDislikedKeywords) }
+        .filter { (completionByBvid[it.bvid] ?: 0.0) < COMPLETED_WATCH_THRESHOLD }
         .distinctBy { it.bvid }
         .toList()
 
-    val scoredCandidates = dedupCandidates
-        .map { video ->
-            val affinity = creatorAffinity[video.owner.mid] ?: 0.0
-            val score = scoreCandidateVideo(
-                video = video,
-                creatorAffinity = affinity,
-                mode = mode,
-                eyeCareNightActive = eyeCareNightActive,
-                alreadySeen = video.bvid in seenBvids,
-                nowEpochSec = nowEpochSec,
-                penaltySignals = penaltySignals
-            )
-            val explanation = buildRecommendationExplanation(
-                video = video,
-                mode = mode,
-                eyeCareNightActive = eyeCareNightActive,
-                creatorAffinity = affinity,
-                nowEpochSec = nowEpochSec
-            )
-            ScoredCandidate(video = video, score = score, explanation = explanation)
-        }
-        .sortedByDescending { it.score }
+    val qualityByBvid = buildCandidateQualityScores(eligibleCandidates)
+    val weights = strategy.weights()
+    val scoredCandidates = eligibleCandidates.mapIndexed { index, video ->
+        val topics = resolveTodayWatchTopicKeys(video)
+        val creatorScore = creatorAffinity[video.owner.mid] ?: 0.0
+        val topicScore = topics.maxOfOrNull { topicAffinity[it] ?: 0.0 } ?: 0.0
+        val features = CandidateFeatures(
+            creatorAffinity = creatorScore,
+            topicAffinity = topicScore,
+            interest = (creatorScore * 0.65 + topicScore * 0.35).coerceIn(0.0, 1.0),
+            modeFit = modeFitScore(video, mode, eyeCareNightActive),
+            freshness = continuousFreshnessScore(video.pubdate, nowEpochSec),
+            quality = qualityByBvid[video.bvid] ?: 0.5,
+            exploration = explorationScore(creatorScore, topicScore, topics),
+            partialWatchPenalty = ((completionByBvid[video.bvid] ?: 0.0) * 0.4).coerceIn(0.0, 0.4),
+            topicKeys = topics
+        )
+        val score = (
+            features.interest * weights.interest +
+                features.modeFit * weights.mode +
+                features.freshness * weights.freshness +
+                features.quality * weights.quality +
+                features.exploration * weights.exploration -
+                features.partialWatchPenalty
+            ).coerceIn(0.0, 1.0)
+        ScoredCandidate(
+            video = video,
+            originalIndex = index,
+            baseScore = score,
+            confidence = score.toFloat(),
+            features = features,
+            explanation = buildRecommendationExplanation(video, mode, eyeCareNightActive, features)
+        )
+    }.sortedWith(compareByDescending<ScoredCandidate> { it.baseScore }.thenBy { it.originalIndex })
 
-    val rankedUp = creatorMap.values
-        .sortedByDescending { it.score }
-        .take(upRankLimit.coerceIn(1, 20))
-        .map {
-            TodayUpRank(
-                mid = it.mid,
-                name = it.name,
-                score = it.score,
-                watchCount = it.watchCount
-            )
-        }
-
-    val queue = buildDiverseQueue(
-        scoredCandidates = scoredCandidates,
-        queueLimit = queueLimit.coerceIn(1, 60)
-    )
-    val explanationByBvid = queue.associate { video ->
-        val explanation = scoredCandidates
-            .firstOrNull { it.video.bvid == video.bvid }
-            ?.explanation
-            .orEmpty()
-        video.bvid to explanation
-    }
-
+    val selected = buildDiverseQueue(scoredCandidates, queueLimit.coerceIn(1, 60), weights.diversity)
     return TodayWatchPlan(
         mode = mode,
-        upRanks = rankedUp,
-        videoQueue = queue,
-        explanationByBvid = explanationByBvid,
+        upRanks = creators
+            .sortedWith(compareByDescending<CreatorAggregate> { it.score }.thenByDescending { it.watchCount })
+            .take(upRankLimit.coerceIn(1, 20))
+            .map { TodayUpRank(it.mid, it.name, it.score, it.watchCount) }
+            .toList(),
+        videoQueue = selected.map { it.video }.toList(),
+        explanationByBvid = selected.associate { it.video.bvid to it.explanation }.toMap(),
+        scoreByBvid = selected.associate { it.video.bvid to it.finalScore }.toMap(),
+        confidenceByBvid = selected.associate { it.video.bvid to it.confidence }.toMap(),
         historySampleCount = cleanedHistory.size,
         nightSignalUsed = eyeCareNightActive,
         generatedAt = System.currentTimeMillis()
     )
 }
 
-private fun scoreCandidateVideo(
-    video: VideoItem,
-    creatorAffinity: Double,
-    mode: TodayWatchMode,
-    eyeCareNightActive: Boolean,
-    alreadySeen: Boolean,
-    nowEpochSec: Long,
-    penaltySignals: TodayWatchPenaltySignals
-): Double {
-    val durationMin = (video.duration.coerceAtLeast(0) / 60.0).coerceAtMost(180.0)
-    val intensity = video.stat.danmaku.toDouble() / video.stat.view.toDouble().coerceAtLeast(1.0)
-    val title = video.title.lowercase()
+private fun RecommendationStrategy.weights(): StrategyWeights = when (this) {
+    RecommendationStrategy.BALANCED -> StrategyWeights(0.34, 0.20, 0.16, 0.15, 0.15, 0.18)
+    RecommendationStrategy.AFFINITY -> StrategyWeights(0.52, 0.18, 0.10, 0.15, 0.05, 0.08)
+    RecommendationStrategy.EXPLORE -> StrategyWeights(0.20, 0.18, 0.22, 0.15, 0.25, 0.30)
+}
 
-    val baseScore = ln(video.stat.view.toDouble() + 1.0) * 0.45
-    val creatorScore = ln(creatorAffinity + 1.0) * 2.1
-    val freshnessScore = freshnessScore(video.pubdate, nowEpochSec)
-    val seenPenalty = if (alreadySeen) -2.6 else 0.0
-    val calmScore = when {
-        intensity < 0.004 -> 1.0
-        intensity < 0.01 -> 0.3
-        else -> -1.0
+private fun <K> normalizePositiveScores(scores: Map<K, Double>): Map<K, Double> {
+    val max = scores.values.maxOrNull()?.takeIf { it > 0.0 } ?: return emptyMap()
+    return scores.mapValues { (_, value) -> (value / max).coerceIn(0.0, 1.0) }
+}
+
+private fun buildCandidateQualityScores(candidates: List<VideoItem>): Map<String, Double> {
+    if (candidates.isEmpty()) return emptyMap()
+    val viewMetrics = candidates.map { ln(it.stat.view.coerceAtLeast(0).toDouble() + 1.0) }.sorted()
+    val engagementMetrics = candidates.map(::smoothedEngagementRate).sorted()
+    return candidates.associate { video ->
+        val viewPercentile = percentileRank(viewMetrics, ln(video.stat.view.coerceAtLeast(0).toDouble() + 1.0))
+        val engagementPercentile = percentileRank(engagementMetrics, smoothedEngagementRate(video))
+        video.bvid to (viewPercentile * 0.6 + engagementPercentile * 0.4).coerceIn(0.0, 1.0)
     }
+}
 
-    val modeScore = when (mode) {
-        TodayWatchMode.RELAX -> {
-            durationRelaxScore(durationMin) +
-                modeFocusScore(
-                    title = title,
-                    durationMin = durationMin,
-                    intensity = intensity,
-                    mode = mode
-                ) +
-                keywordBonus(
-                    title = title,
-                    positiveKeywords = RELAX_KEYWORDS,
-                    negativeKeywords = LEARN_KEYWORDS
-                ) +
-                calmScore
-        }
+private fun smoothedEngagementRate(video: VideoItem): Double {
+    val weightedEngagement = video.stat.like.toDouble() + video.stat.coin * 2.0 +
+        video.stat.favorite * 2.0 + video.stat.share * 3.0 + video.stat.reply
+    return (weightedEngagement / (video.stat.view.coerceAtLeast(0) + 2_000.0)).coerceIn(0.0, 1.0)
+}
 
-        TodayWatchMode.LEARN -> {
-            durationLearnScore(durationMin) +
-                modeFocusScore(
-                    title = title,
-                    durationMin = durationMin,
-                    intensity = intensity,
-                    mode = mode
-                ) +
-                keywordBonus(
-                    title = title,
-                    positiveKeywords = LEARN_KEYWORDS,
-                    negativeKeywords = RELAX_KEYWORDS
-                ) +
-                if (durationMin >= 10.0) 0.6 else -0.2
-        }
-    }
-
-    val nightScore = if (eyeCareNightActive) {
-        val durationPenalty = when {
-            durationMin <= 15.0 -> 1.2
-            durationMin <= 25.0 -> 0.2
-            else -> -((durationMin - 25.0) / 10.0).coerceAtMost(3.0)
-        }
-        val intensityPenalty = when {
-            intensity < 0.006 -> 0.6
-            intensity < 0.012 -> 0.0
-            else -> -1.1
-        }
-        durationPenalty + intensityPenalty
-    } else {
-        0.0
-    }
-
-    val feedbackPenalty = feedbackPenalty(video, title, penaltySignals)
-
-    return baseScore + creatorScore + freshnessScore + seenPenalty + modeScore + nightScore + feedbackPenalty
+private fun percentileRank(sortedValues: List<Double>, value: Double): Double {
+    if (sortedValues.size <= 1) return 0.5
+    val lessOrEqual = sortedValues.count { it <= value }
+    return ((lessOrEqual - 1).toDouble() / (sortedValues.size - 1)).coerceIn(0.0, 1.0)
 }
 
 private fun buildDiverseQueue(
-    scoredCandidates: List<ScoredCandidate>,
-    queueLimit: Int
-): List<VideoItem> {
-    if (scoredCandidates.isEmpty()) return emptyList()
-    val remaining = scoredCandidates.toMutableList()
-    val queue = mutableListOf<VideoItem>()
-    val creatorUsedCount = mutableMapOf<Long, Int>()
-    val topicUsedCount = mutableMapOf<String, Int>()
-    var lastCreatorMid: Long? = null
-    var lastTopicKey: String? = null
+    candidates: List<ScoredCandidate>,
+    queueLimit: Int,
+    diversityStrength: Double
+): List<ScoredCandidate> {
+    if (candidates.isEmpty()) return emptyList()
+    val remaining = candidates.toMutableList()
+    val selected = mutableListOf<ScoredCandidate>()
+    val creatorCounts = mutableMapOf<Long, Int>()
+    val topicCounts = mutableMapOf<String, Int>()
 
-    while (queue.size < queueLimit && remaining.isNotEmpty()) {
-        var bestIndex = 0
-        var bestAdjustedScore = Double.NEGATIVE_INFINITY
-
-        remaining.forEachIndexed { index, candidate ->
-            val mid = candidate.video.owner.mid
-            val usedCount = creatorUsedCount[mid] ?: 0
-            val topicKey = resolveTodayWatchTopicKey(candidate.video.title)
-            val topicUsedCountForCandidate = topicKey?.let { topicUsedCount[it] } ?: 0
-            val sameCreatorConsecutivePenalty = if (mid > 0L && lastCreatorMid == mid) 1.15 else 0.0
-            val creatorRepeatPenalty = usedCount * 0.75
-            val creatorNoveltyBonus = if (mid > 0L && usedCount == 0) 0.35 else 0.0
-            val sameTopicConsecutivePenalty = if (topicKey != null && lastTopicKey == topicKey) 0.95 else 0.0
-            val topicRepeatPenalty = topicUsedCountForCandidate * 0.65
-            val topicNoveltyBonus = if (topicKey != null && topicUsedCountForCandidate == 0 && queue.isNotEmpty()) {
-                0.28
-            } else {
-                0.0
+    while (selected.size < queueLimit && remaining.isNotEmpty()) {
+        val capped = if (selected.size < TOP_PREVIEW_LIMIT) {
+            remaining.filter { candidate ->
+                val creatorAllowed = candidate.video.owner.mid <= 0L ||
+                    (creatorCounts[candidate.video.owner.mid] ?: 0) < TOP_PREVIEW_REPEAT_LIMIT
+                val primaryTopic = candidate.features.topicKeys.firstOrNull()
+                val topicAllowed = primaryTopic == null ||
+                    (topicCounts[primaryTopic] ?: 0) < TOP_PREVIEW_REPEAT_LIMIT
+                creatorAllowed && topicAllowed
             }
-            val adjusted = candidate.score -
-                sameCreatorConsecutivePenalty -
-                creatorRepeatPenalty -
-                sameTopicConsecutivePenalty -
-                topicRepeatPenalty +
-                creatorNoveltyBonus +
-                topicNoveltyBonus
-
-            if (adjusted > bestAdjustedScore) {
-                bestAdjustedScore = adjusted
-                bestIndex = index
-            }
+        } else {
+            remaining
         }
-
-        val picked = remaining.removeAt(bestIndex).video
-        queue += picked
-        val mid = picked.owner.mid
-        creatorUsedCount[mid] = (creatorUsedCount[mid] ?: 0) + 1
-        lastCreatorMid = mid
-        val pickedTopicKey = resolveTodayWatchTopicKey(picked.title)
-        pickedTopicKey?.let { topicKey ->
-            topicUsedCount[topicKey] = (topicUsedCount[topicKey] ?: 0) + 1
+        val pool = capped.ifEmpty { remaining }
+        val picked = pool.maxWithOrNull(
+            compareBy<ScoredCandidate> {
+                it.baseScore - diversityStrength * maximumSimilarity(it, selected)
+            }.thenBy { -it.originalIndex }
+        ) ?: break
+        val adjusted = (picked.baseScore - diversityStrength * maximumSimilarity(picked, selected))
+            .coerceIn(0.0, 1.0)
+        selected += picked.copy(finalScore = adjusted, confidence = adjusted.toFloat())
+        remaining.remove(picked)
+        if (picked.video.owner.mid > 0L) {
+            creatorCounts[picked.video.owner.mid] = (creatorCounts[picked.video.owner.mid] ?: 0) + 1
         }
-        lastTopicKey = pickedTopicKey
+        picked.features.topicKeys.firstOrNull()?.let { topic ->
+            topicCounts[topic] = (topicCounts[topic] ?: 0) + 1
+        }
     }
-
-    return queue
+    return selected
 }
 
-private fun resolveTodayWatchTopicKey(title: String): String? {
-    val normalized = title.lowercase()
-    return TOPIC_KEYWORDS.firstOrNull { (_, keywords) ->
-        keywords.any { keyword -> normalized.contains(keyword) }
-    }?.first
-}
-
-private fun freshnessScore(pubdate: Long, nowEpochSec: Long): Double {
-    if (pubdate <= 0L) return 0.0
-    val days = ((nowEpochSec - pubdate).coerceAtLeast(0L) / 86_400.0)
-    return when {
-        days <= 1.0 -> 0.8
-        days <= 3.0 -> 0.55
-        days <= 7.0 -> 0.3
-        days <= 30.0 -> 0.1
-        else -> -0.05
-    }
-}
-
-private fun feedbackPenalty(
-    video: VideoItem,
-    title: String,
-    signals: TodayWatchPenaltySignals
-): Double {
-    val dislikedBvidPenalty = if (video.bvid in signals.dislikedBvids) -3.2 else 0.0
-    val dislikedCreatorPenalty = if (video.owner.mid in signals.dislikedCreatorMids) -2.4 else 0.0
-    val keywordHit = signals.dislikedKeywords.count { keyword ->
-        keyword.isNotBlank() && title.contains(keyword.lowercase())
-    }
-    val dislikedKeywordPenalty = (keywordHit * -0.7).coerceAtLeast(-2.8)
-    return dislikedBvidPenalty + dislikedCreatorPenalty + dislikedKeywordPenalty
+private fun maximumSimilarity(candidate: ScoredCandidate, selected: List<ScoredCandidate>): Double {
+    return selected.maxOfOrNull { existing ->
+        val sameCreator = candidate.video.owner.mid > 0L && candidate.video.owner.mid == existing.video.owner.mid
+        val topicOverlap = candidate.features.topicKeys.intersect(existing.features.topicKeys).isNotEmpty()
+        (if (sameCreator) 0.6 else 0.0) + (if (topicOverlap) 0.4 else 0.0)
+    } ?: 0.0
 }
 
 private fun buildRecommendationExplanation(
     video: VideoItem,
     mode: TodayWatchMode,
     eyeCareNightActive: Boolean,
-    creatorAffinity: Double,
-    nowEpochSec: Long
+    features: CandidateFeatures
 ): String {
-    val parts = mutableListOf<String>()
-    parts += when (mode) {
-        TodayWatchMode.RELAX -> "轻松向"
-        TodayWatchMode.LEARN -> "学习向"
-    }
+    val reasons = mutableListOf<String>()
+    if (features.modeFit >= 0.7) reasons += if (mode == TodayWatchMode.RELAX) "轻松向" else "学习向"
+    if (features.freshness >= 0.75) reasons += "近期更新"
+    if (eyeCareNightActive && nightFriendlyScore(video) >= 0.7) reasons += "夜间友好"
+    if (features.creatorAffinity >= 0.45) reasons += "常看UP"
+    if (features.topicAffinity >= 0.45) reasons += "常看分区"
+    if (features.exploration >= 0.8) reasons += "新UP探索"
+    if (features.quality >= 0.75) reasons += "优质内容"
+    return reasons.distinct().take(3).ifEmpty {
+        listOf(if (mode == TodayWatchMode.RELAX) "轻松向" else "学习向")
+    }.joinToString(" · ")
+}
 
+private fun modeFitScore(video: VideoItem, mode: TodayWatchMode, eyeCareNightActive: Boolean): Double {
+    val title = video.title.lowercase()
     val durationMin = video.duration.coerceAtLeast(0) / 60.0
-    when {
-        durationMin in 3.0..15.0 -> parts += "短时长"
-        durationMin in 15.0..35.0 -> parts += "中时长"
-        durationMin > 35.0 -> parts += "长时长"
-    }
-
     val intensity = video.stat.danmaku.toDouble() / video.stat.view.coerceAtLeast(1).toDouble()
-    if (eyeCareNightActive) {
-        if (durationMin <= 25.0 && intensity < 0.012) {
-            parts += "夜间友好"
-        } else {
-            parts += "夜间已调权"
+    val relaxCue = RELAX_KEYWORDS.any(title::contains)
+    val learnCue = LEARN_KEYWORDS.any(title::contains)
+    val base = when (mode) {
+        TodayWatchMode.RELAX -> {
+            val durationFit = when {
+                durationMin < 2.0 -> 0.3
+                durationMin <= 12.0 -> 1.0
+                durationMin <= 20.0 -> 0.75
+                durationMin <= 35.0 -> 0.45
+                else -> 0.15
+            }
+            val calmFit = when {
+                intensity < 0.004 -> 1.0
+                intensity < 0.01 -> 0.65
+                else -> 0.2
+            }
+            (durationFit * 0.45 + calmFit * 0.25 + (if (relaxCue) 0.30 else 0.12) -
+                (if (learnCue) 0.22 else 0.0)).coerceIn(0.0, 1.0)
+        }
+        TodayWatchMode.LEARN -> {
+            val durationFit = when {
+                durationMin < 5.0 -> 0.2
+                durationMin < 10.0 -> 0.55
+                durationMin <= 35.0 -> 1.0
+                durationMin <= 55.0 -> 0.7
+                else -> 0.35
+            }
+            (durationFit * 0.55 + (if (learnCue) 0.45 else 0.12) -
+                (if (relaxCue && durationMin < 12.0) 0.2 else 0.0)).coerceIn(0.0, 1.0)
         }
     }
-
-    if (creatorAffinity > 0.8) {
-        parts += "偏好UP"
-    }
-
-    if (freshnessScore(video.pubdate, nowEpochSec) >= 0.55) {
-        parts += "近期更新"
-    }
-
-    return parts.distinct().joinToString(" · ")
-}
-
-private fun durationRelaxScore(durationMin: Double): Double {
-    return when {
-        durationMin < 2.0 -> -0.2
-        durationMin <= 12.0 -> 1.4
-        durationMin <= 20.0 -> 0.6
-        durationMin <= 35.0 -> -0.1
-        else -> -0.9
+    return if (eyeCareNightActive) {
+        (base * 0.75 + nightFriendlyScore(video) * 0.25).coerceIn(0.0, 1.0)
+    } else {
+        base
     }
 }
 
-private fun durationLearnScore(durationMin: Double): Double {
-    return when {
-        durationMin < 5.0 -> -0.6
-        durationMin <= 12.0 -> 0.5
-        durationMin <= 35.0 -> 1.5
-        durationMin <= 55.0 -> 0.8
-        else -> -0.2
+private fun nightFriendlyScore(video: VideoItem): Double {
+    val durationMin = video.duration.coerceAtLeast(0) / 60.0
+    val intensity = video.stat.danmaku.toDouble() / video.stat.view.coerceAtLeast(1).toDouble()
+    val durationFit = when {
+        durationMin <= 15.0 -> 1.0
+        durationMin <= 25.0 -> 0.7
+        durationMin <= 45.0 -> 0.35
+        else -> 0.1
+    }
+    val calmFit = when {
+        intensity < 0.006 -> 1.0
+        intensity < 0.012 -> 0.6
+        else -> 0.2
+    }
+    return durationFit * 0.6 + calmFit * 0.4
+}
+
+private fun continuousFreshnessScore(pubdate: Long, nowEpochSec: Long): Double {
+    if (pubdate <= 0L) return 0.5
+    val ageDays = (nowEpochSec - pubdate).coerceAtLeast(0L) / 86_400.0
+    return 2.0.pow(-ageDays / 30.0).coerceIn(0.0, 1.0)
+}
+
+private fun explorationScore(creatorAffinity: Double, topicAffinity: Double, topics: Set<String>): Double {
+    val unseenCreator = if (creatorAffinity < 0.05) 1.0 else 0.0
+    val unseenTopic = if (topics.isEmpty() || topicAffinity < 0.05) 1.0 else 0.0
+    return unseenCreator * 0.6 + unseenTopic * 0.4
+}
+
+private fun matchesDislikedKeyword(video: VideoItem, keywords: Set<String>): Boolean {
+    if (keywords.isEmpty()) return false
+    val searchable = "${video.title} ${video.tname}".lowercase()
+    return keywords.any(searchable::contains)
+}
+
+private fun resolveTodayWatchTopicKeys(video: VideoItem): Set<String> = buildSet {
+    video.tid.takeIf { it > 0 }?.let { add("partition-id:$it") }
+    video.tname.trim().lowercase().takeIf { it.isNotBlank() }?.let { add("partition:$it") }
+    val searchable = "${video.title} ${video.tname}".lowercase()
+    TOPIC_KEYWORDS.forEach { (topic, keywords) ->
+        if (keywords.any(searchable::contains)) add("topic:$topic")
     }
 }
 
 private fun estimateCompletionRatio(item: VideoItem): Double {
     if (item.progress < 0) return 0.35
-    if (item.duration <= 0) {
-        return (item.progress / 600.0).coerceIn(0.0, 1.0)
-    }
+    if (item.duration <= 0) return (item.progress / 600.0).coerceIn(0.0, 1.0)
     return (item.progress.toDouble() / item.duration.toDouble()).coerceIn(0.0, 1.0)
+}
+
+private fun watchAffinityScore(completion: Double, recencyBonus: Double): Double {
+    val completionScore = when {
+        completion >= 0.9 -> 1.85
+        completion >= 0.6 -> 0.9 + completion * 0.75
+        completion >= 0.3 -> 0.25 + completion * 0.45
+        else -> 0.1
+    }
+    return completionScore + recencyBonus * if (completion >= 0.6) 1.0 else 0.35
 }
 
 private fun recencyBonus(viewAt: Long, nowEpochSec: Long): Double {
     if (viewAt <= 0L) return 0.25
-    val days = ((nowEpochSec - viewAt).coerceAtLeast(0L) / 86_400.0)
+    val days = (nowEpochSec - viewAt).coerceAtLeast(0L) / 86_400.0
     return when {
         days <= 1.0 -> 1.0
         days <= 3.0 -> 0.8
         days <= 7.0 -> 0.6
         days <= 30.0 -> 0.35
         else -> 0.15
-    }
-}
-
-private fun keywordBonus(
-    title: String,
-    positiveKeywords: List<String>,
-    negativeKeywords: List<String>
-): Double {
-    val positive = positiveKeywords.count { title.contains(it) } * 0.55
-    val negative = negativeKeywords.count { title.contains(it) } * 0.35
-    return (positive - negative).coerceIn(-1.2, 1.8)
-}
-
-private fun modeFocusScore(
-    title: String,
-    durationMin: Double,
-    intensity: Double,
-    mode: TodayWatchMode
-): Double {
-    val hasRelaxCue = RELAX_KEYWORDS.any { title.contains(it) }
-    val hasLearnCue = LEARN_KEYWORDS.any { title.contains(it) }
-    return when (mode) {
-        TodayWatchMode.RELAX -> {
-            val shortCalmFit = if (durationMin <= 15.0 && intensity < 0.008) 0.55 else 0.0
-            val relaxCue = if (hasRelaxCue) 0.7 else 0.0
-            val studyPenalty = if (hasLearnCue) -1.55 else 0.0
-            val longPenalty = if (durationMin > 35.0) -0.7 else 0.0
-            shortCalmFit + relaxCue + studyPenalty + longPenalty
-        }
-
-        TodayWatchMode.LEARN -> {
-            val focusedDurationFit = if (durationMin in 10.0..45.0) 0.65 else 0.0
-            val learnCue = if (hasLearnCue) 1.05 else 0.0
-            val casualPenalty = if (hasRelaxCue && durationMin < 12.0) -1.1 else 0.0
-            focusedDurationFit + learnCue + casualPenalty
-        }
     }
 }
 

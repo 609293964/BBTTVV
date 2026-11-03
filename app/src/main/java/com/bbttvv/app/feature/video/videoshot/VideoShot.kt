@@ -12,7 +12,14 @@ import java.io.IOException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
 import kotlinx.coroutines.coroutineScope
 import okhttp3.Request
 
@@ -25,13 +32,13 @@ data class VideoShotFrame(
 
 class VideoShot private constructor(
     private val timesMs: List<Long>,
-    private val images: List<ByteArray>,
+    private val images: List<String>,
     private val imageCountX: Int,
     private val imageCountY: Int,
     val fallbackAspectWidth: Int,
     val fallbackAspectHeight: Int,
 ) {
-    private val imageCache = VideoShotImageCache()
+    private val imageCache = VideoShotImageCache { url -> downloadBytes(url) }
 
     suspend fun getFrame(positionMs: Long): VideoShotFrame {
         if (timesMs.isEmpty() || images.isEmpty() || imageCountX <= 0 || imageCountY <= 0) {
@@ -89,25 +96,9 @@ class VideoShot private constructor(
             val timesMs = normalizeIndexTimes(data.index)
             if (timesMs.isEmpty()) return@coroutineScope null
 
-            val downloadedImages = imageUrls
-                .map { url ->
-                    async(Dispatchers.IO) {
-                        runCatching { downloadBytes(url) }
-                            .onFailure { Logger.w(TAG, "download failed: ${url.takeLast(32)} ${it.message}") }
-                            .getOrNull()
-                            ?.takeIf { it.isNotEmpty() }
-                    }
-                }
-                .awaitAll()
-
-            if (downloadedImages.any { it == null }) {
-                Logger.w(TAG, "download videoshot images failed: total=${downloadedImages.size}")
-                return@coroutineScope null
-            }
-
             VideoShot(
                 timesMs = timesMs,
-                images = downloadedImages.filterNotNull(),
+                images = imageUrls,
                 imageCountX = data.img_x_len.takeIf { it > 0 } ?: 10,
                 imageCountY = data.img_y_len.takeIf { it > 0 } ?: 10,
                 fallbackAspectWidth = data.img_x_size.takeIf { it > 0 } ?: 160,
@@ -141,7 +132,7 @@ class VideoShot private constructor(
             }
         }
 
-        private fun downloadBytes(url: String): ByteArray {
+        private suspend fun downloadBytes(url: String): ByteArray = suspendCancellableCoroutine { continuation ->
             val request = Request.Builder()
                 .url(url)
                 .header("Referer", "https://www.bilibili.com")
@@ -150,57 +141,83 @@ class VideoShot private constructor(
                     resolveAppUserAgent(NetworkModule.appContext),
                 )
                 .build()
-            NetworkModule.okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("HTTP ${response.code}")
+            val call = NetworkModule.okHttpClient.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(e)
                 }
-                return response.body.bytes()
-            }
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val bytes = response.use {
+                            if (!it.isSuccessful) throw IOException("HTTP "+it.code)
+                            // Read one bounded sheet on OkHttp's worker, never on the UI thread.
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            val input = it.body.byteStream()
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                if (output.size() + count > 4 * 1024 * 1024) throw IOException("Preview sheet too large")
+                                output.write(buffer, 0, count)
+                            }
+                            val bytes = output.toByteArray()
+                            if (bytes.size > 4 * 1024 * 1024) throw IOException("Preview sheet too large")
+                            bytes
+                        }
+                        if (continuation.isActive) continuation.resume(bytes)
+                    } catch (error: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }
+                }
+            })
         }
     }
 }
 
-private class VideoShotImageCache {
+private class VideoShotImageCache(private val download: suspend (String) -> ByteArray) {
     private val lock = Any()
-    private val memoryCache = LruCache<Int, Bitmap>(3)
+    private val slots = Semaphore(2)
+    private var closed = false
+    private val memoryCache = object : LruCache<Int, Bitmap>(12 * 1024 * 1024) {
+        override fun sizeOf(key: Int, value: Bitmap): Int = value.allocationByteCount
+    }
     private val activeTasks = mutableMapOf<Int, Deferred<Bitmap>>()
 
-    suspend fun getOrDecodeImage(imageIndex: Int, imageData: ByteArray): Bitmap = coroutineScope {
-        synchronized(lock) {
-            memoryCache.get(imageIndex)
-        }?.let { return@coroutineScope it }
-
+    suspend fun getOrDecodeImage(imageIndex: Int, url: String): Bitmap = coroutineScope {
+        synchronized(lock) { memoryCache.get(imageIndex) }?.let { return@coroutineScope it }
         val task = synchronized(lock) {
+            check(!closed) { "Preview released" }
             activeTasks[imageIndex] ?: async(Dispatchers.IO) {
-                BitmapFactory.decodeByteArray(
-                    imageData,
-                    0,
-                    imageData.size,
-                    BitmapFactory.Options().apply {
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                        inScaled = false
-                    },
-                ) ?: Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+                slots.withPermit {
+                    val bytes = download(url)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+                        bounds.outWidth.toLong() * bounds.outHeight > 6 * 1024 * 1024L) {
+                        throw IOException("Invalid preview dimensions")
+                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                        BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.RGB_565
+                            inScaled = false
+                        }) ?: throw IOException("Preview decode failed")
+                }
             }.also { activeTasks[imageIndex] = it }
         }
-
         try {
             val bitmap = task.await()
-            synchronized(lock) {
-                memoryCache.put(imageIndex, bitmap)
-            }
+            synchronized(lock) { if (!closed) memoryCache.put(imageIndex, bitmap) }
             bitmap
         } finally {
-            synchronized(lock) {
-                activeTasks.remove(imageIndex)
-            }
+            synchronized(lock) { if (activeTasks[imageIndex] === task) activeTasks.remove(imageIndex) }
         }
     }
 
-    fun clear() {
-        synchronized(lock) {
-            memoryCache.evictAll()
-            activeTasks.clear()
-        }
+    fun clear() = synchronized(lock) {
+        closed = true
+        activeTasks.values.forEach { it.cancel() }
+        activeTasks.clear()
+        memoryCache.evictAll()
     }
 }

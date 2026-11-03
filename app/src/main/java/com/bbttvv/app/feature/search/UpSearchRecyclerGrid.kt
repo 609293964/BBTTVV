@@ -175,7 +175,8 @@ internal fun UpSearchRecyclerGrid(
         modifier = modifier.focusGroup(),
         factory = { context ->
             object : RecyclerView(context) {
-                override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                    if (event == null) return false
                     if (!latestIsHomeTabActive) return false
                     if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in UpGridNavigationKeyCodes) {
                         val focusedView = rootView?.findFocus()

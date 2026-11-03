@@ -7,6 +7,32 @@ import android.os.Build
 import android.view.Display
 
 object MediaUtils {
+    /** Require the exact display transfer function and a decoder that accepts the HDR format. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun isLiveHdrSupported(context: Context, eotf: Int, codecs: String): Boolean {
+        val displayType = when (eotf) {
+            1 -> Display.HdrCapabilities.HDR_TYPE_HDR10
+            2 -> Display.HdrCapabilities.HDR_TYPE_HLG
+            else -> return false
+        }
+        if (getSupportedHdrTypes(context)?.contains(displayType) != true) return false
+        if (!codecs.startsWith("hvc1", true) && !codecs.startsWith("hev1", true)) return false
+        return try {
+            val format = androidx.media3.common.Format.Builder()
+                .setSampleMimeType("video/hevc")
+                .setCodecs(codecs)
+                .setColorInfo(androidx.media3.common.ColorInfo.Builder()
+                    .setColorSpace(androidx.media3.common.C.COLOR_SPACE_BT2020)
+                    .setColorTransfer(if (eotf == 1) androidx.media3.common.C.COLOR_TRANSFER_ST2084 else androidx.media3.common.C.COLOR_TRANSFER_HLG)
+                    .build())
+                .build()
+            androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos("video/hevc", false, false)
+                .any { it.isFormatSupported(context, format) }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /**
      * Check if HEVC (H.265) decoder is supported
      */

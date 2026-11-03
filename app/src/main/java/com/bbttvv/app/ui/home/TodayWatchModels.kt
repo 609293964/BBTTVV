@@ -26,7 +26,9 @@ data class TodayWatchPlan(
     val explanationByBvid: Map<String, String> = emptyMap(),
     val historySampleCount: Int = 0,
     val nightSignalUsed: Boolean = false,
-    val generatedAt: Long = 0L
+    val generatedAt: Long = 0L,
+    val scoreByBvid: Map<String, Double> = emptyMap(),
+    val confidenceByBvid: Map<String, Float> = emptyMap(),
 )
 
 internal data class TodayWatchCreatorSignal(

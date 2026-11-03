@@ -1103,6 +1103,20 @@ private fun TodayWatchPluginPanel(
             onClick = { plugin.setCurrentMode(nextMode) }
         )
         PluginCenterRowCard(
+            title = "推荐策略",
+            subtitle = "均衡推荐 → 兴趣优先 → 探索发现；确认键切换。",
+            value = when (config.strategy) {
+                com.bbttvv.app.core.plugin.RecommendationStrategy.BALANCED -> "均衡推荐"
+                com.bbttvv.app.core.plugin.RecommendationStrategy.AFFINITY -> "兴趣优先"
+                com.bbttvv.app.core.plugin.RecommendationStrategy.EXPLORE -> "探索发现"
+            },
+            isSubItem = true,
+            onClick = {
+                val strategies = com.bbttvv.app.core.plugin.RecommendationStrategy.entries
+                plugin.setStrategy(strategies[(config.strategy.ordinal + 1) % strategies.size])
+            },
+        )
+        PluginCenterRowCard(
             title = "候选队列长度",
             subtitle = "用于算法内部排序的种子队列规模，越大越容易补齐多样性。",
             value = "${config.queueBuildLimit} -> $nextQueueBuildLimit",

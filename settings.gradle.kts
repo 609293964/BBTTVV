@@ -1,7 +1,7 @@
 pluginManagement {
     repositories {
         // 阿里云镜像对部分不存在的构件返回 502（而非 404），Gradle 会因此中止查找：
-        // google 镜像只用于 Google/AndroidX 构件，KSP 插件直接走官方源。
+        // google 镜像只用于 Google/AndroidX 构件；KSP 使用下方 gradle-plugin/public 镜像。
         maven("https://maven.aliyun.com/repository/google") {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -10,12 +10,8 @@ pluginManagement {
                 excludeGroup("com.google.devtools.ksp")
             }
         }
-        maven("https://maven.aliyun.com/repository/gradle-plugin") {
-            content { excludeGroup("com.google.devtools.ksp") }
-        }
-        maven("https://maven.aliyun.com/repository/public") {
-            content { excludeGroup("com.google.devtools.ksp") }
-        }
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        maven("https://maven.aliyun.com/repository/public")
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -38,9 +34,7 @@ dependencyResolutionManagement {
                 excludeGroup("com.google.devtools.ksp")
             }
         }
-        maven("https://maven.aliyun.com/repository/public") {
-            content { excludeGroup("com.google.devtools.ksp") }
-        }
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }

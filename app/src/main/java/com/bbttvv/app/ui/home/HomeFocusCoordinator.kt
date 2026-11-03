@@ -37,6 +37,7 @@ internal enum class HomeFocusRegion {
  * - [RestoreVideoKey]: 恢复到指定视频 key 的焦点（用于从详情页/播放页返回）
  */
 internal sealed class HomeFocusIntent {
+    data object FocusSidebar : HomeFocusIntent()
     data object FocusTopBar : HomeFocusIntent()
     data class FocusTopBarTab(
         val tab: AppTopLevelTab,
@@ -279,6 +280,7 @@ internal class HomeFocusCoordinator(
     private var pendingBackToTopBarReset: Boolean = false
     private var contentTopBarVisible by mutableStateOf(false)
     private var topBarTarget: HomeFocusTarget? = null
+    private var sidebarTarget: HomeFocusTarget? = null
     private val lastContentRegionByTab = mutableMapOf<AppTopLevelTab, HomeFocusRegion>()
     private val contentTargets =
         LinkedHashMap<AppTopLevelTab, LinkedHashMap<HomeFocusRegion, HomeFocusTarget>>()
@@ -323,6 +325,9 @@ internal class HomeFocusCoordinator(
         contentTopBarVisible = false
         focusMode = HomeFocusMode.TopBar
         when (val intent = pendingIntent) {
+            HomeFocusIntent.FocusSidebar -> {
+                if (sidebarTarget?.hasFocus() == true) pendingIntent = null
+            }
             HomeFocusIntent.FocusTopBar -> {
                 if (topBarTarget?.hasFocusOnRequestedTarget() == true) {
                     pendingIntent = null
@@ -454,6 +459,22 @@ internal class HomeFocusCoordinator(
         if (!canCoordinateContent(selectedHomeTab)) return false
         requestSelectedContentFocus()
         return true
+    }
+
+    fun requestSidebarFocus(): Boolean {
+        if (sidebarTarget == null) return false
+        clearSelectedContentVisualState()
+        focusMode = HomeFocusMode.TopBar
+        enqueueFocusIntent(HomeFocusIntent.FocusSidebar)
+        return true
+    }
+
+    fun registerSidebarTarget(target: HomeFocusTarget): HomeFocusTargetRegistration {
+        sidebarTarget = target
+        drainPendingFocus()
+        return HomeFocusTargetRegistration {
+            if (sidebarTarget === target) sidebarTarget = null
+        }
     }
 
     fun handleContentWantsTopBar(scene: HomeFocusScene = HomeFocusScene.BackToTopBar): Boolean {
@@ -593,6 +614,8 @@ internal class HomeFocusCoordinator(
         isDrainingPendingFocus = true
         val result = try {
             when (intent) {
+                HomeFocusIntent.FocusSidebar -> sidebarTarget?.requestFocusResult()
+                    ?: HomeFocusRequestResult.Unavailable
                 HomeFocusIntent.FocusTopBar -> tryRequestTopBarFocus()
                 is HomeFocusIntent.FocusTopBarTab -> tryRequestTopBarFocus(intent.tab)
                 HomeFocusIntent.FocusSelectedContent -> tryRequestSelectedContentFocus(selectedHomeTab)

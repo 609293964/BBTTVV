@@ -58,8 +58,8 @@ fun AppNavigation() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val tvFocusReturn = LocalTvFocusReturn.current
-    var previousRoute by remember { mutableStateOf<String?>(null) }
-    var settingsReturnKey by remember { mutableStateOf<String?>(null) }
+    var previousRoute by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var settingsReturnKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val isOnHome = navigationState.isOnHome(currentRoute)
     val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
         .collectAsStateWithLifecycle(

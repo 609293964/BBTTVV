@@ -43,6 +43,17 @@ object AccountSessionStore {
     private val sessionSwitchMutex = Mutex()
     private val storageMutationLock = Any()
 
+    /** Capture fresh runtime credentials under the same lock as explicit account switches. */
+    internal suspend fun captureCurrentSession(): StoredAccountSession {
+        TokenManager.awaitWarmup()
+        return sessionSwitchMutex.withLock {
+            val snapshot = captureRuntimeSession()
+            StoredAccountSession(mid = snapshot.mid ?: 0L, sessData = snapshot.sessData.orEmpty(),
+                csrf = snapshot.csrf.orEmpty(), accessToken = snapshot.accessToken.orEmpty(),
+                buvid3 = snapshot.buvid3?.takeIf { it.isNotBlank() } ?: TokenManager.getOrCreateBuvid3())
+        }
+    }
+
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true

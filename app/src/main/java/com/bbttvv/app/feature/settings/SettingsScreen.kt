@@ -89,6 +89,7 @@ private object SettingsFocusReturnKeys {
 }
 
 private enum class SettingsChoice(val rowKey: String) {
+    THEME("settings_theme_mode"),
     PGC_QUALITY("settings_pgc_preferred_quality"),
     DEFAULT_SPEED("settings_default_speed"),
     PLAYBACK_END("settings_playback_end"),
@@ -118,7 +119,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val backFocusRequester = remember { FocusRequester() }
 
     val categories = SettingsCategory.values()
-    var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
+    var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SettingsCategory.PLAYBACK) }
     val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
 
     val playbackFirstFocus = remember { FocusRequester() }
@@ -168,7 +169,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        runCatching { categoryFocusRequesters.first().requestFocus() }
+        runCatching { categoryFocusRequesters[selectedCategory.ordinal].requestFocus() }
     }
 
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -363,6 +364,7 @@ fun TvSettingsList(
     val updateContentOnTabFocusEnabled = appSettings.updateContentOnTabFocusEnabled
     val homeTopTabSelectOnFocusEnabled = appSettings.homeTopTabSelectOnFocusEnabled
     val watchLaterInTopTabsEnabled = appSettings.watchLaterInTopTabsEnabled
+    val homeNavigationLabel = if (com.bbttvv.app.ui.theme.LocalSidebarTheme.current) "左侧导航" else "顶部 Tabs"
     val dynamicPageDisplayMode = appSettings.dynamicPageDisplayMode
     val singleBackToHomeEnabled = appSettings.singleBackToHomeEnabled
     val themeMode = appSettings.themeMode
@@ -439,7 +441,7 @@ fun TvSettingsList(
         )
     }
 
-    var lastFocusedKey by remember { mutableStateOf<String?>(null) }
+    var lastFocusedKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 
     val defaultFirstKey = when (selectedCategory) {
         null -> "settings_auto_highest_quality"
@@ -746,11 +748,11 @@ fun TvSettingsList(
                 SettingsRow(
                     title = "稍后再看入口位置",
                     subtitle = if (watchLaterInTopTabsEnabled) {
-                        "当前显示在首页顶部 Tabs 中，并从“我的”左侧菜单隐藏。"
+                        "当前显示在首页${homeNavigationLabel}中，并从“我的”左侧菜单隐藏。"
                     } else {
-                        "当前显示在“我的”左侧菜单中，并从首页顶部 Tabs 隐藏。"
+                        "当前显示在“我的”左侧菜单中，并从首页${homeNavigationLabel}隐藏。"
                     },
-                    value = if (watchLaterInTopTabsEnabled) "顶部 Tabs" else "我的菜单",
+                    value = if (watchLaterInTopTabsEnabled) homeNavigationLabel else "我的菜单",
                     modifier = getRowModifier("settings_watch_later_in_top_tabs", leftModifier),
                     onClick = {
                         scope.launch {
@@ -781,19 +783,15 @@ fun TvSettingsList(
             item(key = "settings_theme_mode") {
                 SettingsRow(
                     title = "系统主题模式",
-                    subtitle = "切换应用全局明暗主题；播放器、评论和设置等区域会同步更新。",
+                    subtitle = "打开下拉菜单选择主题，按确认应用；Back 取消。切换后自动重载界面。",
                     value = themeMode.label,
-                    modifier = getRowModifier("settings_theme_mode", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            val next = if (themeMode == SettingsManager.ThemeMode.DARK) {
-                                SettingsManager.ThemeMode.LIGHT
-                            } else {
-                                SettingsManager.ThemeMode.DARK
-                            }
-                            SettingsManager.setThemeMode(context, next)
-                        }
-                    }
+                    kind = SettingsRowKind.Choice,
+                    modifier = getRowModifier(
+                        "settings_theme_mode",
+                        leftModifier.focusRequester(choiceFocusRequesters.getValue(SettingsChoice.THEME))
+                            .captureChoiceAnchor(SettingsChoice.THEME),
+                    ),
+                    onClick = { activeChoice = SettingsChoice.THEME }
                 )
             }
         }
@@ -1245,6 +1243,23 @@ fun TvSettingsList(
     }
 
     when (activeChoice) {
+        SettingsChoice.THEME -> TvSettingsChoicePopup(
+            title = "选择主题",
+            options = SettingsManager.ThemeMode.entries.map { TvSettingsChoiceOption(it, it.label) },
+            selectedValue = themeMode,
+            anchorBounds = choiceAnchorBounds[SettingsChoice.THEME],
+            returnFocusKey = SettingsChoice.THEME.rowKey,
+            onSelect = { selectedTheme ->
+                activeChoice = null
+                if (selectedTheme != themeMode) scope.launch {
+                    SettingsManager.setThemeMode(context, selectedTheme)
+                    generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+                        .filterIsInstance<android.app.Activity>().firstOrNull()?.recreate()
+                }
+            },
+            onDismissRequest = { activeChoice = null },
+        )
+
         SettingsChoice.PGC_QUALITY -> TvSettingsChoicePopup(
             title = "选择 PGC 默认画质",
             options = listOf(TvSettingsChoiceOption(-1, "跟随普通视频")) +
@@ -1343,6 +1358,7 @@ fun TvSettingsList(
             options = listOf(
                 SettingsManager.FeedApiType.WEB,
                 SettingsManager.FeedApiType.MOBILE,
+                SettingsManager.FeedApiType.MERGED,
             ).map { type -> TvSettingsChoiceOption(type, resolveFeedApiTypeLabel(type)) },
             selectedValue = feedApiType,
             anchorBounds = choiceAnchorBounds[SettingsChoice.FEED_API],
@@ -1549,6 +1565,7 @@ internal fun onOff(enabled: Boolean): String = if (enabled) "\u5F00" else "\u517
 
 private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
     return when (type) {
+        SettingsManager.FeedApiType.MERGED -> "网页端 + 移动端 (合并)"
         SettingsManager.FeedApiType.WEB -> "\u7F51\u9875\u7AEF (Web)"
         SettingsManager.FeedApiType.MOBILE -> "\u79FB\u52A8\u7AEF (App)"
         SettingsManager.FeedApiType.NORMAL -> "\u517C\u5BB9\u6A21\u5F0F"
@@ -1557,6 +1574,7 @@ private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
 
 private fun resolveFeedApiTypeDescription(type: SettingsManager.FeedApiType): String {
     return when (type) {
+        SettingsManager.FeedApiType.MERGED -> "并行请求两端推荐并交错去重；任一端失败时保留另一端结果。"
         SettingsManager.FeedApiType.WEB -> "\u63A8\u8350\u9875\u4F7F\u7528\u7F51\u9875\u7AEF\u63A8\u8350\u63A5\u53E3\u3002"
         SettingsManager.FeedApiType.MOBILE -> "\u63A8\u8350\u9875\u4F18\u5148\u4F7F\u7528\u79FB\u52A8\u7AEF\u63A8\u8350\u63A5\u53E3\uFF0C\u5931\u8D25\u540E\u56DE\u9000\u7F51\u9875\u7AEF\u3002"
         SettingsManager.FeedApiType.NORMAL -> "\u63A8\u8350\u9875\u4F7F\u7528\u517C\u5BB9\u6A21\u5F0F\u3002"

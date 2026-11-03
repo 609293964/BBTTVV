@@ -1,7 +1,6 @@
 package com.bbttvv.app.core.network
 
 import android.content.Context
-import com.bbttvv.app.core.network.policy.resolveHardcodedDnsFallback
 import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.util.CrashReporter
 import com.bbttvv.app.core.util.Logger
@@ -251,24 +250,7 @@ internal object NetworkHttpClients {
                     filtered
                 } catch (error: Exception) {
                     Logger.e("ApiClient", "DNS failed for $hostname: ${error.message}")
-                    val fallback = resolveHardcodedDnsFallback(
-                        hostname = hostname,
-                        allowHardcodedIpFallback = false
-                    )
-                    if (fallback != null) {
-                        val fallbackAddress = InetAddress.getByName(fallback.ipAddress)
-                        val filteredFallback = filterPreferredInetAddresses(
-                            listOf(fallbackAddress),
-                            ipv4OnlyEnabled
-                        )
-                        Logger.w(
-                            "ApiClient",
-                            "⚠️ Using Hardcoded IP for ${fallback.description}: ${fallback.ipAddress}"
-                        )
-                        filteredFallback
-                    } else {
-                        throw error
-                    }
+                    throw error
                 }
             }
         }

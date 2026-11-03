@@ -162,7 +162,9 @@ data class VideoItem(
     val collectionSubtitle: String = "",
     val rights: VideoRights? = null,
     val contentType: String = "",
-    val navigationUrl: String = ""
+    val navigationUrl: String = "",
+    val recommendationFeedback: RecommendationFeedbackMetadata? = null,
+    val tid: Int = 0,
 )
 
 @Serializable
@@ -238,6 +240,7 @@ data class RecommendItem(
     val title: String? = null,
     val duration: Int? = null,
     val tname: String? = null,
+    val tid: Int = 0,
     @SerialName("is_followed")
     @Serializable(with = FlexibleBooleanSerializer::class)
     val isFollowed: Boolean = false,
@@ -257,16 +260,19 @@ data class RecommendItem(
             title = title ?: "",
             pic = pic ?: "",
             owner = Owner(mid = owner?.mid ?: 0, name = owner?.name ?: "", face = owner?.face ?: ""),
-            stat = Stat(view = requestStatConvert(stat?.view), like = requestStatConvert(stat?.like), danmaku = requestStatConvert(stat?.danmaku)),
+            stat = Stat(view = requestStatConvert(stat?.view), like = requestStatConvert(stat?.like),
+                danmaku = requestStatConvert(stat?.danmaku), reply = requestStatConvert(stat?.reply),
+                coin = requestStatConvert(stat?.coin), favorite = requestStatConvert(stat?.favorite), share = requestStatConvert(stat?.share)),
             duration = duration ?: 0,
             tname = tname.orEmpty(),
+            tid = tid,
             isFollowed = isFollowed,
             pubdate = pubdate ?: 0L,
             isVertical = dimension?.isVertical == true,
             rights = rights
         )
     }
-    private fun requestStatConvert(num: Long?): Int = num?.toInt() ?: 0
+    private fun requestStatConvert(num: Long?): Int = num?.coerceIn(0L, Int.MAX_VALUE.toLong())?.toInt() ?: 0
 }
 
 @Serializable
@@ -280,7 +286,11 @@ data class RecommendOwner(
 data class RecommendStat(
     val view: Long = 0,
     val like: Long = 0,
-    val danmaku: Long = 0
+    val danmaku: Long = 0,
+    val reply: Long = 0,
+    val coin: Long = 0,
+    val favorite: Long = 0,
+    val share: Long = 0,
 )
 
 // --- 4. 热门视频 Response ---
@@ -528,7 +538,8 @@ data class MobileFeedItem(
     val args: MobileFeedArgs? = null,
     @SerialName("player_args") val playerArgs: MobileFeedPlayerArgs? = null,
     @SerialName("cover_left_text_1") val coverLeftText1: String = "",  // 播放量
-    @SerialName("cover_left_text_2") val coverLeftText2: String = ""   // 弹幕数
+    @SerialName("cover_left_text_2") val coverLeftText2: String = "",   // 弹幕数
+    @SerialName("three_point_v2") val threePointV2: List<MobileFeedThreePoint> = emptyList(),
 ) {
     fun toVideoItem(): VideoItem {
         // [修复] 改进 bvid 提取逻辑
@@ -561,7 +572,15 @@ data class MobileFeedItem(
                 view = parseStatText(coverLeftText1),
                 danmaku = parseStatText(coverLeftText2)
             ),
-            duration = duration.toInt()
+            duration = duration.toInt(),
+            tid = args?.tid?.takeIf { it > 0 } ?: args?.rid ?: 0,
+            tname = args?.let { it.tname.ifBlank { it.rname } }.orEmpty(),
+            recommendationFeedback = RecommendationFeedbackMetadata(
+                goto = goto, param = param,
+                reasons = threePointV2.filter { it.type == "dislike" || it.type == "feedback" }
+                    .flatMap { group -> group.reasons.map { it.copy(type = group.type) } },
+                supportsServerSync = goto.isNotBlank() && param.isNotBlank(),
+            ),
         )
     }
     
@@ -582,7 +601,11 @@ data class MobileFeedArgs(
     @SerialName("up_id") val upId: Long = 0,
     @SerialName("up_name") val upName: String = "",
     @SerialName("up_face") val upFace: String = "",
-    val aid: Long = 0
+    val aid: Long = 0,
+    val tid: Int = 0,
+    val tname: String = "",
+    val rid: Int = 0,
+    val rname: String = "",
 )
 
 @Serializable

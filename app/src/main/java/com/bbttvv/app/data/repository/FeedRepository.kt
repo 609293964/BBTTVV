@@ -16,6 +16,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import com.bbttvv.app.core.network.RecommendationSession
+import com.bbttvv.app.core.store.AccountSessionEpoch
+import com.bbttvv.app.core.store.RecommendationAccountStore
 import kotlinx.coroutines.withContext
 
 interface HomeFeedRepository {
@@ -27,6 +32,10 @@ open class DefaultFeedRepository(
     private val appContextProvider: () -> Context? = { NetworkModule.appContext },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : HomeFeedRepository {
+    private var preloadIdentity: Pair<Long, Long>?
+        get() = VideoFeedStateService.homePreloadIdentity
+        set(value) { VideoFeedStateService.homePreloadIdentity = value }
+    private fun currentIdentity() = AccountSessionEpoch.current() to RecommendationAccountStore.changes.value
     private val api get() = apiProvider()
     private var preloadedHomeVideos: Result<List<VideoItem>>?
         get() = VideoFeedStateService.preloadedHomeVideos
@@ -55,6 +64,8 @@ open class DefaultFeedRepository(
         val activePreloadTask = homePreloadDeferred?.takeIf { it.isActive } != null
         if (!shouldStartHomePreload(preloadedHomeVideos != null, activePreloadTask)) return
         hasCompletedHomePreload = false
+        preloadIdentity = currentIdentity()
+        val identityAtStart = preloadIdentity
 
         com.bbttvv.app.core.util.Logger.d("FeedRepo", "Starting home data preload")
 
@@ -68,19 +79,25 @@ open class DefaultFeedRepository(
                 }
 
                 val result = getHomeVideosInternal(idx = 0)
-                preloadedHomeVideos = result
+                if (identityAtStart == currentIdentity()) preloadedHomeVideos = result
                 result
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Result.failure<List<VideoItem>>(e).also { preloadedHomeVideos = it }
+                Result.failure<List<VideoItem>>(e).also {
+                    if (identityAtStart == currentIdentity()) preloadedHomeVideos = it
+                }
             } finally {
-                hasCompletedHomePreload = true
+                if (identityAtStart == currentIdentity()) hasCompletedHomePreload = true
             }
         }
     }
 
     private suspend fun awaitHomePreloadResult(): Result<List<VideoItem>>? {
         val deferred = homePreloadDeferred ?: return null
-        return runCatching { deferred.await() }.getOrNull()
+        return try { deferred.await() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
     }
 
     private fun consumePreloadedHomeVideos(): Result<List<VideoItem>>? {
@@ -91,6 +108,12 @@ open class DefaultFeedRepository(
     }
 
     override suspend fun getHomeVideos(idx: Int): Result<List<VideoItem>> = withContext(ioDispatcher) {
+        if (preloadIdentity != null && preloadIdentity != currentIdentity()) {
+            homePreloadDeferred?.cancel()
+            preloadedHomeVideos = null
+            homePreloadDeferred = null
+            preloadIdentity = null
+        }
         if (idx == 0) {
             consumePreloadedHomeVideos()?.let { return@withContext it }
 
@@ -109,7 +132,9 @@ open class DefaultFeedRepository(
 
     private suspend fun getHomeVideosInternal(idx: Int): Result<List<VideoItem>> {
         return try {
+            val identity = currentIdentity()
             val context = appContextProvider()
+            val session = context?.let { RecommendationSession.capture(it) }
             val feedApiType = if (context != null) {
                 SettingsManager.getFeedApiTypeSync(context)
             } else {
@@ -121,29 +146,40 @@ open class DefaultFeedRepository(
                 20
             }
 
-            when (feedApiType) {
+            val result = when (feedApiType) {
+                SettingsManager.FeedApiType.MERGED -> coroutineScope {
+                    val web = async { fetchWebFeed(idx, refreshCount, session) }
+                    val mobile = async { fetchMobileFeed(idx, refreshCount, session) }
+                    mergeRecommendationResults(web.await(), mobile.await())
+                }
                 SettingsManager.FeedApiType.MOBILE -> {
-                    val mobileResult = fetchMobileFeed(idx = idx, refreshCount = refreshCount)
+                    val mobileResult = fetchMobileFeed(idx = idx, refreshCount = refreshCount, session = session)
                     if (mobileResult.isSuccess && mobileResult.getOrNull()?.isNotEmpty() == true) {
                         mobileResult
                     } else {
-                        fetchWebFeed(idx = idx, refreshCount = refreshCount)
+                        fetchWebFeed(idx = idx, refreshCount = refreshCount, session = session)
                     }
                 }
-                else -> fetchWebFeed(idx = idx, refreshCount = refreshCount)
+                else -> fetchWebFeed(idx = idx, refreshCount = refreshCount, session = session)
             }
+            if (identity != currentIdentity()) throw CancellationException("推荐账号已变化")
+            result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private suspend fun fetchWebFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
+    private suspend fun fetchWebFeed(idx: Int, refreshCount: Int, session: RecommendationSession? = null): Result<List<VideoItem>> {
         return safeApiCall(
             tag = "FeedRepo",
             errorMessage = { "fetchWebFeed failed: idx=$idx" }
         ) {
             val cachedKeys = WbiKeyManager.getWbiKeys().getOrNull()
-            val navWbiImg = if (cachedKeys == null) api.getNavInfo().data?.wbi_img else null
+            val navWbiImg = if (cachedKeys == null) {
+                (if (session != null) NetworkModule.guestApi else api).getNavInfo().data?.wbi_img
+            } else null
             val resolvedKeys = resolveHomeFeedWbiKeys(
                 cachedKeys = cachedKeys,
                 navWbiImg = navWbiImg
@@ -157,7 +193,8 @@ open class DefaultFeedRepository(
                 "y_num" to idx.toString()
             )
             val signedParams = WbiUtils.sign(params, resolvedKeys.first, resolvedKeys.second)
-            val feedResp = api.getRecommendParams(signedParams)
+            val feedResp = (session?.api ?: api).getRecommendParams(signedParams)
+            if (feedResp.code != 0) throw IllegalStateException("网页推荐请求失败(${feedResp.code})")
             val list = feedResp.data?.item
                 ?.map { it.toVideoItem() }
                 ?.filter { it.bvid.isNotEmpty() }
@@ -194,13 +231,13 @@ open class DefaultFeedRepository(
         }
     }
 
-    private suspend fun fetchMobileFeed(idx: Int, refreshCount: Int): Result<List<VideoItem>> {
+    private suspend fun fetchMobileFeed(idx: Int, refreshCount: Int, session: RecommendationSession? = null): Result<List<VideoItem>> {
         return safeApiCall(
             tag = "FeedRepo",
             errorMessage = { "fetchMobileFeed failed: idx=$idx" }
         ) {
             TokenManager.awaitWarmup()
-            val accessToken = TokenManager.accessTokenCache
+            val accessToken = session?.accessToken ?: TokenManager.accessTokenCache
             if (accessToken.isNullOrEmpty()) {
                 throw Exception("需要登录才能使用移动端推荐流")
             }
@@ -221,14 +258,16 @@ open class DefaultFeedRepository(
             )
 
             val signedParams = AppSignUtils.signForTvLogin(params)
-            val feedResp = api.getMobileFeed(signedParams)
+            val feedResp = (session?.api ?: api).getMobileFeed(signedParams)
             if (feedResp.code != 0) {
                 throw Exception(feedResp.message)
             }
 
             val list = feedResp.data?.items
                 ?.filter { it.goto == "av" }
-                ?.map { it.toVideoItem() }
+                ?.map { item -> item.toVideoItem().let { video ->
+                    video.copy(recommendationFeedback = video.recommendationFeedback?.copy(accountMid = session?.mid ?: TokenManager.midCache ?: 0L))
+                } }
                 ?.filter { it.bvid.isNotEmpty() }
                 ?: emptyList()
             list

@@ -25,6 +25,7 @@ internal fun PopularScreen(
     val viewModel: PopularViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isHomeTabActive = LocalHomeTabActive.current
+    val sidebarTheme = com.bbttvv.app.ui.theme.LocalSidebarTheme.current
 
     LaunchedEffect(isHomeTabActive) {
         if (isHomeTabActive) {
@@ -34,6 +35,7 @@ internal fun PopularScreen(
 
     HomeCategoryVideoGrid(
         tab = AppTopLevelTab.POPULAR,
+        showCategoryHeader = !sidebarTheme,
         categories = uiState.categories.map { it.label },
         selectedCategoryIndex = uiState.selectedCategoryIndex,
         onCategorySelected = viewModel::selectCategory,
@@ -50,7 +52,10 @@ internal fun PopularScreen(
             viewModel.primeVideoDetail(video)
             onVideoClick(video)
         },
-        onContentRowFocused = onContentRowFocused,
+        onContentRowFocused = { row ->
+            if (sidebarTheme && row == 0) collapsingHeaderState.reset()
+            onContentRowFocused(row)
+        },
         focusCoordinator = focusCoordinator,
         focusState = focusState,
         topBarHeightPx = topBarHeightPx,

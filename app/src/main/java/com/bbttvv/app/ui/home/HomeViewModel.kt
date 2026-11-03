@@ -68,6 +68,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var tabStoreIdleTrimJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            var initial = true
+            com.bbttvv.app.core.store.AccountSessionEpoch.changes.collectLatest {
+                if (initial) { initial = false; return@collectLatest }
+                todayWatchRebuildJob?.cancel()
+                todayWatchCoordinator.resetAccountScope()
+                _todayWatchState.update { state -> state.copy(isLoading = false, plan = TodayWatchPlan(mode = state.mode), errorMessage = null) }
+                refresh()
+            }
+        }
+        viewModelScope.launch {
+            com.bbttvv.app.core.store.RecommendationAccountStore.changes.collectLatest { revision ->
+                if (revision > 0L) {
+                    todayWatchRebuildJob?.cancel()
+                    _todayWatchState.update { it.copy(isLoading = false) }
+                    refresh()
+                }
+            }
+        }
         observeFeedPluginUpdates()
         observeTodayWatchPlugin()
         loadMore()
@@ -249,6 +268,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun markTodayWatchNotInterested(video: VideoItem) {
+        submitRecommendationDismiss(video)
         todayWatchCoordinator.markNotInterested(video)
         val state = _todayWatchState.value
 
@@ -276,8 +296,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun markRecommendNotInterested(video: VideoItem) {
         val nextSnapshot = feedController.dismiss(video) ?: return
+        todayWatchCoordinator.markNotInterested(video)
+        submitRecommendationDismiss(video)
         _recommendVideoItems.value = nextSnapshot.recommendVideoItems
         requestTodayWatchRebuild(forceReloadHistory = false)
+    }
+
+    private fun submitRecommendationDismiss(video: VideoItem) {
+        viewModelScope.launch {
+            com.bbttvv.app.data.repository.RecommendationFeedbackRepository.dismiss(getApplication(), video)
+                .onFailure { com.bbttvv.app.core.util.Logger.w("RecommendationFeedback", "Server feedback failed; local dismissal retained") }
+        }
     }
 
     fun primeVideoDetail(video: VideoItem) {

@@ -1,6 +1,8 @@
 // 文件路径: data/repository/VideoRepository.kt
 package com.bbttvv.app.data.repository
 
+import com.bbttvv.app.core.store.AccountSessionEpoch
+import kotlinx.coroutines.CancellationException
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.store.SettingsManager
 import com.bbttvv.app.data.model.response.*
@@ -29,7 +31,7 @@ internal fun shouldStartHomePreload(
 }
 
 internal fun shouldPrimeBuvidForHomePreload(feedApiType: SettingsManager.FeedApiType): Boolean {
-    return feedApiType == SettingsManager.FeedApiType.MOBILE
+    return feedApiType == SettingsManager.FeedApiType.MOBILE || feedApiType == SettingsManager.FeedApiType.MERGED
 }
 
 internal fun shouldReuseInFlightPreloadForHomeRequest(
@@ -373,17 +375,20 @@ object VideoRepository {
     }
 
     suspend fun getRelatedVideos(bvid: String): List<RelatedVideo> = withContext(Dispatchers.IO) {
+        val requestEpoch = AccountSessionEpoch.current()
         val cacheKey = bvid.trim()
         if (cacheKey.isBlank()) return@withContext emptyList()
         relatedVideosCache[cacheKey]?.let { return@withContext it }
-        val request = relatedVideosInFlight.computeIfAbsent(cacheKey) {
-            AppScope.ioScope.async { fetchAndCacheRelatedVideos(cacheKey) }
+        val request = relatedVideosInFlight.computeIfAbsent("$requestEpoch:$cacheKey") {
+            AppScope.ioScope.async { fetchAndCacheRelatedVideos(cacheKey, requestEpoch) }
         }
         try {
-            request.await()
+            request.await().also {
+                if (!AccountSessionEpoch.isCurrent(requestEpoch)) throw CancellationException("Account changed")
+            }
         } finally {
             if (request.isCompleted) {
-                relatedVideosInFlight.remove(cacheKey, request)
+                relatedVideosInFlight.remove("$requestEpoch:$cacheKey", request)
             }
         }
     }
@@ -393,7 +398,7 @@ object VideoRepository {
         if (
             cacheKey.isBlank() ||
             relatedVideosCache.containsKey(cacheKey) ||
-            relatedVideosInFlight.containsKey(cacheKey)
+            relatedVideosInFlight.containsKey("${AccountSessionEpoch.current()}:$cacheKey")
         ) {
             return
         }
@@ -403,25 +408,28 @@ object VideoRepository {
     }
 
     suspend fun getVideoInfo(bvid: String): VideoDetailResponse = withContext(Dispatchers.IO) {
+        val requestEpoch = AccountSessionEpoch.current()
         val cacheKey = bvid.trim()
         if (cacheKey.isBlank()) {
             return@withContext VideoDetailResponse(code = -400, message = "请求参数错误")
         }
         videoInfoCache[cacheKey]?.let { return@withContext it }
-        val request = videoInfoInFlight.computeIfAbsent(cacheKey) {
+        val request = videoInfoInFlight.computeIfAbsent("$requestEpoch:$cacheKey") {
             AppScope.ioScope.async {
                 requestVideoInfoWithWbiFallback(bvid = cacheKey) { api.getVideoInfo(cacheKey) }
             }
         }
         val response = try {
-            request.await()
+            request.await().also {
+                if (!AccountSessionEpoch.isCurrent(requestEpoch)) throw CancellationException("Account changed")
+            }
         } finally {
             if (request.isCompleted) {
-                videoInfoInFlight.remove(cacheKey, request)
+                videoInfoInFlight.remove("$requestEpoch:$cacheKey", request)
             }
         }
         if (response.code == 0 && response.data != null && cacheKey.isNotBlank()) {
-            videoInfoCache[cacheKey] = response
+            videoInfoCache.putForEpoch(cacheKey, response, requestEpoch)
         }
         response
     }
@@ -456,7 +464,7 @@ object VideoRepository {
 
     fun prefetchVideoInfo(bvid: String, scope: CoroutineScope = AppScope.ioScope) {
         val cacheKey = bvid.trim()
-        if (cacheKey.isBlank() || videoInfoCache.containsKey(cacheKey) || videoInfoInFlight.containsKey(cacheKey)) return
+        if (cacheKey.isBlank() || videoInfoCache.containsKey(cacheKey) || videoInfoInFlight.containsKey("${AccountSessionEpoch.current()}:$cacheKey")) return
         scope.launch {
             runCatching { getVideoInfo(cacheKey) }
         }
@@ -562,16 +570,17 @@ object VideoRepository {
         }
     }
 
-    private suspend fun fetchAndCacheRelatedVideos(cacheKey: String): List<RelatedVideo> {
+    private suspend fun fetchAndCacheRelatedVideos(cacheKey: String, requestEpoch: Long): List<RelatedVideo> {
         return safeApiCallOrDefault(
             default = emptyList(),
             tag = "VideoRepo",
             errorMessage = { "fetchAndCacheRelatedVideos failed: bvid=$cacheKey" }
         ) {
             val related = api.getRelatedVideos(cacheKey).data ?: emptyList()
+            if (!AccountSessionEpoch.isCurrent(requestEpoch)) throw CancellationException("Account changed")
             if (related.isNotEmpty()) {
-                relatedVideosCache[cacheKey] = related
-                related.forEach(::cacheVideoPreview)
+                relatedVideosCache.putForEpoch(cacheKey, related, requestEpoch)
+                related.forEach { video -> videoPreviewCache.putForEpoch(video.bvid.trim(), video.toPreviewViewInfo(), requestEpoch) }
             }
             related
         }

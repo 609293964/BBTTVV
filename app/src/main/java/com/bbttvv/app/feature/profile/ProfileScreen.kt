@@ -226,6 +226,7 @@ internal fun ProfileScreen(
                         onRemoveWatchLater = viewModel::removeWatchLater,
                         onSwitchAccount = { mid -> viewModel.switchAccount(mid) },
                         onRemoveStoredAccount = { mid -> viewModel.removeStoredAccount(mid) },
+                        onSelectRecommendationAccount = viewModel::selectRecommendationAccount,
                         onPrepareRelogin = {
                             selectedMenu = ProfileMenu.HISTORY
                             viewModel.logout(removeStoredAccount = false)
@@ -350,6 +351,7 @@ private fun LoggedInProfileLayout(
     onRemoveWatchLater: (VideoItem) -> Unit,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
+    onSelectRecommendationAccount: (Long?) -> Unit,
     onPrepareRelogin: () -> Unit
 ) {
     val profileFocusCoordinator = rememberProfileFocusCoordinator(
@@ -449,6 +451,7 @@ private fun LoggedInProfileLayout(
             onRemoveWatchLater = onRemoveWatchLater,
             onSwitchAccount = onSwitchAccount,
             onRemoveStoredAccount = onRemoveStoredAccount,
+            onSelectRecommendationAccount = onSelectRecommendationAccount,
             onPrepareRelogin = onPrepareRelogin,
             focusCoordinator = focusCoordinator,
             focusTab = focusTab,
@@ -482,6 +485,7 @@ private fun ProfileContentPanel(
     onRemoveWatchLater: (VideoItem) -> Unit,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
+    onSelectRecommendationAccount: (Long?) -> Unit,
     onPrepareRelogin: () -> Unit,
     focusCoordinator: HomeFocusCoordinator?,
     focusTab: AppTopLevelTab?,
@@ -581,9 +585,11 @@ private fun ProfileContentPanel(
                 )
                 ProfileMenu.SWITCH_ACCOUNT -> SwitchAccountPanel(
                     accounts = uiState.storedAccounts,
+                    recommendationAccountMid = uiState.recommendationAccountMid,
                     activeAccountMid = uiState.activeAccountMid,
                     onSwitchAccount = onSwitchAccount,
                     onRemoveStoredAccount = onRemoveStoredAccount,
+                    onSelectRecommendationAccount = onSelectRecommendationAccount,
                     onPrepareRelogin = onPrepareRelogin,
                     focusCoordinator = focusCoordinator,
                     focusTab = focusTab

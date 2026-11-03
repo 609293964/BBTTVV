@@ -40,7 +40,6 @@ internal fun PlayerOptionsPanel(
     title: String,
     options: List<PanelOption>,
     selectedIndex: Int,
-    visualEffectsState: PlayerVisualEffectsState,
     optionFocusRequesters: List<FocusRequester>,
     layout: PlayerPanelLayout = PlayerPanelLayout.Floating,
     modifier: Modifier = Modifier,
@@ -85,17 +84,16 @@ internal fun PlayerOptionsPanel(
         modifier = modifier
             .width(panelWidth)
     ) {
-        // 1. 隔离的背景层：只负责模糊与背景填充
+        // 静态背景层，避免视频 Surface 上额外的离屏渲染。
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .clip(RoundedCornerShape(panelCorner))
-                .playerPanelSurfaceEffect(visualEffectsState)
                 .background(panelBgColor)
                 .border(1.dp, panelBorderColor, RoundedCornerShape(panelCorner))
         )
 
-        // 2. 清晰的前景层：负责展示内容，完全不受模糊影响
+        // 前景内容层。
         androidx.compose.foundation.layout.Column(
             modifier = Modifier
                 .fillMaxWidth()

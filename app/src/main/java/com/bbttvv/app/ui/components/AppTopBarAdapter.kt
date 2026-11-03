@@ -11,14 +11,18 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bbttvv.app.databinding.ItemAppTopTabBinding
 
 internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewHolder>() {
-    private val tabs = ArrayList<AppTopLevelTab>()
+    private val tabs = ArrayList<AppTopBarEntry>()
     private var selectedTab: AppTopLevelTab? = null
     private var updateSelectedTabOnFocus: Boolean = true
-    private val directionalSelectionTracker = AppTopBarDirectionalSelectionTracker()
+    private var pendingDirectionalId: Long? = null
+    private var selectedCategoryIndex = 0
+    private var onCategorySelected: (Int) -> Unit = {}
     private var onTabSelected: (AppTopLevelTab) -> Unit = {}
     private var onSelectedTabConfirmed: (AppTopLevelTab) -> Unit = {}
     private var onDpadDown: () -> Boolean = { false }
     private var onTopBarFocused: () -> Unit = {}
+    private var onDpadLeft: () -> Boolean = { false }
+    private var onDpadRight: () -> Boolean = { false }
     private var themeColors = AppTopBarThemeColors.Dark
 
     fun setThemeColors(colors: AppTopBarThemeColors) {
@@ -59,22 +63,31 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
         onTabSelected: (AppTopLevelTab) -> Unit,
         onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
         onDpadDown: () -> Boolean,
-        onTopBarFocused: () -> Unit
+        onTopBarFocused: () -> Unit,
+        onDpadLeft: () -> Boolean = { false },
+        onDpadRight: () -> Boolean = { false },
     ) {
         this.updateSelectedTabOnFocus = updateSelectedTabOnFocus
         if (!updateSelectedTabOnFocus) {
-            directionalSelectionTracker.clear()
+            pendingDirectionalId = null
         }
         this.onTabSelected = onTabSelected
         this.onSelectedTabConfirmed = onSelectedTabConfirmed
         this.onDpadDown = onDpadDown
         this.onTopBarFocused = onTopBarFocused
+        this.onDpadLeft = onDpadLeft
+        this.onDpadRight = onDpadRight
     }
 
     fun submitTabs(
-        newTabs: List<AppTopLevelTab>,
-        newSelectedTab: AppTopLevelTab?
+        newTabs: List<AppTopBarEntry>,
+        newSelectedTab: AppTopLevelTab?,
+        categoryIndex: Int = 0,
+        onCategorySelected: (Int) -> Unit = {},
     ) {
+        this.onCategorySelected = onCategorySelected
+        val previousCategoryIndex = selectedCategoryIndex
+        selectedCategoryIndex = categoryIndex
         val tabsChanged = tabs != newTabs
         if (tabsChanged) {
             val previousTabs = tabs.toList()
@@ -85,7 +98,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                     newTabs = newTabs,
                 )
             )
-            directionalSelectionTracker.clear()
+            pendingDirectionalId = null
             tabs.clear()
             tabs.addAll(newTabs)
             selectedTab = newSelectedTab
@@ -97,31 +110,35 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             return
         }
 
-        if (selectedTab == newSelectedTab) return
+        if (selectedTab == newSelectedTab && previousCategoryIndex == categoryIndex) return
         val previous = selectedTab
         selectedTab = newSelectedTab
-        notifyTabChanged(previous)
-        notifyTabChanged(newSelectedTab)
+        tabs.indices.filter { tabs[it].tab == previous || tabs[it].tab == newSelectedTab }.forEach { notifyItemChanged(it, TabSelectionPayload) }
     }
 
     fun positionOf(tab: AppTopLevelTab?): Int {
         if (tab == null) return RecyclerView.NO_POSITION
-        return tabs.indexOf(tab).takeIf { it >= 0 } ?: RecyclerView.NO_POSITION
+        return tabs.indexOfFirst { it.tab == tab && (it.categoryIndex == null || it.categoryIndex == selectedCategoryIndex) }.takeIf { it >= 0 } ?: RecyclerView.NO_POSITION
     }
 
     fun currentSelectedTab(): AppTopLevelTab? = selectedTab
 
     fun cancelPendingDirectionalSelection() {
-        directionalSelectionTracker.clear()
+        pendingDirectionalId = null
     }
 
     fun focusTargetOrFallback(tab: AppTopLevelTab?): AppTopLevelTab? {
-        return tab?.takeIf { it in tabs }
-            ?: selectedTab?.takeIf { it in tabs }
-            ?: tabs.firstOrNull()
+        return tab?.takeIf { tabs.any { entry -> entry.tab == it } }
+            ?: selectedTab?.takeIf { tabs.any { entry -> entry.tab == it } }
+            ?: tabs.firstOrNull()?.tab
     }
 
-    private fun select(tab: AppTopLevelTab) {
+    private fun select(entry: AppTopBarEntry) {
+        val tab = entry.tab
+        if (entry.categoryIndex != null) {
+            onCategorySelected(entry.categoryIndex)
+            return
+        }
         if (selectedTab == tab) {
             onSelectedTabConfirmed(tab)
             return
@@ -145,7 +162,9 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
     inner class TabViewHolder(
         private val binding: ItemAppTopTabBinding
     ) : RecyclerView.ViewHolder(binding.root) {
-        private var boundTab: AppTopLevelTab? = null
+        private var boundEntry: AppTopBarEntry? = null
+        private val boundTab: AppTopLevelTab? get() = boundEntry?.tab
+        private fun isSelected(): Boolean = boundEntry?.let { it.tab == selectedTab && (it.categoryIndex == null || it.categoryIndex == selectedCategoryIndex) } == true
 
         init {
             binding.root.isFocusable = true
@@ -153,7 +172,7 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             binding.root.isClickable = true
 
             binding.root.setOnClickListener {
-                boundTab?.let(::select)
+                boundEntry?.let(::select)
             }
 
             binding.root.setOnFocusChangeListener { _, hasFocus ->
@@ -164,24 +183,21 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                     // a visible second cursor for a frame. Clear it synchronously instead.
                     val hideStaleSelectedVisual =
                         updateSelectedTabOnFocus &&
-                            boundTab == selectedTab &&
-                            directionalSelectionTracker.hasPendingTarget()
+                            isSelected() &&
+                            pendingDirectionalId != null
                     updateVisual(
-                        selectedOverride = resolveTopBarSelectedVisual(
-                            boundTab = boundTab,
-                            selectedTab = selectedTab,
-                            hideStaleSelectedVisual = hideStaleSelectedVisual,
-                        ),
+                        selectedOverride = isSelected() && !hideStaleSelectedVisual,
                     )
                     return@setOnFocusChangeListener
                 }
 
                 updateVisual()
                 onTopBarFocused()
-                val tab = boundTab ?: return@setOnFocusChangeListener
-                val selectFromDirectionalFocus = directionalSelectionTracker.consume(tab)
-                if (updateSelectedTabOnFocus && selectFromDirectionalFocus && tab != selectedTab) {
-                    select(tab)
+                val entry = boundEntry ?: return@setOnFocusChangeListener
+                val selectFromDirectionalFocus = pendingDirectionalId == entry.stableId
+                pendingDirectionalId = null
+                if (updateSelectedTabOnFocus && selectFromDirectionalFocus && !isSelected()) {
+                    select(entry)
                 }
             }
 
@@ -191,25 +207,30 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                 }
                 when (keyCode) {
                     KeyEvent.KEYCODE_DPAD_UP -> {
-                        directionalSelectionTracker.clear()
+                        if (themeColors.sidebar) return@setOnKeyListener moveSidebar(-1)
+                        pendingDirectionalId = null
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        directionalSelectionTracker.clear()
+                        if (themeColors.sidebar) return@setOnKeyListener moveSidebar(1)
+                        pendingDirectionalId = null
                         onDpadDown()
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (themeColors.sidebar) return@setOnKeyListener true
                         val position = bindingAdapterPosition
                         val target = tabs.getOrNull(position - 1)
                         if (target == null) {
-                            directionalSelectionTracker.clear()
+                            pendingDirectionalId = null
+                            onDpadLeft()
                             true
                         } else {
-                            directionalSelectionTracker.expect(target)
+                            pendingDirectionalId = target.stableId
                             false
                         }
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (themeColors.sidebar) return@setOnKeyListener onDpadRight()
                         val position = bindingAdapterPosition
                         val target = if (position == RecyclerView.NO_POSITION) {
                             null
@@ -217,25 +238,26 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
                             tabs.getOrNull(position + 1)
                         }
                         if (target == null) {
-                            directionalSelectionTracker.clear()
+                            pendingDirectionalId = null
                             true
                         } else {
-                            directionalSelectionTracker.expect(target)
+                            pendingDirectionalId = target.stableId
                             false
                         }
                     }
                     else -> {
-                        directionalSelectionTracker.clear()
+                        pendingDirectionalId = null
                         false
                     }
                 }
             }
         }
 
-        fun bind(tab: AppTopLevelTab) {
-            boundTab = tab
-            binding.tvLabel.text = tab.title
-            binding.root.contentDescription = tab.title
+        fun bind(entry: AppTopBarEntry) {
+            boundEntry = entry
+            val tab = entry.tab
+            binding.tvLabel.text = if (themeColors.sidebar) sidebarLabel(tab) else entry.label
+            binding.root.contentDescription = if (themeColors.sidebar) sidebarLabel(tab) else entry.label
             updateVisual()
         }
 
@@ -243,10 +265,11 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             updateVisual()
         }
 
-        private fun updateVisual(selectedOverride: Boolean = boundTab == selectedTab) {
+        private fun updateVisual(selectedOverride: Boolean = isSelected()) {
             val selected = selectedOverride
             val focused = binding.root.isFocused
             val scale = when {
+                themeColors.underline || themeColors.sidebar -> 1f
                 focused -> 1.06f
                 selected -> 1.03f
                 else -> 1f
@@ -256,16 +279,64 @@ internal class AppTopBarAdapter : RecyclerView.Adapter<AppTopBarAdapter.TabViewH
             binding.root.scaleX = scale
             binding.root.scaleY = scale
 
-            val cardColor = if (focused) themeColors.focusContainer else android.graphics.Color.TRANSPARENT
+            val cardColor = when {
+                themeColors.sidebar && (selected || focused) -> 0xFFFFFFFF.toInt()
+                themeColors.underline -> android.graphics.Color.TRANSPARENT
+                focused -> themeColors.focusContainer
+                else -> android.graphics.Color.TRANSPARENT
+            }
             binding.root.setCardBackgroundColor(cardColor)
+            if (themeColors.underline) {
+                // MaterialCardView also paints a state foreground/ripple independently
+                // of its background; keep the flat text-and-underline header unfilled.
+                val transparent = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+                binding.root.setCardForegroundColor(transparent)
+                binding.root.setRippleColor(transparent)
+            }
+            binding.root.strokeWidth = if (themeColors.sidebar && focused) binding.root.dp(2) else 0
+            binding.vIndicator.setBackgroundColor(themeColors.accent)
+            binding.root.setStrokeColor(themeColors.accent)
+            binding.vIndicator.visibility = if (themeColors.underline && selected) View.VISIBLE else View.GONE
+            if (themeColors.sidebar) {
+                binding.tvLabel.text = boundTab?.let(::sidebarLabel)
+                binding.tvLabel.minWidth = binding.root.dp(92)
+                binding.tvLabel.textSize = 14f
+                binding.tvLabel.setPadding(binding.root.dp(12), binding.root.dp(12), binding.root.dp(12), binding.root.dp(12))
+                val icon = when (boundTab) {
+                    AppTopLevelTab.SEARCH -> android.R.drawable.ic_menu_search
+                    AppTopLevelTab.RECOMMEND -> android.R.drawable.ic_media_play
+                    AppTopLevelTab.LIVE -> android.R.drawable.ic_menu_slideshow
+                    AppTopLevelTab.DYNAMIC -> android.R.drawable.ic_menu_myplaces
+                    AppTopLevelTab.WATCH_LATER -> android.R.drawable.ic_menu_recent_history
+                    AppTopLevelTab.TODAY_WATCH -> android.R.drawable.ic_menu_today
+                    else -> android.R.drawable.ic_menu_manage
+                }
+                val drawable = androidx.core.content.ContextCompat.getDrawable(binding.root.context, icon)?.mutate()
+                drawable?.setTint(if (selected || focused) 0xFF18191C.toInt() else themeColors.content)
+                drawable?.setBounds(0, 0, binding.root.dp(18), binding.root.dp(18))
+                binding.tvLabel.setCompoundDrawables(drawable, null, null, null)
+                binding.tvLabel.compoundDrawablePadding = binding.root.dp(10)
+            }
 
             val textColor = when {
+                (themeColors.underline || themeColors.sidebar) && (focused || selected) -> 0xFF18191C.toInt()
                 focused -> themeColors.focusContent
                 selected -> themeColors.selectedContent
                 else -> themeColors.content
             }
             binding.tvLabel.setTextColor(textColor)
-            binding.tvLabel.typeface = topBarTypeface(if (selected || focused) 600 else 500)
+            binding.tvLabel.typeface = topBarTypeface(
+                if ((themeColors.underline || themeColors.sidebar) && (selected || focused)) 700
+                else if (selected || focused) 600 else 500
+            )
+        }
+
+        private fun moveSidebar(delta: Int): Boolean {
+            val position = bindingAdapterPosition
+            val target = tabs.getOrNull(position + delta) ?: return true
+            // Only an explicit directional move selects a different module.
+            pendingDirectionalId = target.stableId
+            return false
         }
     }
 
@@ -296,6 +367,9 @@ internal data class AppTopBarThemeColors(
     val focusContent: Int,
     val selectedContent: Int,
     val content: Int,
+    val underline: Boolean = false,
+    val sidebar: Boolean = false,
+    val accent: Int = 0xFFFB7299.toInt(),
 ) {
     companion object {
         val Dark = AppTopBarThemeColors(
@@ -307,9 +381,12 @@ internal data class AppTopBarThemeColors(
     }
 }
 
+private fun sidebarLabel(tab: AppTopLevelTab): String =
+    if (tab == AppTopLevelTab.RECOMMEND) "视频" else tab.title
+
 private class AppTopBarDiffCallback(
-    private val oldTabs: List<AppTopLevelTab>,
-    private val newTabs: List<AppTopLevelTab>,
+    private val oldTabs: List<AppTopBarEntry>,
+    private val newTabs: List<AppTopBarEntry>,
 ) : DiffUtil.Callback() {
     override fun getOldListSize(): Int = oldTabs.size
 
@@ -323,3 +400,21 @@ private class AppTopBarDiffCallback(
         return oldTabs[oldItemPosition] == newTabs[newItemPosition]
     }
 }
+
+internal data class AppTopBarEntry(
+    val tab: AppTopLevelTab,
+    val label: String = tab.title,
+    val categoryIndex: Int? = null,
+    val categoryKey: Long? = null,
+) {
+    val stableId: Long get() = if (categoryKey == null || categoryKey == 0L) tab.stableId else 10000L + categoryKey
+}
+
+internal data class AppTopBarCategory(val label: String, val key: Long)
+
+internal fun homeHeaderEntries(tabs: List<AppTopLevelTab>, categories: List<AppTopBarCategory>): List<AppTopBarEntry> =
+    tabs.flatMap { tab ->
+        if (tab == AppTopLevelTab.POPULAR && categories.isNotEmpty()) {
+            categories.mapIndexed { index, category -> AppTopBarEntry(tab, category.label, index, category.key) }
+        } else listOf(AppTopBarEntry(tab))
+    }

@@ -2,12 +2,14 @@ package com.bbttvv.app.data.repository
 
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiRequestSigner
+import com.bbttvv.app.core.util.runSuspendCatching
 import com.bbttvv.app.core.util.safeApiCall
 import com.bbttvv.app.data.model.response.HotItem
 import com.bbttvv.app.data.model.response.SearchArticleItem
 import com.bbttvv.app.data.model.response.VideoItem
 import com.bbttvv.app.data.model.response.SearchUpItem
 import com.bbttvv.app.data.model.response.LiveRoomSearchItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -63,7 +65,7 @@ object SearchRepository {
                     "SearchRepo",
                     "search(video) primary api failed: code=${response.code}, msg=${response.message}, fallback=all/v2"
                 )
-                return@withContext searchVideoFallback(keyword = keyword, page = page)
+                return@withContext searchVideoFallback(keyword = keyword, page = page, order = order, duration = duration, tids = tids)
             }
             
             val videoList = response.data?.result
@@ -73,12 +75,13 @@ object SearchRepository {
                 hasSessionCookie = !com.bbttvv.app.core.store.TokenManager.sessDataCache.isNullOrEmpty(),
                 hasAccessToken = !com.bbttvv.app.core.store.TokenManager.accessTokenCache.isNullOrEmpty()
             )
-            if (shouldFallbackGuestVideoSearch(isLoggedIn = isLoggedIn, page = page, primaryResultCount = videoList.size)) {
+            if (order == SearchOrder.TOTALRANK && duration == SearchDuration.ALL && tids == 0 &&
+                shouldFallbackGuestVideoSearch(isLoggedIn = isLoggedIn, page = page, primaryResultCount = videoList.size)) {
                 com.bbttvv.app.core.util.Logger.d(
                     "SearchRepo",
                     " search(video) guest primary result empty, fallback=all/v2"
                 )
-                return@withContext searchVideoFallback(keyword = keyword, page = page)
+                return@withContext searchVideoFallback(keyword = keyword, page = page, order = order, duration = duration, tids = tids)
             }
             val resolvedPage = resolveSearchLoadedPage(
                 requestedPage = page,
@@ -97,13 +100,15 @@ object SearchRepository {
             )
 
             Result.success(Pair(videoList, pageInfo))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             com.bbttvv.app.core.util.Logger.e(
                 "SearchRepo",
                 "search(video) primary api exception, fallback=all/v2",
                 e
             )
-            searchVideoFallback(keyword = keyword, page = page)
+            searchVideoFallback(keyword = keyword, page = page, order = order, duration = duration, tids = tids)
         }
     }
     
@@ -144,11 +149,6 @@ object SearchRepository {
                 ?.map { it.cleanupFields() }
                 ?: emptyList()
 
-            if (upList.isEmpty()) {
-                com.bbttvv.app.core.util.Logger.d("SearchRepo", "UP Search returned empty, falling back to searchAll")
-                return@withContext searchUpFallback(keyword, page)
-            }
-
             val resolvedPage = resolveSearchLoadedPage(
                 requestedPage = page,
                 responsePage = response.data?.page ?: page
@@ -166,9 +166,13 @@ object SearchRepository {
             )
 
             Result.success(Pair(upList, pageInfo))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             com.bbttvv.app.core.util.Logger.e("SearchRepo", "UP Search failed", e)
-            searchUpFallback(keyword, page)
+            if (order != SearchUpOrder.DEFAULT || orderSort != SearchOrderSort.DESC || userType != SearchUserType.ALL) {
+                Result.failure(e)
+            } else searchUpFallback(keyword, page)
         }
     }
 
@@ -178,6 +182,7 @@ object SearchRepository {
             errorMessage = { "searchUpFallback failed: keyword=$keyword, page=$page" }
         ) {
             val response = api.searchAll(mapOf("keyword" to keyword, "page" to page.toString()))
+            if (response.code != 0) throw createSearchError(response.code, response.message)
             val upItems = mutableListOf<SearchUpItem>()
             var foundResultCount = 0
             
@@ -450,36 +455,21 @@ object SearchRepository {
 
     //  获取搜索发现 (个性化 + 官方热搜兜底)
     suspend fun getSearchDiscover(historyKeywords: List<String>): Result<Pair<String, List<String>>> = withContext(Dispatchers.IO) {
-        try {
-            // 1. 个性化推荐：尝试使用最近的搜索词进行联想
-            if (historyKeywords.isNotEmpty()) {
-                val lastKeyword = historyKeywords.firstOrNull()
-                if (!lastKeyword.isNullOrBlank()) {
-                    val response = api.getSearchSuggest(lastKeyword)
-                    val suggestions = response.result?.tag?.map { it.value }?.filter { it != lastKeyword }?.take(10)
-                    
-                    if (!suggestions.isNullOrEmpty()) {
-                        return@withContext Result.success("大家都在搜 \"$lastKeyword\" 相关" to suggestions)
-                    }
-                }
+        val lastKeyword = historyKeywords.firstOrNull()?.takeIf { it.isNotBlank() }
+        if (lastKeyword != null) {
+            val suggestions = runSuspendCatching { api.getSearchSuggest(lastKeyword) }.getOrNull()
+                ?.result?.tag?.map { it.value }?.filter { it != lastKeyword }?.take(10).orEmpty()
+            if (suggestions.isNotEmpty()) {
+                return@withContext Result.success("大家都在搜 \"$lastKeyword\" 相关" to suggestions)
             }
-            
-            // 2. 官方推荐：使用热搜词乱序 (模拟官方推荐流)
-            val hotResponse = api.getHotSearch()
-            val hotList = hotResponse.data?.trending?.list?.map { it.show_name }?.shuffled()?.take(10) ?: emptyList()
-            
-            if (hotList.isNotEmpty()) {
-                return@withContext Result.success(" 热门推荐" to hotList)
-            }
-            
-            // 3. 静态兜底
-            Result.success("搜索发现" to listOf("黑神话悟空", "原神", "初音未来", "JOJO", "罗翔说刑法", "何同学", "毕业季", "猫咪", "我的世界", "战鹰"))
-        } catch (e: Exception) {
-            com.bbttvv.app.core.util.Logger.e("SearchRepo", "getSearchDiscover failed, using static fallback", e)
-            // 发生异常时的最后兜底
-            Result.success("搜索发现" to listOf("黑神话悟空", "原神", "初音未来", "JOJO", "罗翔说刑法", "何同学", "毕业季", "猫咪", "我的世界", "战鹰"))
         }
+        val hotList = runSuspendCatching { api.getHotSearch() }.getOrNull()
+            ?.data?.trending?.list?.map { it.show_name }?.shuffled()?.take(10).orEmpty()
+        if (hotList.isNotEmpty()) return@withContext Result.success("热门推荐" to hotList)
+        Result.success("搜索发现（离线）" to offlineSearchKeywords)
     }
+
+    private val offlineSearchKeywords = listOf("黑神话悟空", "原神", "初音未来", "JOJO", "罗翔说刑法", "何同学", "毕业季", "猫咪", "我的世界", "战鹰")
 
     private suspend fun signWithWbi(params: Map<String, String>): Map<String, String> {
         return WbiRequestSigner.signOrUnsigned(params, logTag = "SearchRepo")
@@ -487,8 +477,14 @@ object SearchRepository {
 
     private suspend fun searchVideoFallback(
         keyword: String,
-        page: Int
+        page: Int,
+        order: SearchOrder,
+        duration: SearchDuration,
+        tids: Int
     ): Result<Pair<List<VideoItem>, SearchPageInfo>> {
+        if (order != SearchOrder.TOTALRANK || duration != SearchDuration.ALL || tids != 0) {
+            return Result.failure(IllegalStateException("备用搜索不支持当前排序或筛选，请重试"))
+        }
         return withContext(Dispatchers.IO) {
             safeApiCall(
                 tag = "SearchRepo",
@@ -501,6 +497,7 @@ object SearchRepository {
                     )
                 )
 
+                if (response.code != 0) throw createSearchError(response.code, response.message)
                 val rawData = response.data?.result
                     ?.firstOrNull { it.result_type == "video" }
                     ?.data

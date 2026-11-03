@@ -12,6 +12,7 @@ import com.bbttvv.app.core.plugin.RecommendationMode
 import com.bbttvv.app.core.plugin.RecommendationPluginApi
 import com.bbttvv.app.core.plugin.RecommendationRequest
 import com.bbttvv.app.core.plugin.RecommendationResult
+import com.bbttvv.app.core.plugin.RecommendationStrategy
 import com.bbttvv.app.core.plugin.RecommendedVideo
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.store.TodayWatchFeedbackStore
@@ -22,6 +23,8 @@ import com.bbttvv.app.ui.home.TodayWatchMode
 import com.bbttvv.app.ui.home.TodayWatchPenaltySignals
 import com.bbttvv.app.ui.home.buildTodayWatchPlan
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +48,8 @@ data class TodayWatchPluginConfig(
     val queuePreviewLimit: Int = 8,
     val historySampleLimit: Int = 120,
     val showReasonHint: Boolean = true,
-    val refreshTriggerToken: Long = 0L
+    val refreshTriggerToken: Long = 0L,
+    val strategy: RecommendationStrategy = RecommendationStrategy.BALANCED,
 )
 
 class TodayWatchPlugin : RecommendationPluginApi {
@@ -75,7 +79,7 @@ class TodayWatchPlugin : RecommendationPluginApi {
     val configState: StateFlow<TodayWatchPluginConfig> = _configState.asStateFlow()
 
     override suspend fun onEnable() {
-        loadConfigFromStore()
+        withContext(Dispatchers.IO) { loadConfigFromStore() }
     }
 
     override suspend fun onDisable() {
@@ -97,17 +101,17 @@ class TodayWatchPlugin : RecommendationPluginApi {
                 dislikedBvids = request.feedbackSignals.dislikedBvids,
                 dislikedCreatorMids = request.feedbackSignals.dislikedCreatorMids,
                 dislikedKeywords = request.feedbackSignals.dislikedKeywords
-            )
+            ),
+            strategy = request.strategy,
         )
-        val queueSize = plan.videoQueue.size.coerceAtLeast(1)
         return RecommendationResult(
             sourcePluginId = id,
             mode = request.mode,
-            items = plan.videoQueue.mapIndexed { index, video ->
+            items = plan.videoQueue.map { video ->
                 RecommendedVideo(
                     video = video,
-                    score = (queueSize - index).toDouble(),
-                    confidence = 1f - (index.toFloat() / (queueSize * 2f)),
+                    score = plan.scoreByBvid[video.bvid] ?: 0.0,
+                    confidence = plan.confidenceByBvid[video.bvid] ?: 0f,
                     explanation = plan.explanationByBvid[video.bvid].orEmpty(),
                     actions = listOf(
                         RecommendationAction(
@@ -127,7 +131,8 @@ class TodayWatchPlugin : RecommendationPluginApi {
                             id = rank.mid.toString(),
                             title = rank.name,
                             subtitle = "${rank.watchCount} 次观看",
-                            score = rank.score
+                            score = rank.score,
+                            watchCount = rank.watchCount,
                         )
                     }
                 )
@@ -140,6 +145,10 @@ class TodayWatchPlugin : RecommendationPluginApi {
 
     fun setCurrentMode(mode: TodayWatchMode) {
         persistConfig(_configState.value.copy(currentMode = mode))
+    }
+
+    fun setStrategy(strategy: RecommendationStrategy) {
+        persistConfig(_configState.value.copy(strategy = strategy))
     }
 
     fun setQueueBuildLimit(limit: Int) {

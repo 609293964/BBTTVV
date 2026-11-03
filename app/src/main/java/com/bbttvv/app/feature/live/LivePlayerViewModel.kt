@@ -17,7 +17,6 @@ import com.bbttvv.app.core.util.CrashReporter
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.core.util.preferHttpsUrl
 import com.bbttvv.app.data.model.response.LivePlayUrlData
-import com.bbttvv.app.data.model.response.LiveQuality
 import com.bbttvv.app.data.model.response.LiveRoomDetailData
 import com.bbttvv.app.data.repository.DanmakuRepository
 import com.bbttvv.app.data.repository.LiveRepository
@@ -48,11 +47,6 @@ private const val LIVE_DANMAKU_SHOW_LEAD_MS = 220L
 private const val LIVE_DANMAKU_MIN_GAP_MS = 70L
 private const val LIVE_STATUS_AUTO_CLEAR_MS = 1_800L
 private const val LIVE_PLAYER_CORE_MEDIA3_KEY = "media3"
-
-data class LiveQualityOption(
-    val qn: Int,
-    val label: String,
-)
 
 data class LiveLineOption(
     val key: String,
@@ -989,6 +983,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
             preferHighBitrate = LiveBitrateBoostMode.fromKey(_uiState.value.bitrateModeKey).isEnabled,
             cdnPreference = resolvePlayerCdnPreference(),
             preferCompatibleCodec = preferCompatibleCodec,
+            currentQualityKey = _uiState.value.selectedQuality,
         )
         if (nextCandidate != null) {
             val stream = buildStreamLoadResultForCandidate(nextCandidate)
@@ -1113,10 +1108,11 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         preferredLineKey: String?,
         preferHighBitrate: Boolean,
     ): Result<LiveStreamLoadResult> = withContext(Dispatchers.IO) {
-        val dataResult = LiveRepository.getLivePlayUrlWithQuality(roomId = roomId, qn = preferredQuality)
+        val dataResult = LiveRepository.getLivePlayUrlWithQuality(roomId = roomId, qn = liveQualityQn(preferredQuality))
         dataResult.mapCatching { data ->
             resolveStreamLoadResult(
                 data = data,
+                requestedKey = preferredQuality,
                 preferredLineKey = preferredLineKey,
                 preferHighBitrate = preferHighBitrate
             )
@@ -1125,15 +1121,16 @@ class LivePlayerViewModel : BasePlayerViewModel() {
 
     private fun resolveStreamLoadResult(
         data: LivePlayUrlData,
+        requestedKey: Int,
         preferredLineKey: String?,
         preferHighBitrate: Boolean,
     ): LiveStreamLoadResult {
-        val qualityOptions = resolveQualityOptions(data)
-        val selectedQuality = resolveSelectedQuality(data, qualityOptions)
+        val candidates = resolveStreamCandidates(data)
+        val qualityOptions = resolveQualityOptions(data, candidates)
+        val selectedQuality = requestedKey
         val selectedQualityLabel = qualityOptions.firstOrNull { it.qn == selectedQuality }?.label
             ?: selectedQuality.takeIf { it > 0 }?.toString()
             ?: "自动"
-        val candidates = resolveStreamCandidates(data)
         return buildStreamLoadResultFromCandidates(
             candidates = candidates,
             qualityOptions = qualityOptions,
@@ -1155,7 +1152,7 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         if (candidates.isEmpty()) return null
         val lineOptions = resolveLineOptions(candidates)
         val selectedCandidate = selectStreamCandidate(
-            candidates = candidates,
+            candidates = scopeLiveVariants(candidates, selectedQuality),
             preferredLineKey = preferredLineKey,
             preferHighBitrate = preferHighBitrate
         ) ?: return null
@@ -1184,15 +1181,22 @@ class LivePlayerViewModel : BasePlayerViewModel() {
     }
 
     private fun resolveStreamCandidates(data: LivePlayUrlData): List<LiveStreamCandidate> {
+        val hdrCapabilities = mutableMapOf<Pair<Int, String>, Boolean>()
         val playInfoCandidates = buildList {
             data.playurl_info?.playurl?.stream.orEmpty().forEach { stream ->
                 stream.format.orEmpty().forEach { format ->
-                    format.codec.orEmpty().forEach { codec ->
-                        if (format.formatName == "flv" && codec.codecName.lowercase() == "hevc") return@forEach
-                        codec.url_info.orEmpty().forEach { urlInfo ->
+                    format.codec.orEmpty().forEach codecLoop@ { codec ->
+                        val hdrSupported = codec.hdrType != 0 && hdrCapabilities.getOrPut(codec.eotf to codec.codecs) {
+                            NetworkModule.appContext?.let {
+                                com.bbttvv.app.core.util.MediaUtils.isLiveHdrSupported(it, codec.eotf, codec.codecs)
+                            } == true
+                        }
+                        if (!isPlayableLiveVariant(format.formatName, codec.codecName,
+                                codec.hdrType, codec.eotf, hdrSupported, stream.protocolName)) return@codecLoop
+                        codec.url_info.orEmpty().forEach urlLoop@ { urlInfo ->
                             val host = urlInfo.host.trim()
                             val url = preferHttpsUrl(host + codec.baseUrl + urlInfo.extra)
-                            if (url.isBlank()) return@forEach
+                            if (url.isBlank()) return@urlLoop
                             val hostLabel = host
                                 .removePrefix("https://")
                                 .removePrefix("http://")
@@ -1205,6 +1209,8 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                                         stream.protocolName,
                                         format.formatName,
                                         codec.codecName,
+                                        codec.hdrType.toString(),
+                                        codec.eotf.toString(),
                                         hostLabel,
                                         codec.baseUrl
                                     ).joinToString("|"),
@@ -1220,7 +1226,12 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                                     currentQn = codec.currentQn,
                                     host = host,
                                     hostLabel = hostLabel,
-                                    url = url
+                                    url = url,
+                                    hdrType = codec.hdrType,
+                                    eotf = codec.eotf,
+                                    codecs = codec.codecs,
+                                    acceptedQns = (codec.acceptQn.orEmpty() + codec.currentQn +
+                                        listOfNotNull(codec.hdrQn.takeIf { codec.hdrType != 0 && it > 0 })).distinct(),
                                 )
                             )
                         }
@@ -1249,7 +1260,9 @@ class LivePlayerViewModel : BasePlayerViewModel() {
                         currentQn = data.current_quality,
                         host = url,
                         hostLabel = "legacy",
-                        url = url
+                        url = url,
+                        acceptedQns = data.quality_description.orEmpty()
+                            .filter { it.hdrType == 0 && it.eotf == 0 }.map { it.qn },
                     )
                 }
             }
@@ -1287,59 +1300,16 @@ class LivePlayerViewModel : BasePlayerViewModel() {
         )
     }
 
-    private fun resolveQualityOptions(data: LivePlayUrlData): List<LiveQualityOption> {
-        val supportedQns = mutableSetOf<Int>()
-        data.playurl_info?.playurl?.stream?.forEach { stream ->
-            stream.format?.forEach { format ->
-                format.codec?.forEach { codec ->
-                    codec.acceptQn?.let { supportedQns.addAll(it) }
-                }
-            }
-        }
-
-        var options = (data.quality_description.orEmpty() + data.playurl_info?.playurl?.gQnDesc.orEmpty())
-            .filter { it.qn > 0 }
-            .distinctBy { it.qn }
-
-        if (supportedQns.isNotEmpty()) {
-            options = options.filter { supportedQns.contains(it.qn) }
-        }
-
-        return options.sortedByDescending { it.qn }
-            .map { quality ->
-                LiveQualityOption(
-                    qn = quality.qn,
-                    label = quality.desc.ifBlank { fallbackQualityLabel(quality) }
-                )
-            }
-    }
-
-    private fun resolveSelectedQuality(
+    private fun resolveQualityOptions(
         data: LivePlayUrlData,
-        options: List<LiveQualityOption>,
-    ): Int {
-        val fromResponse = data.current_quality.takeIf { it > 0 }
-        if (fromResponse != null) return fromResponse
-
-        val fromCodec = data.playurl_info?.playurl?.stream
-            ?.flatMap { it.format.orEmpty() }
-            ?.flatMap { it.codec.orEmpty() }
-            ?.firstOrNull { it.currentQn > 0 }
-            ?.currentQn
-        if (fromCodec != null && fromCodec > 0) return fromCodec
-
-        return options.firstOrNull()?.qn ?: 0
-    }
-
-    private fun fallbackQualityLabel(quality: LiveQuality): String {
-        return when (quality.qn) {
-            80 -> "流畅"
-            150 -> "高清"
-            250 -> "超清"
-            400 -> "蓝光"
-            10000 -> "原画"
-            else -> quality.qn.toString()
-        }
+        candidates: List<LiveStreamCandidate>,
+    ): List<LiveQualityOption> {
+        val labels = (data.quality_description.orEmpty() + data.playurl_info?.playurl?.gQnDesc.orEmpty())
+            .associate { quality ->
+                liveQualityKey(quality.qn, quality.hdrType, quality.eotf) to
+                    (quality.hdrDesc.takeIf { quality.hdrType != 0 && it.isNotBlank() } ?: quality.desc)
+            }
+        return buildLiveQualityOptions(candidates, labels)
     }
 
     private fun resolvePlayerCdnPreference(): SettingsManager.PlayerCdnPreference {

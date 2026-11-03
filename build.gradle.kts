@@ -1,7 +1,7 @@
 buildscript {
     repositories {
         // 与 settings.gradle.kts 一致：阿里云对部分构件返回 502 会中止查找，
-        // google 镜像只用于 Google/AndroidX 构件，KSP 插件直接走官方源。
+        // google 镜像只用于 Google/AndroidX 构件；KSP 使用下方 public 镜像。
         maven("https://maven.aliyun.com/repository/google") {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -10,9 +10,7 @@ buildscript {
                 excludeGroup("com.google.devtools.ksp")
             }
         }
-        maven("https://maven.aliyun.com/repository/public") {
-            content { excludeGroup("com.google.devtools.ksp") }
-        }
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
     }

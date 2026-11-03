@@ -20,7 +20,8 @@ object SettingsManager {
     ) {
         NORMAL("normal", "标准"),
         MOBILE("mobile", "移动端"),
-        WEB("web", "网页端");
+        WEB("web", "网页端"),
+        MERGED("merged", "网页端 + 移动端");
 
         companion object {
             fun fromValue(value: String?): FeedApiType {
@@ -82,7 +83,12 @@ object SettingsManager {
         val label: String
     ) {
         DARK("dark", "深色模式"),
-        LIGHT("light", "亮色模式");
+        LIGHT("light", "亮色模式"),
+        LIGHT_SIDEBAR("light_sidebar", "浅色侧栏");
+
+        val isLight: Boolean get() = this != DARK
+
+        fun next(): ThemeMode = entries[(ordinal + 1) % entries.size]
 
         companion object {
             fun fromValue(value: String?): ThemeMode {
@@ -529,45 +535,6 @@ object SettingsManager {
             preferences[keyVideoDetailCommentsEnabled] = enabled
         }
         updateSyncCache(context) { putBoolean(CACHE_VIDEO_DETAIL_COMMENTS_ENABLED, enabled) }
-    }
-
-    fun getBackgroundPlaybackEnabled(context: Context): Flow<Boolean> {
-        return context.settingsDataStore.data.map { preferences ->
-            preferences[keyBackgroundPlaybackEnabled] ?: false
-        }
-    }
-
-    suspend fun setBackgroundPlaybackEnabled(context: Context, enabled: Boolean) {
-        updatePreference(context) { preferences ->
-            preferences[keyBackgroundPlaybackEnabled] = enabled
-        }
-        updateSyncCache(context) { putBoolean(CACHE_BACKGROUND_PLAYBACK_ENABLED, enabled) }
-    }
-
-    fun getAudioFocusEnabled(context: Context): Flow<Boolean> {
-        return context.settingsDataStore.data.map { preferences ->
-            preferences[keyAudioFocusEnabled] ?: true
-        }
-    }
-
-    suspend fun setAudioFocusEnabled(context: Context, enabled: Boolean) {
-        updatePreference(context) { preferences ->
-            preferences[keyAudioFocusEnabled] = enabled
-        }
-        updateSyncCache(context) { putBoolean(CACHE_AUDIO_FOCUS_ENABLED, enabled) }
-    }
-
-    fun getAutoRotateEnabled(context: Context): Flow<Boolean> {
-        return context.settingsDataStore.data.map { preferences ->
-            preferences[keyAutoRotateEnabled] ?: false
-        }
-    }
-
-    suspend fun setAutoRotateEnabled(context: Context, enabled: Boolean) {
-        updatePreference(context) { preferences ->
-            preferences[keyAutoRotateEnabled] = enabled
-        }
-        updateSyncCache(context) { putBoolean(CACHE_AUTO_ROTATE_ENABLED, enabled) }
     }
 
     fun getShowOnlineCount(context: Context): Flow<Boolean> {

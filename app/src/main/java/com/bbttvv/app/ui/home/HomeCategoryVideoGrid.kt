@@ -43,6 +43,7 @@ internal fun HomeCategoryVideoGrid(
     gridColumnCount: Int,
     videoCardRecycledViewPool: RecyclerView.RecycledViewPool?,
     onVideoFocused: (VideoItem, String) -> Unit = { _, _ -> },
+    showCategoryHeader: Boolean = true,
 ) {
     val isHomeTabActive = LocalHomeTabActive.current
     val categoryFocusRequesters = remember(categories.size) {
@@ -66,8 +67,8 @@ internal fun HomeCategoryVideoGrid(
         }
     }
 
-    DisposableEffect(focusCoordinator, requestCategoryTabFocus, isHomeTabActive, tab) {
-        val registration = if (isHomeTabActive) {
+    DisposableEffect(focusCoordinator, requestCategoryTabFocus, isHomeTabActive, tab, showCategoryHeader) {
+        val registration = if (isHomeTabActive && showCategoryHeader) {
             focusCoordinator.registerContentTarget(
                 tab = tab,
                 region = HomeFocusRegion.ContentTabs,
@@ -86,7 +87,7 @@ internal fun HomeCategoryVideoGrid(
         state = collapsingHeaderState,
         modifier = Modifier.fillMaxSize(),
         collapseEnabled = collapseHeaderEnabled,
-        localHeader = {
+        localHeader = if (showCategoryHeader) { {
             HomeSecondaryTabRow(
                 tabs = categories,
                 selectedIndex = selectedCategoryIndex,
@@ -117,7 +118,7 @@ internal fun HomeCategoryVideoGrid(
                     .fillMaxWidth()
                     .padding(bottom = 14.dp),
             )
-        },
+        } } else null,
     ) { topPadding, onScrollOffset ->
         when {
             videos.isEmpty() && isLoading -> HomeEmptyFocusTarget(

@@ -3,6 +3,7 @@ package com.bbttvv.app.feature.video.viewmodel
 import com.bbttvv.app.data.repository.SubtitleAndAuxRepository
 import com.bbttvv.app.feature.video.videoshot.VideoShot
 import com.bbttvv.app.feature.video.videoshot.VideoShotFrame
+import com.bbttvv.app.core.util.runSuspendCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -56,7 +57,7 @@ internal class VideoShotController(
         frameJob?.cancel()
         frameJob = scope.launch {
             delay(SEEK_PREVIEW_DEBOUNCE_MS)
-            val frame = runCatching {
+            val frame = runSuspendCatching {
                 shot.getFrame(positionMs)
             }.getOrNull()
             if (currentSessionKey() == sessionKey && videoShot === shot) {

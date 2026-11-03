@@ -34,7 +34,7 @@
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

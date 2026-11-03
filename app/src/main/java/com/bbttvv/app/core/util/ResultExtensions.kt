@@ -58,26 +58,6 @@ suspend inline fun <T> safeApiCallOrNull(
     return safeApiCall(tag = tag, errorMessage = errorMessage) { block() }.getOrNull()
 }
 
-inline fun <T> Result<T>.onSuccessLog(tag: String, message: (T) -> String): Result<T> {
-    onSuccess { Logger.d(tag, " ${message(it)}") }
-    return this
-}
-
-inline fun <T> Result<T>.onFailureLog(
-    tag: String,
-    message: (Throwable) -> String = { it.message ?: "Unknown error" }
-): Result<T> {
-    onFailure { Logger.e(tag, " ${message(it)}") }
-    return this
-}
-
-inline fun <T, R> Result<T>.mapSuccess(transform: (T) -> R): Result<R> {
-    return fold(
-        onSuccess = { Result.success(transform(it)) },
-        onFailure = { Result.failure(it) }
-    )
-}
-
 fun <T> Result<T>.getOrThrow(message: String): T {
     return getOrElse { throw Exception(message, it) }
 }

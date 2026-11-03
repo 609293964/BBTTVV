@@ -10,11 +10,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import com.bbttvv.app.app.BbtvApplication
@@ -46,14 +44,15 @@ class MainActivity : ComponentActivity() {
         isDebugInspectorInfoEnabled = false
         setContent {
             val tvNoticeHostState = rememberTvNoticeHostState()
-            val themeMode by com.bbttvv.app.core.store.SettingsManager.getThemeMode(this)
-                .collectAsStateWithLifecycle(initialValue = com.bbttvv.app.core.store.SettingsManager.ThemeMode.DARK)
+            val startupTheme = androidx.compose.runtime.remember {
+                com.bbttvv.app.core.store.SettingsManager.getThemeModeSync(this)
+            }
 
             LaunchedEffect(Unit) {
                 withFrameNanos { }
                 (application as? BbtvApplication)?.onFirstFrameRendered()
             }
-            AppTheme(themeMode = themeMode) {
+            AppTheme(themeMode = startupTheme) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

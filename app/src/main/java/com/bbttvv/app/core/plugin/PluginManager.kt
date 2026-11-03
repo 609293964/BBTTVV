@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,14 +58,22 @@ internal fun resolvePluginRegistrationActivation(
  */
 object PluginManager {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val pendingEnabledOverridesLock = Any()
-    private val pendingEnabledOverrides = mutableMapOf<String, Boolean>()
+    private val registry = PluginRegistry(
+        readEnabled = { id -> withContext(Dispatchers.IO) { PluginStore.isEnabled(appContext, id) } },
+        writeEnabled = { id, enabled -> withContext(Dispatchers.IO) { PluginStore.setEnabled(appContext, id, enabled) } },
+        onFailure = { id, error -> Logger.e(TAG, "Plugin lifecycle failed: $id", error) },
+        onEnabledChanged = { plugin, _ ->
+            if (plugin is DanmakuPlugin) notifyDanmakuPluginsUpdated()
+            if (plugin is FeedPlugin) notifyFeedPluginsUpdated()
+        },
+    )
+
 
     private val _plugins = mutableStateListOf<PluginInfo>()
     val plugins: List<PluginInfo> get() = _plugins.toList()
 
-    private val _pluginsFlow = MutableStateFlow<List<PluginInfo>>(emptyList())
-    val pluginsFlow: StateFlow<List<PluginInfo>> = _pluginsFlow.asStateFlow()
+    private val _pluginsFlow = registry.pluginsFlow
+    val pluginsFlow: StateFlow<List<PluginInfo>> = _pluginsFlow
 
     private val _danmakuPluginUpdateToken = MutableStateFlow(0L)
     val danmakuPluginUpdateToken: StateFlow<Long> = _danmakuPluginUpdateToken.asStateFlow()
@@ -79,124 +88,28 @@ object PluginManager {
         if (isInitialized) return
         appContext = context.applicationContext
         isInitialized = true
+        applicationScope.launch {
+            registry.pluginsFlow.collect { snapshot ->
+                _plugins.clear()
+                _plugins.addAll(snapshot)
+            }
+        }
         Logger.d(TAG, " PluginManager initialized")
     }
 
     fun getContext(): Context = appContext
 
     fun register(plugin: Plugin) {
-        applicationScope.launch {
-            if (_plugins.any { it.plugin.id == plugin.id }) {
-                Logger.w(TAG, " Plugin already registered: ${plugin.id}")
-                return@launch
-            }
-
-            val storedEnabled = withContext(Dispatchers.IO) {
-                PluginStore.isEnabled(appContext, plugin.id)
-            }
-            if (_plugins.any { it.plugin.id == plugin.id }) {
-                Logger.w(TAG, " Plugin already registered: ${plugin.id}")
-                return@launch
-            }
-
-            val requestedEnabled = consumePendingPluginEnabledState(
-                pluginId = plugin.id,
-                storedEnabled = storedEnabled,
-                pendingEnabledOverrides = pendingEnabledOverrides,
-                lock = pendingEnabledOverridesLock
-            )
-
-            val enableSucceeded = if (!requestedEnabled) {
-                true
-            } else {
-                try {
-                    plugin.onEnable()
-                    Logger.d(TAG, " Plugin enabled on start: ${plugin.name}")
-                    true
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    Logger.e(TAG, " Failed to enable plugin: ${plugin.name}", error)
-                    false
-                }
-            }
-
-            val activation = resolvePluginRegistrationActivation(
-                requestedEnabled = requestedEnabled,
-                enableSucceeded = enableSucceeded
-            )
-            val info = PluginInfo(plugin, activation.publishedEnabled)
-            _plugins.add(info)
-            _pluginsFlow.value = _plugins.toList()
-
-            if (activation.persistDisabled) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        PluginStore.setEnabled(appContext, plugin.id, false)
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    Logger.e(
-                        TAG,
-                        " Failed to persist disabled state after startup activation failure: ${plugin.name}",
-                        error
-                    )
-                }
-            }
-
-            Logger.d(
-                TAG,
-                " Plugin registered: ${plugin.name} (enabled=${activation.publishedEnabled})"
-            )
-        }
+        check(isInitialized) { "Initialize PluginManager before registering plugins" }
+        applicationScope.launch { registry.register(plugin) }
     }
 
     suspend fun setEnabled(pluginId: String, enabled: Boolean) {
-        val shouldPersist = withContext(Dispatchers.Main.immediate) {
-            val index = _plugins.indexOfFirst { it.plugin.id == pluginId }
-            if (index == -1) {
-                synchronized(pendingEnabledOverridesLock) {
-                    pendingEnabledOverrides[pluginId] = enabled
-                }
-                Logger.d(TAG, " Deferring plugin enabled change until registration: $pluginId -> $enabled")
-                return@withContext true
-            }
-
-            val info = _plugins[index]
-            val plugin = info.plugin
-            if (info.enabled == enabled) return@withContext false
-
-            try {
-                if (enabled) {
-                    plugin.onEnable()
-                    Logger.d(TAG, " Plugin enabled: ${plugin.name}")
-                } else {
-                    plugin.onDisable()
-                    Logger.d(TAG, " Plugin disabled: ${plugin.name}")
-                }
-
-                _plugins[index] = info.copy(enabled = enabled)
-                _pluginsFlow.value = _plugins.toList()
-
-                if (plugin is DanmakuPlugin) notifyDanmakuPluginsUpdated()
-                if (plugin is FeedPlugin) notifyFeedPluginsUpdated()
-                true
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                Logger.e(TAG, " Failed to toggle plugin: ${plugin.name}", error)
-                false
-            }
-        }
-
-        if (shouldPersist) {
-            withContext(Dispatchers.IO) {
-                PluginStore.setEnabled(appContext, pluginId, enabled)
-            }
-        }
+        check(isInitialized) { "Initialize PluginManager before toggling plugins" }
+        withContext(Dispatchers.Main.immediate) { registry.setEnabled(pluginId, enabled) }
     }
 
+    suspend fun awaitPluginReady(pluginId: String) = registry.awaitPluginReady(pluginId)
     @Suppress("UNCHECKED_CAST")
     fun <T : Plugin> getEnabledPlugins(type: KClass<T>): List<T> {
         return _pluginsFlow.value
@@ -232,23 +145,11 @@ object PluginManager {
         val feedPlugins = enabledFeedPluginsSnapshot()
         if (feedPlugins.isEmpty()) return items
 
-        val visibleItems = ArrayList<com.bbttvv.app.data.model.response.VideoItem>(items.size)
-        for (item in items) {
-            var shouldShow = true
-            for (plugin in feedPlugins) {
-                shouldShow = try {
-                    plugin.shouldShowItem(item, feedKind)
-                } catch (error: Exception) {
-                    Logger.e(TAG, " Feed plugin failed: ${plugin.name}", error)
-                    true
-                }
-                if (!shouldShow) break
-            }
-            if (shouldShow) visibleItems.add(item)
-        }
-        return visibleItems
+        return filterFeedBatch(items, feedPlugins,
+            shouldShow = { plugin, item -> plugin.shouldShowItem(item, feedKind) },
+            onFailure = { plugin, error -> Logger.e(TAG, "Feed plugin failed: ${plugin.id}", error) },
+        )
     }
-
     private fun enabledFeedPluginsSnapshot(): List<FeedPlugin> {
         return _pluginsFlow.value.mapNotNull { info ->
             if (info.enabled) info.plugin as? FeedPlugin else null

@@ -1,6 +1,9 @@
 package com.bbttvv.app.ui.home
 
 import android.content.Context
+import com.bbttvv.app.core.plugin.*
+import com.bbttvv.app.feature.plugin.TodayWatchPlugin
+import kotlinx.coroutines.CancellationException
 import android.os.SystemClock
 import com.bbttvv.app.core.store.CreatorSignalSnapshot
 import com.bbttvv.app.core.store.TodayWatchDislikedVideoSnapshot
@@ -42,6 +45,13 @@ internal class TodayWatchCoordinator(
     private var latestRefreshToken: Long = 0L
 
     fun hasCachedHistorySample(): Boolean = cachedHistorySample.isNotEmpty()
+
+    fun resetAccountScope() {
+        sessionConsumedBvids.clear()
+        cachedHistorySample = emptyList()
+        lastHistoryLoadFailureMs = 0L
+        feedbackSnapshot = feedbackStore.getSnapshot(context)
+    }
 
     fun applyRefreshToken(config: TodayWatchPluginConfig) {
         if (config.refreshTriggerToken == latestRefreshToken) return
@@ -104,6 +114,8 @@ internal class TodayWatchCoordinator(
         forceReloadHistory: Boolean,
         isFeedLoading: Boolean
     ): TodayWatchBuildResult {
+        val accountEpoch = com.bbttvv.app.core.store.AccountSessionEpoch.current()
+        val recommendationRevision = com.bbttvv.app.core.store.RecommendationAccountStore.changes.value
         if (candidates.isEmpty()) {
             return TodayWatchBuildResult(
                 plan = TodayWatchPlan(mode = mode),
@@ -111,6 +123,15 @@ internal class TodayWatchCoordinator(
             )
         }
 
+        val plugin = PluginManager.getEnabledPlugins(RecommendationPluginApi::class)
+            .firstOrNull { it.id == TodayWatchPlugin.PLUGIN_ID }
+            ?: return TodayWatchBuildResult(TodayWatchPlan(mode = mode), "推荐插件尚未就绪或已关闭")
+        val required = setOf(PluginCapability.RECOMMENDATION_CANDIDATES,
+            PluginCapability.LOCAL_HISTORY_READ, PluginCapability.LOCAL_FEEDBACK_READ)
+        if (plugin.capabilityManifest.pluginId != plugin.id ||
+            plugin.capabilityManifest.apiVersion != 1 || !plugin.capabilityManifest.capabilities.containsAll(required)) {
+            return TodayWatchBuildResult(TodayWatchPlan(mode = mode), "推荐插件缺少必要能力声明")
+        }
         val historySample = resolveHistorySample(
             forceReload = forceReloadHistory,
             limit = config.historySampleLimit
@@ -126,19 +147,37 @@ internal class TodayWatchCoordinator(
             dislikedKeywords = feedbackSnapshot.dislikedKeywords
         )
 
-        val plan = withContext(Dispatchers.Default) {
-            buildTodayWatchPlan(
-                historyVideos = historySample,
-                candidateVideos = candidates,
-                mode = mode,
-                eyeCareNightActive = false,
-                upRankLimit = 5,
-                queueLimit = config.queueBuildLimit,
-                creatorSignals = creatorSignals,
-                penaltySignals = penaltySignals
-            )
+        val plan = try {
+            withContext(Dispatchers.Default) {
+                val result = plugin.buildRecommendations(RecommendationRequest(
+                    candidateVideos = candidates, historyVideos = historySample,
+                    creatorSignals = creatorSignals.map { RecommendationCreatorSignal(it.mid, it.name, it.score, it.watchCount) },
+                    feedbackSignals = RecommendationFeedbackSignals(penaltySignals.consumedBvids,
+                        penaltySignals.dislikedBvids, penaltySignals.dislikedCreatorMids, penaltySignals.dislikedKeywords),
+                    sceneSignals = RecommendationSceneSignals(eyeCareNightActive = false),
+                    mode = RecommendationMode.valueOf(mode.name), queueLimit = config.queueBuildLimit,
+                    groupLimit = 5, strategy = config.strategy,
+                ))
+                check(result.sourcePluginId == plugin.id) { "推荐插件返回来源不匹配" }
+                TodayWatchPlan(mode = mode,
+                    upRanks = result.groups.firstOrNull { it.id == "preferred_creators" }?.items.orEmpty()
+                        .mapNotNull { item -> item.id.toLongOrNull()?.let { TodayUpRank(it, item.title, item.score ?: 0.0, item.watchCount) } },
+                    videoQueue = result.items.map { it.video },
+                    explanationByBvid = result.items.associate { it.video.bvid to it.explanation },
+                    scoreByBvid = result.items.associate { it.video.bvid to it.score },
+                    confidenceByBvid = result.items.associate { it.video.bvid to it.confidence },
+                    historySampleCount = result.historySampleCount, generatedAt = result.generatedAt,
+                )
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return TodayWatchBuildResult(TodayWatchPlan(mode = mode), "推荐插件执行失败，请重试") }
+        if (PluginManager.getEnabledPlugins(RecommendationPluginApi::class).none { it === plugin }) {
+            return TodayWatchBuildResult(TodayWatchPlan(mode = mode), "推荐插件已关闭")
         }
-
+        if (!com.bbttvv.app.core.store.AccountSessionEpoch.isCurrent(accountEpoch) ||
+            com.bbttvv.app.core.store.RecommendationAccountStore.changes.value != recommendationRevision) {
+            throw CancellationException("推荐请求身份已变化")
+        }
         return TodayWatchBuildResult(
             plan = plan,
             errorMessage = if (plan.videoQueue.isEmpty()) {

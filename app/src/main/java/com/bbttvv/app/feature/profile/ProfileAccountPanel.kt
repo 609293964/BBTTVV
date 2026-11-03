@@ -87,9 +87,11 @@ internal fun ProfileSettingsPanel(
 @Composable
 internal fun SwitchAccountPanel(
     accounts: List<StoredAccountSession>,
+    recommendationAccountMid: Long?,
     activeAccountMid: Long?,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
+    onSelectRecommendationAccount: (Long?) -> Unit,
     onPrepareRelogin: () -> Unit,
     focusCoordinator: HomeFocusCoordinator? = null,
     focusTab: AppTopLevelTab? = null,
@@ -129,6 +131,8 @@ internal fun SwitchAccountPanel(
                     active = activeAccountMid == account.mid,
                     onSwitchAccount = onSwitchAccount,
                     onRemoveStoredAccount = onRemoveStoredAccount,
+                    onSelectRecommendationAccount = onSelectRecommendationAccount,
+                    recommendationAccountMid = recommendationAccountMid,
                     initialFocusModifier = if (isFirstAccount) {
                         Modifier.focusRequester(contentFocusTarget.initialFocusRequester)
                     } else {
@@ -158,6 +162,8 @@ private fun AccountRowCard(
     active: Boolean,
     onSwitchAccount: (Long) -> Unit,
     onRemoveStoredAccount: (Long) -> Unit,
+    onSelectRecommendationAccount: (Long?) -> Unit,
+    recommendationAccountMid: Long?,
     initialFocusModifier: Modifier = Modifier,
 ) {
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -205,6 +211,11 @@ private fun AccountRowCard(
                 modifier = initialFocusModifier,
             )
         }
+        AccountActionButton(
+            text = if (recommendationAccountMid == account.mid) "推荐账号 ✓" else "用于推荐",
+            contentColor = if (isLightTheme) Color(0xFFFB7299) else Color.White,
+            onClick = { onSelectRecommendationAccount(if (recommendationAccountMid == account.mid) null else account.mid) },
+        )
         AccountActionButton(
             text = "移除",
             contentColor = if (isLightTheme) Color(0xFFE03E5F) else Color(0xFFFFBCC8),

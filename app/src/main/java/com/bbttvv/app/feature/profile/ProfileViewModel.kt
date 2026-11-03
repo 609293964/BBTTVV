@@ -32,6 +32,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -65,6 +67,7 @@ data class ProfileUiState(
     val storedAccounts: List<StoredAccountSession> = emptyList(),
     val storedAccountCount: Int = 0,
     val activeAccountMid: Long? = null,
+    val recommendationAccountMid: Long? = null,
     val historyItems: List<HistoryData> = emptyList(),
     val historyHasMore: Boolean = false,
     val isHistoryLoading: Boolean = false,
@@ -136,6 +139,9 @@ class ProfileViewModel(
             try {
                 val accounts = AccountSessionStore.getAccounts(context)
                 val activeMid = AccountSessionStore.getActiveAccountMid(context)
+                val recommendationMid = withContext(Dispatchers.IO) {
+                    com.bbttvv.app.core.store.RecommendationAccountStore.selectedMid(context)
+                }
                 if (!isRefreshCurrent(generation)) return@launch
                 updateIfRefreshCurrent(generation) {
                     it.copy(
@@ -143,6 +149,7 @@ class ProfileViewModel(
                         errorMessage = null,
                         storedAccounts = accounts,
                         storedAccountCount = accounts.size,
+                        recommendationAccountMid = recommendationMid,
                         activeAccountMid = activeMid
                     )
                 }
@@ -203,7 +210,8 @@ class ProfileViewModel(
                             creatorStats = null,
                             storedAccounts = accounts,
                             storedAccountCount = accounts.size,
-                            activeAccountMid = activeMid
+                            recommendationAccountMid = com.bbttvv.app.core.store.RecommendationAccountStore.selectedMid(context),
+                        activeAccountMid = activeMid
                         )
                     }
                     return@launch
@@ -227,6 +235,9 @@ class ProfileViewModel(
                 if (!isRefreshCurrent(generation)) return@launch
                 val updatedAccounts = AccountSessionStore.getAccounts(context)
                 val updatedActiveMid = AccountSessionStore.getActiveAccountMid(context) ?: navData.mid
+                val updatedRecommendationMid = withContext(Dispatchers.IO) {
+                    com.bbttvv.app.core.store.RecommendationAccountStore.selectedMid(context)
+                }
                 if (!isRefreshCurrent(generation)) return@launch
 
                 val shouldReloadHistory = historyLoadedForMid != navData.mid
@@ -259,6 +270,7 @@ class ProfileViewModel(
                         creatorStats = creatorStats,
                         storedAccounts = updatedAccounts,
                         storedAccountCount = updatedAccounts.size,
+                        recommendationAccountMid = updatedRecommendationMid,
                         activeAccountMid = updatedActiveMid
                     )
                 }
@@ -376,10 +388,27 @@ class ProfileViewModel(
         }
     }
 
+    fun selectRecommendationAccount(mid: Long?) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    com.bbttvv.app.core.store.RecommendationAccountStore.select(context, mid)
+                }
+                _uiState.update { it.copy(recommendationAccountMid = mid) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _uiState.update { it.copy(errorMessage = "推荐账号设置失败") } }
+        }
+    }
+
     fun removeStoredAccount(mid: Long) {
         if (mid <= 0L) return
         viewModelScope.launch {
             AccountSessionStore.removeAccount(context, mid)
+            withContext(Dispatchers.IO) {
+                if (com.bbttvv.app.core.store.RecommendationAccountStore.selectedMid(context) == mid) {
+                    com.bbttvv.app.core.store.RecommendationAccountStore.select(context, null)
+                }
+            }
             val accounts = AccountSessionStore.getAccounts(context)
             _uiState.update {
                 it.copy(

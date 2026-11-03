@@ -290,6 +290,7 @@ internal class HomeVideoCardAdapter(
             binding.root.isFocusableInTouchMode = false
             binding.root.isClickable = true
 
+
             binding.root.setOnClickListener {
                 boundItem?.let { item -> boundOnItemClick?.invoke(item) }
             }
@@ -711,8 +712,8 @@ internal data class HomeVideoCardPalette(
 ) {
     companion object {
         fun resolve(context: android.content.Context): HomeVideoCardPalette {
-            val isLightTheme =
-                SettingsManager.getThemeModeSync(context) == SettingsManager.ThemeMode.LIGHT
+            val themeMode = SettingsManager.getThemeModeSync(context)
+            val isLightTheme = themeMode.isLight
             return if (isLightTheme) {
                 HomeVideoCardPalette(
                     strokeColors = lightStrokeColorStateList,

@@ -1,5 +1,6 @@
 package com.bbttvv.app.data.service.video
 
+import com.bbttvv.app.core.store.AccountSessionEpoch
 import android.content.Context
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.util.SubtitleCue
@@ -21,7 +22,8 @@ internal class SynchronizedLruMap<K, V>(
 ) {
     private data class Entry<V>(
         val value: V,
-        val storedAtMs: Long
+        val storedAtMs: Long,
+        val epoch: Long
     )
 
     private val lock = Any()
@@ -44,8 +46,15 @@ internal class SynchronizedLruMap<K, V>(
         synchronized(lock) {
             delegate[key] = Entry(
                 value = value,
-                storedAtMs = nowProvider()
+                storedAtMs = nowProvider(),
+                epoch = AccountSessionEpoch.current()
             )
+        }
+    }
+
+    fun putForEpoch(key: K, value: V, epoch: Long) = synchronized(lock) {
+        if (AccountSessionEpoch.isCurrent(epoch)) {
+            delegate[key] = Entry(value, nowProvider(), epoch)
         }
     }
 
@@ -77,7 +86,7 @@ internal class SynchronizedLruMap<K, V>(
     }
 
     private fun pruneExpiredLocked() {
-        if (ttlMillis <= 0L || delegate.isEmpty()) return
+        if (delegate.isEmpty()) return
         val iterator = delegate.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
@@ -88,7 +97,8 @@ internal class SynchronizedLruMap<K, V>(
     }
 
     private fun isExpired(entry: Entry<V>): Boolean {
-        return ttlMillis > 0L && nowProvider() - entry.storedAtMs >= ttlMillis
+        return !AccountSessionEpoch.isCurrent(entry.epoch) ||
+            (ttlMillis > 0L && nowProvider() - entry.storedAtMs >= ttlMillis)
     }
 
     private companion object {
@@ -132,8 +142,12 @@ internal object VideoCacheService {
         ttlMillis = CREATOR_CARD_STATS_CACHE_TTL_MS
     )
 
-    @Volatile
-    var cachedNavInfo: NavData? = null
+    private val navCache = SynchronizedLruMap<Unit, NavData>(1)
+    var cachedNavInfo: NavData?
+        get() = navCache[Unit]
+        set(value) { if (value == null) navCache.clear() else navCache[Unit] = value }
+
+    fun putNavInfo(data: NavData, epoch: Long) { navCache.putForEpoch(Unit, data, epoch) }
 
     fun invalidateAccountScopedCaches() {
         subtitleCueCache.clear()
@@ -141,7 +155,9 @@ internal object VideoCacheService {
         videoPreviewCache.clear()
         relatedVideosCache.clear()
         creatorCardStatsCache.clear()
+        videoInfoInFlight.values.forEach { it.cancel() }
         videoInfoInFlight.clear()
+        relatedVideosInFlight.values.forEach { it.cancel() }
         relatedVideosInFlight.clear()
         cachedNavInfo = null
     }
@@ -165,6 +181,8 @@ internal object VideoSessionService {
 }
 
 internal object VideoFeedStateService {
+    @Volatile
+    var homePreloadIdentity: Pair<Long, Long>? = null
     @Volatile
     var preloadedHomeVideos: Result<List<VideoItem>>? = null
 

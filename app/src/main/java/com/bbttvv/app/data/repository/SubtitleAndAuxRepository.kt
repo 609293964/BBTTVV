@@ -1,5 +1,7 @@
 package com.bbttvv.app.data.repository
 
+import com.bbttvv.app.core.store.AccountSessionEpoch
+import kotlinx.coroutines.CancellationException
 import com.bbttvv.app.core.coroutines.AppScope
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.network.WbiUtils
@@ -57,20 +59,24 @@ object SubtitleAndAuxRepository {
     }
 
     suspend fun getNavInfo(): Result<NavData> = withContext(Dispatchers.IO) {
+        val epoch = AccountSessionEpoch.current()
         try {
             val resp = api.getNavInfo()
+            if (!AccountSessionEpoch.isCurrent(epoch)) throw CancellationException("Account changed")
             if (resp.code == 0 && resp.data != null) {
-                cachedNavInfoState = resp.data
+                VideoCacheService.putNavInfo(resp.data, epoch)
                 Result.success(resp.data)
             } else {
                 if (resp.code == -101) {
                     val loggedOutNavData = NavData(isLogin = false)
-                    cachedNavInfoState = loggedOutNavData
+                    VideoCacheService.putNavInfo(loggedOutNavData, epoch)
                     Result.success(loggedOutNavData)
                 } else {
                     Result.failure(Exception("错误码: ${resp.code}"))
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -80,6 +86,7 @@ object SubtitleAndAuxRepository {
 
     suspend fun getCreatorCardStats(mid: Long): Result<CreatorCardStats> {
         return withContext(Dispatchers.IO) {
+            val epoch = AccountSessionEpoch.current()
             if (mid <= 0L) return@withContext Result.failure(IllegalArgumentException("Invalid mid"))
             creatorCardStatsCache[mid]?.let { cachedStats ->
                 return@withContext Result.success(cachedStats)
@@ -92,12 +99,15 @@ object SubtitleAndAuxRepository {
                         followerCount = data.follower.coerceAtLeast(0),
                         videoCount = data.archive_count.coerceAtLeast(0)
                     )
-                    creatorCardStatsCache[mid] = stats
+                    if (!AccountSessionEpoch.isCurrent(epoch)) throw CancellationException("Account changed")
+                    creatorCardStatsCache.putForEpoch(mid, stats, epoch)
                     Result.success(stats)
                 } else {
                     Result.failure(Exception(response.message.ifBlank { "UP主信息加载失败(${response.code})" }))
                 }
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
                 Result.failure(e)
             }
         }
@@ -177,7 +187,9 @@ object SubtitleAndAuxRepository {
                     } else {
                         Result.failure(Exception("AI Summary API error: code=${response.code}, msg=${response.message}"))
                     }
-                } catch (e: Exception) {
+                } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
                     lastError = e
                     val diagnosis = diagnoseAiSummaryFailure(e)
                     com.bbttvv.app.core.util.Logger.w(
@@ -215,7 +227,9 @@ object SubtitleAndAuxRepository {
                     com.bbttvv.app.core.util.Logger.d("SubtitleAndAuxRepo", "🖼️ Videoshot failed: code=${response.code}")
                     null
                 }
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
                 android.util.Log.w("SubtitleAndAuxRepo", "🖼️ Videoshot exception: ${e.message}")
                 null
             }
@@ -241,7 +255,9 @@ object SubtitleAndAuxRepository {
                     )
                     fetchPlainPlayerInfoFallback(bvid = bvid, cid = cid)
                 }
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
                 com.bbttvv.app.core.util.Logger.w(
                     "SubtitleAndAuxRepo",
                     "PlayerInfo WBI exception: ${e.message}; trying plain fallback"
@@ -295,6 +311,7 @@ object SubtitleAndAuxRepository {
         subtitleIdStr: String = "",
         subtitleLan: String = ""
     ): Result<List<SubtitleCue>> {
+        val epoch = AccountSessionEpoch.current()
         return withContext(Dispatchers.IO) {
             try {
                 if (bvid.isBlank() || cid <= 0L) {
@@ -337,10 +354,13 @@ object SubtitleAndAuxRepository {
                     }
                     val rawJson = call.body.string()
                     val cues = com.bbttvv.app.core.util.parseBiliSubtitleBody(rawJson)
-                    subtitleCueCache[cacheKey] = cues
+                    if (!AccountSessionEpoch.isCurrent(epoch)) throw CancellationException("Account changed")
+                    subtitleCueCache.putForEpoch(cacheKey, cues, epoch)
                     Result.success(cues)
                 }
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
                 Result.failure(e)
             }
         }

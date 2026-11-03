@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Alignment
 import androidx.activity.compose.BackHandler
@@ -14,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
@@ -38,6 +44,7 @@ import com.bbttvv.app.ui.focus.RegisterLifecycleFocusDrain
 import com.bbttvv.app.ui.focus.RegisterTvFocusEscapeTarget
 import com.bbttvv.app.ui.focus.isSameOrDescendantOf
 import com.bbttvv.app.ui.theme.LocalIsLightTheme
+import com.bbttvv.app.ui.theme.LocalSidebarTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -275,8 +282,24 @@ internal fun HomeScreen(
     }
 
     val isLightTheme = LocalIsLightTheme.current
-    val pageBackgroundColor = if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background
-    val usesCollapsingHomeHeader = selectedHomeTab.usesCollapsingHomeHeader()
+    val sidebarTheme = LocalSidebarTheme.current
+    val popularHeaderViewModel: PopularViewModel? = if (sidebarTheme && selectedHomeTab == AppTopLevelTab.POPULAR) {
+        val owner = remember(viewModel) {
+            object : androidx.lifecycle.ViewModelStoreOwner {
+                override val viewModelStore = viewModel.tabViewModelStore(AppTopLevelTab.POPULAR)
+            }
+        }
+        androidx.lifecycle.viewmodel.compose.viewModel(viewModelStoreOwner = owner)
+    } else null
+    val popularHeaderState = popularHeaderViewModel?.uiState?.collectAsStateWithLifecycle()?.value
+    val pageBackgroundColor = if (sidebarTheme) Color(0xFFF3F3F5) else if (isLightTheme) Color(0xFFF4F6F8) else MaterialTheme.colorScheme.background
+    val sidebarWidth = if (sidebarTheme) 148.dp else 0.dp
+    var lastVideoTab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(AppTopLevelTab.RECOMMEND.name) }
+    LaunchedEffect(selectedHomeTab) {
+        if (HomeSidebarPolicy.isVideo(selectedHomeTab)) lastVideoTab = selectedHomeTab.name
+    }
+    val hasTopHeader = HomeSidebarPolicy.hasTopHeader(sidebarTheme, selectedHomeTab)
+    val usesCollapsingHomeHeader = selectedHomeTab.usesCollapsingHomeHeader() && hasTopHeader
     val selectedCollapsingHeaderState = collapsingHeaderStates.stateFor(selectedHomeTab)
     val density = LocalDensity.current
     val fallbackTopBarHeightPx = with(density) { EstimatedHomeTopBarHeight.toPx().toInt() }
@@ -285,13 +308,13 @@ internal fun HomeScreen(
         fallbackTopBarHeightPx = fallbackTopBarHeightPx,
     )
     val topBarHeightDp = with(density) { effectiveTopBarHeightPx.toDp() }
-    val topBarLogicVisible = focusCoordinator.isTopBarVisible && !isVideoFocusRestorePending
+    val topBarLogicVisible = hasTopHeader && focusCoordinator.isTopBarVisible && !isVideoFocusRestorePending
     val topBarRenderVisible = if (usesCollapsingHomeHeader) {
         !isVideoFocusRestorePending
     } else {
         topBarLogicVisible
     }
-    val topBarFocusEnabled = focusCoordinator.isTopBarFocusable && !isVideoFocusRestorePending
+    val topBarFocusEnabled = hasTopHeader && focusCoordinator.isTopBarFocusable && !isVideoFocusRestorePending
     val collapseHomeHeader = shouldCollapseHomeHeader(
         usesCollapsingHomeHeader = usesCollapsingHomeHeader,
         isContentFocused = focusCoordinator.isContentFocused,
@@ -301,7 +324,7 @@ internal fun HomeScreen(
     } else {
         0
     }
-    val shouldComposeTopBar = usesCollapsingHomeHeader || topBarLogicVisible
+    val shouldComposeTopBar = hasTopHeader && (usesCollapsingHomeHeader || topBarLogicVisible)
     val contentTopPadding = if (!usesCollapsingHomeHeader && shouldComposeTopBar) {
         topBarHeightDp
     } else {
@@ -317,7 +340,7 @@ internal fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = contentTopPadding)
+                .padding(start = sidebarWidth, top = contentTopPadding)
                 .focusGroup()
                 .onFocusChanged { state ->
                     if (state.hasFocus) {
@@ -339,7 +362,7 @@ internal fun HomeScreen(
                 // Keep-alive RecyclerView tabs must retain their TopBar padding while
                 // Search/Profile is selected, otherwise they can draw under the tabs
                 // for a frame when switching back.
-                topBarHeightPx = effectiveTopBarHeightPx,
+                topBarHeightPx = if (hasTopHeader) effectiveTopBarHeightPx else 0,
                 collapseHeaderEnabled = collapseHomeHeader,
                 collapsingHeaderStates = collapsingHeaderStates,
                 onRequestTopBarFocus = ::requestTopBarFromContent,
@@ -360,7 +383,23 @@ internal fun HomeScreen(
 
         if (shouldComposeTopBar) {
             HomeTopBarHost(
-                tabs = homeTabs,
+                tabs = if (sidebarTheme) HomeSidebarPolicy.columns(homeTabs, selectedHomeTab) else homeTabs,
+                categories = if (sidebarTheme && HomeSidebarPolicy.isVideo(selectedHomeTab)) defaultPopularCategories.map {
+                    com.bbttvv.app.ui.components.AppTopBarCategory(it.label, it.rid?.toLong() ?: 0L)
+                } else emptyList(),
+                selectedCategoryIndex = popularHeaderState?.selectedCategoryIndex ?: 0,
+                onCategorySelected = { index ->
+                    // Resolve the current store on entry, rather than retaining a ViewModel
+                    // after the home tab cache has evicted its store.
+                    val target = popularHeaderViewModel ?: androidx.lifecycle.ViewModelProvider(
+                        viewModel.tabViewModelStore(AppTopLevelTab.POPULAR),
+                        androidx.lifecycle.ViewModelProvider.NewInstanceFactory(),
+                    )[PopularViewModel::class.java]
+                    target.selectCategory(index)
+                    if (selectedHomeTab != AppTopLevelTab.POPULAR) {
+                        selectHomeTab(AppTopLevelTab.POPULAR, HomeFocusScene.TabSwitch, keepTopBarFocus = true)
+                    }
+                },
                 selectedHomeTab = selectedHomeTab,
                 updateSelectedTabOnFocus = selectTopTabOnFocusEnabled,
                 focusCoordinator = focusCoordinator,
@@ -375,6 +414,7 @@ internal fun HomeScreen(
                 onDpadDown = {
                     focusCoordinator.handleTopBarDpadDown()
                 },
+                onDpadLeft = { sidebarTheme && focusCoordinator.requestSidebarFocus() },
                 focusEnabled = topBarFocusEnabled,
                 onTopBarFocused = {
                     collapsingHeaderStates.stateFor(selectedHomeTab).reset()
@@ -389,6 +429,7 @@ internal fun HomeScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .padding(start = sidebarWidth)
                     .zIndex(2f)
                     .onSizeChanged { size ->
                         topBarHeightState.intValue = size.height
@@ -406,7 +447,9 @@ internal fun HomeScreen(
                         alpha = if (!topBarRenderVisible) {
                             0f
                         } else if (usesCollapsingHomeHeader) {
-                            if (effectiveTopBarHeightPx > 0) {
+                            if (sidebarTheme) {
+                                1f
+                            } else if (effectiveTopBarHeightPx > 0) {
                                 val collapseProgress = topBarCollapseOffsetPx.toFloat() / effectiveTopBarHeightPx.toFloat()
                                 (1f - collapseProgress).coerceIn(0f, 1f)
                             } else {
@@ -417,6 +460,43 @@ internal fun HomeScreen(
                         }
                     }
             )
+        }
+        if (sidebarTheme) {
+            Column(Modifier.align(Alignment.TopStart).width(sidebarWidth).padding(start = 12.dp, top = 24.dp)) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.bbttvv.app.R.drawable.bilibili_official_logo),
+                    contentDescription = "哔哩哔哩",
+                    modifier = Modifier.padding(start = 12.dp).width(112.dp).height(30.dp),
+                )
+                Spacer(Modifier.height(24.dp))
+                AppTopBar(
+                    tabs = HomeSidebarPolicy.sidebarTabs(homeTabs),
+                    selectedTab = HomeSidebarPolicy.selectedModule(selectedHomeTab),
+                    updateSelectedTabOnFocus = selectTopTabOnFocusEnabled,
+                    onTabSelected = { module ->
+                        val tab = if (module == AppTopLevelTab.RECOMMEND) {
+                            HomeSidebarPolicy.videoEntry(homeTabs, lastVideoTab)
+                        } else module
+                        selectHomeTab(tab, HomeFocusScene.TabSwitch)
+                    },
+                    onSelectedTabConfirmed = {
+                        if (HomeSidebarPolicy.isVideo(selectedHomeTab)) focusCoordinator.requestTopBarFocus()
+                        else focusCoordinator.requestSelectedContentFocus()
+                    },
+                    onDpadDown = { false },
+                    onDpadRight = {
+                        if (HomeSidebarPolicy.isVideo(selectedHomeTab)) focusCoordinator.requestTopBarFocus()
+                        else focusCoordinator.requestSelectedContentFocus()
+                        true
+                    },
+                    isSidebar = true,
+                    registerAsTopBarFallback = !hasTopHeader,
+                    focusEnabled = !isVideoFocusRestorePending,
+                    focusCoordinator = focusCoordinator,
+                    onTopBarFocused = { focusCoordinator.onTopBarFocused() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }
@@ -487,23 +567,31 @@ private fun resetCollapsingTabForSwitch(
 @Composable
 private fun HomeTopBarHost(
     tabs: List<AppTopLevelTab>,
+    categories: List<com.bbttvv.app.ui.components.AppTopBarCategory> = emptyList(),
+    selectedCategoryIndex: Int = 0,
+    onCategorySelected: (Int) -> Unit = {},
     selectedHomeTab: AppTopLevelTab,
     updateSelectedTabOnFocus: Boolean,
     focusCoordinator: HomeFocusCoordinator,
     onTabSelected: (AppTopLevelTab) -> Unit,
     onSelectedTabConfirmed: (AppTopLevelTab) -> Unit,
     onDpadDown: () -> Boolean,
+    onDpadLeft: () -> Boolean = { false },
     focusEnabled: Boolean,
     onTopBarFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AppTopBar(
         tabs = tabs,
+        categories = categories,
+        selectedCategoryIndex = selectedCategoryIndex,
+        onCategorySelected = onCategorySelected,
         selectedTab = selectedHomeTab,
         onTabSelected = onTabSelected,
         onSelectedTabConfirmed = onSelectedTabConfirmed,
         updateSelectedTabOnFocus = updateSelectedTabOnFocus,
         onDpadDown = onDpadDown,
+        onDpadLeft = onDpadLeft,
         focusEnabled = focusEnabled,
         focusCoordinator = focusCoordinator,
         onTopBarFocused = onTopBarFocused,

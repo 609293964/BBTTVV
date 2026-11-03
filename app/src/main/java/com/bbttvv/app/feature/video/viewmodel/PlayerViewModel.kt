@@ -9,6 +9,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.ExoPlaybackException
 import com.bbttvv.app.core.network.NetworkModule
 import com.bbttvv.app.core.player.BasePlayerViewModel
 import com.bbttvv.app.core.player.resolvePlayWhenReadyForAppVisibility
@@ -28,6 +29,9 @@ import com.bbttvv.app.feature.plugin.findSponsorBlockPluginInfo
 import com.bbttvv.app.feature.video.usecase.PlaybackSource
 import com.bbttvv.app.feature.video.usecase.VideoPlaybackUseCase
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -71,6 +75,8 @@ class PlayerViewModel : BasePlayerViewModel() {
     internal val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
 
     private var playbackRuntime = PlaybackRuntimeState()
+    private val audioFallbackPolicy = AudioFallbackPolicy()
+    private var audioFallbackJob: Job? = null
     private var danmakuMaskJob: Job? = null
     private val maskMedia = MutableStateFlow<Pair<String, Long>?>(null)
     private val playbackHistoryReporter = PlaybackHistoryReporter(
@@ -223,6 +229,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         videoShotController = videoShotController,
         progressHeatmapController = progressHeatmapController,
         resetDanmakuRequestState = {
+            audioFallbackJob?.cancel()
+            audioFallbackPolicy.reset()
             maskMedia.value = null
             _danmakuMask.value = null
             lastDanmakuCid = 0L
@@ -373,8 +381,68 @@ class PlayerViewModel : BasePlayerViewModel() {
 
         override fun onPlayerError(error: PlaybackException) {
             ensureMainThread("Player.Listener.onPlayerError")
-            if (!fallbackFromCdnRewrite(reason = "player_error", audioRendererError = true)) {
+            if (isAudioPlaybackFailure(error)) {
+                recoverAudioTrack()
+            } else if (!fallbackFromCdnRewrite(reason = "player_error", audioRendererError = true)) {
                 refreshPlayerSnapshot()
+            }
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun isAudioPlaybackFailure(error: PlaybackException): Boolean {
+        if (error.errorCode in 5001..5004) return true // AudioTrack init/write/offload failures
+        if (error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_RENDERER &&
+            error.rendererFormat?.sampleMimeType?.startsWith("audio/") == true
+        ) return true
+        var cause: Throwable? = error
+        repeat(8) {
+            val current = cause ?: return false
+            if (current.javaClass.name.startsWith("androidx.media3.exoplayer.audio.") ||
+                current.stackTrace.any { it.className.startsWith("androidx.media3.exoplayer.audio.") }
+            ) return true
+            cause = current.cause
+        }
+        return false
+    }
+
+    private fun recoverAudioTrack() {
+        ensureMainThread("recoverAudioTrack")
+        if (audioFallbackJob?.isActive == true) return
+        val source = playbackRuntime.source ?: return
+        val player = exoPlayer ?: return
+        val nextId = audioFallbackPolicy.next(source.selectedAudioQualityId, source.dashAudios.map {
+            AudioFallbackTrack(it.id, it.codecs, it.bandwidth,
+                it.baseUrl.isNotBlank() || it.backupUrl.orEmpty().any(String::isNotBlank))
+        })
+        if (nextId == null) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = "音频播放失败，兼容音轨已尝试完毕，请重试或更换资源") }
+            return
+        }
+        val position = player.currentPosition.coerceAtLeast(0L)
+        com.bbttvv.app.core.util.Logger.w("AudioFallback", "Trying advertised AAC track id=$nextId")
+        val session = playbackRuntime.sessionKey
+        val cdnPreference = resolvePlayerCdnPreference()
+        audioFallbackJob = viewModelScope.launch {
+            try {
+                val next = withContext(Dispatchers.Default) {
+                    playbackUseCase.selectDashTracks(source, audioQualityId = nextId,
+                        cdnPreference = cdnPreference, isAv1Supported = true)
+                }
+                if (playbackRuntime.sessionKey != session || playbackRuntime.source !== source || exoPlayer !== player) return@launch
+                if (next == null || next.selectedAudioQualityId != nextId) {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = "无法切换兼容音轨，请重试或更换资源") }
+                    return@launch
+                }
+                applyPlaybackSource(next, seekToMs = position, resetPlayer = false, playWhenReady = player.playWhenReady)
+                _uiState.update { it.withPlaybackSource(next, isLoading = false, statusMessage = "音频故障，已切换兼容音轨").copy(errorMessage = null) }
+                refreshPlayerSnapshot()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (playbackRuntime.sessionKey == session && playbackRuntime.source === source) {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = "兼容音轨切换失败，请重试或更换资源") }
+                }
             }
         }
     }
@@ -451,6 +519,8 @@ class PlayerViewModel : BasePlayerViewModel() {
         resumeFromPrompt: Boolean = false,
     ) {
         ensureMainThread("loadVideo")
+        audioFallbackJob?.cancel()
+        audioFallbackPolicy.reset()
         interactiveVideoController.cancel()
         danmakuVoteController.cancel()
         bufferingStallTracker.reset()
@@ -583,6 +653,7 @@ class PlayerViewModel : BasePlayerViewModel() {
     @MainThread
     fun changeQuality(qualityId: Int) {
         ensureMainThread("changeQuality")
+        audioFallbackJob?.cancel()
         playbackQualityController.changeQuality(qualityId)
     }
 
@@ -1285,6 +1356,7 @@ class PlayerViewModel : BasePlayerViewModel() {
 
     override fun onCleared() {
         ensureMainThread("PlayerViewModel.onCleared")
+        audioFallbackJob?.cancel()
         danmakuMaskJob?.cancel()
         danmakuMaskJob = null
         _danmakuMask.value = null

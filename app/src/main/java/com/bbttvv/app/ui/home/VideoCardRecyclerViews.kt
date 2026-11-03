@@ -188,7 +188,8 @@ internal fun VideoCardRecyclerGridItems(
                     }
                 },
                 onLeftEdge = {
-                    latestIsHomeTabActive && latestOnLeftEdgeDpadLeft?.invoke() == true
+                    latestIsHomeTabActive && (latestOnLeftEdgeDpadLeft?.invoke() == true ||
+                        latestFocusCoordinator?.requestSidebarFocus() == true)
                 },
                 canLoadMore = { latestIsHomeTabActive && latestCanLoadMore() },
                 loadMore = {
@@ -355,7 +356,8 @@ internal fun VideoCardRecyclerGridItems(
         factory = { rawContext ->
             val context = ContextThemeWrapper(rawContext, R.style.Theme_BBTTVV)
             object : RecyclerView(context) {
-                override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                    if (event == null) return false
                     GridFocusDebugLog.d {
                         "VideoCardRecyclerGrid.RecyclerView.dispatchKeyEvent before " +
                             "${GridFocusDebugLog.event(event)} ${focusState.debugSnapshot()} " +
@@ -755,7 +757,8 @@ internal fun VideoCardRecyclerRow(
         factory = { rawContext ->
             val context = ContextThemeWrapper(rawContext, R.style.Theme_BBTTVV)
             object : RecyclerView(context) {
-                override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                    if (event == null) return false
                     if (!latestIsHomeTabActive) return false
                     if (
                         event.action == KeyEvent.ACTION_DOWN &&

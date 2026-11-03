@@ -12,6 +12,7 @@ import com.bbttvv.app.core.theme.enforceLightThemeTextContrast
 import com.bbttvv.app.core.store.SettingsManager
 
 val LocalIsLightTheme = compositionLocalOf { false }
+val LocalSidebarTheme = compositionLocalOf { false }
 
 @Immutable
 data class TvSemanticColors(
@@ -129,13 +130,25 @@ fun AppTheme(
     themeMode: SettingsManager.ThemeMode = SettingsManager.ThemeMode.DARK,
     content: @Composable () -> Unit
 ) {
-    val isLightTheme = themeMode == SettingsManager.ThemeMode.LIGHT
-    val colorScheme = if (isLightTheme) ResolvedLightColorScheme else DarkColorScheme
+    val isLightTheme = themeMode.isLight
+    val sidebarTheme = themeMode == SettingsManager.ThemeMode.LIGHT_SIDEBAR
+    val colorScheme = when {
+        sidebarTheme -> ResolvedLightColorScheme.copy(background = Color(0xFFF3F3F5))
+        isLightTheme -> ResolvedLightColorScheme
+        else -> DarkColorScheme
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(
         LocalIsLightTheme provides isLightTheme,
+        LocalSidebarTheme provides sidebarTheme,
         LocalTvOverlayPalette provides if (isLightTheme) LightTvOverlayPalette else DarkTvOverlayPalette,
-        LocalTvSemanticColors provides if (isLightTheme) LightTvSemanticColors else DarkTvSemanticColors,
+        LocalTvSemanticColors provides when {
+            sidebarTheme -> LightTvSemanticColors.copy(
+                pageBackground = Color(0xFFF3F3F5), selectedContent = Color(0xFF18191C),
+            )
+            isLightTheme -> LightTvSemanticColors
+            else -> DarkTvSemanticColors
+        },
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

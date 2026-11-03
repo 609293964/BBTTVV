@@ -9,6 +9,38 @@ import org.junit.Test
 
 class HomeFocusCoordinatorTest {
     @Test
+    fun `standalone page back route can use sidebar as top bar fallback`() {
+        val coordinator = HomeFocusCoordinator(AppTopLevelTab.SEARCH)
+        val sidebar = FakeFocusTarget()
+        coordinator.registerSidebarTarget(sidebar)
+        coordinator.registerTopBarTarget(sidebar)
+        val requests = sidebar.focusRequests
+        coordinator.prepareForContentFocus()
+        assertTrue(coordinator.handleContentWantsTopBar())
+        assertEquals(requests + 1, sidebar.focusRequests)
+        assertFalse(coordinator.isContentFocused)
+    }
+    @Test
+    fun `sidebar is opt in and uses its own pending target without focusing top bar`() {
+        val coordinator = HomeFocusCoordinator()
+        assertFalse(coordinator.requestSidebarFocus())
+        val topBar = FakeFocusTarget()
+        coordinator.registerTopBarTarget(topBar)
+        val topRequests = topBar.focusRequests
+        val sidebar = FakeFocusTarget(canFocus = false)
+        val registration = coordinator.registerSidebarTarget(sidebar)
+        coordinator.prepareForContentFocus()
+        assertTrue(coordinator.requestSidebarFocus())
+        assertFalse(coordinator.isContentFocused)
+        assertFalse(coordinator.drainPendingFocus())
+        sidebar.canFocus = true
+        assertTrue(coordinator.drainPendingFocus())
+        assertEquals(topRequests, topBar.focusRequests)
+        registration.unregister()
+        assertFalse(coordinator.requestSidebarFocus())
+    }
+
+    @Test
     fun `pending top bar focus is completed only after target can really focus`() {
         val coordinator = HomeFocusCoordinator()
         val topBarTarget = FakeFocusTarget(canFocus = false)

@@ -32,6 +32,9 @@ internal class SponsorBlockController(
 
     private val skippedSegmentIds = mutableSetOf<String>()
     private val reportedSegmentIds = mutableSetOf<String>()
+    private var cachedConfig: SponsorBlockConfig? = null
+    private var cachedSegments: List<SponsorSegment>? = null
+    private var skipCandidates: List<SponsorSegment> = emptyList()
     private var segmentsJob: Job? = null
     private var loadSequence: Long = 0L
     private var segmentsBvid: String = ""
@@ -71,11 +74,16 @@ internal class SponsorBlockController(
         if (loadedSegments.isEmpty()) return false
 
         val sponsorConfig = resolveSponsorBlockConfig()
-        val filteredSegments = loadedSegments.filter { segment ->
-            val mode = sponsorConfig.playbackMode(segment.category)
-            segment.isSkipType &&
-                (mode == SponsorCategoryMode.MANUAL || mode == SponsorCategoryMode.AUTO)
+        if (cachedSegments !== loadedSegments || cachedConfig != sponsorConfig) {
+            cachedSegments = loadedSegments
+            cachedConfig = sponsorConfig
+            skipCandidates = loadedSegments.filter { segment ->
+                val mode = sponsorConfig.playbackMode(segment.category)
+                segment.isSkipType &&
+                    (mode == SponsorCategoryMode.MANUAL || mode == SponsorCategoryMode.AUTO)
+            }
         }
+        val filteredSegments = skipCandidates
         if (filteredSegments.isEmpty()) {
             _currentSegment.value = null
             _showSkipButton.value = false
@@ -145,6 +153,9 @@ internal class SponsorBlockController(
         loadSequence += 1
         segmentsBvid = ""
         segmentsCid = 0L
+        cachedSegments = null
+        cachedConfig = null
+        skipCandidates = emptyList()
         _segments.value = emptyList()
         _currentSegment.value = null
         _showSkipButton.value = false

@@ -56,6 +56,8 @@ data class SearchDefaultData(
 // --- 2. 搜索结果模型 ---
 @Serializable
 data class SearchResponse(
+    val code: Int = 0,
+    val message: String = "",
     val data: SearchData? = null
 )
 

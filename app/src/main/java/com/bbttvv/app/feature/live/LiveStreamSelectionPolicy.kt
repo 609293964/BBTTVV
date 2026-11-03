@@ -17,6 +17,10 @@ internal data class LiveStreamCandidate(
     val host: String,
     val hostLabel: String,
     val url: String,
+    val hdrType: Int = 0,
+    val eotf: Int = 0,
+    val codecs: String = "",
+    val acceptedQns: List<Int> = emptyList(),
 )
 
 internal fun selectLiveStreamCandidate(
@@ -43,11 +47,15 @@ internal fun selectLiveRecoveryCandidate(
     preferHighBitrate: Boolean,
     cdnPreference: SettingsManager.PlayerCdnPreference,
     preferCompatibleCodec: Boolean,
+    currentQualityKey: Int = 0,
 ): LiveStreamCandidate? {
     var remaining = candidates.filterNot { it.key in failedCandidateKeys }
+        .filter { (it.hdrType == 0 && it.eotf == 0) ||
+            (it.hdrType == liveQualityHdrType(currentQualityKey) && it.eotf == liveQualityEotf(currentQualityKey)) }
     if (preferCompatibleCodec && remaining.any { it.codecName.equals("avc", ignoreCase = true) }) {
         remaining = remaining.filter { it.codecName.equals("avc", ignoreCase = true) }
     }
+    remaining = scopeLiveVariants(remaining, currentQualityKey)
     val sameLine = currentLineKey
         ?.let { key -> remaining.filter { it.lineKey == key } }
         .orEmpty()
@@ -90,7 +98,9 @@ internal fun resolveEffectiveLiveQuality(
     candidate: LiveStreamCandidate,
     responseQuality: Int,
 ): Int {
-    return candidate.currentQn.takeIf { it > 0 } ?: responseQuality.coerceAtLeast(0)
+    return candidate.currentQn.takeIf { it > 0 }
+        ?.let { liveQualityKey(it, candidate.hdrType, candidate.eotf) }
+        ?: responseQuality.coerceAtLeast(0)
 }
 
 internal fun scoreLiveStreamCandidate(
@@ -121,7 +131,13 @@ internal fun scoreLiveStreamCandidate(
         "avc" -> if (preferHighBitrate) 150 else 190
         else -> 110
     }
+    val hdrContainerScore = if (candidate.hdrType == 0) 0 else when {
+        candidate.protocolName == "http_hls" && candidate.formatName == "fmp4" -> 3_000
+        candidate.protocolName == "http_hls" && candidate.formatName == "ts" -> 2_000
+        else -> 1_000
+    }
     return candidate.currentQn * 1000 +
+        hdrContainerScore +
         protocolScore +
         formatScore +
         codecScore +
