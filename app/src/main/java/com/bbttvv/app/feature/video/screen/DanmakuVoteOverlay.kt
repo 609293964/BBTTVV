@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -48,6 +50,7 @@ internal typealias DanmakuVoteKeyHandler = (KeyEvent) -> Boolean
 @Composable
 internal fun BoxScope.DanmakuVoteOverlay(
     state: DanmakuVoteUiState,
+    videoAspectRatio: Float,
     focusCoordinator: PlayerFocusCoordinator,
     onSelect: (Int) -> Unit,
     onRetry: () -> Unit,
@@ -56,9 +59,9 @@ internal fun BoxScope.DanmakuVoteOverlay(
 ) {
     val configuration = LocalConfiguration.current
     val compactDialogWidth = (configuration.screenWidthDp * 0.25f).dp
-        .coerceIn(280.dp, 360.dp)
-    val compactDialogHeight = (configuration.screenHeightDp * 0.32f).dp
-        .coerceIn(160.dp, 360.dp)
+        .coerceIn(232.dp, 300.dp)
+    val compactDialogHeight = (configuration.screenHeightDp * 0.38f).dp
+        .coerceIn(190.dp, 280.dp)
     val showing = state as? DanmakuVoteUiState.Showing
     val submitting = state as? DanmakuVoteUiState.Submitting
     val error = state as? DanmakuVoteUiState.RetryableError
@@ -163,23 +166,33 @@ internal fun BoxScope.DanmakuVoteOverlay(
     }
 
     LaunchedEffect(prompt.interactionKey, activeIndex.intValue) {
-        if (prompt.kind == DanmakuVoteKind.Vote) listState.scrollToItem(activeIndex.intValue)
+        if (prompt.kind != DanmakuVoteKind.Vote) return@LaunchedEffect
+        val index = activeIndex.intValue
+        val layout = listState.layoutInfo
+        if (layout.visibleItemsInfo.none { it.index == index && it.offset >= 0 && it.offset + it.size <= layout.viewportEndOffset }) {
+            listState.scrollToItem(index)
+        }
     }
 
+    val cardAlignment = remember(prompt.position) {
+        val position = prompt.position
+        if (position == null) Alignment.CenterEnd else Alignment { card, viewport, _ ->
+            IntOffset(
+                (viewport.width * position.xFraction - card.width / 2f).roundToInt().coerceIn(0, (viewport.width - card.width).coerceAtLeast(0)),
+                (viewport.height * position.yFraction - card.height / 2f).roundToInt().coerceIn(0, (viewport.height - card.height).coerceAtLeast(0)),
+            )
+        }
+    }
     Box(
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .zIndex(20f)
-            .fillMaxHeight()
-            .padding(end = 40.dp, top = 40.dp, bottom = 40.dp),
-        contentAlignment = Alignment.Center,
+        modifier = Modifier.align(Alignment.Center).zIndex(20f).aspectRatio(videoAspectRatio).padding(12.dp),
+        contentAlignment = cardAlignment,
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 280.dp, max = compactDialogWidth)
-                .heightIn(min = 180.dp, max = compactDialogHeight)
+                .widthIn(max = compactDialogWidth)
+                .heightIn(max = compactDialogHeight)
                 .background(Color(0xE61A1A1A), RoundedCornerShape(16.dp))
-                .padding(16.dp)
+                .padding(10.dp)
                 .focusRequester(overlayFocusRequester)
                 .focusable(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -208,9 +221,6 @@ internal fun BoxScope.DanmakuVoteOverlay(
                         )
                     }
                 }
-                if (prompt.kind == DanmakuVoteKind.Grade) {
-                    Text("${prompt.participantCount}人参与", color = Color(0xFFBDBDBD), fontSize = 15.sp)
-                }
             }
             if (prompt.kind == DanmakuVoteKind.Grade) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -237,14 +247,14 @@ internal fun BoxScope.DanmakuVoteOverlay(
                             Text(
                                 text = if (preview || selected) "★" else "☆",
                                 color = if (selected) Color(0xFFFFD54F) else Color.White,
-                                fontSize = 34.sp,
+                                fontSize = 25.sp,
                             )
                         }
                     }
                 }
             } else LazyColumn(
                 state = listState,
-                modifier = Modifier.heightIn(max = 220.dp),
+                modifier = Modifier.weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(vertical = 2.dp),
             ) {
@@ -252,7 +262,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                     val focused = index == activeIndex.intValue
                     val selected = prompt.selectedOptionId == option.id
                     Box(
-                        modifier = Modifier
+                        modifier = Modifier.fillMaxWidth()
                             .border(
                                 width = if (focused) 3.dp else 1.dp,
                                 color = if (focused) Color.White else Color(0xFF666666),
@@ -266,7 +276,7 @@ internal fun BoxScope.DanmakuVoteOverlay(
                                 },
                                 RoundedCornerShape(10.dp),
                             )
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         val suffix = when {
                             submitting?.selectedIndex == index -> " · 提交中"
@@ -293,7 +303,9 @@ internal fun BoxScope.DanmakuVoteOverlay(
             } else if (prompt.selectedOptionId > 0) {
                 Text(if (prompt.kind == DanmakuVoteKind.Grade) "你已经参与过该打分" else "你已经参与过该投票", color = Color(0xFFB7C7FF), fontSize = 14.sp)
             } else if (prompt.kind == DanmakuVoteKind.Grade) {
-                Text("${activeIndex.intValue + 1} 星 · 左右选择 · 确认打分 · 返回关闭", color = Color.White, fontSize = 14.sp)
+                Text("${activeIndex.intValue + 1} 星 · 上下选星 · 确认 · 返回取消", color = Color.White, fontSize = 14.sp)
+            } else if (showing != null) {
+                Text("上下选择 · 确认 · 返回取消", color = Color.LightGray, fontSize = 13.sp)
             }
         }
     }

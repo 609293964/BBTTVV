@@ -5,7 +5,11 @@ import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.ExoPlayer
+import com.bbttvv.app.core.network.NetworkModule
+import com.bbttvv.app.core.store.player.DanmakuSettings
+import com.bbttvv.app.core.store.player.DanmakuSettingsStore
 import com.bbttvv.app.core.plugin.PluginManager
+import com.bbttvv.app.core.store.TokenManager
 import com.bbttvv.app.core.store.PlayerSettingsCache
 import com.bbttvv.app.core.util.Logger
 import com.bbttvv.app.data.model.response.SponsorSegment
@@ -22,6 +26,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -55,6 +61,7 @@ abstract class BasePlayerViewModel : ViewModel() {
     private var danmakuCommandLoadJob: Job? = null
     private var danmakuLoadSequence: Long = 0L
     private var danmakuSourceVersion: Long = 0L
+    private var danmakuRebuildGeneration = 0L
     private val danmakuSegmentSources = linkedMapOf<Int, ParsedDanmaku>()
     private val sponsorBlockController = SponsorBlockController(
         scope = viewModelScope,
@@ -405,6 +412,9 @@ abstract class BasePlayerViewModel : ViewModel() {
                     )
                 }
                 _danmakuPayload.value = payload
+                val shouldFollow = resolveDanmakuSettings().followBiliShield &&
+                    !TokenManager.sessDataCache.isNullOrBlank() && aid > 0L
+                if (shouldFollow != danmakuFilterContext.followBiliShield) rebuildDanmakuPayloadFromSource()
                 payload?.let {
                     val firstShowAt = it.standardList.firstOrNull()?.showAtTime ?: -1L
                     val lastShowAt = it.standardList.lastOrNull()?.showAtTime ?: -1L
@@ -603,9 +613,17 @@ abstract class BasePlayerViewModel : ViewModel() {
     private fun observeDanmakuPluginUpdates() {
         if (danmakuPluginObserverJob != null) return
         danmakuPluginObserverJob = viewModelScope.launch {
-            PluginManager.danmakuPluginUpdateToken.collectLatest { token ->
-                if (token <= 0L) return@collectLatest
-                rebuildDanmakuPayloadFromSource()
+            val context = NetworkModule.appContext
+            if (context == null) {
+                PluginManager.danmakuPluginUpdateToken.collectLatest { rebuildDanmakuPayloadFromSource() }
+            } else {
+                combine(
+                    PluginManager.danmakuPluginUpdateToken,
+                    DanmakuSettingsStore.getSettings(context).distinctUntilChanged { old, new ->
+                        old.filterPreferences() == new.filterPreferences()
+                    },
+                ) { _, settings -> settings }
+                    .collectLatest { settings -> rebuildDanmakuPayloadFromSource(settings) }
             }
         }
     }
@@ -626,8 +644,21 @@ abstract class BasePlayerViewModel : ViewModel() {
         playerEngine?.volume = PlayerSettingsCache.getVolumeCalibrationScale()
     }
 
-    private suspend fun rebuildDanmakuPayloadFromSource() {
+    private suspend fun rebuildDanmakuPayloadFromSource(settings: DanmakuSettings = resolveDanmakuSettings()) {
         ensureMainThread("rebuildDanmakuPayloadFromSource")
+        if (danmakuSource == null) return
+        val rebuildGeneration = ++danmakuRebuildGeneration
+        val sequence = danmakuLoadSequence
+        val cid = currentDanmakuCid
+        val aid = currentDanmakuAid
+        val shouldFollow = settings.followBiliShield && cid > 0 && aid > 0 &&
+            !TokenManager.sessDataCache.isNullOrBlank()
+        if (shouldFollow != danmakuFilterContext.followBiliShield) {
+            val refreshed = PlayerDanmakuPipeline.refreshFilterContext(cid, aid, settings)
+            currentCoroutineContext().ensureActive()
+            if (sequence != danmakuLoadSequence || rebuildGeneration != danmakuRebuildGeneration) return
+            danmakuFilterContext = refreshed
+        }
         val parsed = danmakuSource ?: return
         val currentPayload = _danmakuPayload.value ?: return
         val filterContext = danmakuFilterContext
@@ -637,10 +668,11 @@ abstract class BasePlayerViewModel : ViewModel() {
                 parsed = parsed,
                 sourceLabel = currentPayload.sourceLabel,
                 filterContext = filterContext,
+                localSettings = settings,
             )
         }
         currentCoroutineContext().ensureActive()
-        if (sourceVersion != danmakuSourceVersion) return
+        if (sourceVersion != danmakuSourceVersion || rebuildGeneration != danmakuRebuildGeneration) return
         _danmakuPayload.value = rebuiltPayload
     }
 

@@ -58,23 +58,23 @@ fun AppNavigation() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val tvFocusReturn = LocalTvFocusReturn.current
-    var previousRoute by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     var settingsReturnKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val isOnHome = navigationState.isOnHome(currentRoute)
     val homeTopTabSelectOnFocusEnabled by SettingsManager.getHomeTopTabSelectOnFocusEnabled(context)
         .collectAsStateWithLifecycle(
             initialValue = SettingsManager.getHomeTopTabSelectOnFocusEnabledSync(context)
         )
-    val watchLaterInTopTabsEnabled by SettingsManager.getWatchLaterInTopTabsEnabled(context)
+    val settings by SettingsManager.getSettingsSnapshot(context)
         .collectAsStateWithLifecycle(
-            initialValue = SettingsManager.getWatchLaterInTopTabsEnabledSync(context)
+            initialValue = remember(context) { SettingsManager.getSettingsSnapshotSync(context) }
         )
     val plugins by PluginManager.pluginsFlow.collectAsStateWithLifecycle(initialValue = PluginManager.plugins)
     val todayWatchEnabled = plugins.any { it.plugin.id == TodayWatchPlugin.PLUGIN_ID && it.enabled }
-    val visibleTopLevelTabs = remember(todayWatchEnabled, watchLaterInTopTabsEnabled) {
+    val visibleTopLevelTabs = remember(todayWatchEnabled, settings.watchLaterInTopTabsEnabled, settings.homeTabLayout) {
         AppTopLevelTab.resolveVisibleTabs(
             todayWatchEnabled = todayWatchEnabled,
-            watchLaterInTopTabsEnabled = watchLaterInTopTabsEnabled,
+            watchLaterInTopTabsEnabled = settings.watchLaterInTopTabsEnabled,
+            savedLayout = settings.homeTabLayout,
         )
     }
     val visibleTopLevelTabsKey = remember(visibleTopLevelTabs) {
@@ -93,18 +93,7 @@ fun AppNavigation() {
     }
 
     LaunchedEffect(currentRoute) {
-        val shouldRestoreSettingsSource =
-            previousRoute == ScreenRoutes.Settings.route && currentRoute == ScreenRoutes.Home.route
         navigationState.onRouteChanged(currentRoute)
-        previousRoute = currentRoute
-        if (shouldRestoreSettingsSource) {
-            val sourceKey = settingsReturnKey
-            settingsReturnKey = null
-            if (sourceKey != null && tvFocusReturn != null) {
-                tvFocusReturn.capture(sourceKey, ProfileSettingsFocusKeys.All)
-                tvFocusReturn.restorePending()
-            }
-        }
     }
 
     LaunchedEffect(visibleTopLevelTabsKey) {
@@ -169,7 +158,16 @@ fun AppNavigation() {
         popEnterTransition = { EnterTransition.None },
         popExitTransition = { ExitTransition.None },
     ) {
-        composable(ScreenRoutes.Home.route) {
+        composable(ScreenRoutes.Home.route) { homeEntry ->
+            androidx.lifecycle.compose.LifecycleEventEffect(
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME, lifecycleOwner = homeEntry,
+            ) {
+                settingsReturnKey?.let { key ->
+                    tvFocusReturn?.capture(key, ProfileSettingsFocusKeys.All)
+                    tvFocusReturn?.restorePending()
+                    settingsReturnKey = null
+                }
+            }
             val homeViewModel: HomeViewModel = viewModel()
             HomeScreen(
                 viewModel = homeViewModel,

@@ -1270,7 +1270,9 @@ class PlayerViewModel : BasePlayerViewModel() {
     private fun loadOnlineCount(bvid: String, cid: Long) {
         ensureMainThread("loadOnlineCount")
         if (bvid.isBlank() || cid <= 0L) return
+        val context = NetworkModule.appContext
         viewModelScope.launch {
+            if (context != null && !SettingsManager.getShowOnlineCount(context).first()) return@launch
             val onlineCountText = playbackUseCase.loadOnlineCountText(bvid = bvid, cid = cid).orEmpty()
             if (playbackRuntime.bvid != bvid || playbackRuntime.cid != cid) {
                 return@launch

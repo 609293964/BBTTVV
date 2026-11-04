@@ -90,6 +90,19 @@ object PlayerSettingsStore {
         )
     }
 
+    suspend fun setStartingPlaybackSpeed(context: Context, speed: Float?) {
+        val normalized = speed?.let(::normalizePlaybackSpeed)
+        context.settingsDataStore.edit { preferences ->
+            preferences[keyRememberLastPlaybackSpeed] = normalized == null
+            if (normalized != null) preferences[keyDefaultPlaybackSpeed] = normalized
+        }
+        context.getSharedPreferences(playbackSpeedCachePrefs, Context.MODE_PRIVATE).edit().apply {
+            putBoolean(cacheKeyRememberLastSpeed, normalized == null)
+            if (normalized != null) putFloat(cacheKeyDefaultPlaybackSpeed, normalized)
+        }.apply()
+        PlayerSettingsCache.refreshPreferredPlaybackSpeed(context)
+    }
+
     fun getDefaultPlaybackSpeed(context: Context): Flow<Float> = context.settingsDataStore.data
         .map { preferences -> normalizePlaybackSpeed(preferences[keyDefaultPlaybackSpeed] ?: 1.0f) }
 

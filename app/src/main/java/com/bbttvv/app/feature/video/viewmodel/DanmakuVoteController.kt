@@ -107,6 +107,7 @@ internal class DanmakuVoteController(
         } else {
             val remaining = suspendedRemainingMs ?: return
             suspendedRemainingMs = null
+            _uiState.value = showing.copy(deadlineElapsedMs = nowElapsedMs() + remaining)
             startTimeout(showing.prompt, remaining)
         }
     }
@@ -149,6 +150,7 @@ internal class DanmakuVoteController(
         aid = 0L
         cid = 0L
         lastPositionMs = 0L
+        suspendedRemainingMs = null
         prompts = emptyList()
         handledVoteIds.clear()
         _uiState.value = DanmakuVoteUiState.Hidden
@@ -164,7 +166,7 @@ internal class DanmakuVoteController(
             prompt = prompt,
             deadlineElapsedMs = nowElapsedMs() + safeRemainingMs,
         )
-        if (!overlaySuppressed) startTimeout(prompt, safeRemainingMs)
+        if (overlaySuppressed) suspendedRemainingMs = safeRemainingMs else startTimeout(prompt, safeRemainingMs)
     }
 
     private fun startTimeout(prompt: DanmakuVotePrompt, remainingMs: Long) {

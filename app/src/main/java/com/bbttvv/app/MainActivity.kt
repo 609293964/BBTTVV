@@ -51,6 +51,13 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 withFrameNanos { }
                 (application as? BbtvApplication)?.onFirstFrameRendered()
+                try {
+                    if (com.bbttvv.app.core.store.SettingsManager.reconcileThemeCache(this@MainActivity)) {
+                        recreate()
+                    }
+                } catch (e: java.io.IOException) {
+                    android.util.Log.w("MainActivity", "Theme preference unavailable at startup", e)
+                }
             }
             AppTheme(themeMode = startupTheme) {
                 Box(

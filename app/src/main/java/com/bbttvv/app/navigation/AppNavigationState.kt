@@ -102,6 +102,12 @@ class DetailReturnState internal constructor(
         }
     }
 
+    fun discardHiddenRestoreTarget(visibleTabs: List<AppTopLevelTab>) {
+        if (homeVideoFocusRestoreKey == null) return
+        val index = homeVideoFocusRestoreTabIndex ?: AppTopLevelTab.RECOMMEND.index
+        if (AppTopLevelTab.fromIndex(index) !in visibleTabs) clearHomeVideoFocusRestore()
+    }
+
     fun restoreVideoFocusTab(isOnHome: Boolean): AppTopLevelTab? {
         if (restoreVideoFocusKey(isOnHome) == null) return null
         val tabIndex = homeVideoFocusRestoreTabIndex ?: AppTopLevelTab.RECOMMEND.index
@@ -259,6 +265,7 @@ class AppNavigationState internal constructor(
 
     fun normalizeHomeTabIfNeeded(visibleTabs: List<AppTopLevelTab>) {
         homeNavState.normalizeHomeTabIfNeeded(visibleTabs)
+        detailReturnState.discardHiddenRestoreTarget(visibleTabs)
     }
 
     fun isOnHome(currentRoute: String?): Boolean {
@@ -350,7 +357,7 @@ class AppNavigationState internal constructor(
 
 @Composable
 fun rememberAppNavigationState(): AppNavigationState {
-    val homeTabIndexState = remember { androidx.compose.runtime.mutableIntStateOf(AppTopLevelTab.RECOMMEND.index) }
+    val homeTabIndexState = rememberSaveable { androidx.compose.runtime.mutableIntStateOf(AppTopLevelTab.RECOMMEND.index) }
     val homeVideoFocusRestoreKeyState = rememberSaveable { mutableStateOf<String?>(null) }
     val homeVideoFocusRestoreTabIndexState = rememberSaveable { mutableStateOf<Int?>(null) }
     val homeVideoFocusRestoreReadyState = rememberSaveable { mutableStateOf(false) }

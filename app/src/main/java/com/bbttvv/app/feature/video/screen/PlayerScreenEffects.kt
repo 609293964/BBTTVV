@@ -58,6 +58,7 @@ internal data class PlayerScreenSession(
 
 internal data class PlayerScreenEffectArgs(
     val session: PlayerScreenSession,
+    val voteOwnsFocus: Boolean,
     val uiState: PlayerUiState,
     val overlayUiState: PlayerOverlayUiState,
     val panelOptions: List<PanelOption>,
@@ -312,7 +313,8 @@ internal fun PlayerScreenEffectHost(
         is PlayerFocusIntent.FocusInteractiveOption -> null
         PlayerFocusIntent.FocusDanmakuVoteOverlay -> null
     }
-    LaunchedEffect(focusIntent, focusTargetIdentity) {
+    LaunchedEffect(focusIntent, focusTargetIdentity, args.voteOwnsFocus) {
+        if (args.voteOwnsFocus) return@LaunchedEffect
         playerFocusCoordinator.requestFocus(focusIntent)
         withFrameNanos { }
         playerFocusCoordinator.drainPendingFocus()

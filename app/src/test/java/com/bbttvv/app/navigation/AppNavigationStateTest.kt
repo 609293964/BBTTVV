@@ -113,6 +113,18 @@ class BackPressExitStateTest {
 
 class AppNavigationStateTest {
     @Test
+    fun `pending detail return survives a reorder and clears when its source disappears`() {
+        val state = createNavigationState(homeTabIndex = AppTopLevelTab.LIVE.index)
+        state.prepareForHomeTabDetailOpen(AppTopLevelTab.LIVE, "video")
+        state.onRouteChanged(ScreenRoutes.Settings.route)
+        state.normalizeHomeTabIfNeeded(listOf(AppTopLevelTab.PROFILE, AppTopLevelTab.LIVE, AppTopLevelTab.RECOMMEND))
+        assertEquals("video", state.homeVideoFocusRestoreKey)
+        state.normalizeHomeTabIfNeeded(listOf(AppTopLevelTab.PROFILE, AppTopLevelTab.RECOMMEND))
+        assertNull(state.homeVideoFocusRestoreKey)
+        assertEquals(AppTopLevelTab.RECOMMEND.index, state.homeTabIndex)
+    }
+
+    @Test
     fun `back press on hidden today watch tab normalizes to recommend then shows exit hint`() {
         val state = createNavigationState(
             homeTabIndex = AppTopLevelTab.TODAY_WATCH.index

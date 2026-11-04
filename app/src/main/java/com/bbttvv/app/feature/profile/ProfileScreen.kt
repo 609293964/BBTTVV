@@ -186,7 +186,6 @@ internal fun ProfileScreen(
                         )
                     }
                     navData == null || !navData.isLogin -> GuestProfileLayout(
-                        uiState = uiState,
                         onLoginSuccess = {
                             selectedMenu = ProfileMenu.HISTORY
                             viewModel.refresh()

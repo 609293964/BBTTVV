@@ -268,6 +268,7 @@ internal fun ProfileGuidePanel(
         focusTab = focusTab,
     )
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
+    val sidebarTheme = com.bbttvv.app.ui.theme.LocalSidebarTheme.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -299,7 +300,7 @@ internal fun ProfileGuidePanel(
             ProfileInfoCard(
                 "确认键 — 选择与进入",
                 "按确认键（D-Pad 中心键 / Enter）可进入当前焦点所在的内容，如打开视频详情、进入播放器、" +
-                    "切换设置项等。在顶部 Tab 栏移动焦点时会直接切页，无需额外按确认键确认。"
+                    "切换设置项等。首页导航可在设置中选择移动焦点即切换，或按确认键切换。"
             )
         }
         item {
@@ -368,8 +369,11 @@ internal fun ProfileGuidePanel(
         item {
             ProfileInfoCard(
                 "首页导航流程",
-                "首页由顶部 Tab 栏、二级分类 Tab 和视频网格三层组成。在顶部 Tab 左右移动可直接切换主分类（推荐、热门、直播等），" +
-                    "按方向键下进入二级分类或视频网格。从网格按方向键上可逐层返回顶部 Tab。"
+                if (sidebarTheme) {
+                    "在左侧导航上下选择模块，向右进入当前模块。视频页可在顶部左右选择栏目，向下进入视频网格。"
+                } else {
+                    "在顶部导航左右选择模块，向下进入分类或内容。从视频网格首行向上可返回导航。"
+                }
             )
         }
         item {

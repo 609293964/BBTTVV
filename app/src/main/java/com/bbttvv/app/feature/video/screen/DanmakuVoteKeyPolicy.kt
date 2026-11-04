@@ -73,11 +73,9 @@ internal fun resolveDanmakuVoteKeyDecision(
     }
 
     val nextIndex = if (action == KeyEvent.ACTION_DOWN && state == DanmakuVoteKeyState.Showing) {
-        val previousKey = if (horizontal) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_UP
-        val nextKey = if (horizontal) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_DOWN
-        when (keyCode) {
-            previousKey -> (safeIndex - 1).coerceAtLeast(0)
-            nextKey -> (safeIndex + 1).coerceAtMost(safeLastIndex)
+        when {
+            keyCode == KeyEvent.KEYCODE_DPAD_UP || (horizontal && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -> (safeIndex - 1).coerceAtLeast(0)
+            keyCode == KeyEvent.KEYCODE_DPAD_DOWN || (horizontal && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) -> (safeIndex + 1).coerceAtMost(safeLastIndex)
             else -> safeIndex
         }
     } else {

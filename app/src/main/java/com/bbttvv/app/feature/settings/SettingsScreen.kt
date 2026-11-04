@@ -2,6 +2,7 @@ package com.bbttvv.app.feature.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Border
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -70,6 +73,8 @@ import com.bbttvv.app.core.util.CacheUtils
 import com.bbttvv.app.data.repository.BlockedUpRepository
 import com.bbttvv.app.data.model.VideoQuality
 import com.bbttvv.app.feature.plugin.isAllowedCustomCdnHost
+import com.bbttvv.app.ui.components.HomeTabLayout
+import com.bbttvv.app.ui.components.AppTopLevelTab
 import com.bbttvv.app.ui.components.LocalTvNoticeHostState
 import com.bbttvv.app.ui.components.TvDialog
 import com.bbttvv.app.ui.components.TvDialogActionButton
@@ -211,7 +216,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
-                        text = "系统与个性化配置",
+                        text = "选择分类，按右键进入",
                         color = semanticColors.secondaryText,
                         fontSize = 13.sp
                     )
@@ -222,12 +227,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(32.dp)
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 // 左侧导航分类栏
                 Column(
                     modifier = Modifier
-                        .width(180.dp)
+                        .width(148.dp)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -258,13 +263,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                                     }
                                 },
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                            border = ClickableSurfaceDefaults.border(
+                                focusedBorder = Border(
+                                    border = BorderStroke(2.dp, semanticColors.accent),
+                                    shape = RoundedCornerShape(10.dp),
+                                ),
+                            ),
                             colors = ClickableSurfaceDefaults.colors(
                                 containerColor = if (isLightTheme) {
                                     if (isSelected) Color(0x14FB7299) else Color(0x0C000000)
                                 } else {
                                     if (isSelected) Color(0x1AFFFFFF) else Color(0x05FFFFFF)
                                 },
-                                focusedContainerColor = if (isLightTheme) Color(0xFFFB7299) else Color(0xFF26354A)
+                                focusedContainerColor = semanticColors.focusContainer
                             )
                         ) {
                             Box(
@@ -276,7 +288,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 Text(
                                     text = category.title,
                                     color = if (isFocused) {
-                                        Color.White
+                                        semanticColors.focusContent
                                     } else if (isSelected) {
                                         if (isLightTheme) Color(0xFFFB7299) else Color(0xFF00AEEC)
                                     } else {
@@ -363,8 +375,9 @@ fun TvSettingsList(
     val videoDetailCommentsEnabled = appSettings.videoDetailCommentsEnabled
     val updateContentOnTabFocusEnabled = appSettings.updateContentOnTabFocusEnabled
     val homeTopTabSelectOnFocusEnabled = appSettings.homeTopTabSelectOnFocusEnabled
-    val watchLaterInTopTabsEnabled = appSettings.watchLaterInTopTabsEnabled
-    val homeNavigationLabel = if (com.bbttvv.app.ui.theme.LocalSidebarTheme.current) "左侧导航" else "顶部 Tabs"
+    var showTabEditor by remember { mutableStateOf(false) }
+    val tabEditorFocus = remember { FocusRequester() }
+    RegisterTvFocusReturnTarget(key = "settings_home_tabs", focusRequester = tabEditorFocus)
     val dynamicPageDisplayMode = appSettings.dynamicPageDisplayMode
     val singleBackToHomeEnabled = appSettings.singleBackToHomeEnabled
     val themeMode = appSettings.themeMode
@@ -519,8 +532,7 @@ fun TvSettingsList(
             item(key = "settings_playback_title") { SettingsSectionTitle("播放设置") }
             item(key = "settings_auto_highest_quality") {
                 SettingsRow(
-                    title = "仅加载最高分辨率",
-                    subtitle = "播放时优先请求接口返回的最高画质，关闭后按默认画质策略选择。",
+                    title = "优先最高画质",
                     value = onOff(autoHighestQuality),
                     modifier = getRowModifier("settings_auto_highest_quality", leftModifier),
                     onClick = {
@@ -532,8 +544,7 @@ fun TvSettingsList(
             }
             item(key = "settings_pgc_preferred_quality") {
                 SettingsRow(
-                    title = "PGC 默认画质",
-                    subtitle = "仅用于番剧、影视等 PGC 内容；选择“跟随普通视频”可保持旧用户行为。",
+                    title = "番剧和影视画质",
                     value = pgcPreferredQuality
                         ?.let { VideoQuality.fromCode(it)?.description ?: it.toString() }
                         ?: "跟随普通视频",
@@ -547,28 +558,10 @@ fun TvSettingsList(
                     onClick = { activeChoice = SettingsChoice.PGC_QUALITY },
                 )
             }
-            item(key = "settings_remember_last_speed") {
-                SettingsRow(
-                    title = "记住上次播放倍速",
-                    subtitle = "自动应用上次观看视频时选择的播放速度。",
-                    value = onOff(rememberLastSpeed),
-                    modifier = getRowModifier("settings_remember_last_speed", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            PlayerSettingsStore.setRememberLastPlaybackSpeed(context, !rememberLastSpeed)
-                        }
-                    }
-                )
-            }
             item(key = "settings_default_speed") {
                 SettingsRow(
-                    title = "默认倍速",
-                    subtitle = if (rememberLastSpeed) {
-                        "未记录上次速度时使用；可选 0.5x 到 2.0x。"
-                    } else {
-                        "新播放会话默认使用；可选 0.5x 到 2.0x。"
-                    },
-                    value = "${defaultPlaybackSpeed}x",
+                    title = "起始倍速",
+                    value = if (rememberLastSpeed) "记住上次" else "${defaultPlaybackSpeed}x",
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
                         "settings_default_speed",
@@ -581,8 +574,7 @@ fun TvSettingsList(
             }
             item(key = "settings_auto_resume") {
                 SettingsRow(
-                    title = "自动跳到上次播放位置",
-                    subtitle = "打开视频时，自动从上次观看中断处继续播放。",
+                    title = "自动续播",
                     value = onOff(playerAutoResumeEnabled),
                     modifier = getRowModifier("settings_auto_resume", leftModifier),
                     onClick = {
@@ -612,8 +604,8 @@ fun TvSettingsList(
             }
             item(key = "settings_interactive_video") {
                 SettingsRow(
-                    title = "弹幕投票与互动",
-                    subtitle = "显示视频中的投票、分支等互动选项；关闭后不弹出互动框。",
+                    title = "视频互动卡片",
+                    subtitle = "包含投票、评分和剧情分支。",
                     value = onOff(interactiveVideoEnabled),
                     modifier = getRowModifier("settings_interactive_video", leftModifier),
                     onClick = {
@@ -629,8 +621,8 @@ fun TvSettingsList(
             item(key = "settings_audio_title") { SettingsSectionTitle("音频配置") }
             item(key = "settings_volume_calibration") {
                 SettingsRow(
-                    title = "应用音量校准",
-                    subtitle = "调整 BBTTVV 播放输出音量，不改变电视系统音量。超过 100% 可能失真。",
+                    title = "应用音量",
+                    subtitle = "超过 100% 可能失真。",
                     value = formatPlayerVolumeCalibrationLabel(volumeCalibrationScale),
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -645,7 +637,7 @@ fun TvSettingsList(
             item(key = "settings_volume_balance") {
                 SettingsRow(
                     title = "音量均衡",
-                    subtitle = "自动调整不同视频的音量差异，避免切换视频时音量忽大忽小。",
+                    subtitle = "减小不同视频间的音量差异。",
                     value = audioBalanceLevel.label,
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -659,8 +651,8 @@ fun TvSettingsList(
             }
             item(key = "settings_audio_passthrough") {
                 SettingsRow(
-                    title = "音频直通 [实验性]",
-                    subtitle = "将压缩音频（如杜比全景声、Hi-Res）不经解码直接输出到外接音频设备。开启后音量均衡、倍速调节将失效。需要设备支持对应编码格式。",
+                    title = "音频直通（实验）",
+                    subtitle = "需音源和外接设备支持；跳过音量均衡，下次进入播放器生效。",
                     value = onOff(audioPassthrough),
                     modifier = getRowModifier("settings_audio_passthrough", leftModifier),
                     onClick = {
@@ -678,7 +670,6 @@ fun TvSettingsList(
             item(key = "settings_show_online_count") {
                 SettingsRow(
                     title = "在线观看人数",
-                    subtitle = "控制播放页右上角是否显示当前视频的在线观看人数。",
                     value = onOff(showOnlineCount),
                     modifier = getRowModifier("settings_show_online_count", leftModifier),
                     onClick = {
@@ -690,8 +681,7 @@ fun TvSettingsList(
             }
             item(key = "settings_video_detail_comments") {
                 SettingsRow(
-                    title = "视频详情页评论",
-                    subtitle = "控制视频详情页底部评论区是否显示和加载。",
+                    title = "详情页评论",
                     value = onOff(videoDetailCommentsEnabled),
                     modifier = getRowModifier("settings_video_detail_comments", leftModifier),
                     onClick = {
@@ -706,13 +696,8 @@ fun TvSettingsList(
             }
             item(key = "settings_update_content_on_tab_focus") {
                 SettingsRow(
-                    title = "“我的”页面焦点刷新",
-                    subtitle = if (updateContentOnTabFocusEnabled) {
-                        "已开启：在“我的”页左侧 TAB 上移动焦点时，会立即刷新右侧内容。"
-                    } else {
-                        "已关闭：焦点移动只限于 TAB，需按确定键后才刷新右侧内容。"
-                    },
-                    value = if (updateContentOnTabFocusEnabled) "开启" else "关闭",
+                    title = "我的栏目切换",
+                    value = if (updateContentOnTabFocusEnabled) "移到即切换" else "按确认切换",
                     modifier = getRowModifier("settings_update_content_on_tab_focus", leftModifier),
                     onClick = {
                         scope.launch {
@@ -726,13 +711,8 @@ fun TvSettingsList(
             }
             item(key = "settings_home_top_tab_select_on_focus") {
                 SettingsRow(
-                    title = "首页顶部 TAB 切换方式",
-                    subtitle = if (homeTopTabSelectOnFocusEnabled) {
-                        "移动焦点时立即切换页面，适合常规遥控器操作。"
-                    } else {
-                        "移动焦点只浏览 TAB，按确定键后才切换页面。"
-                    },
-                    value = if (homeTopTabSelectOnFocusEnabled) "焦点切换" else "确认切换",
+                    title = "首页栏目切换",
+                    value = if (homeTopTabSelectOnFocusEnabled) "移到即切换" else "按确认切换",
                     modifier = getRowModifier("settings_home_top_tab_select_on_focus", leftModifier),
                     onClick = {
                         scope.launch {
@@ -744,30 +724,18 @@ fun TvSettingsList(
                     }
                 )
             }
-            item(key = "settings_watch_later_in_top_tabs") {
+            item(key = "settings_home_tabs") {
                 SettingsRow(
-                    title = "稍后再看入口位置",
-                    subtitle = if (watchLaterInTopTabsEnabled) {
-                        "当前显示在首页${homeNavigationLabel}中，并从“我的”左侧菜单隐藏。"
-                    } else {
-                        "当前显示在“我的”左侧菜单中，并从首页${homeNavigationLabel}隐藏。"
-                    },
-                    value = if (watchLaterInTopTabsEnabled) homeNavigationLabel else "我的菜单",
-                    modifier = getRowModifier("settings_watch_later_in_top_tabs", leftModifier),
-                    onClick = {
-                        scope.launch {
-                            SettingsManager.setWatchLaterInTopTabsEnabled(
-                                context,
-                                !watchLaterInTopTabsEnabled
-                            )
-                        }
-                    }
+                    title = "编辑导航栏",
+                    value = "编辑",
+                    modifier = getRowModifier("settings_home_tabs", leftModifier.focusRequester(tabEditorFocus)),
+                    onClick = { showTabEditor = true },
                 )
             }
             item(key = "settings_single_back_to_home") {
                 SettingsRow(
                     title = "相关视频一键回首页",
-                    subtitle = "开启后，在相关视频多次跳转时，点击一次返回键即可直接回到首页。",
+                    subtitle = "从相关视频连续跳转后，按返回直接回首页。",
                     value = onOff(singleBackToHomeEnabled),
                     modifier = getRowModifier("settings_single_back_to_home", leftModifier),
                     onClick = {
@@ -782,8 +750,7 @@ fun TvSettingsList(
             }
             item(key = "settings_theme_mode") {
                 SettingsRow(
-                    title = "系统主题模式",
-                    subtitle = "打开下拉菜单选择主题，按确认应用；Back 取消。切换后自动重载界面。",
+                    title = "主题",
                     value = themeMode.label,
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -800,8 +767,7 @@ fun TvSettingsList(
             item(key = "settings_feed_title") { SettingsSectionTitle("推荐与数据") }
             item(key = "settings_feed_api_type") {
                 SettingsRow(
-                    title = "推荐页数据源",
-                    subtitle = resolveFeedApiTypeDescription(feedApiType),
+                    title = "推荐数据源",
                     value = resolveFeedApiTypeLabel(feedApiType),
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -815,8 +781,8 @@ fun TvSettingsList(
             }
             item(key = "settings_home_refresh_count") {
                 SettingsRow(
-                    title = "首页刷新数量",
-                    subtitle = "单次刷新时拉取的推荐视频数量。",
+                    title = "推荐请求数量",
+                    subtitle = if (feedApiType == SettingsManager.FeedApiType.MERGED) "分别向网页端和移动端请求，合并后去重。" else "",
                     value = homeRefreshCount.toString(),
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -830,8 +796,7 @@ fun TvSettingsList(
             }
             item(key = "settings_dynamic_page_display_mode") {
                 SettingsRow(
-                    title = "动态页显示管理",
-                    subtitle = resolveDynamicPageDisplayModeDescription(dynamicPageDisplayMode),
+                    title = "动态页内容",
                     value = dynamicPageDisplayMode.label,
                     kind = SettingsRowKind.Choice,
                     modifier = getRowModifier(
@@ -849,8 +814,8 @@ fun TvSettingsList(
             item(key = "settings_network_title") { SettingsSectionTitle("网络与连接") }
             item(key = "settings_custom_cdn_host") {
                 SettingsRow(
-                    title = "自定义 CDN 主机",
-                    subtitle = "只接受 bilivideo.com 域名；不保存播放 URL、Cookie 或 token。",
+                    title = "自定义 CDN",
+                    subtitle = "仅支持 bilivideo.com 域名。",
                     value = customCdnHost.ifBlank { "未配置" },
                     kind = SettingsRowKind.Navigation,
                     modifier = getRowModifier(
@@ -867,7 +832,7 @@ fun TvSettingsList(
             item(key = "settings_strict_custom_cdn") {
                 SettingsRow(
                     title = "严格使用自定义 CDN",
-                    subtitle = "开启后仅使用上方主机重写出的地址，不回退属地或原始线路；失败会显示规则与 URL 类型。",
+                    subtitle = "失败时也不切换到其他线路。",
                     value = onOff(strictCustomCdnEnabled),
                     modifier = getRowModifier("settings_strict_custom_cdn", leftModifier),
                     onClick = {
@@ -890,7 +855,6 @@ fun TvSettingsList(
             item(key = "settings_user_agent") {
                 SettingsRow(
                     title = "User-Agent",
-                    subtitle = "当前：${buildUserAgentPreview(userAgent)}",
                     value = if (userAgent == DEFAULT_APP_USER_AGENT) "默认" else "自定义",
                     kind = SettingsRowKind.Navigation,
                     modifier = getRowModifier(
@@ -906,7 +870,7 @@ fun TvSettingsList(
             item(key = "settings_ipv4_only") {
                 SettingsRow(
                     title = "仅使用 IPv4",
-                    subtitle = "开启后只走 IPv4 解析；在双栈网络异常时可作为兼容开关。",
+                    subtitle = "网络连接异常时可尝试开启。",
                     value = onOff(ipv4OnlyEnabled),
                     modifier = getRowModifier("settings_ipv4_only", leftModifier),
                     onClick = {
@@ -922,8 +886,8 @@ fun TvSettingsList(
             item(key = "settings_system_title") { SettingsSectionTitle("系统与关于") }
             item(key = "settings_privacy_mode") {
                 SettingsRow(
-                    title = "隐私无痕模式",
-                    subtitle = "关闭搜索历史写入，并跳过观看心跳上报。",
+                    title = "无痕模式",
+                    subtitle = "不记录搜索历史，不上报观看进度。",
                     value = onOff(privacyMode),
                     modifier = getRowModifier("settings_privacy_mode", leftModifier),
                     onClick = {
@@ -935,8 +899,7 @@ fun TvSettingsList(
             }
             item(key = "settings_blocked_ups_count") {
                 SettingsRow(
-                    title = "黑名单数量",
-                    subtitle = "当前已屏蔽的 UP 数量。",
+                    title = "已屏蔽的 UP 主",
                     value = blockedUps.size.toString(),
                     kind = SettingsRowKind.Info,
                     modifier = getRowModifier("settings_blocked_ups_count", leftModifier),
@@ -946,8 +909,8 @@ fun TvSettingsList(
             }
             item(key = "settings_automatic_cache_cleanup") {
                 SettingsRow(
-                    title = "自动清理缓存",
-                    subtitle = "超过阈值后在后台清理受管理的图片和网络缓存。",
+                    title = "启动时清理缓存",
+                    subtitle = "启动时检查图片和网络缓存，超出右侧容量则清理。",
                     value = if (automaticCacheThresholdMb <= 0) {
                         "关闭"
                     } else {
@@ -971,11 +934,6 @@ fun TvSettingsList(
             item(key = "settings_clear_cache") {
                 SettingsRow(
                     title = "清除缓存",
-                    subtitle = if (isClearingCache) {
-                        "正在清理图片、网络与播放缓存..."
-                    } else {
-                        "清理预览图、网络缓存和播放器残留。"
-                    },
                     value = if (isClearingCache) "清理中..." else cacheSize,
                     kind = SettingsRowKind.Action,
                     modifier = getRowModifier("settings_clear_cache", leftModifier),
@@ -984,7 +942,10 @@ fun TvSettingsList(
                         scope.launch {
                             isClearingCache = true
                             try {
-                                CacheUtils.clearAllCache(context.applicationContext)
+                                CacheUtils.clearAllCache(context.applicationContext).fold(
+                                    onSuccess = { tvNoticeHostState.show("缓存已清理") },
+                                    onFailure = { tvNoticeHostState.show("缓存清理失败，请重试", kind = TvNoticeKind.Error) },
+                                )
                                 cacheRefreshTick += 1
                             } finally {
                                 isClearingCache = false
@@ -995,12 +956,7 @@ fun TvSettingsList(
             }
             item(key = "settings_check_update") {
                 SettingsRow(
-                    title = "检查应用更新",
-                    subtitle = when {
-                        isCheckingUpdate -> "正在从 GitHub 检查最新版本..."
-                        isDownloadingUpdate -> "正在下载更新包，请勿退出此页面..."
-                        else -> "手动检查 GitHub Release；下载后由电视系统确认安装。"
-                    },
+                    title = "检查更新",
                     value = when {
                         isCheckingUpdate -> "检查中"
                         isDownloadingUpdate -> "下载中"
@@ -1044,8 +1000,7 @@ fun TvSettingsList(
                 item(key = "settings_version") {
                     SettingsRow(
                         title = "版本",
-                        subtitle = "当前安装包版本号。",
-                        value = BuildConfig.VERSION_NAME,
+                            value = BuildConfig.VERSION_NAME,
                         modifier = getRowModifier("settings_version", leftModifier),
                         enabled = false,
                         onClick = {}
@@ -1054,8 +1009,7 @@ fun TvSettingsList(
                 item(key = "settings_build_type") {
                     SettingsRow(
                         title = "构建类型",
-                        subtitle = "用于区分 debug / release。",
-                        value = BuildConfig.BUILD_TYPE,
+                            value = BuildConfig.BUILD_TYPE,
                         modifier = leftModifier,
                         enabled = false,
                         onClick = {}
@@ -1064,8 +1018,7 @@ fun TvSettingsList(
                 item(key = "settings_package_name") {
                     SettingsRow(
                         title = "应用包名",
-                        subtitle = "当前安装在设备上的包标识。",
-                        value = context.packageName,
+                            value = context.packageName,
                         modifier = leftModifier,
                         enabled = false,
                         onClick = {}
@@ -1073,6 +1026,24 @@ fun TvSettingsList(
                 }
             }
         }
+    }
+
+    if (showTabEditor) {
+        HomeTabEditor(
+            initialLayout = HomeTabLayout.restore(
+                watchLaterInTopTabsEnabled = appSettings.watchLaterInTopTabsEnabled,
+                savedLayout = appSettings.homeTabLayout,
+            ),
+            onDismiss = { showTabEditor = false },
+            onSave = { layout ->
+                scope.launch {
+                    SettingsManager.setHomeTabLayout(
+                        context, layout.encode(), AppTopLevelTab.WATCH_LATER in layout.visible,
+                    )
+                    showTabEditor = false
+                }
+            },
+        )
     }
 
     if (showUserAgentDialog) {
@@ -1261,7 +1232,7 @@ fun TvSettingsList(
         )
 
         SettingsChoice.PGC_QUALITY -> TvSettingsChoicePopup(
-            title = "选择 PGC 默认画质",
+            title = "番剧和影视画质",
             options = listOf(TvSettingsChoiceOption(-1, "跟随普通视频")) +
                 VideoQuality.entries
                     .sortedByDescending { quality -> quality.code }
@@ -1282,19 +1253,19 @@ fun TvSettingsList(
         )
 
         SettingsChoice.DEFAULT_SPEED -> TvSettingsChoicePopup(
-            title = "选择默认倍速",
-            options = (PLAYER_PLAYBACK_SPEED_PRESETS + defaultPlaybackSpeed)
+            title = "起始倍速",
+            options = listOf(TvSettingsChoiceOption(-1f, "记住上次")) + (PLAYER_PLAYBACK_SPEED_PRESETS + defaultPlaybackSpeed)
                 .distinct()
                 .sorted()
                 .map { speed ->
                     TvSettingsChoiceOption(speed, "${speed}x")
             },
-            selectedValue = defaultPlaybackSpeed,
+            selectedValue = if (rememberLastSpeed) -1f else defaultPlaybackSpeed,
             anchorBounds = choiceAnchorBounds[SettingsChoice.DEFAULT_SPEED],
             returnFocusKey = SettingsChoice.DEFAULT_SPEED.rowKey,
             onSelect = { speed ->
                 scope.launch {
-                    PlayerSettingsStore.setDefaultPlaybackSpeed(context, speed)
+                    PlayerSettingsStore.setStartingPlaybackSpeed(context, speed.takeIf { it > 0f })
                     activeChoice = null
                 }
             },
@@ -1466,7 +1437,7 @@ internal fun SettingsSectionTitle(title: String) {
 @Composable
 internal fun SettingsRow(
     title: String,
-    subtitle: String,
+    subtitle: String = "",
     value: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -1503,6 +1474,7 @@ internal fun SettingsRow(
         interactionSource = interactionSource,
         modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = semanticColors.surfaceSubtle,
             focusedContainerColor = semanticColors.focusContainer
@@ -1511,9 +1483,9 @@ internal fun SettingsRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(78.dp)
+                .height(if (subtitle.isBlank()) 56.dp else 78.dp)
                 .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
@@ -1524,9 +1496,11 @@ internal fun SettingsRow(
                     text = title,
                     color = titleColor,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(
+                if (subtitle.isNotBlank()) Text(
                     text = subtitle,
                     color = subtitleColor,
                     fontSize = 14.sp,
@@ -1536,6 +1510,7 @@ internal fun SettingsRow(
             }
             Box(
                 modifier = Modifier
+                    .widthIn(max = 240.dp)
                     .background(
                         color = valueContainerColor,
                         shape = RoundedCornerShape(999.dp)
@@ -1554,7 +1529,9 @@ internal fun SettingsRow(
                     },
                     color = valueTextColor,
                     fontSize = 14.sp,
-                    fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
+                    fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -1565,30 +1542,10 @@ internal fun onOff(enabled: Boolean): String = if (enabled) "\u5F00" else "\u517
 
 private fun resolveFeedApiTypeLabel(type: SettingsManager.FeedApiType): String {
     return when (type) {
-        SettingsManager.FeedApiType.MERGED -> "网页端 + 移动端 (合并)"
-        SettingsManager.FeedApiType.WEB -> "\u7F51\u9875\u7AEF (Web)"
-        SettingsManager.FeedApiType.MOBILE -> "\u79FB\u52A8\u7AEF (App)"
+        SettingsManager.FeedApiType.MERGED -> "合并"
+        SettingsManager.FeedApiType.WEB -> "网页端"
+        SettingsManager.FeedApiType.MOBILE -> "移动端"
         SettingsManager.FeedApiType.NORMAL -> "\u517C\u5BB9\u6A21\u5F0F"
-    }
-}
-
-private fun resolveFeedApiTypeDescription(type: SettingsManager.FeedApiType): String {
-    return when (type) {
-        SettingsManager.FeedApiType.MERGED -> "并行请求两端推荐并交错去重；任一端失败时保留另一端结果。"
-        SettingsManager.FeedApiType.WEB -> "\u63A8\u8350\u9875\u4F7F\u7528\u7F51\u9875\u7AEF\u63A8\u8350\u63A5\u53E3\u3002"
-        SettingsManager.FeedApiType.MOBILE -> "\u63A8\u8350\u9875\u4F18\u5148\u4F7F\u7528\u79FB\u52A8\u7AEF\u63A8\u8350\u63A5\u53E3\uFF0C\u5931\u8D25\u540E\u56DE\u9000\u7F51\u9875\u7AEF\u3002"
-        SettingsManager.FeedApiType.NORMAL -> "\u63A8\u8350\u9875\u4F7F\u7528\u517C\u5BB9\u6A21\u5F0F\u3002"
-    }
-}
-
-private fun resolveDynamicPageDisplayModeDescription(
-    mode: SettingsManager.DynamicPageDisplayMode
-): String {
-    return when (mode) {
-        SettingsManager.DynamicPageDisplayMode.LIVE -> "\u52A8\u6001\u9875\u4EC5\u663E\u793A\u5173\u6CE8\u76F4\u64AD\u6A2A\u680F\uFF0C\u9690\u85CF\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\u3002"
-        SettingsManager.DynamicPageDisplayMode.DYNAMIC -> "\u52A8\u6001\u9875\u4EC5\u663E\u793A\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u6A2A\u680F\u3002"
-        SettingsManager.DynamicPageDisplayMode.ALL -> "\u52A8\u6001\u9875\u540C\u65F6\u663E\u793A\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\u3002"
-        SettingsManager.DynamicPageDisplayMode.NONE -> "\u52A8\u6001\u9875\u9690\u85CF\u5173\u6CE8\u76F4\u64AD\u4E0E\u5173\u6CE8\u66F4\u65B0\u6A2A\u680F\uFF0C\u53EA\u4FDD\u7559\u89C6\u9891\u5217\u8868\u3002"
     }
 }
 
@@ -1596,13 +1553,9 @@ private fun resolvePlayerPlaybackEndActionDescription(
     action: SettingsManager.PlayerPlaybackEndAction
 ): String {
     return when (action) {
-        SettingsManager.PlayerPlaybackEndAction.NONE -> "\u64AD\u653E\u7ED3\u675F\u540E\u505C\u7559\u5728\u64AD\u653E\u5668\uFF0C\u6309\u786E\u8BA4\u952E\u53EF\u4ECE\u5934\u64AD\u653E\u3002"
-        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> "\u4F18\u5148\u64AD\u653E\u4E0B\u4E00\u5206P\uFF0C\u6CA1\u6709\u4E0B\u4E00\u5206P\u65F6\u64AD\u653E\u76F8\u5173\u63A8\u8350\u3002"
-        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> "\u5F53\u524D\u89C6\u9891\u7ED3\u675F\u540E\u81EA\u52A8\u4ECE\u5934\u5FAA\u73AF\u64AD\u653E\u3002"
-        SettingsManager.PlayerPlaybackEndAction.RETURN -> "\u64AD\u653E\u7ED3\u675F\u540E\u8FD4\u56DE\u4E0A\u4E00\u9875\uFF1B\u4ECE\u8BE6\u60C5\u9875\u8FDB\u5165\u65F6\u4F1A\u56DE\u5230\u8BE6\u60C5\u9875\u3002"
+        SettingsManager.PlayerPlaybackEndAction.NONE -> ""
+        SettingsManager.PlayerPlaybackEndAction.AUTO_NEXT -> "优先下一分 P，其次相关推荐。"
+        SettingsManager.PlayerPlaybackEndAction.LOOP_ONE -> ""
+        SettingsManager.PlayerPlaybackEndAction.RETURN -> ""
     }
-}
-
-private fun buildUserAgentPreview(userAgent: String): String {
-    return userAgent.trim().replace(Regex("\\s+"), " ").take(52)
 }

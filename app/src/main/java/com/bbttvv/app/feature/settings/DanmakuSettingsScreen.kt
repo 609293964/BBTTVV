@@ -122,7 +122,6 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_default_enabled") {
             SettingsRow(
                 title = "默认开启弹幕",
-                subtitle = "播放器进入时默认显示弹幕；播放器里的“弹”按钮只影响当前会话。",
                 value = onOff(settings.enabled),
                 modifier = getRowModifier("danmaku_default_enabled", Modifier),
                 onClick = {
@@ -139,7 +138,6 @@ fun TvDanmakuSettingsList(
                 .collectAsStateWithLifecycle(initialValue = true)
             SettingsRow(
                 title = "直播醒目留言",
-                subtitle = "跟随直播弹幕总开关；关闭后不显示醒目留言浮层。",
                 value = onOff(liveSuperChatEnabled),
                 modifier = getRowModifier("danmaku_live_super_chat", Modifier),
                 onClick = {
@@ -151,8 +149,8 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_smart_mask") {
             SettingsRow(
-                title = "智能防挡弹幕",
-                subtitle = "使用 B 站提供的人物蒙版；仅部分视频支持，未提供蒙版时自动使用普通弹幕。",
+                title = "人物防遮挡",
+                subtitle = "人物区域避让弹幕，部分视频支持。",
                 value = onOff(settings.smartMaskEnabled),
                 modifier = getRowModifier("danmaku_smart_mask", Modifier),
                 onClick = {
@@ -166,8 +164,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_opacity") {
             SettingsRow(
-                title = "弹幕透明度",
-                subtitle = "选择 20% 到 100%，直接映射到当前渲染透明度。",
+                title = "透明度",
                 value = formatDanmakuOpacity(settings.opacity),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -181,8 +178,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_text_size") {
             SettingsRow(
-                title = "弹幕字体大小",
-                subtitle = "以字号 22 为 100%，范围 40% 到 290%。",
+                title = "字号",
                 value = "${100 + (settings.textSizeSp - 22) * 5}%",
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -197,7 +193,6 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_font_weight") {
             SettingsRow(
                 title = "字体粗细",
-                subtitle = "在常规和加粗之间切换。",
                 value = formatDanmakuFontWeight(settings.fontWeight),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -211,9 +206,8 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_stroke_width") {
             SettingsRow(
-                title = "弹幕文字描边粗细",
-                subtitle = "选择 0 / 2 / 4 / 6，0 会同时关闭描边。",
-                value = settings.strokeWidthPx.toString(),
+                title = "文字描边",
+                value = if (settings.strokeWidthPx == 0) "关闭" else settings.strokeWidthPx.toString(),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
                     "danmaku_stroke_width",
@@ -226,8 +220,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_area_ratio") {
             SettingsRow(
-                title = "弹幕占屏比",
-                subtitle = "控制滚动和悬停弹幕可用的垂直区域。",
+                title = "显示区域",
                 value = formatDanmakuAreaRatio(settings.areaRatio),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -242,7 +235,6 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_lane_density") {
             SettingsRow(
                 title = "轨道密度",
-                subtitle = "影响每行间距，稀疏更松，密集更紧。",
                 value = formatDanmakuLaneDensity(settings.laneDensity),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -256,8 +248,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_speed") {
             SettingsRow(
-                title = "弹幕速度",
-                subtitle = "数字越大越快，最终通过滚动时长映射生效。",
+                title = "滚动速度",
                 value = settings.speedLevel.toString(),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -273,8 +264,8 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_cloud_title") { SettingsSectionTitle("云端过滤") }
         item(key = "danmaku_follow_bili") {
             SettingsRow(
-                title = "跟随B站弹幕屏蔽",
-                subtitle = "登录后读取账号弹幕屏蔽规则，并与本地设置叠加生效。",
+                title = "同步 B 站屏蔽规则",
+                subtitle = "与本地规则叠加；账号限制优先，关闭后仅用本地规则。",
                 value = onOff(settings.followBiliShield),
                 modifier = getRowModifier("danmaku_follow_bili", Modifier),
                 onClick = {
@@ -289,7 +280,6 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_ai_shield") {
             SettingsRow(
                 title = "智能云屏蔽",
-                subtitle = "按弹幕权重过滤低质量弹幕；开启后按等级生效。",
                 value = onOff(settings.aiShieldEnabled),
                 modifier = getRowModifier("danmaku_ai_shield", Modifier),
                 onClick = {
@@ -303,8 +293,8 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_ai_shield_level") {
             SettingsRow(
-                title = "智能云屏蔽等级",
-                subtitle = "范围 1 到 10，等级越高过滤越严格。",
+                title = "过滤强度",
+                subtitle = "等级越高，过滤越严格。",
                 value = settings.aiShieldLevel.toString(),
                 kind = SettingsRowKind.Choice,
                 modifier = getRowModifier(
@@ -320,8 +310,7 @@ fun TvDanmakuSettingsList(
         item(key = "danmaku_type_title") { SettingsSectionTitle("类型过滤") }
         item(key = "danmaku_allow_scroll") {
             SettingsRow(
-                title = "允许滚动弹幕",
-                subtitle = "关闭后会过滤普通滚动弹幕。",
+                title = "滚动弹幕",
                 value = onOff(settings.allowScroll),
                 modifier = getRowModifier("danmaku_allow_scroll", Modifier),
                 onClick = {
@@ -335,8 +324,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_allow_top") {
             SettingsRow(
-                title = "允许顶部悬停弹幕",
-                subtitle = "关闭后会过滤顶部悬停弹幕。",
+                title = "顶部弹幕",
                 value = onOff(settings.allowTop),
                 modifier = getRowModifier("danmaku_allow_top", Modifier),
                 onClick = {
@@ -350,8 +338,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_allow_bottom") {
             SettingsRow(
-                title = "允许底部悬停弹幕",
-                subtitle = "关闭后会过滤底部悬停弹幕。",
+                title = "底部弹幕",
                 value = onOff(settings.allowBottom),
                 modifier = getRowModifier("danmaku_allow_bottom", Modifier),
                 onClick = {
@@ -365,8 +352,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_allow_color") {
             SettingsRow(
-                title = "允许彩色弹幕",
-                subtitle = "关闭后仅保留白色弹幕，非白色视为彩色。",
+                title = "彩色弹幕",
                 value = onOff(settings.allowColor),
                 modifier = getRowModifier("danmaku_allow_color", Modifier),
                 onClick = {
@@ -380,8 +366,7 @@ fun TvDanmakuSettingsList(
         }
         item(key = "danmaku_allow_special") {
             SettingsRow(
-                title = "允许特殊弹幕",
-                subtitle = "关闭后会过滤高级/特殊弹幕。",
+                title = "特殊弹幕",
                 value = onOff(settings.allowSpecial),
                 modifier = getRowModifier("danmaku_allow_special", Modifier),
                 onClick = {

@@ -7,6 +7,21 @@ import org.junit.Test
 class AppTopLevelTabTest {
 
     @Test
+    fun `custom layout retains user order and gates plugin tab`() {
+        val layout = "PROFILE,TODAY_WATCH,SEARCH,SEARCH,obsolete,RECOMMEND"
+        val expected = listOf(AppTopLevelTab.PROFILE, AppTopLevelTab.SEARCH, AppTopLevelTab.RECOMMEND)
+        assertEquals(expected, AppTopLevelTab.resolveVisibleTabs(false, savedLayout = layout))
+        assertEquals(AppTopLevelTab.TODAY_WATCH, AppTopLevelTab.resolveVisibleTabs(true, savedLayout = layout)[1])
+    }
+
+    @Test
+    fun `invalid layout preserves home and settings access`() {
+        assertEquals(
+            listOf(AppTopLevelTab.RECOMMEND, AppTopLevelTab.PROFILE),
+            AppTopLevelTab.resolveVisibleTabs(false, savedLayout = ""),
+        )
+    }
+    @Test
     fun `visible tabs insert today watch between recommend and popular when enabled`() {
         val tabs = AppTopLevelTab.resolveVisibleTabs(todayWatchEnabled = true)
 

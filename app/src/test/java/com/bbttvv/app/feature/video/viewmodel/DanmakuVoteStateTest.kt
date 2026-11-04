@@ -140,6 +140,20 @@ class DanmakuVoteStateTest {
         controller.cancel()
     }
 
+    @Test
+    fun `percentage coordinates win and invalid pairs fall back together`() {
+        fun position(extra: String): DanmakuCardPosition? {
+            val command = DanmakuProto.CommandDm(command = "#GRADE#",
+                extra = """{"grade_id":12,"msg":"评分",$extra}""")
+            return parseDanmakuVotePrompts(listOf(command)).single().position
+        }
+        val legacy = """"posX":333.5,"posY":243.75"""
+        assertEquals(DanmakuCardPosition(0.5f, 0.65f), position(legacy))
+        assertEquals(DanmakuCardPosition(0.97f, 0.85f), position("""$legacy,"posX_2":97,"posY_2":85"""))
+        assertEquals(DanmakuCardPosition(0.5f, 0.65f), position("""$legacy,"posX_2":20"""))
+        assertEquals(null, position(""""posX_2":101,"posY_2":0"""))
+    }
+
     private fun targetVoteCommand() = DanmakuProto.CommandDm(
         id = 2161695068414006784L,
         oid = 40198080299L,

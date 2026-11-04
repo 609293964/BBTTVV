@@ -24,6 +24,8 @@ data class DanmakuVoteOption(
     val gradeScore: Int? = null,
 )
 
+data class DanmakuCardPosition(val xFraction: Float, val yFraction: Float)
+
 enum class DanmakuVoteKind { Vote, Grade }
 
 data class DanmakuVotePrompt(
@@ -37,6 +39,7 @@ data class DanmakuVotePrompt(
     val triggerPositionMs: Long,
     val durationMs: Long,
     val selectedOptionId: Int,
+    val position: DanmakuCardPosition? = null,
 ) {
     // Vote and grade IDs belong to separate server namespaces.
     val interactionKey: String = "${kind.name}:$voteId"
@@ -85,9 +88,10 @@ internal fun parseDanmakuVotePrompts(
         "#GRADE#", "GRADE_MSG", "VIDEO_GRADE_MSG" -> DanmakuVoteKind.Grade
         else -> return@mapNotNull null
     }
-    if (command.extra.isBlank() && command.content.isBlank()) return@mapNotNull null
-    if (kind == DanmakuVoteKind.Grade) return@mapNotNull parseDanmakuGradePrompt(command)
-    val payload = parseDanmakuVotePayload(command.extra.ifBlank { command.content }) ?: return@mapNotNull null
+    val root = runCatching { danmakuVoteJson.parseToJsonElement(command.extra.ifBlank { command.content }).jsonObject }
+        .getOrNull() ?: return@mapNotNull null
+    if (kind == DanmakuVoteKind.Grade) return@mapNotNull parseDanmakuGradePrompt(command, root)
+    val payload = parseDanmakuVotePayload(root)
     val options = payload.options
     val promptId = payload.voteId
     val commandId = command.idStr.ifBlank { command.id.takeIf { it > 0L }?.toString().orEmpty() }
@@ -108,13 +112,14 @@ internal fun parseDanmakuVotePrompts(
             .takeIf { it > 0L }
             ?.coerceIn(DANMAKU_VOTE_MIN_DURATION_MS, DANMAKU_VOTE_MAX_DURATION_MS)
             ?: DANMAKU_VOTE_FALLBACK_DURATION_MS,
+        position = root.cardPosition(),
         selectedOptionId = payload.myVote.coerceAtLeast(0),
     )
 }.sortedWith(compareBy(DanmakuVotePrompt::triggerPositionMs, DanmakuVotePrompt::voteId))
 
-private fun parseDanmakuGradePrompt(command: DanmakuProto.CommandDm): DanmakuVotePrompt? {
+private fun parseDanmakuGradePrompt(command: DanmakuProto.CommandDm, root: JsonObject): DanmakuVotePrompt? {
     val payload = runCatching {
-        danmakuVoteJson.decodeFromString<DanmakuGradePayload>(command.extra.ifBlank { command.content })
+        danmakuVoteJson.decodeFromJsonElement(DanmakuGradePayload.serializer(), root)
     }.getOrNull() ?: return null
     val title = payload.msg.ifBlank { payload.title }.ifBlank { payload.question }.trim()
     if (payload.gradeId <= 0L || title.isBlank()) return null
@@ -133,6 +138,7 @@ private fun parseDanmakuGradePrompt(command: DanmakuProto.CommandDm): DanmakuVot
         durationMs = payload.duration.takeIf { it > 0L }
             ?.coerceIn(DANMAKU_VOTE_MIN_DURATION_MS, DANMAKU_VOTE_MAX_DURATION_MS)
             ?: DANMAKU_VOTE_FALLBACK_DURATION_MS,
+        position = root.cardPosition(),
         selectedOptionId = payload.midScore.takeIf { it in 2..10 && it % 2 == 0 }?.div(2) ?: 0,
     )
 }
@@ -147,8 +153,16 @@ private data class ParsedDanmakuVotePayload(
     val duration: Long,
 )
 
-private fun parseDanmakuVotePayload(raw: String): ParsedDanmakuVotePayload? {
-    val root = runCatching { danmakuVoteJson.parseToJsonElement(raw).jsonObject }.getOrNull() ?: return null
+private fun JsonObject.cardPosition(): DanmakuCardPosition? {
+    fun fraction(key: String, scale: Float): Float? = (this[key] as? JsonPrimitive)?.contentOrNull
+        ?.toFloatOrNull()?.takeIf { it in 0f..scale }?.div(scale)
+    fun pair(x: Float?, y: Float?) = if (x != null && y != null) DanmakuCardPosition(x, y) else null
+    // The current coordinates are percentages; older commands use a 667 x 375 canvas.
+    return pair(fraction("posX_2", 100f), fraction("posY_2", 100f))
+        ?: pair(fraction("posX", 667f), fraction("posY", 375f))
+}
+
+private fun parseDanmakuVotePayload(root: JsonObject): ParsedDanmakuVotePayload {
     fun string(vararg keys: String): String =
         keys.firstNotNullOfOrNull { (root[it] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }.orEmpty()
     fun long(vararg keys: String): Long =

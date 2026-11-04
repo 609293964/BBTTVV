@@ -5,8 +5,9 @@ enum class AppTopLevelTab(
     val title: String,
     val isHomeContent: Boolean
 ) {
-    RECOMMEND(1L, "推荐", isHomeContent = true),
+    // Declaration order is the default display order. Persisted IDs must never be reused.
     SEARCH(2L, "搜索", isHomeContent = true),
+    RECOMMEND(1L, "推荐", isHomeContent = true),
     TODAY_WATCH(3L, "推荐单", isHomeContent = true),
     POPULAR(4L, "热门", isHomeContent = true),
     LIVE(5L, "直播", isHomeContent = true),
@@ -14,34 +15,16 @@ enum class AppTopLevelTab(
     WATCH_LATER(7L, "稍后再看", isHomeContent = true),
     PROFILE(8L, "我的", isHomeContent = true);
 
+    val alwaysVisible: Boolean
+        get() = this == RECOMMEND || this == PROFILE
+
     val index: Int
-        get() = ordinal
+        get() = stableId.toInt() - 1 // Compatible with previously saved navigation indices.
 
     companion object {
         val all: List<AppTopLevelTab> = values().toList()
 
-        private val defaultVisibleTabs = listOf(
-            SEARCH,
-            RECOMMEND,
-            POPULAR,
-            LIVE,
-            DYNAMIC,
-            WATCH_LATER,
-            PROFILE
-        )
-
-        private val todayWatchVisibleTabs = listOf(
-            SEARCH,
-            RECOMMEND,
-            TODAY_WATCH,
-            POPULAR,
-            LIVE,
-            DYNAMIC,
-            WATCH_LATER,
-            PROFILE
-        )
-
-        fun fromIndex(index: Int): AppTopLevelTab? = all.getOrNull(index)
+        fun fromIndex(index: Int): AppTopLevelTab? = all.firstOrNull { it.index == index }
 
         fun homeContentFromIndex(index: Int): AppTopLevelTab {
             return fromIndex(index)?.takeIf { it.isHomeContent } ?: RECOMMEND
@@ -50,12 +33,11 @@ enum class AppTopLevelTab(
         fun resolveVisibleTabs(
             todayWatchEnabled: Boolean,
             watchLaterInTopTabsEnabled: Boolean = true,
+            savedLayout: String? = null,
         ): List<AppTopLevelTab> {
-            val tabs = if (todayWatchEnabled) todayWatchVisibleTabs else defaultVisibleTabs
-            return if (watchLaterInTopTabsEnabled) {
-                tabs
-            } else {
-                tabs.filterNot { tab -> tab == WATCH_LATER }
+            val layout = HomeTabLayout.restore(savedLayout, watchLaterInTopTabsEnabled)
+            return layout.order.filter { tab ->
+                tab in layout.visible && (tab != TODAY_WATCH || todayWatchEnabled)
             }
         }
 

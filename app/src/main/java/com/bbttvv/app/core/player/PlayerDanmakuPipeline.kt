@@ -123,20 +123,33 @@ internal object PlayerDanmakuPipeline {
         )
     }
 
+    suspend fun refreshFilterContext(cid: Long, aid: Long, settings: DanmakuSettings): PlayerDanmakuFilterContext {
+        if (!settings.followBiliShield || cid <= 0L || aid <= 0L || TokenManager.sessDataCache.isNullOrBlank()) {
+            return PlayerDanmakuFilterContext()
+        }
+        return PlayerDanmakuFilterContext(
+            followBiliShield = true,
+            serverSetting = DanmakuRepository.getDanmakuView(cid, aid)?.setting,
+            userFilter = DanmakuRepository.getDanmakuUserFilter(),
+        )
+    }
+
     fun buildRenderPayload(
         parsed: ParsedDanmaku,
         sourceLabel: String,
         filterContext: PlayerDanmakuFilterContext,
+        localSettings: DanmakuSettings = resolveDanmakuSettings(),
     ): DanmakuRenderPayload {
+        val activeContext = filterContext.takeIf { localSettings.followBiliShield } ?: PlayerDanmakuFilterContext()
         val danmakuSettings = resolveEffectiveDanmakuSettings(
-            localSettings = resolveDanmakuSettings(),
-            filterContext = filterContext,
+            localSettings = localSettings,
+            filterContext = activeContext,
         )
         val (baseFilteredStandard, baseFilteredAdvanced) = applyGlobalDanmakuFilters(
             standardDanmakuList = parsed.standardList,
             advancedDanmakuList = parsed.advancedList,
             settings = danmakuSettings,
-            userFilter = filterContext.userFilter,
+            userFilter = activeContext.userFilter,
         )
         val (filteredStandard, filteredAdvanced) = applyDanmakuPluginPipeline(
             standardDanmakuList = baseFilteredStandard,

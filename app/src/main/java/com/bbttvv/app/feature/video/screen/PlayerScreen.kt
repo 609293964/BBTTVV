@@ -281,6 +281,9 @@ fun PlayerScreen(
         }
     }
     val isCommentsPanelVisible = presentationState.isCommentsPanelVisible
+    val videoAspectRatio = uiState.selectedVideoWidth.takeIf { it > 0 }?.let { width ->
+        uiState.selectedVideoHeight.takeIf { it > 0 }?.let { height -> width.toFloat() / height }
+    } ?: (16f / 9f)
     val danmakuConfig = remember(presentationState.danmakuSettings) {
         presentationState.danmakuSettings.toEngineConfig()
     }
@@ -303,7 +306,7 @@ fun PlayerScreen(
             },
             recoverFocus = {
                 playerFocusCoordinator.requestFocus(
-                    resolvePlayerEscapeFocusIntent(
+                    if (isDanmakuVoteFocusDomain) PlayerFocusIntent.FocusDanmakuVoteOverlay else resolvePlayerEscapeFocusIntent(
                         overlayUiState = overlayUiState,
                         isCommentsPanelVisible = isCommentsPanelVisible,
                     )
@@ -324,6 +327,7 @@ fun PlayerScreen(
         onDebugSnapshotChange = { debugSnapshot = it },
         args = PlayerScreenEffectArgs(
             session = session,
+            voteOwnsFocus = isDanmakuVoteFocusDomain,
             uiState = uiState,
             overlayUiState = overlayUiState,
             panelOptions = panelOptions,
@@ -385,9 +389,7 @@ fun PlayerScreen(
             config = danmakuConfig,
             mask = danmakuMask,
             maskEnabled = presentationState.danmakuSettings.smartMaskEnabled,
-            videoAspectRatio = uiState.selectedVideoWidth.takeIf { it > 0 }?.let { width ->
-                uiState.selectedVideoHeight.takeIf { it > 0 }?.let { height -> width.toFloat() / height }
-            } ?: (16f / 9f),
+            videoAspectRatio = videoAspectRatio,
         )
 
         PlayerOverlaySection(
@@ -448,6 +450,7 @@ fun PlayerScreen(
         if (isDanmakuVoteFocusDomain) {
             DanmakuVoteOverlay(
                 state = danmakuVoteUiState,
+                videoAspectRatio = videoAspectRatio,
                 focusCoordinator = playerFocusCoordinator,
                 onSelect = viewModel::selectDanmakuVoteOption,
                 onRetry = viewModel::retryDanmakuVote,

@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ClickableSurfaceScale
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
@@ -31,7 +32,8 @@ fun TvDialogActionButton(
     focusedContentColor: Color = Color(0xFF101318),
     containerColor: Color = Color(0x14000000),
     focusedContainerColor: Color = Color(0xF2EEF6FB),
-    minWidth: Dp = 72.dp
+    minWidth: Dp = 72.dp,
+    scale: ClickableSurfaceScale = ClickableSurfaceDefaults.scale()
 ) {
     var focused by remember { mutableStateOf(false) }
     val isLightTheme = com.bbttvv.app.ui.theme.LocalIsLightTheme.current
@@ -60,6 +62,7 @@ fun TvDialogActionButton(
     Surface(
         onClick = onClick,
         modifier = modifier.onFocusChanged { focused = it.isFocused || it.hasFocus },
+        scale = scale,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = finalContainerColor,

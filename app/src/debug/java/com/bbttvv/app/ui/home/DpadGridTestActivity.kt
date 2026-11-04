@@ -57,7 +57,8 @@ private class DpadTestRecyclerView(
     context: Context,
     private val controller: DpadGridController,
 ) : RecyclerView(context) {
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        if (event == null) return false
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in DirectionalKeyCodes) {
             val focused = rootView?.findFocus()
             val position = focused

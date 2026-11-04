@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal val Context.settingsDataStore by preferencesDataStore(name = "settings_prefs")
 
@@ -112,6 +114,7 @@ object SettingsManager {
         val videoDetailCommentsEnabled: Boolean = false,
         val updateContentOnTabFocusEnabled: Boolean = true,
         val homeTopTabSelectOnFocusEnabled: Boolean = true,
+        val homeTabLayout: String? = null,
         val watchLaterInTopTabsEnabled: Boolean = false,
         val dynamicPageDisplayMode: DynamicPageDisplayMode = DynamicPageDisplayMode.ALL,
         val singleBackToHomeEnabled: Boolean = false,
@@ -145,6 +148,7 @@ object SettingsManager {
     private const val CACHE_VIDEO_DETAIL_COMMENTS_ENABLED = "video_detail_comments_enabled"
     private const val CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED = "update_content_on_tab_focus_enabled"
     private const val CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED = "home_top_tab_select_on_focus_enabled"
+    private const val CACHE_HOME_TAB_LAYOUT = "home_tab_layout"
     private const val CACHE_WATCH_LATER_IN_TOP_TABS = "watch_later_in_top_tabs"
     private const val CACHE_DYNAMIC_PAGE_DISPLAY_MODE = "dynamic_page_display_mode"
     private const val CACHE_SINGLE_BACK_TO_HOME = "single_back_to_home"
@@ -179,6 +183,7 @@ object SettingsManager {
         booleanPreferencesKey(CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED)
     private val keyHomeTopTabSelectOnFocusEnabled =
         booleanPreferencesKey(CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED)
+    private val keyHomeTabLayout = stringPreferencesKey(CACHE_HOME_TAB_LAYOUT)
     private val keyWatchLaterInTopTabs = booleanPreferencesKey(CACHE_WATCH_LATER_IN_TOP_TABS)
     private val keyDynamicPageDisplayMode = stringPreferencesKey(CACHE_DYNAMIC_PAGE_DISPLAY_MODE)
     private val keySingleBackToHome = booleanPreferencesKey(CACHE_SINGLE_BACK_TO_HOME)
@@ -211,6 +216,7 @@ object SettingsManager {
                         preferences[keyProfileUpdateContentOnTabFocusEnabled] ?: true,
                     homeTopTabSelectOnFocusEnabled =
                         preferences[keyHomeTopTabSelectOnFocusEnabled] ?: true,
+                    homeTabLayout = preferences[keyHomeTabLayout],
                     watchLaterInTopTabsEnabled = preferences[keyWatchLaterInTopTabs] ?: false,
                     dynamicPageDisplayMode = DynamicPageDisplayMode.fromValue(
                         preferences[keyDynamicPageDisplayMode]
@@ -262,6 +268,7 @@ object SettingsManager {
                 preferences.getBoolean(CACHE_PROFILE_UPDATE_CONTENT_ON_TAB_FOCUS_ENABLED, true),
             homeTopTabSelectOnFocusEnabled =
                 preferences.getBoolean(CACHE_HOME_TOP_TAB_SELECT_ON_FOCUS_ENABLED, true),
+            homeTabLayout = preferences.getString(CACHE_HOME_TAB_LAYOUT, null),
             watchLaterInTopTabsEnabled = preferences.getBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, false),
             dynamicPageDisplayMode = DynamicPageDisplayMode.fromValue(
                 preferences.getString(CACHE_DYNAMIC_PAGE_DISPLAY_MODE, DynamicPageDisplayMode.ALL.value)
@@ -295,7 +302,16 @@ object SettingsManager {
         }
     }
 
-    suspend fun setThemeMode(context: Context, mode: ThemeMode) {
+    private val themeWriteMutex = Mutex()
+
+    internal suspend fun reconcileThemeCache(context: Context): Boolean = themeWriteMutex.withLock {
+        val saved = getThemeMode(context).first()
+        if (saved == getThemeModeSync(context)) return@withLock false
+        updateSyncCache(context) { putString(CACHE_THEME_MODE, saved.value) }
+        true
+    }
+
+    suspend fun setThemeMode(context: Context, mode: ThemeMode) = themeWriteMutex.withLock {
         updatePreference(context) { preferences ->
             preferences[keyThemeMode] = mode.value
         }
@@ -308,11 +324,15 @@ object SettingsManager {
         }
     }
 
-    suspend fun setWatchLaterInTopTabsEnabled(context: Context, enabled: Boolean) {
+    suspend fun setHomeTabLayout(context: Context, layout: String, watchLaterVisible: Boolean) {
         updatePreference(context) { preferences ->
-            preferences[keyWatchLaterInTopTabs] = enabled
+            preferences[keyHomeTabLayout] = layout
+            preferences[keyWatchLaterInTopTabs] = watchLaterVisible
         }
-        updateSyncCache(context) { putBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, enabled) }
+        updateSyncCache(context) {
+            putString(CACHE_HOME_TAB_LAYOUT, layout)
+            putBoolean(CACHE_WATCH_LATER_IN_TOP_TABS, watchLaterVisible)
+        }
     }
 
     fun getDynamicPageDisplayMode(context: Context): Flow<DynamicPageDisplayMode> {

@@ -1,13 +1,10 @@
 package com.bbttvv.app.feature.profile
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
@@ -16,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -32,7 +30,6 @@ import com.bbttvv.app.ui.focus.RegisterTvFocusReturnTarget
 
 @Composable
 internal fun GuestProfileLayout(
-    uiState: ProfileUiState,
     onLoginSuccess: () -> Unit,
     onOpenSettings: () -> Unit,
     onRequestTopBarFocus: () -> Boolean,
@@ -87,7 +84,7 @@ internal fun GuestProfileLayout(
         }
     }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { keyEvent ->
@@ -97,35 +94,27 @@ internal fun GuestProfileLayout(
                     !settingsHasFocus &&
                     onRequestTopBarFocus()
             },
-        horizontalArrangement = Arrangement.spacedBy(40.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        GuestProfileSidebar(storedAccountCount = uiState.storedAccountCount, modifier = Modifier.width(378.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(start = 22.dp, top = 18.dp, bottom = 24.dp)
-                .weight(1f)
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                LoginQrPanel(
-                    modifier = Modifier.width(760.dp).fillMaxHeight(),
-                    onLoginSuccess = onLoginSuccess,
-                    refreshFocusRequester = loginActionFocusRequester,
-                    onRefreshFocused = ::noteGuestContentFocused
-                )
-            }
-            ProfilePrimaryAction(
-                text = "打开设置",
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    .width(760.dp)
-                    .focusRequester(settingsFocusRequester)
-                    .focusProperties { up = loginActionFocusRequester }
-                    .onFocusChanged {
-                        settingsHasFocus = it.isFocused
-                        if (it.isFocused) noteGuestContentFocused()
-                    },
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            LoginQrPanel(
+                modifier = Modifier.fillMaxSize(),
+                onLoginSuccess = onLoginSuccess,
+                refreshFocusRequester = loginActionFocusRequester,
+                onRefreshFocused = ::noteGuestContentFocused
             )
         }
+        ProfilePrimaryAction(
+            text = "打开设置",
+            onClick = onOpenSettings,
+            modifier = Modifier
+                .width(180.dp)
+                .focusRequester(settingsFocusRequester)
+                .focusProperties { up = loginActionFocusRequester }
+                .onFocusChanged {
+                    settingsHasFocus = it.isFocused
+                    if (it.isFocused) noteGuestContentFocused()
+                },
+        )
     }
 }

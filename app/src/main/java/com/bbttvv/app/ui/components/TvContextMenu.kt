@@ -232,14 +232,16 @@ private fun TvContextMenuButton(
     val semanticColors = LocalTvSemanticColors.current
     val shape = RoundedCornerShape(18.dp)
     val backgroundColor = if (isFocused) accentColor.copy(alpha = 0.22f) else semanticColors.surfaceSubtle
-    val textColor = if (isFocused) Color.White else semanticColors.primaryText
+    val textColor = semanticColors.primaryText
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.025f else 1f,
         animationSpec = tween(durationMillis = 150),
         label = "TvContextMenuButtonScale",
     )
     val iconBackgroundColor = if (isFocused) accentColor.copy(alpha = 0.95f) else accentColor.copy(alpha = 0.18f)
-    val iconTintColor = if (isFocused) Color.White else accentColor
+    val iconTintColor = if (isFocused) {
+        com.bbttvv.app.core.theme.resolveReadableTextColor(Color.White, accentColor, Color.Black, 4.5f)
+    } else semanticColors.primaryText
 
     Surface(
         onClick = onClick,

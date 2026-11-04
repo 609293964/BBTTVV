@@ -8,7 +8,7 @@ import org.junit.Test
 
 class DanmakuVoteKeyPolicyTest {
     @Test
-    fun `horizontal grade uses left right clamps edges and holds vertical boundaries`() {
+    fun `grade accepts vertical and horizontal navigation`() {
         fun move(key: Int, index: Int, action: Int = KeyEvent.ACTION_DOWN) = resolveDanmakuVoteKeyDecision(
             action, key, 0, DanmakuVoteKeyState.Showing, index, 4, horizontal = true,
         )
@@ -17,10 +17,8 @@ class DanmakuVoteKeyPolicyTest {
         assertEquals(0, move(KeyEvent.KEYCODE_DPAD_LEFT, 0).nextIndex)
         assertEquals(4, move(KeyEvent.KEYCODE_DPAD_RIGHT, 4).nextIndex)
         assertEquals(1, move(KeyEvent.KEYCODE_DPAD_RIGHT, 1, KeyEvent.ACTION_UP).nextIndex)
-        listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN).forEach { key ->
-            assertTrue(move(key, 2).consumed)
-            assertEquals(2, move(key, 2).nextIndex)
-        }
+        assertEquals(1, move(KeyEvent.KEYCODE_DPAD_UP, 2).nextIndex)
+        assertEquals(3, move(KeyEvent.KEYCODE_DPAD_DOWN, 2).nextIndex)
         // Existing vertical vote navigation must not change.
         assertEquals(2, resolveDanmakuVoteKeyDecision(
             KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, DanmakuVoteKeyState.Showing, 2, 4,

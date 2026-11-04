@@ -99,7 +99,7 @@ class TvLoginViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         isLoading = false,
                         qrBitmap = qrBitmap,
-                        statusText = "请使用哔哩哔哩 App 扫码登录",
+                        statusText = "等待扫码",
                         errorMessage = null,
                         isScanned = false,
                         isSuccess = false
